@@ -1,6 +1,6 @@
 """
 Fonbet Automated Odds Parser
-Main entry point for scraping and exporting Fonbet betting odds.
+Main entry point for scraping and exporting ALL Fonbet betting odds including sub-markets.
 """
 
 import argparse
@@ -63,6 +63,31 @@ class FonbetParser:
 
         return s1_int, s2_int, score_str, timer_str
 
+    def _parse_factors_for_event(self, eid: int, market_prefix: str, custom_factors_map: Dict[int, Any]) -> List[Dict[str, Any]]:
+        """Parses factors array for a given event ID."""
+        raw_factors = custom_factors_map.get(eid, [])
+        parsed = []
+        for f in raw_factors:
+            fid = f.get("f")
+            val = f.get("v")
+            pt = f.get("pt")
+            p_raw = f.get("p")
+            
+            if fid is None or val is None:
+                continue
+
+            base_label = self.catalog.resolve_factor_label(fid, pt)
+            full_label = f"{market_prefix} | {base_label}" if market_prefix else base_label
+
+            parsed.append({
+                "factor_id": fid,
+                "label": full_label,
+                "market_prefix": market_prefix,
+                "parameter": pt if pt is not None else p_raw,
+                "coefficient": val
+            })
+        return parsed
+
     def run(self, place: str = "live", sport_filter: str = "all", export_format: str = "all"):
         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logger.info(f"Starting Fonbet odds parser (place={place}, sport={sport_filter}, format={export_format})")
@@ -92,22 +117,32 @@ class FonbetParser:
                 pid = psport.get("parentId")
             return " / ".join(reversed([n for n in names if n]))
 
-        # Step 4: Parse events, scores, and factors
+        # Step 4: Group events and sub-events
         events_map = {e["id"]: e for e in raw_data.get("events", [])}
         custom_factors_map = {cf["e"]: cf.get("factors", []) for cf in raw_data.get("customFactors", [])}
         live_infos_map = {li["eventId"]: li for li in raw_data.get("liveEventInfos", []) if "eventId" in li}
         event_miscs_map = {em["id"]: em for em in raw_data.get("eventMiscs", []) if "id" in em}
 
+        sub_events_by_parent: Dict[int, List[Dict[str, Any]]] = {}
+        for eid, ev in events_map.items():
+            pid = ev.get("parentId")
+            if pid:
+                if pid not in sub_events_by_parent:
+                    sub_events_by_parent[pid] = []
+                sub_events_by_parent[pid].append(ev)
+
         parsed_events = []
+        total_odds_parsed = 0
 
         for eid, ev in events_map.items():
             ev_place = ev.get("place", "live")
             if place != "all" and ev_place != place:
                 continue
 
-            # Filter main events (kind == 1)
+            # Process main events (kind == 1)
             kind = ev.get("kind", 1)
-            if kind != 1:
+            if kind != 1 and ev.get("parentId"):
+                # Sub-events are handled under their main parent
                 continue
 
             sport_path = get_sport_path(ev.get("sportId"))
@@ -119,34 +154,34 @@ class FonbetParser:
             t2 = ev.get("team2", "").strip()
             match_name = f"{t1} — {t2}" if (t1 and t2) else (ev.get("name") or f"Event #{eid}")
 
-            # Extract accurate scores & timer
+            # Extract accurate score and timer
             s1_int, s2_int, score_str, timer_str = self._extract_live_score_and_timer(
                 eid, ev, live_infos_map, event_miscs_map
             )
 
-            # Odds/Factors for this event
-            raw_factors = custom_factors_map.get(eid, [])
-            parsed_odds = []
+            # Main event odds
+            all_match_odds = self._parse_factors_for_event(eid, "Основной матч", custom_factors_map)
 
-            for f in raw_factors:
-                fid = f.get("f")
-                val = f.get("v")
-                pt = f.get("pt")
-                p_raw = f.get("p")
-                
-                if fid is None or val is None:
-                    continue
+            # Sub-events odds (1-й тайм, 2-й тайм, угловые, желтые карточки, сеты и т.д.)
+            child_sub_events = sub_events_by_parent.get(eid, [])
+            sub_markets_summary = []
 
-                label = self.catalog.resolve_factor_label(fid, pt)
-                parsed_odds.append({
-                    "factor_id": fid,
-                    "label": label,
-                    "parameter": pt if pt is not None else p_raw,
-                    "coefficient": val
-                })
+            for se in child_sub_events:
+                se_id = se["id"]
+                se_name = se.get("name", "Доп. маркет")
+                se_odds = self._parse_factors_for_event(se_id, se_name, custom_factors_map)
+                if se_odds:
+                    all_match_odds.extend(se_odds)
+                    sub_markets_summary.append({
+                        "sub_event_id": se_id,
+                        "market_name": se_name,
+                        "odds_count": len(se_odds)
+                    })
 
-            if not parsed_odds:
+            if not all_match_odds:
                 continue
+
+            total_odds_parsed += len(all_match_odds)
 
             parsed_events.append({
                 "event_id": eid,
@@ -160,10 +195,12 @@ class FonbetParser:
                 "score": score_str,
                 "timer": timer_str,
                 "is_live": (ev_place == "live"),
-                "odds": parsed_odds
+                "sub_markets": sub_markets_summary,
+                "total_odds_count": len(all_match_odds),
+                "odds": all_match_odds
             })
 
-        logger.info(f"Successfully parsed {len(parsed_events)} live events.")
+        logger.info(f"Successfully parsed {len(parsed_events)} live matches with ALL sub-markets ({total_odds_parsed} total odds).")
 
         # Step 5: Export into requested formats
         created_files = {}
