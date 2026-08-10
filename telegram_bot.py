@@ -6,6 +6,7 @@ Features:
 - Dynamic Bankroll prompt when 'Прогноз' is pressed
 - Strict market filter: Wins/Draws (1X2, 1X/12/X2) & Totals (ТМ/ТБ) ONLY (No Handicaps)
 - Clean card formatting (No preambles, no <u> underlines, no dashed separators)
+- Environment variable configuration for Docker Compose support
 """
 
 import argparse
@@ -29,8 +30,9 @@ from fonbet_parser import FonbetParser
 from deepseek_prompt_analyst import DeepSeekPromptAnalyst
 from deepseek_web_client import DeepSeekWebClient
 
-BOT_TOKEN = "8614860014:AAFRk86vJQljDsioTB_oAnm0lFKw_Yv6Wvo"
-ALLOWED_USER_IDS = [537737180]
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8614860014:AAFRk86vJQljDsioTB_oAnm0lFKw_Yv6Wvo")
+env_allowed = os.getenv("ALLOWED_USER_IDS", "537737180")
+ALLOWED_USER_IDS = [int(x.strip()) for x in env_allowed.split(",") if x.strip().isdigit()]
 
 BASE_TELEGRAM_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 

@@ -15,8 +15,11 @@ from wasmtime import Store, Module, Instance
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-WASM_PATH = r"C:\Users\egorg\Downloads\ClaudeSeek-main\wasm\sha3_wasm_bg.7b9ca65ddd.wasm"
-DEFAULT_TOKEN = "8He37gBBj2KFJ5ia4yaN/llmrN5EqzNjr5mZ1iCRCUbuadE7mUdDL4/pNTFZbH4s"
+LOCAL_WASM = os.path.join(os.path.dirname(__file__), "wasm", "sha3_wasm_bg.7b9ca65ddd.wasm")
+EXTERNAL_WASM = r"C:\Users\egorg\Downloads\ClaudeSeek-main\wasm\sha3_wasm_bg.7b9ca65ddd.wasm"
+WASM_PATH = LOCAL_WASM if os.path.exists(LOCAL_WASM) else EXTERNAL_WASM
+
+DEFAULT_TOKEN = os.getenv("DEEPSEEK_TOKEN", "8He37gBBj2KFJ5ia4yaN/llmrN5EqzNjr5mZ1iCRCUbuadE7mUdDL4/pNTFZbH4s")
 
 class DeepSeekWebClient:
     def __init__(self, token: str = DEFAULT_TOKEN, wasm_path: str = WASM_PATH):

@@ -1,23 +1,22 @@
-# Virtual environment
+# Python virtual environment & cache
 .venv/
 venv/
-ENV/
-
-# Output directory (generated parser outputs)
-output/
-
-# Python cache & bytecode
 __pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
 
-# Local cache files
-factor_catalog_cache.json
-scratch/
+# Large Datasets (over GitHub 100MB limit)
+history_db/
+*.jsonl
 
-# IDE & Editor settings
-.vscode/
-.idea/
-*.swp
+# Temporary outputs & logs
+output/
+*.log
+autobet_deploy.zip
+
+# IDE & OS files
 .DS_Store
+.idea/
+.vscode/
+.gemini/

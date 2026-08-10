@@ -1,6 +1,7 @@
 """
 Fonbet Catalog Resolver
 Handles loading factor descriptions, sport names, and outcome catalog metadata.
+Prioritizes explicit CORE_FACTOR_MAP for exact outcome resolution (Тотал Больше, Тотал Меньше, П1, Х, П2).
 """
 
 import json
@@ -31,25 +32,29 @@ CORE_FACTOR_MAP: Dict[int, str] = {
     1680: "Фора 2",
     1681: "Фора 1",
     
-    # Totals
+    # Totals (Total Over = Больше, Total Under = Меньше)
     930: "Тотал Больше",
     931: "Тотал Меньше",
-    1696: "Тотал Меньше",
-    1697: "Тотал Больше",
-    1727: "Тотал Меньше",
-    1728: "Тотал Больше",
-    1730: "Тотал Меньше",
-    1731: "Тотал Больше",
-    1733: "Тотал Меньше",
-    1734: "Тотал Больше",
+    1696: "Тотал Больше",
+    1697: "Тотал Меньше",
+    1727: "Тотал Больше",
+    1728: "Тотал Меньше",
+    1730: "Тотал Больше",
+    1731: "Тотал Меньше",
+    1733: "Тотал Больше",
+    1734: "Тотал Меньше",
     1736: "Тотал Больше",
     1737: "Тотал Меньше",
     1739: "Тотал Больше",
-    1791: "Тотал Меньше",
-    1793: "Тотал Больше",
-    1794: "Тотал Меньше",
-    1796: "Тотал Больше",
-    1797: "Тотал Меньше",
+    1740: "Тотал Меньше",
+    1791: "Тотал Больше",
+    1793: "Тотал Меньше",
+    1794: "Тотал Больше",
+    1796: "Тотал Меньше",
+    1797: "Тотал Больше",
+    1802: "Тотал Меньше",
+    1804: "Тотал Больше",
+    1805: "Тотал Меньше",
 
     # Individual Totals
     1809: "Индивидуальный тотал 1 Больше",
@@ -64,6 +69,12 @@ CORE_FACTOR_MAP: Dict[int, str] = {
     1822: "Индивидуальный тотал 1 Меньше",
     
     1854: "Индивидуальный тотал 2 Больше",
+    1855: "Индивидуальный тотал 2 Меньше",
+    1857: "Индивидуальный тотал 2 Больше",
+    1858: "Индивидуальный тотал 2 Меньше",
+    1860: "Индивидуальный тотал 2 Больше",
+    1861: "Индивидуальный тотал 2 Меньше",
+    
     1871: "Обе забьют: Да",
     1873: "Обе забьют: Нет",
     1874: "Обе забьют: Да",
@@ -133,11 +144,13 @@ class FonbetCatalog:
         self.save_cache()
 
     def resolve_factor_label(self, factor_id: int, param_str: Optional[str] = None) -> str:
-        """Returns a human-readable title for a factor ID, formatted with any line parameter."""
-        title = self.factors_group_map.get(factor_id) or self.factors_map.get(factor_id) or CORE_FACTOR_MAP.get(factor_id) or f"Фактор {factor_id}"
+        """
+        Returns a human-readable title for a factor ID, formatted with any line parameter.
+        Prioritizes CORE_FACTOR_MAP to guarantee explicit outcomes (Тотал Больше / Тотал Меньше).
+        """
+        title = CORE_FACTOR_MAP.get(factor_id) or self.factors_group_map.get(factor_id) or self.factors_map.get(factor_id) or f"Фактор {factor_id}"
         
         if param_str is not None and str(param_str).strip() != "":
-            # Format nicely, e.g., Фора 1 (-1.5) or Тотал Больше (2.5)
             p_clean = str(param_str).strip()
             if "(" in title and ")" in title:
                 return title

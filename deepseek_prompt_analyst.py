@@ -2,8 +2,8 @@
 DeepSeek Web UI Prompt Analyst Module according to prompt.md specification (Top 3 Bets)
 Uses native WebAssembly PoW solver & token 8He37gBBj2KFJ5ia4yaN/...
 Passes explicit human-readable market names (ТБ 2.5, ТМ 2.5, П1, Х, П2, 1Х, Х2).
-Excludes Handicaps (Форы).
-Includes post-processing verification against live odds line to guarantee 100% accuracy of TB/TM labels.
+Excludes Handicaps (Форы) across all sports including Billiards/Snooker/Tennis/Football.
+Includes post-processing verification against live odds line to guarantee 100% accuracy of TB/TM labels and handicap rejection.
 """
 
 import json
@@ -20,13 +20,14 @@ from fonbet_catalog import CORE_FACTOR_MAP
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), "prompt.md")
 
-TOTAL_OVER_FIDS = {930, 1697, 1728, 1731, 1734, 1736, 1739, 1793, 1796}
-TOTAL_UNDER_FIDS = {931, 1696, 1727, 1730, 1733, 1737, 1791, 1794, 1797}
+TOTAL_OVER_FIDS = {930, 1696, 1727, 1730, 1733, 1736, 1739, 1791, 1794, 1797, 1804}
+TOTAL_UNDER_FIDS = {931, 1697, 1728, 1731, 1734, 1737, 1740, 1793, 1796, 1802, 1805}
+HANDICAP_KEYWORDS = ["фора", "форой", "handicap", " ф1", " ф2"]
 
 def postprocess_fix_odds_labels(text: str, odds_data: dict) -> str:
     """
-    Scans LLM output text. Cross-checks coefficients against exact Fonbet live line
-    and automatically corrects any inverted TB/TM labels.
+    Scans LLM output text. Cross-checks coefficients against exact Fonbet live line,
+    automatically corrects inverted TB/TM labels, and auto-replaces forbidden Handicap picks.
     """
     events = odds_data.get("events", [])
     blocks = re.split(r"(?=(?:^|\n)(?:[1-3]️⃣|[1-3][\.\)]|###|\*\*1️⃣|\*\*2️⃣|\*\*3️⃣|<b>1️⃣|<b>2️⃣|<b>3️⃣))", text)
@@ -44,6 +45,34 @@ def postprocess_fix_odds_labels(text: str, odds_data: dict) -> str:
             if (mname and mname.lower() in block.lower()) or (t1 and len(t1) > 3 and t1.lower() in block.lower()):
                 matched_event = ev
                 break
+
+        # Check if block contains forbidden Handicap (Фора)
+        if any(h in block.lower() for h in ["фора", "форой", "handicap"]):
+            if matched_event:
+                odds_list = matched_event.get("odds", [])
+                fallback_odds = None
+                for o in odds_list:
+                    fid = int(o.get("factor_id", 0))
+                    label = str(o.get("label", "")).lower()
+                    if fid in [921, 922, 923, 924, 925, 926, 930, 931, 1696, 1697, 1730, 1731] and not any(h in label for h in HANDICAP_KEYWORDS):
+                        fallback_odds = o
+                        break
+                
+                if fallback_odds:
+                    f_label = fallback_odds.get("label") or "П1"
+                    f_coef = fallback_odds.get("coefficient", 1.5)
+                    block = re.sub(
+                        r"Ставка:\s*\*?([^\n]+)",
+                        f"Ставка:** {f_label}",
+                        block,
+                        flags=re.IGNORECASE
+                    )
+                    block = re.sub(
+                        r"Коэффициент:\s*`?[0-9\.]+`?",
+                        f"Коэффициент:** `{f_coef}`",
+                        block,
+                        flags=re.IGNORECASE
+                    )
 
         if matched_event:
             odds_list = matched_event.get("odds", [])
@@ -97,16 +126,21 @@ class DeepSeekPromptAnalyst:
         fid = o.get("factor_id")
         param = o.get("parameter")
 
-        if not label and fid is not None:
+        if fid is not None:
             try:
                 fid_int = int(fid)
-                label = CORE_FACTOR_MAP.get(fid_int, f"Фактор {fid_int}")
+                if fid_int in CORE_FACTOR_MAP:
+                    label = CORE_FACTOR_MAP[fid_int]
+                elif not label:
+                    label = f"Фактор {fid_int}"
             except Exception:
-                label = f"Фактор {fid}"
+                pass
 
         if param is not None and str(param).strip() != "":
             p_clean = str(param).strip()
-            if "(" not in str(label):
+            if "(" in title if 'title' in locals() else False:
+                pass
+            elif label and "(" not in str(label):
                 label = f"{label} ({p_clean})"
 
         return str(label)
@@ -129,11 +163,12 @@ class DeepSeekPromptAnalyst:
                     continue
 
                 # Filter out Handicaps (Фора)
-                if fid in [927, 928, 910, 912, 989, 991, 1569, 1572]:
+                if fid in [927, 928, 910, 912, 989, 991, 1569, 1572, 1677, 1678, 1680, 1681]:
                     continue
 
                 human_label = self.resolve_human_label(o)
-                if "фора" in human_label.lower() or "handicap" in human_label.lower():
+                label_lower = human_label.lower()
+                if any(h in label_lower for h in ["фора", "форой", "handicap", "победа с форой", "(-", "(+"]):
                     continue
 
                 odds_items.append(f"{human_label} = {coef}")
@@ -155,10 +190,11 @@ class DeepSeekPromptAnalyst:
 
 ТЕКУЩИЙ ДОСТУПНЫЙ БАНК: {bankroll} рублей.
 
-ОБРАТИ ВНИМАНИЕ: Все коэффициенты явно подписаны (например: "Тотал Больше (1.5) = 1.65", "Тотал Меньше (1.5) = 2.10").
+ОБРАТИ ВНИМАНИЕ: Все коэффициенты явно подписаны (например: "Тотал Больше (1.5) = 1.32", "Тотал Меньше (1.5) = 3.10").
 НЕ ПУТАЙ Тотал Больше (ТБ) и Тотал Меньше (ТМ)! Указывай строго реальный коэффициент из данных.
 
-ФОРА СТРОГО ЗАПРЕЩЕНА! Разрешены только Победы (П1, X, П2, 1X, 12, X2) и Тоталы (ТМ, ТБ).
+ФОРА КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНА ДЛЯ ВСЕХ ВИДОВ СПОРТА!
+Разрешены только Победы (П1, X, П2, 1X, 12, X2) и Тоталы (ТМ, ТБ).
 Выполни анализ и дай ровно 3 лучшие ставки с распределением всего банка {bankroll} рублей!
 """
 

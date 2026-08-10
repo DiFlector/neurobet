@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  autobet-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: autobet_telegram_bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=8614860014:AAFRk86vJQljDsioTB_oAnm0lFKw_Yv6Wvo
+      - ALLOWED_USER_IDS=537737180
+      - DEEPSEEK_TOKEN=8He37gBBj2KFJ5ia4yaN/llmrN5EqzNjr5mZ1iCRCUbuadE7mUdDL4/pNTFZbH4s
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./output:/app/output
+      - ./models:/app/models
