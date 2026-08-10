@@ -1,0 +1,23 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Output directory (generated parser outputs)
+output/
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local cache files
+factor_catalog_cache.json
+scratch/
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.swp
+.DS_Store
