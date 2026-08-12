@@ -14,7 +14,7 @@ import logging
 from typing import Dict, Any, Optional
 from wasmtime import Store, Module, Instance
 
-from settings import settings
+from app.config import DEEPSEEK_TOKEN
 
 sys.stdout.reconfigure(encoding='utf-8')
 logger = logging.getLogger("deepseek_web_client")
@@ -23,7 +23,7 @@ LOCAL_WASM = os.path.join(os.path.dirname(__file__), "wasm", "sha3_wasm_bg.7b9ca
 
 class DeepSeekWebClient:
     def __init__(self, token: Optional[str] = None, wasm_path: str = LOCAL_WASM):
-        self.token = token or settings.DEEPSEEK_TOKEN
+        self.token = token or DEEPSEEK_TOKEN
         self.wasm_path = wasm_path
         self._init_wasm()
         self.session_id = None
@@ -187,21 +187,3 @@ def test_deepseek_web(prompt: str = "Привет! Проверка работы
             "status": "error",
             "error": str(e)
         }
-
-if __name__ == "__main__":
-    prompt = "Привет! Подтверди готовность."
-    if len(sys.argv) > 1:
-        prompt = " ".join(sys.argv[1:])
-
-    print("📡 Подключение к chat.deepseek.com (WASM PoW)...")
-    print(f"💬 Запрос: '{prompt}'\n")
-
-    res = test_deepseek_web(prompt)
-    print("=====================================================")
-    print(" 🤖 ТЕСТОВЫЙ ОТВЕТ DEEPSEEK WEB (WASM):")
-    print("=====================================================\n")
-    if res.get("status") == "success":
-        print(res.get("content"))
-    else:
-        print("❌ Ошибка:", res.get("error"))
-    print("\n=====================================================")

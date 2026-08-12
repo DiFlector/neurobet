@@ -12,6 +12,7 @@ import {
   ShieldAlert
 } from "lucide-react"
 import { MatchCard } from "@/components/MatchCard"
+import { HeaderNav } from "@/components/HeaderNav"
 
 interface MatchData {
   event_id: number
@@ -129,61 +130,12 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased flex flex-col">
-      {/* Top Header Navigation */}
-      <header className="sticky top-0 z-40 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#fdcb6e] to-[#ffeaa7] flex items-center justify-center shadow-lg shadow-[#fdcb6e]/20 text-neutral-950 font-black text-xl">
-              ⚡
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                Fonbet LIVE Parser
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30">
-                  v2.0
-                </span>
-              </h1>
-              <p className="text-xs text-neutral-400">
-                Автоматический парсинг каждую минуту & история коэффициентов
-              </p>
-            </div>
-          </div>
-
-          {/* Stats Badges */}
-          <div className="flex items-center gap-3 overflow-x-auto max-w-full pb-1 md:pb-0">
-            <div className="flex items-center gap-2 bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
-              <Radio className="w-4 h-4 text-[#ff7675] animate-pulse" />
-              <span className="text-neutral-400">LIVE матчи:</span>
-              <span className="font-mono font-bold text-[#fdcb6e]">
-                {stats ? stats.live_events_count : matches.length}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2 bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
-              <Database className="w-4 h-4 text-[#0984e3]" />
-              <span className="text-neutral-400">История кэф:</span>
-              <span className="font-mono font-bold text-[#fdcb6e]">
-                {stats ? stats.total_odds_history_count.toLocaleString() : "0"}
-              </span>
-              {stats?.db_size_formatted && (
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30 ml-1">
-                  {stats.db_size_formatted}
-                </span>
-              )}
-            </div>
-
-            {/* Scrape Trigger Button */}
-            <button
-              onClick={handleManualTrigger}
-              disabled={triggeringScrape}
-              className="flex items-center gap-1.5 bg-[#fdcb6e] hover:bg-[#ffeaa7] text-neutral-950 font-bold px-3 py-1.5 rounded-xl transition text-xs shadow-md shadow-[#fdcb6e]/20 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${triggeringScrape ? "animate-spin" : ""}`} />
-              Спарсить
-            </button>
-          </div>
-        </div>
-      </header>
+      <HeaderNav
+        stats={stats}
+        matchesCount={matches.length}
+        triggeringScrape={triggeringScrape}
+        onManualTrigger={handleManualTrigger}
+      />
 
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">

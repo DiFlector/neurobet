@@ -11,6 +11,24 @@ services:
     environment:
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/autobet.db}
       - DEEPSEEK_TOKEN=${DEEPSEEK_TOKEN}
+      - AI_SERVICE_URL=http://ai:8001
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - ai
+    restart: unless-stopped
+
+  ai:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    container_name: autobet_ai
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/autobet.db}
     volumes:
       - ./data:/app/data
     restart: unless-stopped
