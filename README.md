@@ -1,61 +1,91 @@
-# Fonbet Live Odds Automatic Parser (Парсер коэффициентов Fonbet Live)
+# ⚡ Autobet - Fonbet LIVE Parser & Odds History Platform
 
-Автоматический высокоскоростной парсер коэффициентов и исходов в режиме реального времени с сайта [Fonbet Live](https://fon.bet/live).
+![Version](https://img.shields.io/badge/version-2.0-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.11-green.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)
+![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)
 
-Служба парсинга собирает все доступные коэффициенты, параметры исходов, информацию о матчах и виды спорта, после чего экспортирует результаты в два формата:
-1. **Удобный для человека (Human-Readable)**
-2. **Удобный для нейросетей и машинного обучения (AI/ML Friendly)**
+**Autobet** — современная система автоматического парсинга LIVE матчей и коэффициентов с Fonbet, сохранением снимков в SQLite и интерактивным отображением истории коэффициентов в графиках.
 
 ---
 
-## 🚀 Быстрый запуск
+## ✨ Основные возможности
 
-Убедитесь, что установлен `uv`. Для запуска достаточно выполнить команду:
+* **🔄 Автоматический парсинг каждую минуту**: Фоновую работу обеспечивает APScheduler в бэкенде.
+* **📊 График истории коэффициентов**: Наведение на коэффициент открывает всплывающий график (Recharts) с первой записью, текущим значением, минимумом и максимумом.
+* **🎨 Движение коэффициентов (Динамическая подсветка)**:
+  * 🔴 **Красная кнопка & кэф** (`#d63031` / `#ff7675`): коэффициент **вырос**.
+  * 🟢 **Зеленая кнопка & кэф** (`#00b894` / `#55efc4`): коэффициент **упал**.
+  * ⚪ **Серый цвет по умолчанию**: коэффициент **без изменений**.
+* **🛡️ Безопасный режим (Safe Mode)**: Переключатель, скрывающий опасные коэффициенты (`< 1.1` или `> 2.1`). Включен по умолчанию.
+* **💾 Размер базы данных на диске**: Отображение актуального размера файла SQLite (`autobet.db`) прямо в шапке UI.
+* **⚽ Поддержка кириллицы и видов спорта**: Корректный поиск и фильтрация футбола, хоккея, баскетбола, тенниса и киберспорта благодаря кастомной `py_lower` функции в SQLite.
+* **🤖 DeepSeek WASM Модуль**: Интегрированный модуль в `backend/ai/deepseek` для прямого взаимодействия с `chat.deepseek.com` через WebAssembly SHA3 Proof-of-Work ресолвер.
+* **🐳 Полная контейнеризация**: Запуск бэкенда и фронтенда одной командой через `docker compose`.
 
-```bash
-# Сбор коэффициентов в лайве (все форматы по умолчанию)
-uv run python fonbet_parser.py
+---
+
+## 🏗️ Архитектура проекта
+
+```
+autobet/
+├── backend/                  # FastAPI сервис (Python 3.11 + uv)
+│   ├── ai/
+│   │   └── deepseek/         # WASM SHA3 PoW модуль DeepSeek Web Client
+│   ├── database.py           # Таблицы events, odds_history, latest_odds, py_lower
+│   ├── parser_service.py     # Парсер Fonbet LIVE (ротация CDN и каталогов)
+│   ├── main.py               # REST API и планировщик парсинга каждые 60с
+│   └── Dockerfile
+├── frontend/
+│   └── autobet/              # Next.js 15 UI (React 19 + TypeScript)
+│       ├── app/              # Дашборд, фильтры, шапка со статистикой
+│       ├── components/       # MatchCard, OddsButton, OddsHistoryGraph, SubMarketsDrawer
+│       └── Dockerfile
+├── data/                     # Монтируемый том Docker для базы данных SQLite
+└── docker-compose.yml        # Оркестрация контейнеров (порты 8000 и 3000)
 ```
 
-### Параметры командной строки
+---
+
+## 🚀 Быстрый запуск (Docker Compose)
+
+Убедитесь, что у вас установлены [Docker](https://www.docker.com/) и `docker compose`.
+
+### 1. Клонирование репозитория и запуск
 
 ```bash
-# Запуск для всех событий или конкретного вида спорта
-uv run python fonbet_parser.py --place live --sport Футбол
+git clone https://github.com/DiFlector/autobet.git
+cd autobet
 
-# Экспорт только формата для нейросетей
-uv run python fonbet_parser.py --format ai
-
-# Экспорт в пользовательскую директорию
-uv run python fonbet_parser.py --out-dir ./my_data
+# Запуск приложения в Docker
+docker compose up --build -d
 ```
 
-Флаги:
-- `--place`: `live` (по умолчанию), `line`, `all`
-- `--sport`: Фильтр по названию вида спорта (`all`, `Футбол`, `Теннис`, `Киберспорт` и т.д.)
-- `--format`: `all` (по умолчанию), `human`, `ai`
-- `--out-dir`: Каталог для сохранения файлов (по умолчанию `./output`)
+### 2. Доступ к интерфейсу
+
+* **Frontend UI**: [http://localhost:3000](http://localhost:3000)
+* **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## 📁 Форматы данных
+## 📡 API Эндпоинты
 
-Все файлы сохраняются в папку `output/`:
-
-### 1. Удобные для человека (Human-Readable)
-* `live_odds_human.html` — Интерактивный веб-отчет в браузере с поиском, фильтрацией и темной темой.
-* `live_odds_human.txt` — Форматированный текстовый отчет со структурой вида спорта, команд, текущего счета и названий исходов.
-* `live_odds_human.json` — Иерархический JSON-файл с полным описанием всех исходов.
-* `live_odds_human.csv` — Таблица CSV для MS Excel / Google Таблиц.
-
-### 2. Удобные для нейронок (AI / Neural Network / ML)
-* `live_odds_ai.jsonl` — Формат JSON Lines (по одной строке на событие). Идеален для потоковой обработки, обучающих выборок LLM, RAG и датасетов.
-* `live_odds_ai.json` — Стандартизированный JSON с вектором фичей `odds_vector`, параметрами `odds_params` и словарем факторов `factor_vocabulary`.
-* `live_odds_ai_matrix.csv` — Плотная дата-матрица со стандартизированными колонками факторов (`f_921_odds`, `f_922_odds`, `f_927_param`, `f_930_odds` и т.д.). Готова для закрузки через `pandas.read_csv()`, PyTorch `DataLoader` или XGBoost/LightGBM.
+| Метод | Эндпоинт | Описание |
+| :--- | :--- | :--- |
+| `GET` | `/api/matches` | Получение LIVE матчей с фильтрацией по виду спорта и поиску |
+| `GET` | `/api/matches/{event_id}/odds-history` | История коэффициентов для конкретного исхода |
+| `GET` | `/api/stats` | Статистика (активные матчи, всего записей истории, размер БД) |
+| `POST` | `/api/trigger-scrape` | Ручной запуск парсинга вне расписания |
 
 ---
 
-## 🛠 Зависимости
+## 🛠 Управление контейнерами
 
-Проект использует виртуальное окружение `.venv`, управляемое `uv`. 
-Пакеты: `httpx`, `pandas`, `pydantic`, `playwright`.
+```bash
+# Просмотр логов
+docker compose logs -f
+
+# Остановка контейнеров
+docker compose down
+```
