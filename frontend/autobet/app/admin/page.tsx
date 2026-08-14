@@ -17,7 +17,9 @@ import {
   CheckCircle2,
   Database,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Wallet,
+  Ban
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 
@@ -42,16 +44,20 @@ export default function AdminPage() {
   const [logFilter, setLogFilter] = useState<string>("ALL")
   const [triggering, setTriggering] = useState(false)
   const [stats, setStats] = useState<any>(null)
+  const [bankroll, setBankroll] = useState<any>(null)
 
   // Reset Confirmation State
   const [resetModalOpen, setResetModalOpen] = useState(false)
-  const [resetType, setResetType] = useState<"live" | "all" | null>(null)
+  const [resetType, setResetType] = useState<"live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets" | null>(null)
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null)
+  const [openLiveBetsCount, setOpenLiveBetsCount] = useState(0)
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+  // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
+  // next.config.ts) instead of an absolute localhost URL.
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 
-  const handleOpenResetModal = (type: "live" | "all") => {
+  const handleOpenResetModal = (type: "live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets") => {
     setResetType(type)
     setResetModalOpen(true)
   }
@@ -61,19 +67,37 @@ export default function AdminPage() {
     setResetLoading(true)
     setResetSuccessMsg(null)
 
-    const endpoint = resetType === "live" ? `${API_BASE}/api/admin/reset-db/live` : `${API_BASE}/api/admin/reset-db/all`
-
     try {
-      const res = await fetch(endpoint, { method: "POST" })
-      if (!res.ok) {
-        throw new Error("Ошибка при обнулении БД")
+      if (resetType === "cancel-bets") {
+        const res = await fetch(`${API_BASE}/api/admin/live-bets/cancel-all`, { method: "POST" })
+        if (!res.ok) throw new Error("Ошибка при отмене ставок")
+        const data = await res.json()
+        setResetSuccessMsg(data.message || "Ставки отменены")
+        setTimeout(() => { fetchBankroll(); fetchOpenLiveBetsCount() }, 300)
+      } else if (resetType === "bankroll-live" || resetType === "bankroll-training") {
+        const account = resetType === "bankroll-live" ? "live" : "training"
+        const res = await fetch(`${API_BASE}/api/admin/bankroll/reset`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account })
+        })
+        if (!res.ok) throw new Error("Ошибка при сбросе банка")
+        setResetSuccessMsg(
+          account === "live" ? "Боевой банк сброшен до 1000 ₽" : "Обучающий банк сброшен до 1000 ₽"
+        )
+        setTimeout(fetchBankroll, 300)
+      } else {
+        const endpoint = resetType === "live" ? `${API_BASE}/api/admin/reset-db/live` : `${API_BASE}/api/admin/reset-db/all`
+        const res = await fetch(endpoint, { method: "POST" })
+        if (!res.ok) throw new Error("Ошибка при обнулении БД")
+        const data = await res.json()
+        setResetSuccessMsg(data.message || "БД успешно обнулена")
+        setTimeout(() => {
+          fetchStats()
+          fetchAILogs()
+          fetchBankroll()
+        }, 500)
       }
-      const data = await res.json()
-      setResetSuccessMsg(data.message || "БД успешно обнулена")
-      setTimeout(() => {
-        fetchStats()
-        fetchAILogs()
-      }, 500)
     } catch (err: any) {
       alert(err.message || "Ошибка обнуления")
     } finally {
@@ -160,18 +184,47 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchBankroll = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/bankroll`)
+      if (res.ok) {
+        const data = await res.json()
+        setBankroll(data)
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  const fetchOpenLiveBetsCount = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
+      if (res.ok) {
+        const data = await res.json()
+        const openCount = (data.items || []).filter((b: any) => b.status === "open").length
+        setOpenLiveBetsCount(openCount)
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
   useEffect(() => {
     if (!isAuthenticated) return
     fetchAISettings()
     fetchAILogs()
     fetchStats()
+    fetchBankroll()
+    fetchOpenLiveBetsCount()
 
     const interval = setInterval(() => {
       fetchAILogs()
       fetchStats()
+      fetchBankroll()
+      fetchOpenLiveBetsCount()
     }, 3000)
     return () => clearInterval(interval)
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount])
 
   const toggleAISetting = async (key: "ai_enabled" | "training_enabled", currentValue: boolean) => {
     const newValue = !currentValue
@@ -370,6 +423,13 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-neutral-950 px-4 py-2 rounded-xl border border-neutral-800 text-center">
+              <div className="text-[10px] text-neutral-400 font-mono uppercase">Не рассчитано (⚪)</div>
+              <div className="text-sm font-black text-neutral-300 font-mono mt-0.5">
+                {stats?.unresolved_bets_count?.toLocaleString() || 0}
+              </div>
+            </div>
+
+            <div className="bg-neutral-950 px-4 py-2 rounded-xl border border-neutral-800 text-center">
               <div className="text-[10px] text-neutral-400 font-mono uppercase">Активных LIVE</div>
               <div className="text-sm font-black text-[#ff7675] font-mono mt-0.5">
                 {stats?.live_events_count || 0}
@@ -410,6 +470,59 @@ export default function AdminPage() {
               <Trash2 className="w-3.5 h-3.5 text-[#ff7675]" />
               Обнулить ВСЕ БД (Полный Сброс)
             </button>
+          </div>
+        </div>
+
+        {/* Bankroll Control Panel */}
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#fdcb6e]/15 border border-[#fdcb6e]/30 flex items-center justify-center text-[#ffeaa7]">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-white">💰 Банкроллы Нейросети</h3>
+              <p className="text-xs text-neutral-400">
+                Боевой банк — реальные симулированные ставки бота. Обучающий банк — влияет только на процесс обучения, к реальным ставкам отношения не имеет.
+                Оба банка автоматически сбрасываются на 1000 ₽ при обнулении.
+              </p>
+            </div>
+
+            <button
+              onClick={() => handleOpenResetModal("cancel-bets")}
+              disabled={openLiveBetsCount === 0}
+              className="flex items-center gap-1.5 bg-[#d63031]/15 hover:bg-[#d63031]/25 text-[#ff7675] border border-[#d63031]/40 font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              Отменить ставки нейросети ({openLiveBetsCount})
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {(["live", "training"] as const).map((key) => {
+              const acc = bankroll?.accounts?.[key]
+              return (
+                <div key={key} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] text-neutral-400 font-mono uppercase">
+                      {key === "live" ? "Боевой" : "Обучающий"}
+                    </div>
+                    <div className="text-lg font-black text-white font-mono">
+                      {acc ? Number(acc.balance).toFixed(1) : "—"} ₽
+                    </div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">
+                      Банкротств: {acc?.ruin_count ?? 0}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleOpenResetModal(key === "live" ? "bankroll-live" : "bankroll-training")}
+                    className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-[#fdcb6e]" />
+                    Сбросить
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -518,7 +631,7 @@ export default function AdminPage() {
 
             {/* Filter Tabs */}
             <div className="flex items-center gap-1.5 bg-neutral-950 p-1 rounded-xl border border-neutral-800 text-xs">
-              {["ALL", "INFERENCE", "TRAINING", "SYSTEM"].map((f) => (
+              {["ALL", "INFERENCE", "TRAINING", "BANKROLL", "SYSTEM"].map((f) => (
                 <button
                   key={f}
                   onClick={() => setLogFilter(f)}
@@ -544,6 +657,7 @@ export default function AdminPage() {
               filteredLogs.map((log: AILog, i: number) => {
                 const isTraining = log.category === "TRAINING"
                 const isInference = log.category === "INFERENCE"
+                const isBankroll = log.category === "BANKROLL"
                 const isWarning = log.level === "WARNING"
 
                 return (
@@ -558,6 +672,8 @@ export default function AdminPage() {
                           ? "bg-[#55efc4]/20 text-[#55efc4] border border-[#00b894]/40"
                           : isInference
                           ? "bg-[#ffeaa7]/20 text-[#ffeaa7] border border-[#fdcb6e]/40"
+                          : isBankroll
+                          ? "bg-[#fd79a8]/20 text-[#fd79a8] border border-[#e84393]/40"
                           : "bg-[#74b9ff]/20 text-[#74b9ff] border border-[#0984e3]/40"
                       }`}
                     >
@@ -571,6 +687,8 @@ export default function AdminPage() {
                           ? "text-[#55efc4]"
                           : isInference
                           ? "text-neutral-200"
+                          : isBankroll
+                          ? "text-[#fd79a8]"
                           : "text-neutral-300"
                       }`}
                     >
@@ -594,12 +712,23 @@ export default function AdminPage() {
 
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-white">
-                {resetType === "live" ? "Обнулить LIVE Базу Данных?" : "Обнулить ВСЕ Базы Данных?"}
+                {resetType === "live" && "Обнулить LIVE Базу Данных?"}
+                {resetType === "all" && "Обнулить ВСЕ Базы Данных?"}
+                {resetType === "bankroll-live" && "Сбросить Боевой Банк?"}
+                {resetType === "bankroll-training" && "Сбросить Обучающий Банк?"}
+                {resetType === "cancel-bets" && `Отменить ${openLiveBetsCount} открытых ставок?`}
               </h3>
               <p className="text-xs text-neutral-300">
-                {resetType === "live"
-                  ? "Будут удалены все текущие лайв-события, свежие коэффициенты и сохраненные предсказания AI. Архив обучающих игр сохраняется."
-                  : "ВНИМАНИЕ! Будет полностью очищена оперативная LIVE база, весь архив обучающих завершенных матчей и удалены веса модели нейросети!"}
+                {resetType === "live" &&
+                  "Будут удалены все текущие лайв-события, свежие коэффициенты и сохраненные предсказания AI. Все открытые ставки бота будут аннулированы с возвратом суммы. Архив обучающих игр сохраняется."}
+                {resetType === "all" &&
+                  "ВНИМАНИЕ! Будет полностью очищена оперативная LIVE база, весь архив обучающих завершенных матчей и удалены веса модели нейросети!"}
+                {resetType === "bankroll-live" &&
+                  "Баланс боевого банка (реальные симулированные ставки бота) будет сброшен до 1000 ₽. Открытые ставки и история не удаляются."}
+                {resetType === "bankroll-training" &&
+                  "Баланс обучающего банка будет сброшен до 1000 ₽. Это не влияет на веса модели, только на счёт, используемый в обучающем лоссе."}
+                {resetType === "cancel-bets" &&
+                  "Все текущие открытые ставки бота будут отменены (не засчитаны как выигрыш/проигрыш), а поставленная сумма полностью вернётся на боевой баланс."}
               </p>
             </div>
 
@@ -621,7 +750,9 @@ export default function AdminPage() {
                 disabled={resetLoading}
                 className="flex-1 bg-gradient-to-r from-[#d63031] to-[#ff7675] text-white font-bold py-2.5 rounded-xl transition text-xs shadow-lg shadow-[#d63031]/20 hover:opacity-90 disabled:opacity-50"
               >
-                {resetLoading ? "Обнуление..." : "Подтвердить обнуление"}
+                {resetLoading
+                  ? (resetType === "cancel-bets" ? "Отмена ставок..." : "Обнуление...")
+                  : (resetType === "cancel-bets" ? "Подтвердить отмену" : "Подтвердить обнуление")}
               </button>
             </div>
           </div>

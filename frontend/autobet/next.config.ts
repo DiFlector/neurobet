@@ -1,5 +1,24 @@
 import type { NextConfig } from "next"
 
-const nextConfig: NextConfig = {}
+// Proxies /api/* through the Next.js server to the backend, over the internal Docker
+// network (service name "backend") rather than a second externally-exposed port. This
+// is what lets the app work behind a single forwarded port (e.g. router 80 -> 3000):
+// the browser only ever talks to the one origin it loaded the page from, so there's no
+// cross-origin request at all — no CORS, no Private Network Access block, no need to
+// open port 8000 to the internet. BACKEND_INTERNAL_URL is a plain (non-NEXT_PUBLIC_)
+// env var, so it's read fresh by the Next.js server at container start, not baked into
+// the client bundle at build time — changing it just needs a container restart.
+const BACKEND_INTERNAL_URL = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000"
+
+const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${BACKEND_INTERNAL_URL}/api/:path*`,
+      },
+    ]
+  },
+}
 
 export default nextConfig

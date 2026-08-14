@@ -1,15 +1,10 @@
-import { Geist, Geist_Mono, Inter } from "next/font/google"
-
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils";
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'})
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
+// Fonts are plain system stacks defined in globals.css (--font-sans / --font-mono) —
+// see the comment there for why next/font/google was dropped (it fetches from Google
+// Fonts at `next build` time, which breaks the build with no outbound internet access).
 
 export default function RootLayout({
   children,
@@ -17,11 +12,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", inter.variable)}
-    >
+    <html lang="en" suppressHydrationWarning className={cn("antialiased", "font-sans")}>
       <body>
         <ThemeProvider>{children}</ThemeProvider>
       </body>

@@ -19,7 +19,25 @@ class Settings(BaseSettings):
     DATABASE_PATH: str = str(PROJECT_ROOT / "data" / "autobet.db")
 
     # Scraper Settings
-    SCRAPE_INTERVAL_SECONDS: int = 60
+    SCRAPE_INTERVAL_SECONDS: int = 15
+
+    # Finish detection (grace period before an event is considered finished).
+    # A live event is only finalized once it has been missing from the parser's
+    # snapshot for EVENT_MISS_THRESHOLD consecutive polls AND at least
+    # EVENT_MISS_GRACE_MINUTES minutes have passed since it first went missing.
+    #
+    # Not sport-dependent: confirmed against live data (see backend/database.py's
+    # save_parsed_events) that Fonbet never removes a *paused* event from the live
+    # feed — a break just freezes its timer (timerDirection: 0) while the event stays
+    # present, which resets miss_count back to 0 every cycle regardless of sport. Only
+    # a genuinely finished match disappears from the feed entirely. So disappearance
+    # itself already means "over," for every sport — no need to wait out a real
+    # intermission that was never going to trigger this in the first place.
+    EVENT_MISS_THRESHOLD: int = 1
+    EVENT_MISS_GRACE_MINUTES: int = 1
+    # Snapshot sanity guard, to avoid finalizing events on a parser/API hiccup: an
+    # almost-empty snapshot is skipped entirely (see save_parsed_events).
+    MIN_SNAPSHOT_EVENTS: int = 5
 
     # CORS Settings
     CORS_ORIGINS: List[str] = ["*"]

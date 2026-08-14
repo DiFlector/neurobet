@@ -49,10 +49,20 @@ export function MatchCard({
 }: MatchCardProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
+  // Filter out dangerous odds if safeMode is true (< 1.1 or > 2.1), mirroring SubMarketsDrawer
+  const filteredOdds = safeMode
+    ? odds.filter((o) => o.coefficient >= 1.1 && o.coefficient <= 2.1)
+    : odds
+
   // Filter main event odds
-  const mainOdds = odds.filter(
+  const rawMainOdds = odds.filter(
     (o) => !o.market_prefix || o.market_prefix === "Основной матч"
   )
+  const mainOdds = filteredOdds.filter(
+    (o) => !o.market_prefix || o.market_prefix === "Основной матч"
+  )
+  const mainOddsHiddenBySafeMode = safeMode && rawMainOdds.length > 0 && mainOdds.length === 0
+  const visibleOddsCount = safeMode ? filteredOdds.length : totalOddsCount
 
   // Helper to find specific factor
   const findOdd = (fId: number, param?: string) => {
@@ -63,15 +73,21 @@ export function MatchCard({
   const px = findOdd(922)
   const p2 = findOdd(923)
 
+  // factor 925 is Fonbet's "X2" and 1571 is its "12" — confirmed against Fonbet's own
+  // factorsCatalog/sportBasicFactors (see backend/parser_service.py's CORE_FACTOR_MAP
+  // comment). These were swapped here for a long time.
   const double1x = findOdd(924)
-  const double12 = findOdd(925)
-  const doublex2 = findOdd(926)
+  const double12 = findOdd(1571)
+  const doublex2 = findOdd(925)
 
-  const totalOver = mainOdds.find((o) => [930, 1696, 1727, 1730, 1733, 1736, 1739, 1791, 1794, 1797, 1804].includes(o.factor_id))
-  const totalUnder = mainOdds.find((o) => [931, 1697, 1728, 1731, 1734, 1737, 1740, 1793, 1796, 1802, 1805].includes(o.factor_id))
+  // 1791/1794/1797/1804 and 1793/1796/1802/1805 (totals), and 1677/1680 and 1678/1681
+  // (handicaps) were swapped here — same class of bug as 925/1571, confirmed against
+  // Fonbet's own factorsCatalog (see backend/parser_service.py's CORE_FACTOR_MAP).
+  const totalOver = mainOdds.find((o) => [930, 1696, 1727, 1730, 1733, 1736, 1739, 1793, 1796, 1802, 1805].includes(o.factor_id))
+  const totalUnder = mainOdds.find((o) => [931, 1697, 1728, 1731, 1734, 1737, 1740, 1791, 1794, 1797, 1804].includes(o.factor_id))
 
-  const fora1 = mainOdds.find((o) => [927, 910, 989, 1569, 1678, 1681].includes(o.factor_id))
-  const fora2 = mainOdds.find((o) => [928, 912, 991, 1572, 1677, 1680].includes(o.factor_id))
+  const fora1 = mainOdds.find((o) => [927, 910, 989, 1569, 1677, 1680].includes(o.factor_id))
+  const fora2 = mainOdds.find((o) => [928, 912, 991, 1572, 1678, 1681].includes(o.factor_id))
 
   return (
     <>
@@ -267,6 +283,12 @@ export function MatchCard({
                 )}
               </div>
             )}
+
+            {mainOddsHiddenBySafeMode && (
+              <div className="text-xs text-neutral-500 italic text-center px-3 py-4 bg-neutral-950/50 rounded-xl border border-neutral-800/60">
+                Основные исходы скрыты Безопасным режимом (коэф. вне 1.10–2.10). Смотрите «Все исходы» ниже.
+              </div>
+            )}
           </div>
         </div>
 
@@ -277,7 +299,7 @@ export function MatchCard({
         >
           <span className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-[#00b894]" />
-            Все исходы ({totalOddsCount})
+            Все исходы ({visibleOddsCount})
           </span>
           <ChevronRight className="w-4 h-4 text-neutral-500 group-hover:translate-x-0.5 transition" />
         </button>

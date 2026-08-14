@@ -48,6 +48,12 @@
 }
 
 :root {
+    /* System font stacks instead of next/font/google (Inter / Geist Mono) — the
+       Google Fonts fetch those needed happens at `next build` time, which fails the
+       whole build on a server without outbound internet access. These render
+       essentially identically on any modern OS and need no network at all. */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);

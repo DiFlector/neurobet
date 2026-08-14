@@ -29,6 +29,10 @@ services:
       - .env
     environment:
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/autobet.db}
+      # Internal Docker network address of the backend service — used so ai_service
+      # can read its live-account balance and propose bet candidates over HTTP instead
+      # of writing bankroll_accounts/live_bets directly (backend is the sole writer).
+      - BACKEND_URL=http://backend:8000
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -37,13 +41,30 @@ services:
     build:
       context: ./frontend/autobet
       dockerfile: Dockerfile
+      # Leave NEXT_PUBLIC_API_URL unset (empty) unless you deliberately want the
+      # browser to call the backend directly on its own exposed port — the default
+      # (same-origin "/api/..." calls, proxied server-side by next.config.ts to
+      # BACKEND_INTERNAL_URL below) is what lets this work behind a single forwarded
+      # port with no CORS/Private-Network-Access issues. If you DO set it in .env,
+      # remember NEXT_PUBLIC_* is baked in at build time: `docker compose build
+      # frontend` (or `up --build`) is required, a plain restart won't pick it up.
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        # Must match BACKEND_INTERNAL_URL below — next.config.ts's rewrites() destination
+        # is baked in at `next build` time, so the runtime-only env var isn't enough.
+        BACKEND_INTERNAL_URL: http://backend:8000
     container_name: autobet_frontend
     ports:
       - "3000:3000"
     env_file:
       - .env
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      # Internal Docker network address of the backend service — used only by the
+      # Next.js server to proxy /api/* (see next.config.ts). Plain env var (no
+      # NEXT_PUBLIC_ prefix), so this is read fresh at container start, no rebuild
+      # needed if it ever changes.
+      - BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped

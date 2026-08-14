@@ -37,7 +37,9 @@ export function OddsHistoryGraph({
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+  // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
+  // next.config.ts) instead of an absolute localhost URL.
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 
   useEffect(() => {
     let isMounted = true

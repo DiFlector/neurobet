@@ -8,19 +8,27 @@ def py_lower(val: Any) -> str:
         return ""
     return str(val).lower()
 
+def _tune_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
+    # WAL lets readers and the writer work concurrently instead of blocking each other,
+    # and busy_timeout makes a connection wait out a brief lock (e.g. the backend
+    # process mid-write) instead of raising "database is locked" immediately.
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=10000;")
+    return conn
+
 def get_connection() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.create_function("py_lower", 1, py_lower)
-    return conn
+    return _tune_connection(conn)
 
 def get_finished_connection() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(FINISHED_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(FINISHED_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.create_function("py_lower", 1, py_lower)
-    return conn
+    return _tune_connection(conn)
 
 def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
     conn = get_connection()

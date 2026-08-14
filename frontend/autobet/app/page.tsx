@@ -58,7 +58,9 @@ export default function Page() {
   const [triggeringScrape, setTriggeringScrape] = useState(false)
   const [safeMode, setSafeMode] = useState(true)
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+  // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
+  // next.config.ts) instead of an absolute localhost URL.
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 
   const fetchMatches = useCallback(async () => {
     try {

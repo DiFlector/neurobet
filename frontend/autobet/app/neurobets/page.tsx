@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   BrainCircuit,
   TrendingUp,
@@ -20,7 +21,8 @@ import {
   BarChart3,
   Percent,
   Database,
-  Loader2
+  Loader2,
+  ChevronDown
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 
@@ -45,6 +47,44 @@ interface NeuroBet {
   aiInsights: string[]
   lightgbmScore: number
   pytorchScore: number
+  stake: number | null // сумма, которую бот реально поставил на этот исход (₽), null если не ставил
+  potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
+}
+
+function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
+  return `${eventId}-${factorId}-${parameter}-${marketPrefix}`
+}
+
+// b.placed_at is an ISO timestamp (UTC) — render it in the viewer's local time, HH:MM:SS.
+function formatPlacedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+const PAGE_SIZE = 20
+
+// Fires onIntersect once the sentinel scrolls near the viewport, so the next
+// page of results loads before the user actually hits the bottom.
+function LoadMoreSentinel({ onIntersect, disabled }: { onIntersect: () => void; disabled: boolean }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (disabled) return
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) onIntersect()
+      },
+      { rootMargin: "600px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [onIntersect, disabled])
+
+  return <div ref={ref} className="h-1" />
 }
 
 export default function NeurobetsPage() {
@@ -54,16 +94,52 @@ export default function NeurobetsPage() {
   const [minOdds, setMinOdds] = useState<number>(1.1)
   const [maxOdds, setMaxOdds] = useState<number>(2.1)
   const [stats, setStats] = useState<any>(null)
+  const [bankroll, setBankroll] = useState<any>(null)
+  const [openBetsCount, setOpenBetsCount] = useState(0)
+  const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
+  const [settledBotBetsList, setSettledBotBetsList] = useState<any[]>([])
+  const [historyExpanded, setHistoryExpanded] = useState(false)
   const [liveBets, setLiveBets] = useState<NeuroBet[]>([])
+  const [liveTotal, setLiveTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadingMoreLive, setLoadingMoreLive] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
   // History State
   const [historyItems, setHistoryItems] = useState<any[]>([])
   const [historySummary, setHistorySummary] = useState<any>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false)
+  const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState<"all" | "win" | "loss" | "push" | "pending">("all")
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+  // Empty by default so fetches go to a same-origin relative "/api/..." path, proxied
+  // server-side to the backend by next.config.ts's rewrite — see that file for why.
+  // Set NEXT_PUBLIC_API_URL only if you deliberately want the browser to hit the
+  // backend directly on its own origin/port instead.
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
+  const neurobetsRequestId = useRef(0)
+  // How many rows are currently loaded for each infinite-scroll list — kept in a ref
+  // (not state) so it can be used as the next "offset" without retriggering fetches.
+  const liveOffsetRef = useRef(0)
+  const historyOffsetRef = useRef(0)
+  // The bot's currently-open real stakes, keyed by liveBetKey(...) — kept in a ref so
+  // fetchNeurobets can read the latest snapshot without needing it as a dependency
+  // (avoids refetching predictions just because the bet list refreshed).
+  const openBotBetsRef = useRef<Map<string, { stake: number; coefficient: number }>>(new Map())
+
+  // Reset the infinite-scroll window whenever the underlying result set changes shape
+  // (filters/sort). Also clear the current list and show the loading state so switching
+  // tabs/filters never mixes stale cards from the previous mode/filter with the new ones.
+  useEffect(() => {
+    liveOffsetRef.current = 0
+    setLiveBets([])
+    setLoading(true)
+  }, [sortMode, selectedSport, minOdds, maxOdds])
+
+  useEffect(() => {
+    historyOffsetRef.current = 0
+    setHistoryItems([])
+  }, [selectedSport, minOdds, maxOdds, activeTab, historyOutcomeFilter])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -77,60 +153,134 @@ export default function NeurobetsPage() {
     }
   }, [API_BASE])
 
-  const fetchHistory = useCallback(async () => {
-    setHistoryLoading(true)
+  const fetchBankroll = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/bankroll`)
+      if (res.ok) {
+        const data = await res.json()
+        setBankroll(data)
+      }
+    } catch (err) {
+      // Ignore — panel just keeps showing the last known state
+    }
+  }, [API_BASE])
+
+  // Pulls the bot's currently-open real stakes so each matching lot card can show
+  // "поставлено X ₽ / получит Y ₽ при выигрыше". Doesn't trigger a predictions re-fetch —
+  // just refreshes the lookup ref that fetchNeurobets reads from on its own schedule.
+  const fetchOpenBotBets = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
+      if (res.ok) {
+        const data = await res.json()
+        const map = new Map<string, { stake: number; coefficient: number }>()
+        const openList: any[] = []
+        const settledList: any[] = []
+        for (const b of data.items || []) {
+          if (b.status === "open") {
+            map.set(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix), {
+              stake: b.stake,
+              coefficient: b.coefficient,
+            })
+            openList.push(b)
+          } else {
+            settledList.push(b)
+          }
+        }
+        openBotBetsRef.current = map
+        setOpenBetsCount(map.size)
+        setOpenBotBetsList(openList)
+        settledList.sort((a, b) => new Date(b.settled_at || 0).getTime() - new Date(a.settled_at || 0).getTime())
+        setSettledBotBetsList(settledList.slice(0, 30))
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  const fetchHistory = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
+    if (mode === "append") setLoadingMoreHistory(true)
+    else setHistoryLoading(true)
     try {
       const params = new URLSearchParams({
         min_odds: minOdds.toString(),
-        max_odds: maxOdds.toString()
+        max_odds: maxOdds.toString(),
+        limit: limit.toString(),
+        offset: offset.toString()
       })
       if (selectedSport !== "all") {
         params.append("sport", selectedSport)
       }
+      if (historyOutcomeFilter !== "all") {
+        params.append("outcome", historyOutcomeFilter)
+      }
       const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
-        setHistoryItems(data.history || [])
+        const items = data.history || []
+        setHistoryItems((prev) => (mode === "append" ? [...prev, ...items] : items))
         setHistorySummary(data.summary || null)
+        historyOffsetRef.current = offset + items.length
       }
     } catch (err) {
-      // Ignore
+      if (mode === "replace") setHistoryItems([])
     } finally {
       setHistoryLoading(false)
+      setLoadingMoreHistory(false)
     }
-  }, [API_BASE, selectedSport, minOdds, maxOdds])
+  }, [API_BASE, selectedSport, minOdds, maxOdds, historyOutcomeFilter])
 
-  const fetchNeurobets = useCallback(async () => {
+  const loadMoreHistory = useCallback(() => {
+    if (loadingMoreHistory || historyLoading) return
+    if (historyOffsetRef.current >= (historySummary?.filtered_count ?? historySummary?.total_count ?? 0)) return
+    fetchHistory(historyOffsetRef.current, PAGE_SIZE, "append")
+  }, [fetchHistory, loadingMoreHistory, historyLoading, historySummary])
+
+  const fetchNeurobets = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
+    const requestId = ++neurobetsRequestId.current
+    if (mode === "append") setLoadingMoreLive(true)
     try {
       const params = new URLSearchParams({
         sort: sortMode,
         min_odds: minOdds.toString(),
-        max_odds: maxOdds.toString()
+        max_odds: maxOdds.toString(),
+        limit: limit.toString(),
+        offset: offset.toString()
       })
       if (selectedSport !== "all") params.append("sport", selectedSport)
 
       const res = await fetch(`${API_BASE}/api/neurobets/top?${params.toString()}`)
+      // Отбрасываем устаревший ответ, если после этого запроса уже успел уйти более новый
+      if (requestId !== neurobetsRequestId.current) return
       if (res.ok) {
         const data = await res.json()
+        if (requestId !== neurobetsRequestId.current) return
         if (data.bets) {
+          setLiveTotal(typeof data.total === "number" ? data.total : data.bets.length)
           const mapped: NeuroBet[] = data.bets.map((b: any, idx: number) => {
             const coeff = floatVal(b.coefficient)
             const initCoeff = floatVal(b.initial_coefficient) || coeff
             const diff = (initCoeff - coeff).toFixed(2)
             const diffText = initCoeff > coeff ? `📉 Падение кэфа (-${diff})` : initCoeff < coeff ? `📈 Рост кэфа (+${Math.abs(Number(diff))})` : "⚖️ Стабильный кэф"
 
+            const openBet = openBotBetsRef.current.get(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix))
+
             return {
-              id: `live-${b.event_id}-${b.factor_id}-${b.parameter}`,
+              id: `live-${b.event_id}-${b.factor_id}-${b.parameter}-${b.market_prefix}`,
               rankBest: idx + 1,
               rankSafe: idx + 1,
-              sport: b.sport_path ? b.sport_path.split(".")[0] : "Спорт",
+              // sport_path is a " / "-joined breadcrumb (see backend/parser_service.py's
+              // get_sport_path), e.g. "Футбол / Англия / Премьер-лига" — take just the
+              // top-level sport. Was splitting on "." before, which never matched this
+              // separator and always returned the whole path.
+              sport: b.sport_path ? b.sport_path.split("/")[0].trim() : "Спорт",
               matchName: b.match_name || `${b.team_1} — ${b.team_2}`,
               team1: b.team_1 || "Команда 1",
               team2: b.team_2 || "Команда 2",
               score: b.score || "0:0",
               timer: b.timer || "LIVE",
               marketName: b.market_prefix || "Основной маркет",
-              outcomeLabel: b.label ? (b.parameter ? `${b.label} (${b.parameter})` : b.label) : `Factor ${b.factor_id}`,
+              outcomeLabel: b.label || `Factor ${b.factor_id}`,
               coefficient: coeff,
               initialCoefficient: initCoeff,
               aiProbability: b.win_probability,
@@ -143,35 +293,53 @@ export default function NeurobetsPage() {
                 `🧠 PyTorch trajectory: ${Math.round(b.pytorch_score * 100)}/100`
               ],
               lightgbmScore: b.lightgbm_score,
-              pytorchScore: b.pytorch_score
+              pytorchScore: b.pytorch_score,
+              stake: openBet ? openBet.stake : null,
+              potentialPayout: openBet ? openBet.stake * openBet.coefficient : null
             }
           })
-          setLiveBets(mapped)
+          setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
+          liveOffsetRef.current = offset + mapped.length
         }
       }
     } catch (err) {
-      setLiveBets([])
+      if (requestId === neurobetsRequestId.current && mode === "replace") setLiveBets([])
     } finally {
-      setLoading(false)
+      if (requestId === neurobetsRequestId.current) {
+        setLoading(false)
+        setLoadingMoreLive(false)
+      }
     }
   }, [API_BASE, sortMode, selectedSport, minOdds, maxOdds])
 
+  const loadMoreLive = useCallback(() => {
+    if (loadingMoreLive || loading) return
+    if (liveOffsetRef.current >= liveTotal) return
+    fetchNeurobets(liveOffsetRef.current, PAGE_SIZE, "append")
+  }, [fetchNeurobets, loadingMoreLive, loading, liveTotal])
+
   useEffect(() => {
     if (activeTab === "live") {
-      fetchNeurobets()
+      fetchOpenBotBets().then(() => fetchNeurobets(0, PAGE_SIZE, "replace"))
       fetchStats()
+      fetchBankroll()
 
       if (!autoRefresh) return
+      // Re-fetch from the top on each refresh, but keep however many rows the user
+      // has already scrolled to load, so auto-refresh doesn't collapse the list back to one page.
       const interval = setInterval(() => {
-        fetchNeurobets()
+        fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
         fetchStats()
+        fetchBankroll()
       }, 10000)
       return () => clearInterval(interval)
     } else {
-      fetchHistory()
+      fetchHistory(0, PAGE_SIZE, "replace")
       fetchStats()
+      fetchBankroll()
+      fetchOpenBotBets()
     }
-  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, autoRefresh])
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchBankroll, fetchOpenBotBets, autoRefresh])
 
   const sportsList = [
     { id: "all", label: "Все виды спорта" },
@@ -240,15 +408,248 @@ export default function NeurobetsPage() {
               </div>
               <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-xl p-3 text-center backdrop-blur bg-gradient-to-b from-neutral-950 to-[#ff7675]/5 border-[#ff7675]/30">
                 <div className="text-[10px] text-neutral-400 font-mono uppercase">Ошибка нейросети</div>
-                <div className="text-base font-bold text-[#ff7675] font-mono mt-0.5">
-                  {stats?.error_rate_pct !== undefined ? `${stats.error_rate_pct.toFixed(1)}%` : `${avgErrorRate.toFixed(1)}%`}
-                </div>
-                <div className="text-[9px] text-[#55efc4] font-semibold mt-0.5">
-                  {stats?.accuracy_pct !== undefined ? `${stats.accuracy_pct.toFixed(1)}% точность` : "87.6% точность"}
-                </div>
+                {stats && stats.error_rate_pct === null ? (
+                  <>
+                    <div className="text-base font-bold text-neutral-500 font-mono mt-0.5">Нет данных</div>
+                    <div className="text-[9px] text-neutral-500 mt-0.5">Пока нет рассчитанных ставок</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-base font-bold text-[#ff7675] font-mono mt-0.5">
+                      {stats?.error_rate_pct != null ? `${stats.error_rate_pct.toFixed(1)}%` : `${avgErrorRate.toFixed(1)}%`}
+                    </div>
+                    <div className="text-[9px] text-[#55efc4] font-semibold mt-0.5">
+                      {stats?.accuracy_pct != null ? `${stats.accuracy_pct.toFixed(1)}% точность` : "предв. оценка"}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Bankroll Panel: live simulated account only — the training bankroll is an
+            internal training signal, not something a viewer here needs to see; it's
+            still visible on /admin. */}
+        {bankroll?.accounts?.live && (() => {
+          const acc = bankroll.accounts.live
+          // ROI must be based on total equity (spendable + locked-in-open-bets), not just
+          // spendable balance — money currently staked on an open position hasn't been
+          // won or lost yet, so counting it as gone (the old balance-only calculation)
+          // showed a "-71.8%" loss for money that was simply still in play. Locked money
+          // only actually leaves the total once a bet settles and balance/locked update.
+          const totalEquity = Number(acc.balance) + Number(acc.locked || 0)
+          const roiPct = acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
+          // Spendable balance can legitimately be ~0 ₽ while every ₽ is riding on open
+          // bets — shown as "все в игре" (nothing spendable right now) alongside the
+          // equity-based ROI above, rather than implying a loss that hasn't happened.
+          const isAllInLocked = Number(acc.balance) <= 0.01 && Number(acc.locked) > 0
+          return (
+            <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  💰 Банк
+                </div>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
+                  реальные ставки бота
+                </span>
+              </div>
+
+              <div className="flex items-end gap-3">
+                <div className="text-3xl font-black font-mono text-white">
+                  {Number(acc.balance).toFixed(1)} ₽
+                </div>
+                {isAllInLocked ? (
+                  <div className="text-sm font-bold font-mono mb-1 text-[#fdcb6e]">
+                    🎲 всё в игре
+                  </div>
+                ) : (
+                  <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                    {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-5 gap-2 text-center">
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Пик</div>
+                  <div className="text-xs font-bold text-white font-mono">{Number(acc.peak_balance).toFixed(0)}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">W / L</div>
+                  <div className="text-xs font-bold font-mono">
+                    <span className="text-[#55efc4]">{acc.wins}</span>
+                    <span className="text-neutral-600"> / </span>
+                    <span className="text-[#ff7675]">{acc.losses}</span>
+                  </div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Открыто ставок</div>
+                  <div className="text-xs font-bold text-[#74b9ff] font-mono">{openBetsCount}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">В игре</div>
+                  <div className="text-xs font-bold text-[#ffeaa7] font-mono">{Number(acc.locked || 0).toFixed(0)}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Банкротств</div>
+                  <div className={`text-xs font-bold font-mono ${acc.ruin_count > 0 ? "text-[#ff7675]" : "text-neutral-400"}`}>
+                    {acc.ruin_count}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Ставки нейросети — the bot's actual open real-money positions, kept visually
+            separate from the "Активные LIVE Прогнозы" tab below (which is just every
+            live outcome the AI has scored, most of which have no money on them). */}
+        <div className="bg-neutral-900/80 border border-[#00b894]/40 rounded-2xl p-4 md:p-5 space-y-3 backdrop-blur-md">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            🤖 Ставки нейросети
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+              открыто: {openBotBetsList.length}
+            </span>
+          </h3>
+
+          {openBotBetsList.length === 0 ? (
+            <p className="text-xs text-neutral-400">
+              Сейчас нет открытых ставок — бот ждёт исход с положительным EV и свободным банком.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {openBotBetsList.map((b) => {
+                const currentCoeff = b.current_coefficient != null ? Number(b.current_coefficient) : null
+                const betCoeff = Number(b.coefficient)
+                const coeffRose = currentCoeff !== null && currentCoeff > betCoeff
+                const coeffDropped = currentCoeff !== null && currentCoeff < betCoeff
+
+                return (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl p-3"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      {b.sport_path && (
+                        <span className="inline-block text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-800 mb-0.5">
+                          {b.sport_path}
+                        </span>
+                      )}
+                      <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-mono flex items-center gap-1.5 flex-wrap">
+                        <span>Коэф. ставки {betCoeff.toFixed(2)}</span>
+                        {currentCoeff !== null && (
+                          <span className={coeffRose ? "text-[#ff7675]" : coeffDropped ? "text-[#55efc4]" : "text-neutral-500"}>
+                            → сейчас {currentCoeff.toFixed(2)}
+                          </span>
+                        )}
+                        <span>· Вероятность {Number(b.win_probability).toFixed(1)}%</span>
+                      </div>
+                      <div className="text-[10px] font-mono flex items-center gap-2">
+                        <span className="text-[#fdcb6e] font-bold">{b.current_score || "0:0"}</span>
+                        {b.match_is_live && b.current_timer && (
+                          <span className="text-neutral-500">⏱ {b.current_timer}</span>
+                        )}
+                        {!b.match_is_live && (
+                          <span className="text-neutral-600">матч завершён</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
+                      <div className="text-[10px] font-mono text-[#55efc4]">
+                        → {(Number(b.stake) * Number(b.coefficient)).toFixed(1)} ₽
+                      </div>
+                      {formatPlacedAt(b.placed_at) && (
+                        <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                          🕒 {formatPlacedAt(b.placed_at)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* История ставок нейросети — the bot's own settled real-money positions
+            (won/lost/void/cancelled), separate from the "История Прогнозов" tab below
+            (which is every scored outcome, not just the ones the bot actually staked on).
+            Collapsed by default — it's not something you need open at all times, and it
+            was crowding out the more time-sensitive sections above it. */}
+        <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl backdrop-blur-md overflow-hidden">
+          <button
+            onClick={() => setHistoryExpanded((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 md:p-5 text-left hover:bg-neutral-800/30 transition"
+          >
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              📜 История ставок нейросети
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
+                последние {settledBotBetsList.length}
+              </span>
+            </h3>
+            <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
+          </button>
+
+          {!historyExpanded ? null : settledBotBetsList.length === 0 ? (
+            <p className="text-xs text-neutral-400 px-4 md:px-5 pb-4 md:pb-5">
+              Пока нет рассчитанных ставок — как только открытая ставка бота разрешится, она появится здесь.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-5 pb-4 md:pb-5">
+              {settledBotBetsList.map((b) => {
+                const statusCfg: Record<string, { label: string; cls: string }> = {
+                  won: { label: "🟢 ВЫИГРАЛА", cls: "border-[#00b894]/50 bg-[#00b894]/10" },
+                  lost: { label: "🔴 ПРОИГРАЛА", cls: "border-[#d63031]/50 bg-[#d63031]/10" },
+                  void: { label: "⚪ АННУЛИРОВАНА", cls: "border-neutral-700 bg-neutral-800/30" },
+                  cancelled: { label: "🟠 ОТМЕНЕНА", cls: "border-[#fdcb6e]/40 bg-[#fdcb6e]/10" },
+                }
+                const cfg = statusCfg[b.status] || { label: b.status, cls: "border-neutral-700 bg-neutral-800/30" }
+                const profit = b.payout != null ? Number(b.payout) - Number(b.stake) : null
+
+                return (
+                  <div
+                    key={b.id}
+                    className={`flex items-center justify-between gap-3 rounded-xl p-3 border ${cfg.cls}`}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      {b.sport_path && (
+                        <span className="inline-block text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-800 mb-0.5">
+                          {b.sport_path}
+                        </span>
+                      )}
+                      <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-mono">
+                        Коэф. {Number(b.coefficient).toFixed(2)} · Вероятность {Number(b.win_probability).toFixed(1)}%
+                      </div>
+                      {formatPlacedAt(b.settled_at) && (
+                        <div className="text-[10px] text-neutral-600 font-mono">
+                          🕒 рассчитана в {formatPlacedAt(b.settled_at)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0 space-y-0.5">
+                      <div className="text-[10px] font-mono font-bold">{cfg.label}</div>
+                      <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
+                      {profit !== null && (
+                        <div className={`text-[10px] font-mono ${profit > 0 ? "text-[#55efc4]" : profit < 0 ? "text-[#ff7675]" : "text-neutral-500"}`}>
+                          {profit > 0 ? "+" : ""}{profit.toFixed(1)} ₽
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Main Sub-Tab Switcher: Active LIVE Bets vs History & Results */}
@@ -262,7 +663,7 @@ export default function NeurobetsPage() {
             }`}
           >
             <Zap className="w-4 h-4" />
-            🔥 Активные LIVE Прогнозы ({liveBets.length})
+            🔥 Активные LIVE Прогнозы ({liveTotal.toLocaleString()})
           </button>
 
           <button
@@ -368,40 +769,100 @@ export default function NeurobetsPage() {
         {activeTab === "history" ? (
           /* HISTORY TAB VIEW */
           <div className="space-y-6">
-            {/* History Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
+            {/* History Summary Cards — double as outcome filter buttons */}
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("all")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "all"
+                    ? "bg-neutral-800 border-white/60 ring-1 ring-white/30"
+                    : "bg-neutral-900/90 border-neutral-800 hover:border-neutral-600"
+                }`}
+              >
                 <div className="text-[10px] text-neutral-400 font-mono uppercase">Всего прогнозов</div>
                 <div className="text-xl font-black text-white font-mono mt-1">
                   {historySummary?.total_count?.toLocaleString() || 0}
                 </div>
                 <div className="text-[10px] text-neutral-500 mt-0.5">В архивном датасете</div>
-              </div>
+              </button>
 
-              <div className="bg-neutral-900/90 border border-[#00b894]/40 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
-                <div className="text-[10px] text-[#55efc4] font-mono uppercase font-bold">🟢 Выиграно (Зашло)</div>
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("win")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "win"
+                    ? "bg-[#00b894]/20 border-[#00b894] ring-1 ring-[#00b894]/50"
+                    : "bg-neutral-900/90 border-[#00b894]/40 hover:border-[#00b894]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#55efc4] font-mono uppercase font-bold">🟢 Выиграно</div>
                 <div className="text-xl font-black text-[#55efc4] font-mono mt-1">
                   {historySummary?.wins_count?.toLocaleString() || 0}
                 </div>
                 <div className="text-[10px] text-[#55efc4]/80 mt-0.5">Успешные ставки</div>
-              </div>
+              </button>
 
-              <div className="bg-neutral-900/90 border border-[#d63031]/40 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
-                <div className="text-[10px] text-[#ff7675] font-mono uppercase font-bold">🔴 Проиграно (Не зашло)</div>
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("loss")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "loss"
+                    ? "bg-[#d63031]/20 border-[#d63031] ring-1 ring-[#d63031]/50"
+                    : "bg-neutral-900/90 border-[#d63031]/40 hover:border-[#d63031]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#ff7675] font-mono uppercase font-bold">🔴 Проиграно</div>
                 <div className="text-xl font-black text-[#ff7675] font-mono mt-1">
                   {historySummary?.losses_count?.toLocaleString() || 0}
                 </div>
                 <div className="text-[10px] text-[#ff7675]/80 mt-0.5">Незашедшие исходы</div>
-              </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("push")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "push"
+                    ? "bg-[#0984e3]/20 border-[#0984e3] ring-1 ring-[#0984e3]/50"
+                    : "bg-neutral-900/90 border-[#0984e3]/40 hover:border-[#0984e3]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#74b9ff] font-mono uppercase font-bold">🔵 Возврат</div>
+                <div className="text-xl font-black text-[#74b9ff] font-mono mt-1">
+                  {historySummary?.push_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-[#74b9ff]/80 mt-0.5">Линия легла точно в ноль</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("pending")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "pending"
+                    ? "bg-neutral-700 border-neutral-400 ring-1 ring-neutral-400/50"
+                    : "bg-neutral-900/90 border-neutral-700 hover:border-neutral-500"
+                }`}
+              >
+                <div className="text-[10px] text-neutral-300 font-mono uppercase font-bold">⚪ Не рассчитано</div>
+                <div className="text-xl font-black text-neutral-300 font-mono mt-1">
+                  {historySummary?.pending_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">Исход нельзя проверить</div>
+              </button>
 
               <div className="bg-neutral-900/90 border border-[#fdcb6e]/40 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
                 <div className="text-[10px] text-[#ffeaa7] font-mono uppercase font-bold">🎯 Процент выигрыша</div>
                 <div className="text-xl font-black text-[#ffeaa7] font-mono mt-1">
                   {historySummary?.win_rate_pct !== undefined ? `${historySummary.win_rate_pct.toFixed(1)}%` : "0.0%"}
                 </div>
-                <div className="text-[10px] text-[#ffeaa7]/80 mt-0.5">Общий Win Rate</div>
+                <div className="text-[10px] text-[#ffeaa7]/80 mt-0.5">От рассчитанных ставок</div>
               </div>
             </div>
+
+            <p className="text-xs text-neutral-500 -mt-3">
+              Синим помечен возврат — линия ставки легла точно в ноль (законный исход, не ошибка). Серым — ставки, чей исход нельзя проверить автоматически: части матча без данных, нестандартные спорт-маркеты. Нажмите на карточку выше, чтобы отфильтровать список.
+            </p>
 
             {/* History Items List */}
             {historyLoading ? (
@@ -420,17 +881,23 @@ export default function NeurobetsPage() {
             ) : (
               <div className="space-y-3">
                 {historyItems.map((item: any, idx: number) => {
-                  const isWin = item.is_win === 1
+                  const status: "win" | "loss" | "push" | "pending" =
+                    item.is_win === 1 ? "win" : item.is_win === 0 ? "loss" : item.is_push ? "push" : "pending"
                   const coeff = item.initial_coefficient || item.final_coefficient || 1.5
+
+                  const cardCls =
+                    status === "win"
+                      ? "bg-[#00b894]/10 border-[#00b894]/50 shadow-[#00b894]/5"
+                      : status === "loss"
+                      ? "bg-[#d63031]/10 border-[#d63031]/50 shadow-[#d63031]/5"
+                      : status === "push"
+                      ? "bg-[#0984e3]/10 border-[#0984e3]/50 shadow-[#0984e3]/5"
+                      : "bg-neutral-800/20 border-neutral-700/60 shadow-black/5"
 
                   return (
                     <div
                       key={item.id || idx}
-                      className={`relative overflow-hidden rounded-2xl p-5 border backdrop-blur-md transition shadow-md ${
-                        isWin
-                          ? "bg-[#00b894]/10 border-[#00b894]/50 shadow-[#00b894]/5"
-                          : "bg-[#d63031]/10 border-[#d63031]/50 shadow-[#d63031]/5"
-                      }`}
+                      className={`relative overflow-hidden rounded-2xl p-5 border backdrop-blur-md transition shadow-md ${cardCls}`}
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         {/* Event Details */}
@@ -454,7 +921,7 @@ export default function NeurobetsPage() {
                             </span>
                             <span>•</span>
                             <span>
-                              Маркет: <span className="text-neutral-200 font-medium">{item.market_prefix || "Основной"} — {item.label} {item.parameter ? `(${item.parameter})` : ""}</span>
+                              Маркет: <span className="text-neutral-200 font-medium">{item.market_prefix || "Основной"} — {item.label}</span>
                             </span>
                           </div>
                         </div>
@@ -477,19 +944,33 @@ export default function NeurobetsPage() {
 
                           {/* Outcome Status Badge */}
                           <div className={`px-4 py-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-black font-mono shrink-0 shadow-md ${
-                            isWin
+                            status === "win"
                               ? "bg-[#00b894] text-neutral-950 border-[#55efc4]"
-                              : "bg-[#d63031] text-white border-[#ff7675]"
+                              : status === "loss"
+                              ? "bg-[#d63031] text-white border-[#ff7675]"
+                              : status === "push"
+                              ? "bg-[#0984e3] text-white border-[#74b9ff]"
+                              : "bg-neutral-700 text-neutral-200 border-neutral-600"
                           }`}>
-                            {isWin ? (
+                            {status === "win" ? (
                               <>
                                 <CheckCircle2 className="w-4 h-4 text-neutral-950" />
-                                🟢 ВЫИГРЫШ (ЗАШЛА)
+                                🟢 ВЫИГРЫШ
+                              </>
+                            ) : status === "loss" ? (
+                              <>
+                                <AlertTriangle className="w-4 h-4 text-white" />
+                                🔴 ПРОИГРЫШ
+                              </>
+                            ) : status === "push" ? (
+                              <>
+                                <Info className="w-4 h-4 text-white" />
+                                🔵 ВОЗВРАТ
                               </>
                             ) : (
                               <>
-                                <AlertTriangle className="w-4 h-4 text-white" />
-                                🔴 ПРОИГРЫШ (НЕ ЗАШЛА)
+                                <Info className="w-4 h-4 text-neutral-300" />
+                                ⚪ НЕ РАССЧИТАНА
                               </>
                             )}
                           </div>
@@ -499,6 +980,24 @@ export default function NeurobetsPage() {
                   )
                 })}
               </div>
+            )}
+
+            {!historyLoading && historyItems.length > 0 && (
+              <>
+                {historyOffsetRef.current < (historySummary?.filtered_count ?? historySummary?.total_count ?? 0) && (
+                  <LoadMoreSentinel onIntersect={loadMoreHistory} disabled={loadingMoreHistory} />
+                )}
+                {loadingMoreHistory ? (
+                  <div className="flex items-center justify-center gap-2 text-neutral-400 text-xs py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Загрузка ещё записей истории...
+                  </div>
+                ) : historyOffsetRef.current >= (historySummary?.filtered_count ?? historySummary?.total_count ?? 0) ? (
+                  <div className="text-center text-neutral-600 text-xs py-4">
+                    Показаны все записи ({(historySummary?.filtered_count ?? historySummary?.total_count ?? 0).toLocaleString()})
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         ) : (
@@ -520,15 +1019,21 @@ export default function NeurobetsPage() {
                 </p>
               </div>
             ) : (
-              liveBets.map((bet, index) => {
+              <AnimatePresence initial={false} mode="popLayout">
+              {liveBets.map((bet, index) => {
                 const currentRank = index + 1
                 const isRose = bet.coefficient > bet.initialCoefficient
                 const isDropped = bet.coefficient < bet.initialCoefficient
 
                 return (
-                  <div
+                  <motion.div
                     key={bet.id}
-                    className={`relative overflow-hidden rounded-2xl bg-neutral-900/80 border transition hover:border-neutral-700 shadow-lg p-5 md:p-6 space-y-4 ${
+                    layout
+                    initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ layout: { type: "spring", stiffness: 350, damping: 32 }, duration: 0.25 }}
+                    className={`relative overflow-hidden rounded-2xl bg-neutral-900/80 border transition-colors hover:border-neutral-700 shadow-lg p-5 md:p-6 space-y-4 ${
                       currentRank === 1
                         ? "border-[#fdcb6e]/50 bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-[#fdcb6e]/10 shadow-[#fdcb6e]/10"
                         : currentRank === 2
@@ -594,39 +1099,88 @@ export default function NeurobetsPage() {
                         </div>
                       </div>
 
-                      {/* Odds & Value Index (5 cols) */}
-                      <div className="lg:col-span-5 flex flex-wrap sm:flex-nowrap items-center justify-between lg:justify-end gap-4 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/80">
-                        {/* Coefficient display */}
-                        <div>
-                          <div className="text-[10px] text-neutral-400 font-mono">Коэффициент</div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-xl font-black font-mono text-white">
-                              {bet.coefficient.toFixed(2)}
-                            </span>
-                            {isDropped && (
-                              <span className="flex items-center text-[10px] font-mono text-[#55efc4] bg-[#00b894]/20 px-1.5 py-0.5 rounded border border-[#00b894]/30">
-                                <ArrowDownRight className="w-3 h-3" />
-                                {(bet.coefficient - bet.initialCoefficient).toFixed(2)}
-                              </span>
-                            )}
-                            {isRose && (
-                              <span className="flex items-center text-[10px] font-mono text-[#ff7675] bg-[#d63031]/20 px-1.5 py-0.5 rounded border border-[#d63031]/30">
-                                <ArrowUpRight className="w-3 h-3" />
-                                +{(bet.coefficient - bet.initialCoefficient).toFixed(2)}
-                              </span>
-                            )}
+                      {/* Odds & Value Index (5 cols) — outer div only handles column
+                          placement, the background/border box sizes to its own content
+                          (not the full 5-column width) so it doesn't leave a big empty
+                          strip when right-aligned. */}
+                      <div className="lg:col-span-5 flex justify-center lg:justify-end">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/80">
+                          {/* Coefficient display */}
+                          <div>
+                            <div className="text-[10px] text-neutral-400 font-mono">Коэффициент</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <motion.span
+                                key={bet.coefficient}
+                                initial={{ color: isRose ? "#ff7675" : isDropped ? "#55efc4" : "#ffffff" }}
+                                animate={{ color: "#ffffff" }}
+                                transition={{ duration: 0.8 }}
+                                className="text-xl font-black font-mono"
+                              >
+                                {bet.coefficient.toFixed(2)}
+                              </motion.span>
+                              {isDropped && (
+                                <span className="flex items-center text-[10px] font-mono text-[#55efc4] bg-[#00b894]/20 px-1.5 py-0.5 rounded border border-[#00b894]/30">
+                                  <ArrowDownRight className="w-3 h-3" />
+                                  {(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                                </span>
+                              )}
+                              {isRose && (
+                                <span className="flex items-center text-[10px] font-mono text-[#ff7675] bg-[#d63031]/20 px-1.5 py-0.5 rounded border border-[#d63031]/30">
+                                  <ArrowUpRight className="w-3 h-3" />
+                                  +{(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Expected ROI Index */}
-                        <div className="text-right">
-                          <div className="text-[10px] text-neutral-400 font-mono">EV (Ожидаемый ROI)</div>
-                          <div className="text-base font-black font-mono text-[#55efc4] mt-0.5">
-                            +{bet.expectedRoi.toFixed(1)}%
+                          {/* Expected ROI Index */}
+                          <div className="text-right">
+                            <div className="text-[10px] text-neutral-400 font-mono">EV (Ожидаемый ROI)</div>
+                            <motion.div
+                              key={bet.expectedRoi}
+                              initial={{ scale: 1.15, opacity: 0.6 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ duration: 0.4 }}
+                              className="text-base font-black font-mono text-[#55efc4] mt-0.5"
+                            >
+                              +{bet.expectedRoi.toFixed(1)}%
+                            </motion.div>
                           </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* Bot Stake Banner — only shown for outcomes the bot actually has an open bet on.
+                        Includes the live score right here (not just the badge up top) since that's
+                        the value the bet's actual outcome depends on — it refreshes on the same
+                        10s poll as the rest of the card. */}
+                    {bet.stake !== null && (
+                      <div className="flex flex-wrap items-center gap-3 bg-[#00b894]/10 border border-[#00b894]/40 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-bold text-[#55efc4] flex items-center gap-1.5">
+                          💰 Бот поставил:
+                        </span>
+                        <span className="text-sm font-black font-mono text-white">
+                          {bet.stake.toFixed(1)} ₽
+                        </span>
+                        <span className="text-neutral-600">→</span>
+                        <span className="text-xs text-neutral-300">При выигрыше получит:</span>
+                        <span className="text-sm font-black font-mono text-[#55efc4]">
+                          {bet.potentialPayout!.toFixed(1)} ₽
+                        </span>
+                        <span className="ml-auto flex items-center gap-1.5 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800">
+                          <span className="text-[10px] text-neutral-400 font-mono uppercase">Live счёт</span>
+                          <motion.span
+                            key={bet.score}
+                            initial={{ scale: 1.25, opacity: 0.6 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="font-mono font-black text-sm text-[#fdcb6e]"
+                          >
+                            {bet.score}
+                          </motion.span>
+                        </span>
+                      </div>
+                    )}
 
                     {/* AI Probability Progress Gauge & Error Metric */}
                     <div className="space-y-1.5 bg-neutral-950/50 p-3 rounded-xl border border-neutral-800/50">
@@ -643,17 +1197,25 @@ export default function NeurobetsPage() {
                           </span>
 
                           {/* Probability Value */}
-                          <span className="font-mono font-black text-[#55efc4] text-sm">
+                          <motion.span
+                            key={bet.aiProbability}
+                            initial={{ scale: 1.2, opacity: 0.6 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="font-mono font-black text-[#55efc4] text-sm"
+                          >
                             {bet.aiProbability.toFixed(1)}%
-                          </span>
+                          </motion.span>
                         </div>
                       </div>
 
                       {/* Animated Gradient Bar */}
                       <div className="w-full bg-neutral-900 rounded-full h-2.5 overflow-hidden border border-neutral-800">
-                        <div
-                          className="bg-gradient-to-r from-[#00b894] via-[#55efc4] to-[#fdcb6e] h-full rounded-full transition-all duration-500 shadow-sm"
-                          style={{ width: `${bet.aiProbability}%` }}
+                        <motion.div
+                          className="bg-gradient-to-r from-[#00b894] via-[#55efc4] to-[#fdcb6e] h-full rounded-full shadow-sm"
+                          initial={false}
+                          animate={{ width: `${bet.aiProbability}%` }}
+                          transition={{ type: "spring", stiffness: 120, damping: 20 }}
                         />
                       </div>
                     </div>
@@ -675,9 +1237,28 @@ export default function NeurobetsPage() {
                         ))}
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )
-              })
+              })}
+              </AnimatePresence>
+            )}
+
+            {!loading && liveBets.length > 0 && (
+              <>
+                {liveOffsetRef.current < liveTotal && (
+                  <LoadMoreSentinel onIntersect={loadMoreLive} disabled={loadingMoreLive} />
+                )}
+                {loadingMoreLive ? (
+                  <div className="flex items-center justify-center gap-2 text-neutral-400 text-xs py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Загрузка ещё ставок...
+                  </div>
+                ) : liveOffsetRef.current >= liveTotal ? (
+                  <div className="text-center text-neutral-600 text-xs py-4">
+                    Показаны все ставки ({liveTotal.toLocaleString()})
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         )}
