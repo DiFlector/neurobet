@@ -74,6 +74,7 @@ autobet/
    * **Gray**: Coefficient **unchanged** (`+-`).
 5. **Safe Mode**: Toggle to hide dangerous odds (`< 1.1` or `> 2.1`). Enabled by default on frontend load.
 6. **Popover Portals**: Popover tooltips must render via `createPortal(..., document.body)` with `position: fixed` and dynamic viewport collision calculation to prevent `overflow: hidden` clipping.
+7. **Neural verdict, not a probability cutoff**: the PyTorch GRU (`ai_service/app/neuralbet/model.py`) has a dedicated `decision_logit` output — its own learned bet/no-bet verdict (`finished_bets.predicted_win` / `ai_predictions.predicted_win`), trained with a cost-sensitive loss rather than copying the win-probability head's 0.5 threshold. Live bankroll bets and the "Активные LIVE Прогнозы" tab only ever consider outcomes with `predicted_win = 1`; the win-probability percentage shown everywhere is calibrated once in `ai_service/app/neuralbet/calibration.py` before being saved — backend reads it as-is, it never recalibrates a second time. History outcomes are judged **guessed / not guessed** (`predicted_win` vs. `is_win`), not win/loss — a verdict of "will lose" that turns out correct still counts as guessed.
 
 ---
 

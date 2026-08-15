@@ -42,6 +42,14 @@ BANKROLL_LOSS_WEIGHT = float(os.getenv("BANKROLL_LOSS_WEIGHT", "1.0"))
 # account at e.g. 1e-6 forever (never exactly <= 0, so the auto-reset below never fires).
 RUIN_THRESHOLD = 0.01
 
+# Upper bound on balance/peak_balance — without this, unbounded compounding across many
+# rounds/settlements can drift the DOUBLE PRECISION balance toward float overflow (inf),
+# which then poisons every future round (inf - inf = NaN, rejected by the NOT NULL
+# column). Every place that grows balance (apply_round_result, settle_stake) clamps to
+# this ceiling; a reset also clamps its target start_balance so a bad manual reset can't
+# start already past the cap.
+MAX_BALANCE = float(os.getenv("BANKROLL_MAX_BALANCE", "1000000000000.0"))
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -69,7 +77,7 @@ def get_account(account: str) -> Dict[str, Any]:
 
 def reset_account(account: str, start_balance: Optional[float] = None) -> Dict[str, Any]:
     """Manual reset — the only way the 'live' account can ever come back from ruin."""
-    sb = start_balance if start_balance is not None else START_BALANCE
+    sb = min(start_balance if start_balance is not None else START_BALANCE, MAX_BALANCE)
     conn = get_finished_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -112,6 +120,7 @@ def apply_round_result(
         balance_after = acc["start_balance"]
         is_ruined = 1
 
+    balance_after = min(balance_after, MAX_BALANCE)
     peak = max(acc["peak_balance"], balance_after)
     round_no = acc["rounds"] + 1
 
@@ -174,6 +183,7 @@ def settle_stake(account: str, stake: float, payout: float, outcome: str) -> Dic
         locked_after = 0.0
         is_ruined = 1
 
+    balance_after = min(balance_after, MAX_BALANCE)
     peak = max(acc["peak_balance"], balance_after)
     cur.execute("""
         UPDATE bankroll_accounts SET

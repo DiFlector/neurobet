@@ -505,9 +505,10 @@ def archive_finished_events(cursor, timestamp_str: str):
 
             # Capture what the model actually predicted for this bet before it's gone —
             # this is the only way to later check "when the model said 75%, did it really
-            # win ~75% of the time?" (calibration).
+            # win ~75% of the time?" (calibration), and whether its own bet/no-bet
+            # verdict (predicted_win) turned out to be right (guessed/not-guessed history).
             cursor.execute(
-                """SELECT win_probability FROM ai_predictions
+                """SELECT win_probability, predicted_win FROM ai_predictions
                     WHERE event_id = %s AND factor_id = %s
                       AND COALESCE(CAST(parameter AS TEXT), '') = %s
                       AND COALESCE(market_prefix, '') = %s""",
@@ -515,14 +516,16 @@ def archive_finished_events(cursor, timestamp_str: str):
             )
             pred_row = cursor.fetchone()
             predicted_win_probability = pred_row["win_probability"] if pred_row else None
+            predicted_win = pred_row["predicted_win"] if pred_row else None
 
             f_cursor.execute("""
                 INSERT INTO finished_bets (
                     event_id, factor_id, market_prefix, label, parameter,
                     initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
                     samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
-                    predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
+                    predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push,
+                    predicted_win
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s)
                 ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                     final_coefficient = excluded.final_coefficient,
                     min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
@@ -534,6 +537,7 @@ def archive_finished_events(cursor, timestamp_str: str):
                     is_push = excluded.is_push,
                     finished_at = excluded.finished_at,
                     predicted_win_probability = COALESCE(excluded.predicted_win_probability, finished_bets.predicted_win_probability),
+                    predicted_win = COALESCE(excluded.predicted_win, finished_bets.predicted_win),
                     score_seq_json = excluded.score_seq_json,
                     score_diff_at_bet = excluded.score_diff_at_bet,
                     trained_count = 0;
@@ -543,6 +547,7 @@ def archive_finished_events(cursor, timestamp_str: str):
                 g["samples_count"], json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
                 is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
                 json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
+                predicted_win,
             ))
 
         cursor.execute("DELETE FROM latest_odds WHERE event_id = %s", (eid,))
@@ -918,10 +923,10 @@ def get_db_stats() -> Dict[str, Any]:
     finished_count = 0
     finished_history_count = 0
     unresolved_bets_count = 0
-    # None means "not enough resolved bets yet to compute a real accuracy" — the
+    # None means "not enough judged bets yet to compute a real guess rate" — the
     # frontend must show this as "no data", never fall back to a made-up number.
-    error_rate_pct = None
-    accuracy_pct = None
+    miss_rate_pct = None
+    guess_rate_pct = None
     try:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
@@ -931,22 +936,22 @@ def get_db_stats() -> Dict[str, Any]:
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets")
         finished_history_count = f_cursor.fetchone()["c"]
 
-        # Calculate real AI prediction error rate on completed, resolvable bets (is_win = 1 vs 0).
-        # Bets we couldn't honestly grade (is_win IS NULL — forecasts on forfeits/part-of-match
-        # markets etc.) are excluded rather than counted as losses.
+        # Real guess rate: how often the model's own bet/no-bet verdict (predicted_win)
+        # matched what actually happened (is_win), on bets we could honestly grade both
+        # ways. This used to be the raw hit rate of every archived outcome in the
+        # 1.10-2.10 odds band regardless of whether the model even had an opinion on it —
+        # not the same question as "did the model guess right."
         f_cursor.execute("""
-            SELECT COUNT(*) AS total_eval, SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) AS wins
+            SELECT COUNT(*) AS judged, SUM(CASE WHEN predicted_win = is_win THEN 1 ELSE 0 END) AS correct
               FROM finished_bets
-             WHERE initial_coefficient >= 1.10 AND initial_coefficient <= 2.10
-               AND is_win IS NOT NULL
+             WHERE is_win IS NOT NULL AND predicted_win IS NOT NULL
         """)
         row = f_cursor.fetchone()
-        if row and row["total_eval"] and row["total_eval"] > 0:
-            total_eval = row["total_eval"]
-            wins = row["wins"] or 0
-            losses = total_eval - wins
-            error_rate_pct = round((losses / total_eval) * 100.0, 1)
-            accuracy_pct = round(100.0 - error_rate_pct, 1)
+        if row and row["judged"] and row["judged"] > 0:
+            judged = row["judged"]
+            correct = row["correct"] or 0
+            guess_rate_pct = round((correct / judged) * 100.0, 1)
+            miss_rate_pct = round(100.0 - guess_rate_pct, 1)
 
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NULL")
         unresolved_bets_count = f_cursor.fetchone()["c"] or 0
@@ -963,8 +968,8 @@ def get_db_stats() -> Dict[str, Any]:
         "unresolved_bets_count": unresolved_bets_count,
         "total_odds_history_count": history_count,
         "ai_predictions_count": predictions_count,
-        "error_rate_pct": error_rate_pct,
-        "accuracy_pct": accuracy_pct,
+        "miss_rate_pct": miss_rate_pct,
+        "guess_rate_pct": guess_rate_pct,
         "last_updated_at": last_updated,
         "db_size_bytes": total_db_size_bytes,
         "db_size_formatted": format_file_size(total_db_size_bytes)
@@ -997,48 +1002,12 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
     conn.commit()
     release_connection(conn)
 
-# Pseudo-count for the Bayesian shrinkage used in calibration below. Small buckets (few
-# resolved bets so far) stay close to the model's raw self-reported probability; buckets
-# with plenty of real results pull hard towards what actually happened historically.
-CALIBRATION_PRIOR_STRENGTH = 20
-
-def get_calibration_buckets() -> Dict[int, tuple]:
-    """
-    Returns {decile: (wins, total)} built from every resolved finished bet where we know
-    what the model predicted at bet time — i.e. the model's actual historical track record,
-    bucketed by what confidence it claimed. Used to correct the raw model probability into
-    one that reflects real-world win rate instead of the model's own (often overconfident)
-    self-estimate.
-    """
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-    # FLOOR(...)::INTEGER, not CAST(... AS INTEGER) — Postgres' CAST-to-integer rounds to
-    # the nearest integer, while SQLite's truncates towards zero; predicted_win_probability
-    # is always >= 0 here so FLOOR reproduces the original truncating bucket assignment.
-    f_cursor.execute("""
-        SELECT FLOOR(predicted_win_probability / 10)::INTEGER AS bucket,
-               COUNT(*) AS total,
-               SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) AS wins
-          FROM finished_bets
-         WHERE is_win IS NOT NULL AND predicted_win_probability IS NOT NULL
-         GROUP BY bucket
-    """)
-    rows = f_cursor.fetchall()
-    release_connection(f_conn)
-    return {int(r["bucket"]): (r["wins"] or 0, r["total"] or 0) for r in rows}
-
-def calibrate_probability(raw_prob: float, buckets: Dict[int, tuple]) -> float:
-    """
-    Blends the model's raw probability with the empirical win rate of bets that were
-    historically predicted at a similar confidence (Bayesian shrinkage towards real
-    outcomes). A bucket with 1000 resolved bets dominates; a bucket with 2 resolved bets
-    barely moves the number away from the raw estimate.
-    """
-    bucket = min(9, max(0, int(raw_prob // 10)))
-    wins, total = buckets.get(bucket, (0, 0))
-    prior_wins = (raw_prob / 100.0) * CALIBRATION_PRIOR_STRENGTH
-    calibrated = (wins + prior_wins) / (total + CALIBRATION_PRIOR_STRENGTH) * 100.0
-    return round(min(max(calibrated, 1.0), 99.0), 1)
+# Calibration (Bayesian shrinkage of the raw model probability towards the model's real
+# historical win rate at that confidence level) now happens once, in ai_service, before a
+# prediction is even saved — see ai_service/app/neuralbet/calibration.py. win_probability
+# read from ai_predictions/finished_bets below is already calibrated; recalibrating it a
+# second time here used to let this page's numbers drift from what the bot actually acted
+# on (it always bet on the raw score) — this file no longer computes calibration at all.
 
 def get_top_neurobets(
     sport_filter: Optional[str] = None,
@@ -1047,7 +1016,8 @@ def get_top_neurobets(
     max_odds: float = 2.1,
     limit: int = 50,
     offset: int = 0,
-    min_confidence: float = 70.0,
+    verdict: str = "win",
+    search: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
@@ -1057,11 +1027,26 @@ def get_top_neurobets(
     # bet placement does (ai_service/app/neuralbet/pipeline.py never uses a heuristic
     # fallback either). A market the model hasn't scored yet just doesn't appear here
     # rather than showing a guess dressed up as a prediction.
+    # verdict controls which side of the model's own decision head shows up here (see
+    # decision_logit in ai_service/app/neuralbet/model.py): "win" (default) is the bot's
+    # real betting pool, "loss" surfaces what it expects to lose (never bet on), "all" is
+    # both — but never an unscored market (predicted_win IS NULL is excluded in every case).
+    # This list used to be everything above a fixed min_confidence% cutoff; now the model
+    # decides bet/no-bet itself, so this is a verdict list, not a ranked-by-EV top-N.
+    # win_probability is already calibrated (ai_service calibrates before saving — see
+    # ai_service/app/neuralbet/calibration.py) so it's read here as-is, no second pass.
     # l.updated_at = e.last_updated_at AND e.last_updated_at = MAX(...) is the same
     # staleness guard used everywhere else (get_live_matches, pipeline.py, bet
     # placement) — without it a market Fonbet has since pulled or replaced could still
     # show its last frozen prediction here.
-    query = """
+    if verdict == "loss":
+        verdict_clause = "AND p.predicted_win = 0"
+    elif verdict == "all":
+        verdict_clause = "AND p.predicted_win IS NOT NULL"
+    else:
+        verdict_clause = "AND p.predicted_win = 1"
+
+    query = f"""
         SELECT
             e.event_id, e.sport_path, e.match_name, e.team_1, e.team_2, e.score, e.timer,
             l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
@@ -1082,7 +1067,9 @@ def get_top_neurobets(
             p.error_rate AS error_rate,
             p.expected_roi AS expected_roi,
             p.lightgbm_score AS lightgbm_score,
-            p.pytorch_score AS pytorch_score
+            p.pytorch_score AS pytorch_score,
+            p.predicted_win AS predicted_win,
+            p.decision_confidence AS decision_confidence
         FROM latest_odds l
         JOIN events e ON l.event_id = e.event_id
         JOIN ai_predictions p ON l.event_id = p.event_id
@@ -1090,6 +1077,7 @@ def get_top_neurobets(
             AND COALESCE(CAST(l.parameter AS TEXT), '') = COALESCE(CAST(p.parameter AS TEXT), '')
             AND COALESCE(l.market_prefix, '') = COALESCE(p.market_prefix, '')
         WHERE e.is_live = 1
+          {verdict_clause}
           AND l.coefficient >= %s
           AND l.coefficient <= %s
           AND l.updated_at = e.last_updated_at
@@ -1101,32 +1089,27 @@ def get_top_neurobets(
         query += " AND e.sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
 
-    # No ORDER BY / LIMIT here: calibration (below) can reshuffle the ranking relative to
-    # the model's raw self-reported numbers, so we sort in Python after calibrating —
-    # sorting in SQL first would bias which row "wins" a de-dup group towards raw scores.
+    # Free-text search across match/teams/bet-type — every whitespace-separated word must
+    # appear somewhere in the combined haystack (order-independent AND), so "Команда Фора 1"
+    # or "команда - команда п1" both work regardless of which field(s) actually matched.
+    if search:
+        words = [w for w in re.split(r"\s+", search.strip()) if re.search(r"\w", w)]
+        if words:
+            query += """ AND (
+                COALESCE(e.match_name, '') || ' ' || COALESCE(e.team_1, '') || ' ' || COALESCE(e.team_2, '') || ' ' ||
+                COALESCE(l.label, '') || ' ' || COALESCE(CAST(l.parameter AS TEXT), '') || ' ' || COALESCE(l.market_prefix, '')
+            ) ILIKE ALL(%s)"""
+            params.append([f"%{w}%" for w in words])
+
+    # No ORDER BY / LIMIT here — de-dup below needs to see everything at once to keep the
+    # strongest pick per mutually-exclusive market group; sorted in Python instead.
     query += " LIMIT 5000"
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
     release_connection(conn)
 
-    # Correct the model's raw probability using its actual historical track record —
-    # see calibrate_probability(). Falls back to the raw number when there's no
-    # calibration data yet (buckets empty), so behavior degrades gracefully.
-    buckets = get_calibration_buckets()
-    candidates = []
-    for r in rows:
-        d = dict(r)
-        raw_prob = d.get("win_probability")
-        if raw_prob is None:
-            continue
-        calibrated = calibrate_probability(raw_prob, buckets)
-        d["raw_win_probability"] = raw_prob
-        d["win_probability"] = calibrated
-        d["error_rate"] = round(100.0 - calibrated, 1)
-        d["expected_roi"] = round((calibrated / 100.0) * d["coefficient"] - 1.0, 3) * 100.0
-        d["expected_roi"] = round(d["expected_roi"], 1)
-        candidates.append(d)
+    candidates = [dict(r) for r in rows if r.get("win_probability") is not None]
 
     if sort_mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
@@ -1160,12 +1143,6 @@ def get_top_neurobets(
         if group_key in seen_groups:
             continue
         seen_groups.add(group_key)
-
-        # Only count as an actual "bet" if, based on real historical performance at this
-        # confidence level, the outcome is genuinely likely to hit — not just the model's
-        # raw (often overconfident) self-estimate scraping past 50%.
-        if d["win_probability"] < min_confidence:
-            continue
 
         deduped.append(d)
 
@@ -1261,6 +1238,84 @@ def reset_all_databases():
 
     logger.info("Successfully reset ALL databases (LIVE & Finished training archive), bankroll accounts, and cleared model checkpoints.")
 
+def get_bet_type_stats() -> Dict[str, Any]:
+    """
+    Guess-rate breakdown by sport and bet type — same "guessed" definition as
+    get_neurobets_history/get_db_stats (predicted_win vs is_win on resolved,
+    model-scored bets), just grouped instead of listed individually.
+
+    Grouped by (top-level sport, factor_id, label) — not by parameter separately:
+    `label` already bakes the parameter in (resolve_factor_label() in
+    backend/parser_service.py always appends it, e.g. "Фора 2 (1.5)", "Тотал Больше
+    (2.5)"), so factor_id + label alone already distinguishes "Фора 2" from "Фора 1.5"
+    the way a human reads Fonbet's own market names. Top-level sport is split out of
+    sport_path's " / "-joined breadcrumb the same way the frontend does
+    (sport_path.split("/")[0] in neurobets/page.tsx) so e.g. "П1" in football and "П1"
+    in basketball are never lumped into one bar.
+    """
+    f_conn = get_finished_connection()
+    f_cursor = f_conn.cursor()
+    f_cursor.execute("""
+        SELECT TRIM(SPLIT_PART(e.sport_path, '/', 1)) AS sport,
+               h.factor_id, h.label,
+               COUNT(*) AS judged,
+               SUM(CASE WHEN h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct
+          FROM finished_bets h
+          JOIN finished_events e ON h.event_id = e.event_id
+         WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+         GROUP BY 1, 2, 3
+    """)
+    rows = f_cursor.fetchall()
+    release_connection(f_conn)
+
+    sports: Dict[str, Dict[str, Any]] = {}
+    overall_judged = 0
+    overall_correct = 0
+
+    for r in rows:
+        sport = r["sport"] or "Другое"
+        judged = r["judged"] or 0
+        correct = r["correct"] or 0
+        incorrect = judged - correct
+        overall_judged += judged
+        overall_correct += correct
+
+        bucket = sports.setdefault(sport, {
+            "sport": sport, "judged": 0, "correct": 0, "incorrect": 0, "bet_types": [],
+        })
+        bucket["judged"] += judged
+        bucket["correct"] += correct
+        bucket["incorrect"] += incorrect
+        bucket["bet_types"].append({
+            "factor_id": r["factor_id"],
+            "label": r["label"] or f"Исход {r['factor_id']}",
+            "judged": judged,
+            "correct": correct,
+            "incorrect": incorrect,
+            "guess_rate_pct": round(correct / judged * 100.0, 1) if judged > 0 else 0.0,
+        })
+
+    sport_list = []
+    for bucket in sports.values():
+        bucket["bet_types"].sort(key=lambda b: b["judged"], reverse=True)
+        bucket["guess_rate_pct"] = (
+            round(bucket["correct"] / bucket["judged"] * 100.0, 1) if bucket["judged"] > 0 else 0.0
+        )
+        sport_list.append(bucket)
+    sport_list.sort(key=lambda s: s["judged"], reverse=True)
+
+    return {
+        "overall": {
+            "judged": overall_judged,
+            "correct": overall_correct,
+            "incorrect": overall_judged - overall_correct,
+            # None (not 0.0) when there's nothing judged yet — same "never fabricate a
+            # number" rule as get_db_stats (backend/database.py's guess_rate_pct).
+            "guess_rate_pct": round(overall_correct / overall_judged * 100.0, 1) if overall_judged > 0 else None,
+        },
+        "sports": sport_list,
+    }
+
 def get_neurobets_history(
     sport_filter: Optional[str] = None,
     search: Optional[str] = None,
@@ -1289,47 +1344,56 @@ def get_neurobets_history(
         s = f"%{search.lower()}%"
         params.extend([s, s, s])
 
-    # Summary Statistics — four states: win / loss / push / pending. is_win IS NULL
-    # covers both "push" (line landed exactly on the bet — legitimate return, is_push=1)
-    # and "pending" (we genuinely can't grade it — is_push=0); they used to be
-    # conflated under one "не рассчитано" bucket, which misleadingly looked like a bug
-    # for bets that actually resolved correctly as a return. Kept unfiltered by
-    # outcome_filter so the counts stay the same totals regardless of which outcome tab
-    # is selected — that's what lets them double as filter buttons.
+    # Summary Statistics — four states, now built around whether the model's own verdict
+    # (predicted_win) was right, not around raw market outcome:
+    #   correct   — the model judged this bet (predicted_win IS NOT NULL) and got it right
+    #   incorrect — the model judged this bet and got it wrong (either direction: said
+    #               "will win" and it lost, or said "will lose" and it won)
+    #   push      — line landed exactly on the bet (legitimate return, is_push=1);
+    #               not a guess/miss question at all, kept as its own bucket
+    #   pending   — no resolved market outcome yet, OR the model never scored this bet
+    #               (predicted_win IS NULL, e.g. pre-dates this feature) — genuinely
+    #               nothing to judge, not a bug
+    # Kept unfiltered by outcome_filter so the counts stay the same totals regardless of
+    # which outcome tab is selected — that's what lets them double as filter buttons.
     count_query = f"""
         SELECT COUNT(*) AS total_count,
-               SUM(CASE WHEN h.is_win = 1 THEN 1 ELSE 0 END) AS wins_count,
-               SUM(CASE WHEN h.is_win = 0 THEN 1 ELSE 0 END) AS losses_count,
+               SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+                             AND h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct_count,
+               SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+                             AND h.predicted_win <> h.is_win THEN 1 ELSE 0 END) AS incorrect_count,
                SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END) AS push_count,
-               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 THEN 1 ELSE 0 END) AS pending_count
+               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0
+                        OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL) THEN 1 ELSE 0 END) AS pending_count
         {base_query}
     """
     f_cursor.execute(count_query, params)
     summary_row = f_cursor.fetchone()
 
     total_count = summary_row["total_count"] or 0
-    wins_count = summary_row["wins_count"] or 0
-    losses_count = summary_row["losses_count"] or 0
+    correct_count = summary_row["correct_count"] or 0
+    incorrect_count = summary_row["incorrect_count"] or 0
     push_count = summary_row["push_count"] or 0
     pending_count = summary_row["pending_count"] or 0
-    resolved_count = wins_count + losses_count
-    win_rate_pct = round((wins_count / resolved_count * 100.0), 1) if resolved_count > 0 else 0.0
+    judged_count = correct_count + incorrect_count
+    guess_rate_pct = round((correct_count / judged_count * 100.0), 1) if judged_count > 0 else 0.0
 
     # Fetch History Items — outcome_filter narrows only the list, not the summary above.
     filtered_query = base_query
-    if outcome_filter == "win":
-        filtered_query += " AND h.is_win = 1"
-    elif outcome_filter == "loss":
-        filtered_query += " AND h.is_win = 0"
+    if outcome_filter == "correct":
+        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win = h.is_win"
+    elif outcome_filter == "incorrect":
+        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win <> h.is_win"
     elif outcome_filter == "push":
         filtered_query += " AND h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1"
     elif outcome_filter == "pending":
-        filtered_query += " AND h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0"
+        filtered_query += " AND (h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL))"
 
     data_query = f"""
         SELECT
             h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
             h.initial_coefficient, h.final_coefficient, h.score_at_time, h.is_win, h.is_push,
+            h.predicted_win, h.predicted_win_probability,
             h.first_seen_at AS timestamp, h.finished_at,
             e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
         {filtered_query}
@@ -1340,30 +1404,22 @@ def get_neurobets_history(
     rows = f_cursor.fetchall()
     release_connection(f_conn)
 
-    history_items = []
-    for r in rows:
-        item = dict(r)
-        coeff = item.get("initial_coefficient") or item.get("final_coefficient") or 1.5
-        iw = item.get("is_win")
-        adj = 4.0 if iw == 1 else (-4.0 if iw == 0 else 0.0)
-        win_prob = round(min(max((1.0 / coeff * 100.0) + adj, 12.0), 95.0), 1)
-        item["win_probability"] = win_prob
-        history_items.append(item)
+    history_items = [dict(r) for r in rows]
 
     filtered_count = {
-        "win": wins_count, "loss": losses_count, "push": push_count, "pending": pending_count,
+        "correct": correct_count, "incorrect": incorrect_count, "push": push_count, "pending": pending_count,
     }.get(outcome_filter, total_count)
 
     return {
         "summary": {
             "total_count": total_count,
-            "wins_count": wins_count,
-            "losses_count": losses_count,
+            "correct_count": correct_count,
+            "incorrect_count": incorrect_count,
             "push_count": push_count,
             "pending_count": pending_count,
-            "resolved_count": resolved_count,
-            "win_rate_pct": win_rate_pct,
-            "error_rate_pct": round(100.0 - win_rate_pct, 1) if resolved_count > 0 else 0.0,
+            "judged_count": judged_count,
+            "guess_rate_pct": guess_rate_pct,
+            "miss_rate_pct": round(100.0 - guess_rate_pct, 1) if judged_count > 0 else 0.0,
             # Count matching the active outcome_filter — what infinite-scroll pagination
             # should compare its offset against, since total_count always stays the
             # unfiltered grand total (see the comment above count_query).
@@ -1573,6 +1629,10 @@ LIVE_START_BALANCE = float(os.getenv("BANKROLL_START_BALANCE", "1000.0"))
 # technically > 0 but too small to ever clear a real minimum stake again is functionally
 # ruined — without this floor, float rounding could strand an account near-zero forever.
 LIVE_RUIN_THRESHOLD = 0.01
+# Mirrors ai_service/app/neuralbet/bankroll.py's MAX_BALANCE — upper bound on balance/
+# peak_balance so unbounded compounding across settlements can't drift the DOUBLE
+# PRECISION balance toward float overflow (inf/NaN, which the NOT NULL column rejects).
+LIVE_MAX_BALANCE = float(os.getenv("BANKROLL_MAX_BALANCE", "1000000000000.0"))
 # Hard cap on concurrently open live bets, enforced here (not just via ai_service's
 # per-round MAX_POSITIONS) since positions accumulate across multiple rounds — a round
 # staying under its own per-round cap doesn't stop the *total* open count from growing
@@ -1590,7 +1650,7 @@ def _outcome_desc(match_name: str, market_prefix: str, label: str, parameter: An
 def reset_live_account(start_balance: Optional[float] = None) -> Dict[str, Any]:
     """Manual reset — the only way the 'live' account can come back from ruin besides
     the automatic reset settle_live_bets() does when balance hits zero."""
-    sb = start_balance if start_balance is not None else LIVE_START_BALANCE
+    sb = min(start_balance if start_balance is not None else LIVE_START_BALANCE, LIVE_MAX_BALANCE)
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
     f_cursor.execute("""
@@ -1796,6 +1856,7 @@ def _apply_bet_settlement(f_cursor, b, is_win: Optional[int]) -> Tuple[str, List
         balance_after = acc["start_balance"]
         locked_after = 0.0
         is_ruined = 1
+    balance_after = min(balance_after, LIVE_MAX_BALANCE)
     peak = max(acc["peak_balance"], balance_after)
 
     f_cursor.execute("""
@@ -1870,9 +1931,9 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
 
         outcome, msgs = _apply_bet_settlement(f_cursor, b, row["is_win"])
         messages.extend(msgs)
-        if outcome == "won":
+        if outcome == "win":
             won += 1
-        elif outcome == "lost":
+        elif outcome == "loss":
             lost += 1
         else:
             void += 1
@@ -1944,9 +2005,9 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
 
         outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win)
         messages.extend(msgs)
-        if outcome == "won":
+        if outcome == "win":
             won += 1
-        elif outcome == "lost":
+        elif outcome == "loss":
             lost += 1
         else:
             void += 1

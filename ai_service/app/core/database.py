@@ -38,19 +38,22 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
             INSERT INTO ai_predictions (
                 event_id, factor_id, market_prefix, parameter,
                 win_probability, error_rate, expected_roi,
-                lightgbm_score, pytorch_score, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                lightgbm_score, pytorch_score, predicted_win, decision_confidence, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                 win_probability = excluded.win_probability,
                 error_rate = excluded.error_rate,
                 expected_roi = excluded.expected_roi,
                 lightgbm_score = excluded.lightgbm_score,
                 pytorch_score = excluded.pytorch_score,
+                predicted_win = excluded.predicted_win,
+                decision_confidence = excluded.decision_confidence,
                 updated_at = excluded.updated_at;
         """, (
             p["event_id"], p["factor_id"], p.get("market_prefix", ""), str(p.get("parameter", "")),
             p["win_probability"], p["error_rate"], p["expected_roi"],
-            p.get("lightgbm_score", 0.0), p.get("pytorch_score", 0.0), timestamp_str
+            p.get("lightgbm_score", 0.0), p.get("pytorch_score", 0.0),
+            p.get("predicted_win"), p.get("decision_confidence"), timestamp_str
         ))
 
     conn.commit()

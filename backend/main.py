@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
 
@@ -217,7 +217,8 @@ def read_neurobets_top(
     max_odds: float = Query(2.1, description="Max odds bound"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset"),
-    min_confidence: float = Query(70.0, description="Minimum calibrated win probability (%) to count as an actual bet")
+    verdict: str = Query("win", description="Filter by model verdict: 'win', 'loss', or 'all'"),
+    search: Optional[str] = Query(None, description="Search by team, match, or bet type"),
 ):
     try:
         res = get_top_neurobets(
@@ -227,7 +228,8 @@ def read_neurobets_top(
             max_odds=max_odds,
             limit=limit,
             offset=offset,
-            min_confidence=min_confidence
+            verdict=verdict,
+            search=search,
         )
         return {
             "status": "success",
@@ -239,13 +241,22 @@ def read_neurobets_top(
         logger.error(f"Error fetching neurobets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/neurobets/stats-by-type")
+def read_bet_type_stats():
+    try:
+        res = get_bet_type_stats()
+        return {"status": "success", **res}
+    except Exception as e:
+        logger.error(f"Error fetching bet-type stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/neurobets/history")
 def read_neurobets_history(
     sport: Optional[str] = Query(None, description="Filter by sport path"),
     search: Optional[str] = Query(None, description="Search by team or match name"),
     min_odds: float = Query(1.1, description="Min odds bound"),
     max_odds: float = Query(2.1, description="Max odds bound"),
-    outcome: Optional[str] = Query(None, description="Filter by outcome: win, loss, push, or pending"),
+    outcome: Optional[str] = Query(None, description="Filter by outcome: correct, incorrect, push, or pending"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset")
 ):

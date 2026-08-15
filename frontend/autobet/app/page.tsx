@@ -1,84 +1,161 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import {
-  Search,
-  RefreshCw,
-  Database,
-  Filter,
-  AlertCircle,
-  Radio,
+  BrainCircuit,
+  TrendingUp,
   ShieldCheck,
-  ShieldAlert
+  Zap,
+  Sparkles,
+  Trophy,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  Activity,
+  Layers,
+  BarChart3,
+  Percent,
+  Database,
+  Loader2,
+  ChevronDown,
+  Search
 } from "lucide-react"
-import { MatchCard } from "@/components/MatchCard"
 import { HeaderNav } from "@/components/HeaderNav"
+import { SPORT_FILTER_OPTIONS } from "@/lib/sports"
 
-interface MatchData {
-  event_id: number
-  sport_id: number
-  sport_path: string
-  match_name: string
-  team_1: string
-  team_2: string
-  score_1: number
-  score_2: number
+interface NeuroBet {
+  id: string
+  rankBest: number
+  rankSafe: number
+  sport: string
+  matchName: string
+  team1: string
+  team2: string
   score: string
   timer: string
-  is_live: number
-  sub_markets: Array<{ sub_event_id: number; market_name: string; odds_count: number }>
-  total_odds_count: number
-  odds: Array<{
-    factor_id: number
-    market_prefix: string
-    label: string
-    parameter: string
-    coefficient: number
-  }>
+  marketName: string
+  outcomeLabel: string
+  coefficient: number
+  initialCoefficient: number
+  aiProbability: number // 0-100%
+  aiErrorRate: number // 0-100% error rate / loss
+  expectedRoi: number // % ROI
+  riskLevel: "minimal" | "low" | "medium"
+  aiInsights: string[]
+  lightgbmScore: number
+  pytorchScore: number
+  stake: number | null // сумма, которую бот реально поставил на этот исход (₽), null если не ставил
+  potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
+  predictedWin: number | null // вердикт сети: 1 = выиграет, 0 = проиграет, null = не оценено
 }
 
-interface StatsData {
-  live_events_count: number
-  total_events_count: number
-  total_odds_history_count: number
-  last_updated_at: string
-  db_size_bytes?: number
-  db_size_formatted?: string
+function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
+  return `${eventId}-${factorId}-${parameter}-${marketPrefix}`
 }
 
-export default function Page() {
-  const [matches, setMatches] = useState<MatchData[]>([])
-  const [stats, setStats] = useState<StatsData | null>(null)
+// b.placed_at is an ISO timestamp (UTC) — render it in the viewer's local time, HH:MM:SS.
+function formatPlacedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+const PAGE_SIZE = 20
+
+// Fires onIntersect once the sentinel scrolls near the viewport, so the next
+// page of results loads before the user actually hits the bottom.
+function LoadMoreSentinel({ onIntersect, disabled }: { onIntersect: () => void; disabled: boolean }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (disabled) return
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) onIntersect()
+      },
+      { rootMargin: "600px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [onIntersect, disabled])
+
+  return <div ref={ref} className="h-1" />
+}
+
+export default function NeurobetsPage() {
+  const [activeTab, setActiveTab] = useState<"live" | "history">("live")
+  const [sortMode, setSortMode] = useState<"best" | "safe">("best")
+  const [selectedSport, setSelectedSport] = useState<string>("all")
+  const [minOdds, setMinOdds] = useState<number>(1.1)
+  const [maxOdds, setMaxOdds] = useState<number>(2.1)
+  const [stats, setStats] = useState<any>(null)
+  const [bankroll, setBankroll] = useState<any>(null)
+  const [openBetsCount, setOpenBetsCount] = useState(0)
+  const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
+  const [settledBotBetsList, setSettledBotBetsList] = useState<any[]>([])
+  const [historyExpanded, setHistoryExpanded] = useState(false)
+  const [liveBets, setLiveBets] = useState<NeuroBet[]>([])
+  const [liveTotal, setLiveTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const [search, setSearch] = useState("")
-  const [selectedSport, setSelectedSport] = useState("all")
+  const [loadingMoreLive, setLoadingMoreLive] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
-  const [triggeringScrape, setTriggeringScrape] = useState(false)
-  const [safeMode, setSafeMode] = useState(true)
+  const [verdictFilter, setVerdictFilter] = useState<"win" | "loss" | "all">("win")
+  // searchInput updates on every keystroke (controls the text field); searchQuery is the
+  // debounced value that actually drives fetches, so typing doesn't fire a request (and a
+  // multi-word ILIKE ALL scan) per character.
+  const [searchInput, setSearchInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
 
-  // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
-  // next.config.ts) instead of an absolute localhost URL.
+  // History State
+  const [historyItems, setHistoryItems] = useState<any[]>([])
+  const [historySummary, setHistorySummary] = useState<any>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false)
+  const [historyOutcomeFilter, setHistoryOutcomeFilter] = useState<"all" | "correct" | "incorrect" | "push" | "pending">("all")
+
+  // Empty by default so fetches go to a same-origin relative "/api/..." path, proxied
+  // server-side to the backend by next.config.ts's rewrite — see that file for why.
+  // Set NEXT_PUBLIC_API_URL only if you deliberately want the browser to hit the
+  // backend directly on its own origin/port instead.
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
+  const neurobetsRequestId = useRef(0)
+  // How many rows are currently loaded for each infinite-scroll list — kept in a ref
+  // (not state) so it can be used as the next "offset" without retriggering fetches.
+  const liveOffsetRef = useRef(0)
+  const historyOffsetRef = useRef(0)
+  // The bot's currently-open real stakes, keyed by liveBetKey(...) — kept in a ref so
+  // fetchNeurobets can read the latest snapshot without needing it as a dependency
+  // (avoids refetching predictions just because the bet list refreshed).
+  const openBotBetsRef = useRef<Map<string, { stake: number; coefficient: number }>>(new Map())
 
-  const fetchMatches = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (selectedSport !== "all") params.append("sport", selectedSport)
-      if (search.trim()) params.append("search", search.trim())
+  // Debounce the search box — waits 300ms after the user stops typing before it actually
+  // drives a fetch, so a multi-word ILIKE ALL scan doesn't fire on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
-      const res = await fetch(`${API_BASE}/api/matches?${params.toString()}`)
-      if (!res.ok) throw new Error("Failed to fetch live matches")
-      const data = await res.json()
-      setMatches(data.matches || [])
-      setError(null)
-    } catch (err: any) {
-      setError(err.message || "Failed to connect to backend API")
-    } finally {
-      setLoading(false)
-    }
-  }, [API_BASE, selectedSport, search])
+  // Reset the infinite-scroll window whenever the underlying result set changes shape
+  // (filters/sort). Also clear the current list and show the loading state so switching
+  // tabs/filters never mixes stale cards from the previous mode/filter with the new ones.
+  useEffect(() => {
+    liveOffsetRef.current = 0
+    setLiveBets([])
+    setLoading(true)
+  }, [sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+
+  useEffect(() => {
+    historyOffsetRef.current = 0
+    setHistoryItems([])
+  }, [selectedSport, minOdds, maxOdds, activeTab, historyOutcomeFilter])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -88,121 +165,661 @@ export default function Page() {
         setStats(data.stats)
       }
     } catch (err) {
-      // Ignore stats error
+      // Ignore
     }
   }, [API_BASE])
 
-  useEffect(() => {
-    fetchMatches()
-    fetchStats()
-  }, [fetchMatches, fetchStats])
-
-  // Auto-refresh every 10 seconds
-  useEffect(() => {
-    if (!autoRefresh) return
-    const interval = setInterval(() => {
-      fetchMatches()
-      fetchStats()
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [autoRefresh, fetchMatches, fetchStats])
-
-  const handleManualTrigger = async () => {
-    setTriggeringScrape(true)
+  const fetchBankroll = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/api/trigger-scrape`, { method: "POST" })
-      setTimeout(() => {
-        fetchMatches()
-        fetchStats()
-        setTriggeringScrape(false)
-      }, 2000)
+      const res = await fetch(`${API_BASE}/api/neurobets/bankroll`)
+      if (res.ok) {
+        const data = await res.json()
+        setBankroll(data)
+      }
     } catch (err) {
-      setTriggeringScrape(false)
+      // Ignore — panel just keeps showing the last known state
     }
+  }, [API_BASE])
+
+  // Pulls the bot's currently-open real stakes so each matching lot card can show
+  // "поставлено X ₽ / получит Y ₽ при выигрыше". Doesn't trigger a predictions re-fetch —
+  // just refreshes the lookup ref that fetchNeurobets reads from on its own schedule.
+  const fetchOpenBotBets = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
+      if (res.ok) {
+        const data = await res.json()
+        const map = new Map<string, { stake: number; coefficient: number }>()
+        const openList: any[] = []
+        const settledList: any[] = []
+        for (const b of data.items || []) {
+          if (b.status === "open") {
+            map.set(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix), {
+              stake: b.stake,
+              coefficient: b.coefficient,
+            })
+            openList.push(b)
+          } else {
+            settledList.push(b)
+          }
+        }
+        openBotBetsRef.current = map
+        setOpenBetsCount(map.size)
+        setOpenBotBetsList(openList)
+        settledList.sort((a, b) => new Date(b.settled_at || 0).getTime() - new Date(a.settled_at || 0).getTime())
+        setSettledBotBetsList(settledList.slice(0, 30))
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  const fetchHistory = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
+    if (mode === "append") setLoadingMoreHistory(true)
+    else setHistoryLoading(true)
+    try {
+      const params = new URLSearchParams({
+        min_odds: minOdds.toString(),
+        max_odds: maxOdds.toString(),
+        limit: limit.toString(),
+        offset: offset.toString()
+      })
+      if (selectedSport !== "all") {
+        params.append("sport", selectedSport)
+      }
+      if (historyOutcomeFilter !== "all") {
+        params.append("outcome", historyOutcomeFilter)
+      }
+      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        const items = data.history || []
+        setHistoryItems((prev) => (mode === "append" ? [...prev, ...items] : items))
+        setHistorySummary(data.summary || null)
+        historyOffsetRef.current = offset + items.length
+      }
+    } catch (err) {
+      if (mode === "replace") setHistoryItems([])
+    } finally {
+      setHistoryLoading(false)
+      setLoadingMoreHistory(false)
+    }
+  }, [API_BASE, selectedSport, minOdds, maxOdds, historyOutcomeFilter])
+
+  const loadMoreHistory = useCallback(() => {
+    if (loadingMoreHistory || historyLoading) return
+    if (historyOffsetRef.current >= (historySummary?.filtered_count ?? historySummary?.total_count ?? 0)) return
+    fetchHistory(historyOffsetRef.current, PAGE_SIZE, "append")
+  }, [fetchHistory, loadingMoreHistory, historyLoading, historySummary])
+
+  const fetchNeurobets = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
+    const requestId = ++neurobetsRequestId.current
+    if (mode === "append") setLoadingMoreLive(true)
+    try {
+      const params = new URLSearchParams({
+        sort: sortMode,
+        min_odds: minOdds.toString(),
+        max_odds: maxOdds.toString(),
+        limit: limit.toString(),
+        offset: offset.toString(),
+        verdict: verdictFilter
+      })
+      if (selectedSport !== "all") params.append("sport", selectedSport)
+      if (searchQuery) params.append("search", searchQuery)
+
+      const res = await fetch(`${API_BASE}/api/neurobets/top?${params.toString()}`)
+      // Отбрасываем устаревший ответ, если после этого запроса уже успел уйти более новый
+      if (requestId !== neurobetsRequestId.current) return
+      if (res.ok) {
+        const data = await res.json()
+        if (requestId !== neurobetsRequestId.current) return
+        if (data.bets) {
+          setLiveTotal(typeof data.total === "number" ? data.total : data.bets.length)
+          const mapped: NeuroBet[] = data.bets.map((b: any, idx: number) => {
+            const coeff = floatVal(b.coefficient)
+            const initCoeff = floatVal(b.initial_coefficient) || coeff
+            const diff = (initCoeff - coeff).toFixed(2)
+            const diffText = initCoeff > coeff ? `📉 Падение кэфа (-${diff})` : initCoeff < coeff ? `📈 Рост кэфа (+${Math.abs(Number(diff))})` : "⚖️ Стабильный кэф"
+
+            const openBet = openBotBetsRef.current.get(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix))
+
+            return {
+              id: `live-${b.event_id}-${b.factor_id}-${b.parameter}-${b.market_prefix}`,
+              rankBest: idx + 1,
+              rankSafe: idx + 1,
+              // sport_path is a " / "-joined breadcrumb (see backend/parser_service.py's
+              // get_sport_path), e.g. "Футбол / Англия / Премьер-лига" — take just the
+              // top-level sport. Was splitting on "." before, which never matched this
+              // separator and always returned the whole path.
+              sport: b.sport_path ? b.sport_path.split("/")[0].trim() : "Спорт",
+              matchName: b.match_name || `${b.team_1} — ${b.team_2}`,
+              team1: b.team_1 || "Команда 1",
+              team2: b.team_2 || "Команда 2",
+              score: b.score || "0:0",
+              timer: b.timer || "LIVE",
+              marketName: b.market_prefix || "Основной маркет",
+              outcomeLabel: b.label || `Factor ${b.factor_id}`,
+              coefficient: coeff,
+              initialCoefficient: initCoeff,
+              aiProbability: b.win_probability,
+              aiErrorRate: b.error_rate,
+              expectedRoi: b.expected_roi,
+              riskLevel: b.win_probability > 90 ? "minimal" : b.win_probability > 75 ? "low" : "medium",
+              aiInsights: [
+                diffText,
+                `📊 LightGBM score: ${b.lightgbm_score}`,
+                `🧠 PyTorch trajectory: ${Math.round(b.pytorch_score * 100)}/100`
+              ],
+              lightgbmScore: b.lightgbm_score,
+              pytorchScore: b.pytorch_score,
+              stake: openBet ? openBet.stake : null,
+              potentialPayout: openBet ? openBet.stake * openBet.coefficient : null,
+              predictedWin: b.predicted_win ?? null
+            }
+          })
+          setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
+          liveOffsetRef.current = offset + mapped.length
+        }
+      }
+    } catch (err) {
+      if (requestId === neurobetsRequestId.current && mode === "replace") setLiveBets([])
+    } finally {
+      if (requestId === neurobetsRequestId.current) {
+        setLoading(false)
+        setLoadingMoreLive(false)
+      }
+    }
+  }, [API_BASE, sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+
+  const loadMoreLive = useCallback(() => {
+    if (loadingMoreLive || loading) return
+    if (liveOffsetRef.current >= liveTotal) return
+    fetchNeurobets(liveOffsetRef.current, PAGE_SIZE, "append")
+  }, [fetchNeurobets, loadingMoreLive, loading, liveTotal])
+
+  useEffect(() => {
+    if (activeTab === "live") {
+      fetchOpenBotBets().then(() => fetchNeurobets(0, PAGE_SIZE, "replace"))
+      fetchStats()
+      fetchBankroll()
+
+      if (!autoRefresh) return
+      // Re-fetch from the top on each refresh, but keep however many rows the user
+      // has already scrolled to load, so auto-refresh doesn't collapse the list back to one page.
+      const interval = setInterval(() => {
+        fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
+        fetchStats()
+        fetchBankroll()
+      }, 10000)
+      return () => clearInterval(interval)
+    } else {
+      fetchHistory(0, PAGE_SIZE, "replace")
+      fetchStats()
+      fetchBankroll()
+      fetchOpenBotBets()
+    }
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchBankroll, fetchOpenBotBets, autoRefresh])
+
+  const sportsList = SPORT_FILTER_OPTIONS
+
+  function floatVal(val: any): number {
+    const p = parseFloat(val)
+    return isNaN(p) ? 1.0 : p
   }
 
-  const sportCategories = [
-    { id: "all", label: "Все виды спорта" },
-    { id: "Футбол", label: "⚽ Футбол" },
-    { id: "Хоккей", label: "🏒 Хоккей" },
-    { id: "Баскетбол", label: "🏀 Баскетбол" },
-    { id: "Теннис", label: "🎾 Теннис" },
-    { id: "Киберспорт", label: "🎮 Киберспорт" },
-  ]
+  // Calculate Average Model Error Rate across filtered live bets
+  const avgErrorRate = useMemo(() => {
+    if (liveBets.length === 0) return 3.1
+    const total = liveBets.reduce((acc, b) => acc + b.aiErrorRate, 0)
+    return total / liveBets.length
+  }, [liveBets])
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased flex flex-col">
-      <HeaderNav
-        stats={stats}
-        matchesCount={matches.length}
-        triggeringScrape={triggeringScrape}
-        onManualTrigger={handleManualTrigger}
-      />
+      {/* Shared Header Navigation */}
+      <HeaderNav stats={stats} />
 
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
-        {/* Controls Bar: Search & Sport Filters */}
-        <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4 space-y-4 backdrop-blur-md">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Search Input */}
-            <div className="relative w-full md:w-80">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-              <input
-                type="text"
-                placeholder="Поиск по названию команды или матча..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
-              />
+        {/* Banner: AI Engine Overview */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-neutral-950 border border-neutral-800 p-6 md:p-8 shadow-2xl">
+          <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-[#fdcb6e]/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute right-32 top-0 w-48 h-48 bg-[#00b894]/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div className="space-y-3 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#fdcb6e]/10 border border-[#fdcb6e]/30 text-[#ffeaa7] text-xs font-semibold">
+                <BrainCircuit className="w-4 h-4 text-[#fdcb6e] animate-pulse" />
+                <span>LightGBM & PyTorch Online Model Ensemble</span>
+              </div>
+              <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+                🧠 Нейроставки — Умный Рейтинг Топ Ставок
+              </h2>
+              <p className="text-sm text-neutral-300 leading-relaxed">
+                Алгоритм непрерывно анализирует прямую трансляцию коэффициентов и движений линий Fonbet LIVE и сам определяет, выиграет исход или проиграет —
+                своим собственным обученным вердиктом, а не по внешнему порогу вероятности. По умолчанию показаны только исходы с вердиктом «выиграет» —
+                переключить на проигрывающие или все можно фильтром ниже.
+                Ставки с коэффициентами меньше <span className="font-mono text-[#ff7675]">1.10</span> (бессмысленные) и больше <span className="font-mono text-[#ff7675]">2.10</span> (слишком рискованные) автоматически отсеиваются.
+              </p>
             </div>
 
-            {/* Controls right: Safe Mode & Auto-refresh */}
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
-              {/* Safe Mode Toggle Button */}
-              <button
-                onClick={() => setSafeMode(!safeMode)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
-                  safeMode
-                    ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894] shadow-[#00b894]/10"
-                    : "bg-neutral-950 text-neutral-300 border border-neutral-800 hover:bg-neutral-800"
-                }`}
-              >
-                {safeMode ? (
+            {/* AI Architecture Stats Badges */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full lg:w-auto">
+              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">PyTorch Temporal</div>
+                <div className="text-base font-bold text-[#55efc4] font-mono mt-0.5">Online GRU</div>
+                <div className="text-[9px] text-neutral-500 mt-0.5">Векторы кэф 10m</div>
+              </div>
+              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">LightGBM GBDT</div>
+                <div className="text-base font-bold text-[#ffeaa7] font-mono mt-0.5">Leaf Speed</div>
+                <div className="text-[9px] text-neutral-500 mt-0.5">&lt; 5ms инференс</div>
+              </div>
+              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">Золотой коридор</div>
+                <div className="text-base font-bold text-[#74b9ff] font-mono mt-0.5">1.10 — 2.10</div>
+                <div className="text-[9px] text-neutral-500 mt-0.5">Safe ROI Bounds</div>
+              </div>
+              <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-xl p-3 text-center backdrop-blur bg-gradient-to-b from-neutral-950 to-[#ff7675]/5 border-[#ff7675]/30">
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">Промах нейросети</div>
+                {stats && stats.miss_rate_pct === null ? (
                   <>
-                    <ShieldCheck className="w-4 h-4 text-[#00b894]" />
-                    <span>Безопасный режим (1.1 - 2.1)</span>
+                    <div className="text-base font-bold text-neutral-500 font-mono mt-0.5">Нет данных</div>
+                    <div className="text-[9px] text-neutral-500 mt-0.5">Пока нет рассчитанных ставок</div>
                   </>
                 ) : (
                   <>
-                    <ShieldAlert className="w-4 h-4 text-[#fdcb6e]" />
-                    <span>Показывать все коэффициенты</span>
+                    <div className="text-base font-bold text-[#ff7675] font-mono mt-0.5">
+                      {stats?.miss_rate_pct != null ? `${stats.miss_rate_pct.toFixed(1)}%` : `${avgErrorRate.toFixed(1)}%`}
+                    </div>
+                    <div className="text-[9px] text-[#55efc4] font-semibold mt-0.5">
+                      {stats?.guess_rate_pct != null ? `${stats.guess_rate_pct.toFixed(1)}% угадано` : "предв. оценка"}
+                    </div>
                   </>
                 )}
-              </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-              {/* Auto-refresh toggle */}
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300 bg-neutral-950 px-3 py-2 rounded-xl border border-neutral-800">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded bg-neutral-950 border-neutral-800 text-[#00b894] focus:ring-[#00b894]"
-                />
-                Авто-обновление 10с
-              </label>
+        {/* Bankroll Panel: live simulated account only — the training bankroll is an
+            internal training signal, not something a viewer here needs to see; it's
+            still visible on /admin. */}
+        {bankroll?.accounts?.live && (() => {
+          const acc = bankroll.accounts.live
+          // ROI must be based on total equity (spendable + locked-in-open-bets), not just
+          // spendable balance — money currently staked on an open position hasn't been
+          // won or lost yet, so counting it as gone (the old balance-only calculation)
+          // showed a "-71.8%" loss for money that was simply still in play. Locked money
+          // only actually leaves the total once a bet settles and balance/locked update.
+          const totalEquity = Number(acc.balance) + Number(acc.locked || 0)
+          const roiPct = acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
+          // Spendable balance can legitimately be ~0 ₽ while every ₽ is riding on open
+          // bets — shown as "все в игре" (nothing spendable right now) alongside the
+          // equity-based ROI above, rather than implying a loss that hasn't happened.
+          const isAllInLocked = Number(acc.balance) <= 0.01 && Number(acc.locked) > 0
+          return (
+            <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  💰 Банк
+                </div>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
+                  реальные ставки бота
+                </span>
+              </div>
+
+              <div className="flex items-end gap-3">
+                <div className="text-3xl font-black font-mono text-white">
+                  {Number(acc.balance).toFixed(1)} ₽
+                </div>
+                {isAllInLocked ? (
+                  <div className="text-sm font-bold font-mono mb-1 text-[#fdcb6e]">
+                    🎲 всё в игре
+                  </div>
+                ) : (
+                  <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                    {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-5 gap-2 text-center">
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Пик</div>
+                  <div className="text-xs font-bold text-white font-mono">{Number(acc.peak_balance).toFixed(0)}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">W / L</div>
+                  <div className="text-xs font-bold font-mono">
+                    <span className="text-[#55efc4]">{acc.wins}</span>
+                    <span className="text-neutral-600"> / </span>
+                    <span className="text-[#ff7675]">{acc.losses}</span>
+                  </div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Открыто ставок</div>
+                  <div className="text-xs font-bold text-[#74b9ff] font-mono">{openBetsCount}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">В игре</div>
+                  <div className="text-xs font-bold text-[#ffeaa7] font-mono">{Number(acc.locked || 0).toFixed(0)}</div>
+                </div>
+                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Банкротств</div>
+                  <div className={`text-xs font-bold font-mono ${acc.ruin_count > 0 ? "text-[#ff7675]" : "text-neutral-400"}`}>
+                    {acc.ruin_count}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Ставки нейросети — the bot's actual open real-money positions, kept visually
+            separate from the "Активные LIVE Прогнозы" tab below (which is just every
+            live outcome the AI has scored, most of which have no money on them). */}
+        <div className="bg-neutral-900/80 border border-[#00b894]/40 rounded-2xl p-4 md:p-5 space-y-3 backdrop-blur-md">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            🤖 Ставки нейросети
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+              открыто: {openBotBetsList.length}
+            </span>
+          </h3>
+
+          {openBotBetsList.length === 0 ? (
+            <p className="text-xs text-neutral-400">
+              Сейчас нет открытых ставок — бот ждёт исход с положительным EV и свободным банком.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {openBotBetsList.map((b) => {
+                const currentCoeff = b.current_coefficient != null ? Number(b.current_coefficient) : null
+                const betCoeff = Number(b.coefficient)
+                const coeffRose = currentCoeff !== null && currentCoeff > betCoeff
+                const coeffDropped = currentCoeff !== null && currentCoeff < betCoeff
+
+                return (
+                  <div
+                    key={b.id}
+                    className="flex items-center justify-between gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl p-3"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      {b.sport_path && (
+                        <span className="inline-block text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-800 mb-0.5">
+                          {b.sport_path}
+                        </span>
+                      )}
+                      <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-mono flex items-center gap-1.5 flex-wrap">
+                        <span>Коэф. ставки {betCoeff.toFixed(2)}</span>
+                        {currentCoeff !== null && (
+                          <span className={coeffRose ? "text-[#ff7675]" : coeffDropped ? "text-[#55efc4]" : "text-neutral-500"}>
+                            → сейчас {currentCoeff.toFixed(2)}
+                          </span>
+                        )}
+                        <span>· Вероятность {Number(b.win_probability).toFixed(1)}%</span>
+                      </div>
+                      <div className="text-[10px] font-mono flex items-center gap-2">
+                        <span className="text-[#fdcb6e] font-bold">{b.current_score || "0:0"}</span>
+                        {b.match_is_live && b.current_timer && (
+                          <span className="text-neutral-500">⏱ {b.current_timer}</span>
+                        )}
+                        {!b.match_is_live && (
+                          <span className="text-neutral-600">матч завершён</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
+                      <div className="text-[10px] font-mono text-[#55efc4]">
+                        → {(Number(b.stake) * Number(b.coefficient)).toFixed(1)} ₽
+                      </div>
+                      {formatPlacedAt(b.placed_at) && (
+                        <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                          🕒 {formatPlacedAt(b.placed_at)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* История ставок нейросети — the bot's own settled real-money positions
+            (won/lost/void/cancelled), separate from the "История Прогнозов" tab below
+            (which is every scored outcome, not just the ones the bot actually staked on).
+            Collapsed by default — it's not something you need open at all times, and it
+            was crowding out the more time-sensitive sections above it. */}
+        <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl backdrop-blur-md overflow-hidden">
+          <button
+            onClick={() => setHistoryExpanded((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 md:p-5 text-left hover:bg-neutral-800/30 transition"
+          >
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              📜 История ставок нейросети
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
+                последние {settledBotBetsList.length}
+              </span>
+            </h3>
+            <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
+          </button>
+
+          {!historyExpanded ? null : settledBotBetsList.length === 0 ? (
+            <p className="text-xs text-neutral-400 px-4 md:px-5 pb-4 md:pb-5">
+              Пока нет рассчитанных ставок — как только открытая ставка бота разрешится, она появится здесь.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-5 pb-4 md:pb-5">
+              {settledBotBetsList.map((b) => {
+                const statusCfg: Record<string, { label: string; cls: string }> = {
+                  won: { label: "🟢 ВЫИГРАЛА", cls: "border-[#00b894]/50 bg-[#00b894]/10" },
+                  lost: { label: "🔴 ПРОИГРАЛА", cls: "border-[#d63031]/50 bg-[#d63031]/10" },
+                  void: { label: "⚪ АННУЛИРОВАНА", cls: "border-neutral-700 bg-neutral-800/30" },
+                  cancelled: { label: "🟠 ОТМЕНЕНА", cls: "border-[#fdcb6e]/40 bg-[#fdcb6e]/10" },
+                }
+                const cfg = statusCfg[b.status] || { label: b.status, cls: "border-neutral-700 bg-neutral-800/30" }
+                const profit = b.payout != null ? Number(b.payout) - Number(b.stake) : null
+
+                return (
+                  <div
+                    key={b.id}
+                    className={`flex items-center justify-between gap-3 rounded-xl p-3 border ${cfg.cls}`}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      {b.sport_path && (
+                        <span className="inline-block text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-800 mb-0.5">
+                          {b.sport_path}
+                        </span>
+                      )}
+                      <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                      </div>
+                      <div className="text-[10px] text-neutral-500 font-mono">
+                        Коэф. {Number(b.coefficient).toFixed(2)} · Вероятность {Number(b.win_probability).toFixed(1)}%
+                      </div>
+                      {formatPlacedAt(b.settled_at) && (
+                        <div className="text-[10px] text-neutral-600 font-mono">
+                          🕒 рассчитана в {formatPlacedAt(b.settled_at)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0 space-y-0.5">
+                      <div className="text-[10px] font-mono font-bold">{cfg.label}</div>
+                      <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
+                      {profit !== null && (
+                        <div className={`text-[10px] font-mono ${profit > 0 ? "text-[#55efc4]" : profit < 0 ? "text-[#ff7675]" : "text-neutral-500"}`}>
+                          {profit > 0 ? "+" : ""}{profit.toFixed(1)} ₽
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Main Sub-Tab Switcher: Active LIVE Bets vs History & Results */}
+        <div className="flex items-center gap-2 bg-neutral-900/90 p-1.5 rounded-2xl border border-neutral-800 backdrop-blur-md shadow-lg">
+          <button
+            onClick={() => setActiveTab("live")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition ${
+              activeTab === "live"
+                ? "bg-gradient-to-r from-[#fdcb6e] to-[#ffeaa7] text-neutral-950 shadow-lg shadow-[#fdcb6e]/20"
+                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            🔥 Активные LIVE Прогнозы ({liveTotal.toLocaleString()})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition ${
+              activeTab === "history"
+                ? "bg-gradient-to-r from-[#00b894] to-[#55efc4] text-neutral-950 shadow-lg shadow-[#00b894]/20"
+                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            📜 История Прогнозов ({historySummary?.total_count || stats?.finished_odds_history_count || 0})
+          </button>
+        </div>
+
+        {/* Filter Controls & Sort Mode Switcher */}
+        <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4 md:p-5 space-y-4 backdrop-blur-md">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Sort Mode Buttons (Only shown for LIVE Tab) */}
+            {activeTab === "live" ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5 text-[#fdcb6e]" />
+                  Режим сортировки ставок:
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSortMode("best")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm ${
+                      sortMode === "best"
+                        ? "bg-[#fdcb6e] text-neutral-950 shadow-[#fdcb6e]/20"
+                        : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                    }`}
+                  >
+                    <Trophy className="w-3.5 h-3.5" />
+                    ⭐ Самая лучшая (Max ROI / EV)
+                  </button>
+
+                  <button
+                    onClick={() => setSortMode("safe")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm ${
+                      sortMode === "safe"
+                        ? "bg-[#00b894] text-neutral-950 shadow-[#00b894]/20"
+                        : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    🛡️ Самая безопасная (Max Win %)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  📜 Результаты Прогнозов Нейросети
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                    Архив завершенных матчей
+                  </span>
+                </h3>
+                <p className="text-xs text-neutral-400">
+                  Зеленый цвет — ставка сыграла (нейросеть угадала), Красный — ставка не прошла.
+                </p>
+              </div>
+            )}
+
+            {/* Odds Range Bounds Indicator */}
+            <div className="space-y-1 bg-neutral-950 p-3 rounded-xl border border-neutral-800/80 shrink-0">
+              <div className="text-xs font-semibold text-neutral-300 flex items-center justify-between gap-4">
+                <span>Границы коэффициентов:</span>
+                <span className="font-mono text-[#fdcb6e] font-bold">
+                  {minOdds.toFixed(2)} — {maxOdds.toFixed(2)}
+                </span>
+              </div>
+              <span className="text-[11px] text-neutral-400 italic">
+                {activeTab === "live"
+                  ? sortMode === "best"
+                    ? "Баланс шанса выигрыша и размера коэффициента"
+                    : "Фильтр наивысшей вероятности захода"
+                  : "Золотая середина рекомендованных ставок"}
+              </span>
             </div>
           </div>
 
-          {/* Sport Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
-            {sportCategories.map((sport) => (
+          {/* Search & Verdict Filter (LIVE tab only) */}
+          {activeTab === "live" && (
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3 pt-3 border-t border-neutral-800/80">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Команда, матч или тип ставки — например «Фора 1» или «команда — команда»"
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setVerdictFilter("win")}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+                    verdictFilter === "win"
+                      ? "bg-[#00b894] text-neutral-950 shadow-sm shadow-[#00b894]/20"
+                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                  }`}
+                >
+                  🟢 Выигрывающие
+                </button>
+                <button
+                  onClick={() => setVerdictFilter("loss")}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+                    verdictFilter === "loss"
+                      ? "bg-[#d63031] text-white shadow-sm shadow-[#d63031]/20"
+                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                  }`}
+                >
+                  🔴 Проигрывающие
+                </button>
+                <button
+                  onClick={() => setVerdictFilter("all")}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
+                    verdictFilter === "all"
+                      ? "bg-neutral-700 text-white shadow-sm"
+                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                  }`}
+                >
+                  ⚪ Все
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Sport Categories Tabs */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 pb-1 border-t border-neutral-800/80">
+            {sportsList.map((sport) => (
               <button
                 key={sport.id}
                 onClick={() => setSelectedSport(sport.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition ${
                   selectedSport === sport.id
-                    ? "bg-[#fdcb6e] text-neutral-950 shadow-md shadow-[#fdcb6e]/20"
-                    : "bg-neutral-950 text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800"
+                    ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/40 font-bold"
+                    : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800/60"
                 }`}
               >
                 {sport.label}
@@ -211,58 +828,539 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Content Section */}
-        {error ? (
-          <div className="bg-[#d63031]/10 border border-[#d63031]/30 rounded-2xl p-6 text-center space-y-2">
-            <AlertCircle className="w-8 h-8 text-[#ff7675] mx-auto" />
-            <h3 className="text-base font-bold text-[#ff7675]">Ошибка взаимодействия с бэкендом</h3>
-            <p className="text-xs text-[#ff7675]/80">{error}</p>
-            <p className="text-xs text-neutral-400">
-              Убедитесь, что бэкенд запущен в Docker или локально на порту 8000.
+        {/* Tab Content Section */}
+        {activeTab === "history" ? (
+          /* HISTORY TAB VIEW */
+          <div className="space-y-6">
+            {/* History Summary Cards — double as outcome filter buttons */}
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("all")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "all"
+                    ? "bg-neutral-800 border-white/60 ring-1 ring-white/30"
+                    : "bg-neutral-900/90 border-neutral-800 hover:border-neutral-600"
+                }`}
+              >
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">Всего прогнозов</div>
+                <div className="text-xl font-black text-white font-mono mt-1">
+                  {historySummary?.total_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-neutral-500 mt-0.5">В архивном датасете</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("correct")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "correct"
+                    ? "bg-[#00b894]/20 border-[#00b894] ring-1 ring-[#00b894]/50"
+                    : "bg-neutral-900/90 border-[#00b894]/40 hover:border-[#00b894]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#55efc4] font-mono uppercase font-bold">🟢 Угадано</div>
+                <div className="text-xl font-black text-[#55efc4] font-mono mt-1">
+                  {historySummary?.correct_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-[#55efc4]/80 mt-0.5">Вердикт сети совпал с исходом</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("incorrect")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "incorrect"
+                    ? "bg-[#d63031]/20 border-[#d63031] ring-1 ring-[#d63031]/50"
+                    : "bg-neutral-900/90 border-[#d63031]/40 hover:border-[#d63031]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#ff7675] font-mono uppercase font-bold">🔴 Не угадано</div>
+                <div className="text-xl font-black text-[#ff7675] font-mono mt-1">
+                  {historySummary?.incorrect_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-[#ff7675]/80 mt-0.5">Вердикт сети разошелся с исходом</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("push")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "push"
+                    ? "bg-[#0984e3]/20 border-[#0984e3] ring-1 ring-[#0984e3]/50"
+                    : "bg-neutral-900/90 border-[#0984e3]/40 hover:border-[#0984e3]/70"
+                }`}
+              >
+                <div className="text-[10px] text-[#74b9ff] font-mono uppercase font-bold">🔵 Возврат</div>
+                <div className="text-xl font-black text-[#74b9ff] font-mono mt-1">
+                  {historySummary?.push_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-[#74b9ff]/80 mt-0.5">Линия легла точно в ноль</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryOutcomeFilter("pending")}
+                className={`rounded-2xl p-4 text-center backdrop-blur shadow-lg border transition ${
+                  historyOutcomeFilter === "pending"
+                    ? "bg-neutral-700 border-neutral-400 ring-1 ring-neutral-400/50"
+                    : "bg-neutral-900/90 border-neutral-700 hover:border-neutral-500"
+                }`}
+              >
+                <div className="text-[10px] text-neutral-300 font-mono uppercase font-bold">⚪ Не рассчитано</div>
+                <div className="text-xl font-black text-neutral-300 font-mono mt-1">
+                  {historySummary?.pending_count?.toLocaleString() || 0}
+                </div>
+                <div className="text-[10px] text-neutral-400 mt-0.5">Исход или вердикт сети неизвестны</div>
+              </button>
+
+              <div className="bg-neutral-900/90 border border-[#fdcb6e]/40 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
+                <div className="text-[10px] text-[#ffeaa7] font-mono uppercase font-bold">🎯 Процент угадывания</div>
+                <div className="text-xl font-black text-[#ffeaa7] font-mono mt-1">
+                  {historySummary?.guess_rate_pct !== undefined ? `${historySummary.guess_rate_pct.toFixed(1)}%` : "0.0%"}
+                </div>
+                <div className="text-[10px] text-[#ffeaa7]/80 mt-0.5">От прогнозов с известным исходом</div>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-500 -mt-3">
+              Угадано/не угадано — совпал ли вердикт сети («выиграет» / «проиграет») с фактическим исходом ставки, в обе стороны. Синим помечен возврат — линия ставки легла точно в ноль (законный исход, не ошибка). Серым — прогнозы без известного исхода или без вердикта сети. Нажмите на карточку выше, чтобы отфильтровать список.
             </p>
-          </div>
-        ) : loading ? (
-          <div className="py-20 text-center space-y-3">
-            <RefreshCw className="w-8 h-8 text-[#fdcb6e] animate-spin mx-auto" />
-            <p className="text-sm font-medium text-neutral-400">Загрузка LIVE матчей...</p>
-          </div>
-        ) : matches.length === 0 ? (
-          <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl py-16 text-center space-y-3">
-            <Filter className="w-10 h-10 text-neutral-600 mx-auto" />
-            <h3 className="text-base font-bold text-neutral-300">Матчи не найдены</h3>
-            <p className="text-xs text-neutral-500">
-              Попробуйте изменить поисковый запрос или выбрать другой вид спорта.
-            </p>
+
+            {/* History Items List */}
+            {historyLoading ? (
+              <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-400 space-y-3">
+                <Loader2 className="w-8 h-8 text-[#00b894] animate-spin mx-auto" />
+                <p className="text-sm font-semibold">Загрузка истории завершенных прогнозов...</p>
+              </div>
+            ) : historyItems.length === 0 ? (
+              <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-400 space-y-3">
+                <Trophy className="w-10 h-10 text-neutral-600 mx-auto" />
+                <p className="text-base font-bold text-white">История прогнозов пока пуста</p>
+                <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                  Как только активные матчи завершатся, они автоматически попадут в историю прогнозов с отметкой угадано (зеленый) или не угадано (красный).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {historyItems.map((item: any, idx: number) => {
+                  const judged = item.is_win !== null && item.is_win !== undefined
+                    && item.predicted_win !== null && item.predicted_win !== undefined
+                  const status: "correct" | "incorrect" | "push" | "pending" =
+                    judged
+                      ? (item.predicted_win === item.is_win ? "correct" : "incorrect")
+                      : item.is_win === null && item.is_push
+                      ? "push"
+                      : "pending"
+                  const coeff = item.initial_coefficient || item.final_coefficient || 1.5
+
+                  const cardCls =
+                    status === "correct"
+                      ? "bg-[#00b894]/10 border-[#00b894]/50 shadow-[#00b894]/5"
+                      : status === "incorrect"
+                      ? "bg-[#d63031]/10 border-[#d63031]/50 shadow-[#d63031]/5"
+                      : status === "push"
+                      ? "bg-[#0984e3]/10 border-[#0984e3]/50 shadow-[#0984e3]/5"
+                      : "bg-neutral-800/20 border-neutral-700/60 shadow-black/5"
+
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className={`relative overflow-hidden rounded-2xl p-5 border backdrop-blur-md transition shadow-md ${cardCls}`}
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        {/* Event Details */}
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
+                              {item.sport_path || "Спорт"}
+                            </span>
+                            <span className="text-xs text-neutral-400 font-mono">
+                              Завершен в {item.finished_at || item.timestamp}
+                            </span>
+                          </div>
+
+                          <h4 className="text-base font-bold text-white tracking-tight">
+                            {item.match_name || `${item.team_1} vs ${item.team_2}`}
+                          </h4>
+
+                          <div className="flex items-center gap-3 text-xs text-neutral-300">
+                            <span className="font-semibold text-white">
+                              Счет: <span className="font-mono text-[#fdcb6e] font-bold">{item.score || `${item.score_1} : ${item.score_2}`}</span>
+                            </span>
+                            <span>•</span>
+                            <span>
+                              Маркет: <span className="text-neutral-200 font-medium">{item.market_prefix || "Основной"} — {item.label}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Odds & Prediction Stats */}
+                        <div className="flex items-center gap-4 shrink-0">
+                          <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
+                            <div className="text-[10px] text-neutral-400 font-mono uppercase">Коэффициент</div>
+                            <div className="text-base font-black text-[#fdcb6e] font-mono mt-0.5">
+                              {coeff.toFixed(2)}
+                            </div>
+                          </div>
+
+                          <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
+                            <div className="text-[10px] text-neutral-400 font-mono uppercase">Прогноз сети</div>
+                            <div className={`text-sm font-black font-mono mt-0.5 ${
+                              item.predicted_win === 1 ? "text-[#55efc4]" : item.predicted_win === 0 ? "text-[#ff7675]" : "text-neutral-500"
+                            }`}>
+                              {item.predicted_win === 1 ? "🟢 выиграет" : item.predicted_win === 0 ? "🔴 проиграет" : "—"}
+                            </div>
+                            {item.predicted_win_probability != null && (
+                              <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                                {item.predicted_win_probability}%
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Guess Status Badge */}
+                          <div className={`px-4 py-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-black font-mono shrink-0 shadow-md ${
+                            status === "correct"
+                              ? "bg-[#00b894] text-neutral-950 border-[#55efc4]"
+                              : status === "incorrect"
+                              ? "bg-[#d63031] text-white border-[#ff7675]"
+                              : status === "push"
+                              ? "bg-[#0984e3] text-white border-[#74b9ff]"
+                              : "bg-neutral-700 text-neutral-200 border-neutral-600"
+                          }`}>
+                            {status === "correct" ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-neutral-950" />
+                                УГАДАНО
+                              </>
+                            ) : status === "incorrect" ? (
+                              <>
+                                <AlertTriangle className="w-4 h-4 text-white" />
+                                НЕ УГАДАНО
+                              </>
+                            ) : status === "push" ? (
+                              <>
+                                <Info className="w-4 h-4 text-white" />
+                                ВОЗВРАТ
+                              </>
+                            ) : (
+                              <>
+                                <Info className="w-4 h-4 text-neutral-300" />
+                                НЕ РАССЧИТАНА
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {!historyLoading && historyItems.length > 0 && (
+              <>
+                {historyOffsetRef.current < (historySummary?.filtered_count ?? historySummary?.total_count ?? 0) && (
+                  <LoadMoreSentinel onIntersect={loadMoreHistory} disabled={loadingMoreHistory} />
+                )}
+                {loadingMoreHistory ? (
+                  <div className="flex items-center justify-center gap-2 text-neutral-400 text-xs py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Загрузка ещё записей истории...
+                  </div>
+                ) : historyOffsetRef.current >= (historySummary?.filtered_count ?? historySummary?.total_count ?? 0) ? (
+                  <div className="text-center text-neutral-600 text-xs py-4">
+                    Показаны все записи ({(historySummary?.filtered_count ?? historySummary?.total_count ?? 0).toLocaleString()})
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {matches.map((match) => (
-              <MatchCard
-                key={match.event_id}
-                eventId={match.event_id}
-                sportPath={match.sport_path}
-                matchName={match.match_name}
-                team1={match.team_1}
-                team2={match.team_2}
-                score1={match.score_1}
-                score2={match.score_2}
-                score={match.score}
-                timer={match.timer}
-                isLive={Boolean(match.is_live)}
-                totalOddsCount={match.total_odds_count}
-                odds={match.odds || []}
-                subMarkets={match.sub_markets || []}
-                safeMode={safeMode}
-              />
-            ))}
+          /* LIVE TAB VIEW */
+          <div className="space-y-4">
+            {loading ? (
+              <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-400 space-y-3">
+                <Loader2 className="w-8 h-8 text-[#fdcb6e] animate-spin mx-auto" />
+                <p className="text-sm font-semibold">Загрузка прогнозов нейросети...</p>
+              </div>
+            ) : liveBets.length === 0 ? (
+              <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-400 space-y-3">
+                <BrainCircuit className="w-10 h-10 text-[#fdcb6e] mx-auto opacity-80 animate-pulse" />
+                <p className="text-base font-bold text-white">
+                  {searchQuery ? "Ничего не найдено по запросу" : "Ожидание данных от парсера и нейросети..."}
+                </p>
+                <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                  {searchQuery
+                    ? `По запросу «${searchQuery}» нет исходов в выбранном фильтре (${
+                        verdictFilter === "win" ? "выигрывающие" : verdictFilter === "loss" ? "проигрывающие" : "все"
+                      }). Попробуйте другой фильтр вердикта или измените запрос.`
+                    : "Парсер Fonbet LIVE сканирует активные матчи, а LightGBM & PyTorch в реальном времени определяют вердикт по каждому исходу — выиграет он или проиграет. Данные обновляются каждые 10 секунд."}
+                </p>
+              </div>
+            ) : (
+              <AnimatePresence initial={false} mode="popLayout">
+              {liveBets.map((bet, index) => {
+                const currentRank = index + 1
+                const isRose = bet.coefficient > bet.initialCoefficient
+                const isDropped = bet.coefficient < bet.initialCoefficient
+
+                return (
+                  <motion.div
+                    key={bet.id}
+                    layout
+                    initial={{ opacity: 0, y: -12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={{ layout: { type: "spring", stiffness: 350, damping: 32 }, duration: 0.25 }}
+                    className={`relative overflow-hidden rounded-2xl bg-neutral-900/80 border transition-colors hover:border-neutral-700 shadow-lg p-5 md:p-6 space-y-4 ${
+                      currentRank === 1
+                        ? "border-[#fdcb6e]/50 bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-[#fdcb6e]/10 shadow-[#fdcb6e]/10"
+                        : currentRank === 2
+                        ? "border-[#00b894]/40 bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-[#00b894]/10 shadow-[#00b894]/10"
+                        : "border-neutral-800"
+                    }`}
+                  >
+                    {/* Top Bar: Rank Badge + Match Info */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
+                      <div className="flex items-center gap-3">
+                        {/* Rank Medal Badge */}
+                        <div
+                          className={`px-3 py-1.5 rounded-xl font-black text-xs font-mono tracking-wider uppercase flex items-center gap-1.5 shadow-md ${
+                            currentRank === 1
+                              ? "bg-gradient-to-r from-[#fdcb6e] to-[#ffeaa7] text-neutral-950 shadow-[#fdcb6e]/30"
+                              : currentRank === 2
+                              ? "bg-gradient-to-r from-[#00b894] to-[#55efc4] text-neutral-950 shadow-[#00b894]/30"
+                              : currentRank === 3
+                              ? "bg-gradient-to-r from-[#0984e3] to-[#74b9ff] text-neutral-950 shadow-[#0984e3]/30"
+                              : "bg-neutral-800 text-neutral-300"
+                          }`}
+                        >
+                          <Trophy className="w-3.5 h-3.5" />
+                          ТОП #{currentRank}
+                        </div>
+
+                        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono uppercase flex items-center gap-1 ${
+                          bet.predictedWin === 0
+                            ? "bg-[#d63031]/15 border border-[#d63031]/40 text-[#ff7675]"
+                            : "bg-[#00b894]/15 border border-[#00b894]/40 text-[#55efc4]"
+                        }`}>
+                          {bet.predictedWin === 0 ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Сеть считает: проиграет
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Сеть ставит: выиграет
+                            </>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs text-neutral-400">
+                          <span className="px-2 py-0.5 bg-neutral-950 rounded border border-neutral-800 text-neutral-300 font-medium">
+                            {bet.sport}
+                          </span>
+                          <span className="flex items-center gap-1 text-[#ff7675] font-mono">
+                            <Clock className="w-3.5 h-3.5" />
+                            {bet.timer}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Score badge */}
+                      <div className="flex items-center gap-2 bg-neutral-950 px-3 py-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
+                        <span className="text-xs text-neutral-400 font-mono">Счет:</span>
+                        <span className="font-mono font-black text-base text-[#fdcb6e]">
+                          {bet.score}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Middle Section: Match Teams & Target Market */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+                      {/* Teams & Bet Target (7 cols) */}
+                      <div className="lg:col-span-7 space-y-2">
+                        <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                          {bet.team1} <span className="text-neutral-500 font-normal">vs</span> {bet.team2}
+                        </h3>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
+                            <span className="text-neutral-400">Маркет: </span>
+                            <span className="text-neutral-200 font-medium">{bet.marketName}</span>
+                          </div>
+                          <div className="bg-[#fdcb6e]/15 border border-[#fdcb6e]/40 px-3 py-1.5 rounded-xl text-xs font-bold text-[#ffeaa7]">
+                            Исход: {bet.outcomeLabel}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Odds & Value Index (5 cols) — outer div only handles column
+                          placement, the background/border box sizes to its own content
+                          (not the full 5-column width) so it doesn't leave a big empty
+                          strip when right-aligned. */}
+                      <div className="lg:col-span-5 flex justify-center lg:justify-end">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/80">
+                          {/* Coefficient display */}
+                          <div>
+                            <div className="text-[10px] text-neutral-400 font-mono">Коэффициент</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <motion.span
+                                key={bet.coefficient}
+                                initial={{ color: isRose ? "#ff7675" : isDropped ? "#55efc4" : "#ffffff" }}
+                                animate={{ color: "#ffffff" }}
+                                transition={{ duration: 0.8 }}
+                                className="text-xl font-black font-mono"
+                              >
+                                {bet.coefficient.toFixed(2)}
+                              </motion.span>
+                              {isDropped && (
+                                <span className="flex items-center text-[10px] font-mono text-[#55efc4] bg-[#00b894]/20 px-1.5 py-0.5 rounded border border-[#00b894]/30">
+                                  <ArrowDownRight className="w-3 h-3" />
+                                  {(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                                </span>
+                              )}
+                              {isRose && (
+                                <span className="flex items-center text-[10px] font-mono text-[#ff7675] bg-[#d63031]/20 px-1.5 py-0.5 rounded border border-[#d63031]/30">
+                                  <ArrowUpRight className="w-3 h-3" />
+                                  +{(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expected ROI Index */}
+                          <div className="text-right">
+                            <div className="text-[10px] text-neutral-400 font-mono">EV (Ожидаемый ROI)</div>
+                            <motion.div
+                              key={bet.expectedRoi}
+                              initial={{ scale: 1.15, opacity: 0.6 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ duration: 0.4 }}
+                              className="text-base font-black font-mono text-[#55efc4] mt-0.5"
+                            >
+                              +{bet.expectedRoi.toFixed(1)}%
+                            </motion.div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bot Stake Banner — only shown for outcomes the bot actually has an open bet on.
+                        Includes the live score right here (not just the badge up top) since that's
+                        the value the bet's actual outcome depends on — it refreshes on the same
+                        10s poll as the rest of the card. */}
+                    {bet.stake !== null && (
+                      <div className="flex flex-wrap items-center gap-3 bg-[#00b894]/10 border border-[#00b894]/40 rounded-xl px-4 py-2.5">
+                        <span className="text-xs font-bold text-[#55efc4] flex items-center gap-1.5">
+                          💰 Бот поставил:
+                        </span>
+                        <span className="text-sm font-black font-mono text-white">
+                          {bet.stake.toFixed(1)} ₽
+                        </span>
+                        <span className="text-neutral-600">→</span>
+                        <span className="text-xs text-neutral-300">При выигрыше получит:</span>
+                        <span className="text-sm font-black font-mono text-[#55efc4]">
+                          {bet.potentialPayout!.toFixed(1)} ₽
+                        </span>
+                        <span className="ml-auto flex items-center gap-1.5 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800">
+                          <span className="text-[10px] text-neutral-400 font-mono uppercase">Live счёт</span>
+                          <motion.span
+                            key={bet.score}
+                            initial={{ scale: 1.25, opacity: 0.6 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="font-mono font-black text-sm text-[#fdcb6e]"
+                          >
+                            {bet.score}
+                          </motion.span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* AI Probability Progress Gauge & Error Metric */}
+                    <div className="space-y-1.5 bg-neutral-950/50 p-3 rounded-xl border border-neutral-800/50">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                        <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5 text-[#00b894]" />
+                          Вероятность захода нейросети:
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {/* Error Percentage Badge */}
+                          <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#ff7675] bg-[#d63031]/15 px-2 py-0.5 rounded-md border border-[#d63031]/30">
+                            <Percent className="w-3 h-3" />
+                            Ошибка нейросети: {bet.aiErrorRate.toFixed(1)}%
+                          </span>
+
+                          {/* Probability Value */}
+                          <motion.span
+                            key={bet.aiProbability}
+                            initial={{ scale: 1.2, opacity: 0.6 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="font-mono font-black text-[#55efc4] text-sm"
+                          >
+                            {bet.aiProbability.toFixed(1)}%
+                          </motion.span>
+                        </div>
+                      </div>
+
+                      {/* Animated Gradient Bar */}
+                      <div className="w-full bg-neutral-900 rounded-full h-2.5 overflow-hidden border border-neutral-800">
+                        <motion.div
+                          className="bg-gradient-to-r from-[#00b894] via-[#55efc4] to-[#fdcb6e] h-full rounded-full shadow-sm"
+                          initial={false}
+                          animate={{ width: `${bet.aiProbability}%` }}
+                          transition={{ type: "spring", stiffness: 120, damping: 20 }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Neural Insights / Factors Breakdown */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-[#fdcb6e]" />
+                        Факторы решения нейронной сети:
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {bet.aiInsights.map((insight, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800/80 text-neutral-300"
+                          >
+                            {insight}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })}
+              </AnimatePresence>
+            )}
+
+            {!loading && liveBets.length > 0 && (
+              <>
+                {liveOffsetRef.current < liveTotal && (
+                  <LoadMoreSentinel onIntersect={loadMoreLive} disabled={loadingMoreLive} />
+                )}
+                {loadingMoreLive ? (
+                  <div className="flex items-center justify-center gap-2 text-neutral-400 text-xs py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Загрузка ещё ставок...
+                  </div>
+                ) : liveOffsetRef.current >= liveTotal ? (
+                  <div className="text-center text-neutral-600 text-xs py-4">
+                    Показаны все ставки ({liveTotal.toLocaleString()})
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         )}
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-neutral-900 bg-neutral-950 py-4 px-6 text-center text-xs text-neutral-500">
-        Fonbet Live Odds Scraper System &copy; 2026. Standard neutral dark theme & Flat UI Colors US Palette accents.
-      </footer>
     </div>
   )
 }

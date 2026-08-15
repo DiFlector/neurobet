@@ -9,6 +9,7 @@ import torch
 from app.core.database import get_connection, get_finished_connection, save_ai_predictions, release_connection
 from app.neuralbet.model import NeuralBetEnsemble
 from app.neuralbet import bankroll
+from app.neuralbet.calibration import get_calibration_buckets, calibrate_probability
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -221,14 +222,16 @@ def _mark_trained(f_cursor, keys: List[tuple]):
 
 def _place_live_bets(candidates: List[Dict[str, Any]]):
     """
-    Opens new live_bets from this cycle's positive-EV predictions, sized by the same
+    Opens new live_bets from this cycle's predicted-win outcomes (the model's own
+    decision-head verdict — see decision_logit in OddsTrajectoryGRU; outcomes it expects
+    to lose never make it into `candidates` at all, see the caller), sized by the same
     allocate() the training loss uses — the network's own stake/exposure heads, capped
     to at most bankroll.MAX_POSITIONS positions and at least bankroll.MIN_STAKE_FRACTION
     of the *available* (unlocked) live balance per position. If the live account can't
     cover even one minimum stake, no bets are placed this cycle.
     """
     if not candidates:
-        return {"placed": 0, "reason": "no_positive_ev_candidates", "candidates": 0}
+        return {"placed": 0, "reason": "no_predicted_win_candidates", "candidates": 0}
 
     available = bankroll.fetch_live_balance()
     if available <= 0:
@@ -374,36 +377,59 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
 
     batch_results = ensemble_engine.predict_batch(batch_items)
 
-    for meta, (win_prob, error_rate, lgb_score, torch_score, stake_logit, exposure_logit) in zip(row_meta, batch_results):
+    # Calibrated once per cycle (not per-row) — same Bayesian-shrinkage correction the
+    # "Нейроставки" UI used to compute separately in backend, now the single source of
+    # truth: whatever gets stored/bet on is this number, not the ensemble's raw one.
+    buckets = get_calibration_buckets()
+
+    predicted_win_count = 0
+    predicted_loss_count = 0
+
+    for meta, (win_prob, error_rate, lgb_score, torch_score, decision_prob, stake_logit, exposure_logit) in zip(row_meta, batch_results):
         eid = meta["event_id"]
         fid = meta["factor_id"]
         prefix = meta["market_prefix"]
         param = meta["parameter"]
         coeff = meta["coeff"]
 
-        expected_roi = ((win_prob / 100.0) * coeff - 1.0) * 100.0
+        calibrated_prob = calibrate_probability(win_prob, buckets)
+        expected_roi = ((calibrated_prob / 100.0) * coeff - 1.0) * 100.0
+        # The verdict: the model's own decision head, not a probability/EV cutoff picked
+        # from outside — see decision_logit in OddsTrajectoryGRU. >= 0.5 means "will win."
+        predicted_win = 1 if decision_prob >= 0.5 else 0
+        if predicted_win:
+            predicted_win_count += 1
+        else:
+            predicted_loss_count += 1
 
         predictions.append({
             "event_id": eid,
             "factor_id": fid,
             "market_prefix": prefix,
             "parameter": param,
-            "win_probability": round(win_prob, 1),
-            "error_rate": round(error_rate, 1),
+            "win_probability": round(calibrated_prob, 1),
+            "error_rate": round(100.0 - calibrated_prob, 1),
             "expected_roi": round(expected_roi, 1),
             "lightgbm_score": round(lgb_score, 3),
-            "pytorch_score": round(torch_score, 3)
+            "pytorch_score": round(torch_score, 3),
+            "predicted_win": predicted_win,
+            "decision_confidence": round(decision_prob, 3),
         })
 
-        if expected_roi > 0:
+        if predicted_win:
             live_candidates.append({
-                **meta, "win_probability": round(win_prob, 1), "expected_roi": expected_roi,
+                **meta, "win_probability": round(calibrated_prob, 1), "expected_roi": expected_roi,
                 "stake_logit": stake_logit, "exposure_logit": exposure_logit,
             })
 
     if predictions:
         save_ai_predictions(predictions, timestamp_str)
-        add_ai_log("INFERENCE", f"Evaluated predictions for {len(predictions)} active live outcomes. (PyTorch & LightGBM scores saved)")
+        add_ai_log(
+            "INFERENCE",
+            f"Evaluated predictions for {len(predictions)} active live outcomes — "
+            f"{predicted_win_count} verdict 'выиграет' / {predicted_loss_count} verdict 'проиграет'. "
+            "(PyTorch & LightGBM scores saved)"
+        )
     release_connection(conn)
 
     # --- Live bankroll: propose bets to backend, which validates freshness, executes,
@@ -415,14 +441,14 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         add_ai_log("BANKROLL", f"Live bankroll: opened {place_result['placed']} new bet(s) this cycle.{extra}")
     else:
         reason = place_result.get("reason")
-        if reason == "no_positive_ev_candidates":
-            add_ai_log("BANKROLL", "Live bankroll: 0 bets — no positive-EV outcomes this cycle.")
+        if reason == "no_predicted_win_candidates":
+            add_ai_log("BANKROLL", "Live bankroll: 0 bets — сеть не считает ни один исход выигрышным в этом цикле.")
         elif reason == "insufficient_available_balance":
             add_ai_log("BANKROLL", "Live bankroll: 0 bets — available balance is 0 (all locked or ruined).", level="WARNING")
         elif reason == "all_fractions_below_min_stake":
             add_ai_log(
                 "BANKROLL",
-                f"Live bankroll: 0 bets — {place_result['candidates']} positive-EV candidate(s) found, "
+                f"Live bankroll: 0 bets — {place_result['candidates']} predicted-win candidate(s) found, "
                 f"but the allocator's best fraction was only {place_result['best_fraction_pct']}% "
                 f"of bank (needs >= {bankroll.MIN_STAKE_FRACTION * 100:.0f}%). "
                 "Stake head hasn't concentrated exposure on a favorite yet — expected while undertrained.",
@@ -516,7 +542,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
             release_connection(f_conn2)
 
             val_str = (
-                f", val_loss {metrics['val_loss']:.4f} / val_acc {metrics['val_accuracy']:.1f}%"
+                f", val_loss {metrics['val_loss']:.4f} / val_guess_rate {metrics['val_guess_rate']:.1f}%"
                 if metrics.get("val_loss") is not None else " (no validation split yet — need more resolved bets)"
             )
             bank = metrics.get("bankroll") or {}
@@ -526,7 +552,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 f"({metrics['positive_count']} win / {metrics['negative_count']} loss"
                 + (f", {metrics['samples_skipped']} skipped" if metrics["samples_skipped"] else "")
                 + f") — best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
-                f"train_loss {metrics['final_loss']:.4f} (train_acc {metrics['train_accuracy']:.1f}%)"
+                f"train_loss {metrics['final_loss']:.4f} (guess_rate {metrics['train_guess_rate']:.1f}%)"
                 + val_str
                 + f". Training bankroll: {bank.get('start', 0):.1f} → {bank.get('end', 0):.1f} ₽"
                 + (f" ({bank['ruin_events']} ruin(s) this pass)" if bank.get("ruin_events") else "")

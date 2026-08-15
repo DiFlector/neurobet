@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      // Нейроставки moved from /neurobets to the site root — keep old links working.
+      { source: "/neurobets", destination: "/", permanent: false },
+    ]
+  },
 }
 
 export default nextConfig

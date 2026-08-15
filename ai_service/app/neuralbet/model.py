@@ -49,6 +49,11 @@ BATCH_SIZE = int(os.getenv("NEURALBET_BATCH_SIZE", "128"))
 LEARNING_RATE = float(os.getenv("NEURALBET_LEARNING_RATE", "1e-3"))
 GRAD_CLIP_NORM = 1.0
 
+# Weight on the decision-head loss (the bet/no-bet verdict) relative to the win-head BCE.
+# 1.0 — same order of magnitude as bce_loss, so early training doesn't let one head starve
+# the other of gradient.
+DECISION_LOSS_WEIGHT = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT", "1.0"))
+
 # No GPU here (torch.cuda.is_available() is False in this container) — everything runs
 # on CPU, so thread count is the real lever. Defaults to PyTorch's own heuristic (which
 # undercounts on this host — observed torch.get_num_threads() == 6 on a 12-core
@@ -81,9 +86,15 @@ class OddsTrajectoryGRU(nn.Module):
     the odds curve by itself can't provide. Team identity uses a hashed embedding
     (TEAM_HASH_BUCKETS is far larger than the small closed sport/market vocabularies)
     since there's no fixed roster of every team/player Fonbet will ever cover.
-    Output: 3 raw logits per sample — [win_logit, stake_logit, exposure_logit]:
+    Output: 4 raw logits per sample — [win_logit, decision_logit, stake_logit,
+    exposure_logit]:
       - win_logit: sigmoid() gives the win-probability estimate (same role the old
-        single-output head had).
+        single-output head had) — still an input to the LightGBM/PyTorch ensemble blend.
+      - decision_logit: sigmoid() gives the model's own confidence in its bet/no-bet
+        verdict — >= 0.5 means "this outcome will win," trained with a cost-sensitive
+        loss (see train_online) instead of copying win_logit's threshold, so the network
+        learns where its own decision boundary should sit rather than inheriting a fixed
+        confidence cutoff from outside the model.
       - stake_logit / exposure_logit: only meaningful *relative to other candidates in
         the same betting round* — see bankroll.allocate(). Unused at plain inference.
     No activation is applied here; callers apply sigmoid/softmax as appropriate so the
@@ -105,7 +116,7 @@ class OddsTrajectoryGRU(nn.Module):
         self.team_embed = nn.Embedding(TEAM_HASH_BUCKETS, TEAM_EMB_DIM)
         self.fc1 = nn.Linear(hidden_dim + SPORT_EMB_DIM + MARKET_EMB_DIM + 2 * TEAM_EMB_DIM, 32)
         self.relu = nn.ReLU()
-        self.head = nn.Linear(32, 3)
+        self.head = nn.Linear(32, 4)
 
     def forward(
         self, x: torch.Tensor, sport_idx: torch.Tensor, market_idx: torch.Tensor,
@@ -146,6 +157,24 @@ def _build_sequence(step_pairs: List[Tuple[float, int]]) -> List[List[float]]:
     ]
 
 
+def _decision_loss_weights(coefficients: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """
+    Per-sample cost weights for the decision-head loss: plain BCE would just make the
+    verdict head copy the win head's 0.5 threshold, so instead the price of each mistake
+    is what it would actually cost a real bet. Predicting "will win" on a bet that loses
+    costs the whole stake (weight 1.0); predicting "will lose" on a bet that wins costs
+    the missed profit (coefficient - 1) — a high-odds miss should be penalized harder than
+    passing on a near-even-money one, or the head just learns to say "no" to everything
+    above 1/coeff. Clamped to >= 0.1 so a coefficient near 1.0 doesn't zero out its
+    gradient entirely.
+    """
+    return torch.where(
+        targets >= 0.5,
+        torch.clamp(coefficients - 1.0, min=0.1),
+        torch.ones_like(coefficients),
+    )
+
+
 class NeuralBetEnsemble:
     """
     Ensemble model combining PyTorch GRU sequence model and LightGBM GBDT.
@@ -179,22 +208,66 @@ class NeuralBetEnsemble:
         except Exception as e:
             logger.error(f"Error saving model weights: {e}")
 
+    def _load_model_state_soft(self, state_dict: Dict[str, Any]) -> bool:
+        """
+        Loads a checkpoint's weights, tolerating the head-shape change from adding the
+        decision-verdict output (3 logits -> 4). A plain load_state_dict() raises
+        RuntimeError on any shape mismatch, and the old code just dropped the whole
+        checkpoint on that error — silently resetting training to scratch on this exact
+        deploy. Instead, copy every matching tensor as-is, and for `head.weight`/
+        `head.bias` specifically, remap the old [win, stake, exposure] rows onto the new
+        [win, decision, stake, exposure] layout (old row 0 -> new row 0, old row 1 ->
+        new row 2, old row 2 -> new row 3); the new decision row keeps its random init.
+        Returns True if a shape remap actually happened (i.e. this is an old-format
+        checkpoint) — callers use this to know the saved optimizer momentum buffers for
+        `head.weight`/`head.bias` are now stale and must not be reused (see load_checkpoints).
+        """
+        own_state = self.pytorch_model.state_dict()
+        old_to_new_head_rows = [0, 2, 3]
+        head_resized = False
+        for name, param in state_dict.items():
+            if name not in own_state:
+                continue
+            target = own_state[name]
+            if param.shape == target.shape:
+                target.copy_(param)
+            elif name in ("head.weight", "head.bias") and param.shape[0] == 3 and target.shape[0] == 4:
+                with torch.no_grad():
+                    for old_idx, new_idx in enumerate(old_to_new_head_rows):
+                        target[new_idx].copy_(param[old_idx])
+                head_resized = True
+            else:
+                logger.warning(
+                    f"Skipping checkpoint tensor {name}: shape {tuple(param.shape)} "
+                    f"does not match model {tuple(target.shape)}."
+                )
+        self.pytorch_model.load_state_dict(own_state)
+        return head_resized
+
     def load_checkpoints(self):
         try:
             if os.path.exists(PYTORCH_WEIGHTS_PATH):
                 blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
-                if isinstance(blob, dict) and "model_state" in blob:
-                    self.pytorch_model.load_state_dict(blob["model_state"])
-                    if "optimizer_state" in blob:
-                        try:
-                            self.pytorch_optimizer.load_state_dict(blob["optimizer_state"])
-                        except Exception:
-                            # Optimizer shape changed (e.g. architecture bump) — keep the
-                            # fresh optimizer state, the model weights still loaded fine.
-                            pass
-                else:
-                    # Backward compat: older checkpoints were a bare state_dict.
-                    self.pytorch_model.load_state_dict(blob)
+                # Backward compat: older checkpoints were a bare state_dict rather than
+                # {"model_state": ...}.
+                state = blob["model_state"] if isinstance(blob, dict) and "model_state" in blob else blob
+                head_resized = self._load_model_state_soft(state)
+                # AdamW's load_state_dict() stores per-parameter momentum buffers
+                # *positionally*, with no shape check against the live model — a mismatch
+                # only blows up later, inside optimizer.step()'s elementwise ops against
+                # the (now differently-shaped) head.weight/head.bias gradients, as a
+                # "tensor a (3) must match tensor b (4)" RuntimeError on every single
+                # training step. So when the head was just remapped to a new shape, skip
+                # restoring the optimizer state entirely — a fresh AdamW simply rebuilds
+                # its momentum over the next few steps, which is harmless; reusing stale
+                # buffers for a resized layer is not.
+                if not head_resized and isinstance(blob, dict) and "optimizer_state" in blob:
+                    try:
+                        self.pytorch_optimizer.load_state_dict(blob["optimizer_state"])
+                    except Exception:
+                        # Optimizer shape changed (e.g. architecture bump) — keep the
+                        # fresh optimizer state, the model weights still loaded fine.
+                        pass
                 self.is_trained = True
                 logger.info(f"Successfully loaded PyTorch model weights from {PYTORCH_WEIGHTS_PATH}")
         except Exception as e:
@@ -233,7 +306,7 @@ class NeuralBetEnsemble:
         sport_path: Optional[str] = None,
         team_1: Optional[str] = None,
         team_2: Optional[str] = None,
-    ) -> Tuple[float, float, float, float, float, float]:
+    ) -> Tuple[float, float, float, float, float, float, float]:
         seq = _build_sequence(step_pairs)
         tensor_in = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)
         sp_idx = sport_index(sport_path)
@@ -249,8 +322,9 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             logits = self.pytorch_model(tensor_in, sport_tensor, market_tensor, team1_tensor, team2_tensor)[0]
             pytorch_prob = float(torch.sigmoid(logits[0]).item())
-            stake_logit = float(logits[1].item())
-            exposure_logit = float(logits[2].item())
+            decision_prob = float(torch.sigmoid(logits[1]).item())
+            stake_logit = float(logits[2].item())
+            exposure_logit = float(logits[3].item())
 
         score_diff = step_pairs[-1][1] if step_pairs else 0
         if self.lgb_trained and self.lgb_model is not None:
@@ -272,9 +346,12 @@ class NeuralBetEnsemble:
         win_probability = min(max(ensemble_ratio * 100.0, 12.0), 95.0)
         error_rate = round(100.0 - win_probability, 1)
 
-        return round(win_probability, 1), error_rate, round(lgb_score, 3), round(pytorch_prob, 3), stake_logit, exposure_logit
+        return (
+            round(win_probability, 1), error_rate, round(lgb_score, 3), round(pytorch_prob, 3),
+            round(decision_prob, 3), stake_logit, exposure_logit,
+        )
 
-    def predict_batch(self, items: List[Dict[str, Any]]) -> List[Tuple[float, float, float, float, float, float]]:
+    def predict_batch(self, items: List[Dict[str, Any]]) -> List[Tuple[float, float, float, float, float, float, float]]:
         """
         Same math as predict_single, but for a whole cycle's worth of live odds at once:
         one PyTorch forward pass and one LightGBM predict() call for the entire batch
@@ -284,8 +361,10 @@ class NeuralBetEnsemble:
         `sport_path`, `team_1`, `team_2` (used to condition both models — see
         app/neuralbet/context.py).
         Returns results in the same order as `items`: (win_probability, error_rate,
-        lgb_score, pytorch_score, stake_logit, exposure_logit) — the last two are only
-        meaningful for the live-bankroll allocator (bankroll.allocate), not stored in
+        lgb_score, pytorch_score, decision_prob, stake_logit, exposure_logit).
+        decision_prob is the model's own bet/no-bet verdict confidence (>= 0.5 means
+        "will win" — see OddsTrajectoryGRU's docstring); stake_logit/exposure_logit are
+        only meaningful for the live-bankroll allocator (bankroll.allocate), not stored in
         ai_predictions.
         """
         if not items:
@@ -305,8 +384,9 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             logits = self.pytorch_model(x_tensor, sport_tensor, market_tensor, team1_tensor, team2_tensor)
             pytorch_probs = torch.sigmoid(logits[:, 0]).tolist()
-            stake_logits = logits[:, 1].tolist()
-            exposure_logits = logits[:, 2].tolist()
+            decision_probs = torch.sigmoid(logits[:, 1]).tolist()
+            stake_logits = logits[:, 2].tolist()
+            exposure_logits = logits[:, 3].tolist()
 
         score_diffs = [(it["step_pairs"][-1][1] if it["step_pairs"] else 0) for it in items]
 
@@ -333,13 +413,15 @@ class NeuralBetEnsemble:
                 lgb_scores.append(min(max(implied_prob + trend_boost + score_boost, 0.12), 0.95))
 
         results = []
-        for pytorch_prob, lgb_score, stake_logit, exposure_logit in zip(pytorch_probs, lgb_scores, stake_logits, exposure_logits):
+        for pytorch_prob, lgb_score, decision_prob, stake_logit, exposure_logit in zip(
+            pytorch_probs, lgb_scores, decision_probs, stake_logits, exposure_logits
+        ):
             ensemble_ratio = 0.35 * pytorch_prob + 0.65 * lgb_score
             win_probability = min(max(ensemble_ratio * 100.0, 12.0), 95.0)
             error_rate = round(100.0 - win_probability, 1)
             results.append((
                 round(win_probability, 1), error_rate, round(lgb_score, 3), round(pytorch_prob, 3),
-                stake_logit, exposure_logit,
+                round(decision_prob, 3), stake_logit, exposure_logit,
             ))
         return results
 
@@ -471,18 +553,26 @@ class NeuralBetEnsemble:
         return sport_t, market_t, team1_t, team2_t
 
     def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float]:
-        """Returns (bce_loss, accuracy) for a prepared batch in eval mode, no grad."""
+        """
+        Returns (decision_loss, guess_rate) for a prepared batch in eval mode, no grad.
+        Reads the *decision* head (logits[:, 1]), not the win-probability head — "guessed
+        right" now means the model's own bet/no-bet verdict matched the outcome, which is
+        the number the training loop selects its best epoch on and the number the UI/logs
+        report as accuracy (see train_online).
+        """
         if not prepared:
             return float("nan"), float("nan")
         seqs = torch.tensor([_build_sequence(p["step_pairs"]) for p in prepared], dtype=torch.float32)
         targets = torch.tensor([p["target"] for p in prepared], dtype=torch.float32).unsqueeze(1)
+        coeffs = torch.tensor([p["coefficient"] for p in prepared], dtype=torch.float32).unsqueeze(1)
+        weights = _decision_loss_weights(coeffs, targets)
         sport_t, market_t, team1_t, team2_t = self._context_tensors(prepared)
         self.pytorch_model.eval()
         with torch.no_grad():
-            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 0:1]
-            loss = nn.functional.binary_cross_entropy_with_logits(logits, targets).item()
-            acc = ((torch.sigmoid(logits) >= 0.5).float() == targets).float().mean().item()
-        return loss, acc
+            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1:2]
+            loss = nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights).item()
+            guess_rate = ((torch.sigmoid(logits) >= 0.5).float() == targets).float().mean().item()
+        return loss, guess_rate
 
     def _bankroll_pass(
         self, prepared: List[Dict[str, Any]], account: str, commit: bool,
@@ -519,12 +609,20 @@ class NeuralBetEnsemble:
                 seqs = torch.tensor([_build_sequence(c["step_pairs"]) for c in chunk], dtype=torch.float32)
                 sport_t, market_t, team1_t, team2_t = self._context_tensors(chunk)
                 logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
-                stake_logits = logits[:, 1]
-                exposure_logit = logits[:, 2].mean()
+                stake_logits = logits[:, 2]
+                exposure_logit = logits[:, 3].mean()
                 coeffs = torch.tensor([c["coefficient"] for c in chunk], dtype=torch.float32)
                 wins = torch.tensor([c["target"] for c in chunk], dtype=torch.float32)
 
                 fractions = bankroll.allocate(stake_logits, exposure_logit)
+                # Only actually risk money on candidates the model's own verdict says will
+                # win — see decision_logit in OddsTrajectoryGRU. The mask is a hard,
+                # non-differentiable decision (detached), same as allocate()'s own
+                # min-stake/max-positions cuts; gradient into stake_logits still flows
+                # through the softmax weights of whichever candidates the mask keeps.
+                verdict = (torch.sigmoid(logits[:, 1]) >= 0.5).float().detach()
+                fractions = fractions * verdict
+
                 gain = bankroll.settle(fractions, coeffs, wins)
                 round_loss = -torch.log(torch.clamp(gain, min=0.01))
 
@@ -581,15 +679,22 @@ class NeuralBetEnsemble:
     ) -> Dict[str, Any]:
         """
         Online-training pass: mini-batch AdamW over a batch of resolved bets, combining
-        two loss terms —
-          1. BCE-with-logits on the win/loss label (the "is this bet good" signal), and
-          2. a bankroll loss: -log(bank_growth) replayed over rounds of candidates using
-             the model's own stake/exposure heads (bankroll.allocate/settle) — this is
-             what teaches the network that betting size matters, not just direction
-             (see plan part C). Ruin (bank hits 0) adds a heavy penalty and resets the
-             *virtual* training bank used for this loss back to start_balance.
+        three loss terms —
+          1. BCE-with-logits on the win/loss label for the win-probability head (still
+             feeds the LightGBM/PyTorch ensemble blend used for the displayed percentage),
+          2. a cost-sensitive BCE on the *decision* head — the bet/no-bet verdict — whose
+             per-sample weight is the coefficient-derived cost of getting that particular
+             bet wrong (see _decision_loss_weights). This is what teaches the network to
+             say "will win" / "will lose" instead of copying the win head's fixed 0.5
+             cutoff, and
+          3. a bankroll loss: -log(bank_growth) replayed over rounds of candidates using
+             the model's own decision/stake/exposure heads (bankroll.allocate/settle,
+             masked by the decision verdict — see _bankroll_pass) — this is what teaches
+             the network that betting size matters, not just direction (see plan part C).
+             Ruin (bank hits 0) adds a heavy penalty and resets the *virtual* training
+             bank used for this loss back to start_balance.
         Runs up to `epochs` passes but keeps the weights from whichever epoch had the
-        best held-out (val_data) BCE loss — early-stopping model selection — since
+        best held-out (val_data) decision-loss — early-stopping model selection — since
         the hardware budget allows a generous epoch count without every extra epoch
         being pure overfitting. `on_epoch(epoch_index, train_loss, val_loss)` is called
         after every epoch if provided.
@@ -601,7 +706,7 @@ class NeuralBetEnsemble:
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
             "negative_count": 0, "epochs_run": 0, "epoch_losses": [], "initial_loss": None,
-            "final_loss": None, "train_accuracy": None, "val_loss": None, "val_accuracy": None,
+            "final_loss": None, "train_guess_rate": None, "val_loss": None, "val_guess_rate": None,
             "best_epoch": None, "bankroll": None,
         }
 
@@ -648,7 +753,19 @@ class NeuralBetEnsemble:
                 logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
                 win_logits = logits[:, 0:1]
                 bce_loss = bce(win_logits, targets)
-                loss = bce_loss
+
+                # Decision-head loss: cost-weighted so the network learns its own
+                # bet/no-bet boundary instead of inheriting the win-head's 0.5 cutoff —
+                # see _decision_loss_weights. This is also what selection_metric/train_loss
+                # below track, since "guessed right" is judged on this head, not win_logits.
+                decision_logits = logits[:, 1:2]
+                coeffs_t = torch.tensor([b["coefficient"] for b in batch], dtype=torch.float32).unsqueeze(1)
+                decision_weights = _decision_loss_weights(coeffs_t, targets)
+                decision_loss = nn.functional.binary_cross_entropy_with_logits(
+                    decision_logits, targets, weight=decision_weights,
+                )
+
+                loss = bce_loss + DECISION_LOSS_WEIGHT * decision_loss
 
                 bank_pass = self._bankroll_pass(batch, account="training", commit=False)
                 if bank_pass["loss"] is not None:
@@ -657,12 +774,12 @@ class NeuralBetEnsemble:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.pytorch_model.parameters(), GRAD_CLIP_NORM)
                 self.pytorch_optimizer.step()
-                epoch_train_losses.append(float(bce_loss.item()))
+                epoch_train_losses.append(float(decision_loss.item()))
 
             train_loss = sum(epoch_train_losses) / max(len(epoch_train_losses), 1)
             epoch_losses.append(train_loss)
 
-            val_loss, val_acc = self._forward_metrics(prepared_val) if prepared_val else (train_loss, None)
+            val_loss, val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (train_loss, None)
             selection_metric = val_loss if prepared_val else train_loss
 
             logger.info(
@@ -690,8 +807,8 @@ class NeuralBetEnsemble:
         if best_state is not None:
             self.pytorch_model.load_state_dict(best_state)
 
-        final_val_loss, final_val_acc = self._forward_metrics(prepared_val) if prepared_val else (None, None)
-        final_train_loss, final_train_acc = self._forward_metrics(prepared)
+        final_val_loss, final_val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (None, None)
+        final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
 
         # Commit the winning epoch's bankroll behavior for real, once.
         bank_result = self._bankroll_pass(prepared, account="training", commit=True)
@@ -717,9 +834,9 @@ class NeuralBetEnsemble:
             "epoch_losses": [round(l, 4) for l in epoch_losses],
             "initial_loss": round(epoch_losses[0], 4) if epoch_losses else None,
             "final_loss": round(final_train_loss, 4),
-            "train_accuracy": round(final_train_acc * 100.0, 1),
+            "train_guess_rate": round(final_train_guess_rate * 100.0, 1),
             "val_loss": round(final_val_loss, 4) if final_val_loss is not None else None,
-            "val_accuracy": round(final_val_acc * 100.0, 1) if final_val_acc is not None else None,
+            "val_guess_rate": round(final_val_guess_rate * 100.0, 1) if final_val_guess_rate is not None else None,
             "best_epoch": best_epoch,
             "bankroll": {
                 "start": round(bank_result["bank_start"], 2),
