@@ -1319,8 +1319,6 @@ def get_bet_type_stats() -> Dict[str, Any]:
 def get_neurobets_history(
     sport_filter: Optional[str] = None,
     search: Optional[str] = None,
-    min_odds: float = 1.1,
-    max_odds: float = 2.1,
     outcome_filter: Optional[str] = None,
     limit: int = 50,
     offset: int = 0
@@ -1331,9 +1329,9 @@ def get_neurobets_history(
     base_query = """
         FROM finished_bets h
         JOIN finished_events e ON h.event_id = e.event_id
-        WHERE h.initial_coefficient >= %s AND h.initial_coefficient <= %s
+        WHERE 1=1
     """
-    params = [min_odds, max_odds]
+    params = []
 
     if sport_filter and sport_filter.lower() != "all":
         base_query += " AND e.sport_path ILIKE %s"

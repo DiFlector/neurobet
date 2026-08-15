@@ -254,8 +254,6 @@ def read_bet_type_stats():
 def read_neurobets_history(
     sport: Optional[str] = Query(None, description="Filter by sport path"),
     search: Optional[str] = Query(None, description="Search by team or match name"),
-    min_odds: float = Query(1.1, description="Min odds bound"),
-    max_odds: float = Query(2.1, description="Max odds bound"),
     outcome: Optional[str] = Query(None, description="Filter by outcome: correct, incorrect, push, or pending"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset")
@@ -264,8 +262,6 @@ def read_neurobets_history(
         res = get_neurobets_history(
             sport_filter=sport,
             search=search,
-            min_odds=min_odds,
-            max_odds=max_odds,
             outcome_filter=outcome,
             limit=limit,
             offset=offset

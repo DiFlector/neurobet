@@ -155,7 +155,7 @@ export default function NeurobetsPage() {
   useEffect(() => {
     historyOffsetRef.current = 0
     setHistoryItems([])
-  }, [selectedSport, minOdds, maxOdds, activeTab, historyOutcomeFilter])
+  }, [selectedSport, activeTab, historyOutcomeFilter])
 
   const fetchStats = useCallback(async () => {
     try {
@@ -180,6 +180,46 @@ export default function NeurobetsPage() {
       // Ignore — panel just keeps showing the last known state
     }
   }, [API_BASE])
+
+  // Lightweight badge-only refreshes — fetch just the count for whichever tab is NOT
+  // currently active, so both tab badges keep updating themselves in the background
+  // instead of only refreshing when the user actually switches to that tab.
+  const fetchLiveTotal = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        sort: sortMode,
+        min_odds: minOdds.toString(),
+        max_odds: maxOdds.toString(),
+        limit: "1",
+        offset: "0",
+        verdict: verdictFilter
+      })
+      if (selectedSport !== "all") params.append("sport", selectedSport)
+      if (searchQuery) params.append("search", searchQuery)
+      const res = await fetch(`${API_BASE}/api/neurobets/top?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data.total === "number") setLiveTotal(data.total)
+      }
+    } catch (err) {
+      // Ignore — badge just keeps showing the last known count
+    }
+  }, [API_BASE, sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+
+  const fetchHistoryTotal = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ limit: "1", offset: "0" })
+      if (selectedSport !== "all") params.append("sport", selectedSport)
+      if (historyOutcomeFilter !== "all") params.append("outcome", historyOutcomeFilter)
+      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.summary) setHistorySummary(data.summary)
+      }
+    } catch (err) {
+      // Ignore — badge just keeps showing the last known count
+    }
+  }, [API_BASE, selectedSport, historyOutcomeFilter])
 
   // Pulls the bot's currently-open real stakes so each matching lot card can show
   // "поставлено X ₽ / получит Y ₽ при выигрыше". Doesn't trigger a predictions re-fetch —
@@ -219,8 +259,6 @@ export default function NeurobetsPage() {
     else setHistoryLoading(true)
     try {
       const params = new URLSearchParams({
-        min_odds: minOdds.toString(),
-        max_odds: maxOdds.toString(),
         limit: limit.toString(),
         offset: offset.toString()
       })
@@ -244,7 +282,7 @@ export default function NeurobetsPage() {
       setHistoryLoading(false)
       setLoadingMoreHistory(false)
     }
-  }, [API_BASE, selectedSport, minOdds, maxOdds, historyOutcomeFilter])
+  }, [API_BASE, selectedSport, historyOutcomeFilter])
 
   const loadMoreHistory = useCallback(() => {
     if (loadingMoreHistory || historyLoading) return
@@ -342,23 +380,36 @@ export default function NeurobetsPage() {
       fetchOpenBotBets().then(() => fetchNeurobets(0, PAGE_SIZE, "replace"))
       fetchStats()
       fetchBankroll()
-
-      if (!autoRefresh) return
-      // Re-fetch from the top on each refresh, but keep however many rows the user
-      // has already scrolled to load, so auto-refresh doesn't collapse the list back to one page.
-      const interval = setInterval(() => {
-        fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
-        fetchStats()
-        fetchBankroll()
-      }, 10000)
-      return () => clearInterval(interval)
+      fetchHistoryTotal()
     } else {
       fetchHistory(0, PAGE_SIZE, "replace")
       fetchStats()
       fetchBankroll()
       fetchOpenBotBets()
+      fetchLiveTotal()
     }
-  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchBankroll, fetchOpenBotBets, autoRefresh])
+
+    if (!autoRefresh) return
+    // Refresh the active tab's full list/content, but also keep the OTHER tab's badge
+    // count (the number in parentheses) ticking over in the background with a cheap
+    // count-only request, so both badges stay live regardless of which tab is open —
+    // not just the one the user happens to be looking at.
+    const interval = setInterval(() => {
+      fetchStats()
+      fetchBankroll()
+      if (activeTab === "live") {
+        // Re-fetch from the top on each refresh, but keep however many rows the user
+        // has already scrolled to load, so auto-refresh doesn't collapse the list back to one page.
+        fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
+        fetchHistoryTotal()
+      } else {
+        fetchHistory(0, Math.max(historyOffsetRef.current, PAGE_SIZE), "replace")
+        fetchOpenBotBets()
+        fetchLiveTotal()
+      }
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
 
   const sportsList = SPORT_FILTER_OPTIONS
 
@@ -454,10 +505,6 @@ export default function NeurobetsPage() {
           // only actually leaves the total once a bet settles and balance/locked update.
           const totalEquity = Number(acc.balance) + Number(acc.locked || 0)
           const roiPct = acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
-          // Spendable balance can legitimately be ~0 ₽ while every ₽ is riding on open
-          // bets — shown as "все в игре" (nothing spendable right now) alongside the
-          // equity-based ROI above, rather than implying a loss that hasn't happened.
-          const isAllInLocked = Number(acc.balance) <= 0.01 && Number(acc.locked) > 0
           return (
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
@@ -473,15 +520,9 @@ export default function NeurobetsPage() {
                 <div className="text-3xl font-black font-mono text-white">
                   {Number(acc.balance).toFixed(1)} ₽
                 </div>
-                {isAllInLocked ? (
-                  <div className="text-sm font-bold font-mono mb-1 text-[#fdcb6e]">
-                    🎲 всё в игре
-                  </div>
-                ) : (
-                  <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
-                    {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
-                  </div>
-                )}
+                <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                  {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                </div>
               </div>
 
               <div className="grid grid-cols-5 gap-2 text-center">
@@ -552,7 +593,7 @@ export default function NeurobetsPage() {
                       )}
                       <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
                       <div className="text-[11px] text-neutral-400 truncate">
-                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                        {b.market_prefix} — {b.label}
                       </div>
                       <div className="text-[10px] text-neutral-500 font-mono flex items-center gap-1.5 flex-wrap">
                         <span>Коэф. ставки {betCoeff.toFixed(2)}</span>
@@ -639,7 +680,7 @@ export default function NeurobetsPage() {
                       )}
                       <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
                       <div className="text-[11px] text-neutral-400 truncate">
-                        {b.market_prefix} — {b.label} {b.parameter ? `(${b.parameter})` : ""}
+                        {b.market_prefix} — {b.label}
                       </div>
                       <div className="text-[10px] text-neutral-500 font-mono">
                         Коэф. {Number(b.coefficient).toFixed(2)} · Вероятность {Number(b.win_probability).toFixed(1)}%
@@ -743,22 +784,22 @@ export default function NeurobetsPage() {
               </div>
             )}
 
-            {/* Odds Range Bounds Indicator */}
-            <div className="space-y-1 bg-neutral-950 p-3 rounded-xl border border-neutral-800/80 shrink-0">
-              <div className="text-xs font-semibold text-neutral-300 flex items-center justify-between gap-4">
-                <span>Границы коэффициентов:</span>
-                <span className="font-mono text-[#fdcb6e] font-bold">
-                  {minOdds.toFixed(2)} — {maxOdds.toFixed(2)}
+            {/* Odds Range Bounds Indicator (live tab only — history is unfiltered by odds) */}
+            {activeTab === "live" && (
+              <div className="space-y-1 bg-neutral-950 p-3 rounded-xl border border-neutral-800/80 shrink-0">
+                <div className="text-xs font-semibold text-neutral-300 flex items-center justify-between gap-4">
+                  <span>Границы коэффициентов:</span>
+                  <span className="font-mono text-[#fdcb6e] font-bold">
+                    {minOdds.toFixed(2)} — {maxOdds.toFixed(2)}
+                  </span>
+                </div>
+                <span className="text-[11px] text-neutral-400 italic">
+                  {sortMode === "best"
+                    ? "Баланс шанса выигрыша и размера коэффициента"
+                    : "Фильтр наивысшей вероятности захода"}
                 </span>
               </div>
-              <span className="text-[11px] text-neutral-400 italic">
-                {activeTab === "live"
-                  ? sortMode === "best"
-                    ? "Баланс шанса выигрыша и размера коэффициента"
-                    : "Фильтр наивысшей вероятности захода"
-                  : "Золотая середина рекомендованных ставок"}
-              </span>
-            </div>
+            )}
           </div>
 
           {/* Search & Verdict Filter (LIVE tab only) */}
