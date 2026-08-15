@@ -1,4 +1,4 @@
-# ⚡ Autobet - Fonbet LIVE Parser & Odds History Platform
+# ⚡ Neurobet
 
 ![Version](https://img.shields.io/badge/version-2.0-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.11-green.svg)
@@ -6,7 +6,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)
 
-**Autobet** — современная система автоматического парсинга LIVE матчей и коэффициентов с Fonbet, сохранением снимков в SQLite и интерактивным отображением истории коэффициентов в графиках.
+**Neurobet** — современная система автоматического парсинга LIVE матчей и коэффициентов с Fonbet, сохранением снимков в SQLite и интерактивным отображением истории коэффициентов в графиках.
 
 ---
 
@@ -29,7 +29,7 @@
 ## 🏗️ Архитектура проекта
 
 ```
-autobet/
+neurobet/
 ├── backend/                  # FastAPI сервис (Python 3.11 + uv)
 │   ├── ai/
 │   │   └── deepseek/         # WASM SHA3 PoW модуль DeepSeek Web Client
