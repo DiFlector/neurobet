@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 
 import torch
 
-from app.core.database import get_connection, get_finished_connection, save_ai_predictions
+from app.core.database import get_connection, get_finished_connection, save_ai_predictions, release_connection
 from app.neuralbet.model import NeuralBetEnsemble
 from app.neuralbet import bankroll
 
@@ -106,17 +106,17 @@ def _get_val_cutoff(f_cursor) -> Optional[str]:
     never used for training — see plan B6. Returns None if there isn't enough resolved
     history yet to bother holding anything out.
     """
-    total = f_cursor.execute(
-        "SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NOT NULL"
-    ).fetchone()["c"]
+    f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NOT NULL")
+    total = f_cursor.fetchone()["c"]
     if total < VAL_MIN_POOL:
         return None
     val_count = max(int(total * VAL_FRACTION), 10)
-    row = f_cursor.execute(
+    f_cursor.execute(
         "SELECT finished_at FROM finished_bets WHERE is_win IS NOT NULL "
-        "ORDER BY finished_at DESC LIMIT 1 OFFSET ?",
+        "ORDER BY finished_at DESC LIMIT 1 OFFSET %s",
         (val_count - 1,),
-    ).fetchone()
+    )
+    row = f_cursor.fetchone()
     return row["finished_at"] if row else None
 
 
@@ -150,7 +150,7 @@ def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dic
     held-out validation window. Returns (rows, key_list) where key_list is the
     (event_id, factor_id, parameter, market_prefix) tuples to bump trained_count for.
     """
-    where_val = "AND h.finished_at < ?" if val_cutoff else ""
+    where_val = "AND h.finished_at < %s" if val_cutoff else ""
     params_val = [val_cutoff] if val_cutoff else []
 
     fresh_n = int(TRAIN_BATCH_TOTAL * TRAIN_FRESH_SHARE)
@@ -162,7 +162,7 @@ def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dic
         JOIN finished_events f ON h.event_id = f.event_id
         WHERE h.is_win IS NOT NULL AND h.trained_count = 0 {where_val}
         ORDER BY h.finished_at DESC
-        LIMIT ?
+        LIMIT %s
     """, params_val + [fresh_n])
     fresh_rows = f_cursor.fetchall()
 
@@ -175,9 +175,9 @@ def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dic
                    f.sport_path, f.team_1, f.team_2
             FROM finished_bets h
             JOIN finished_events f ON h.event_id = f.event_id
-            WHERE h.is_win IS NOT NULL AND h.trained_count BETWEEN 1 AND ? {where_val}
+            WHERE h.is_win IS NOT NULL AND h.trained_count BETWEEN 1 AND %s {where_val}
             ORDER BY RANDOM()
-            LIMIT ?
+            LIMIT %s
         """, [MAX_REPLAY - 1] + params_val + [replay_n])
         replay_rows = f_cursor.fetchall()
 
@@ -196,7 +196,7 @@ def _fetch_val_batch(f_cursor, val_cutoff: Optional[str]) -> List[Dict[str, Any]
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL AND h.finished_at >= ?
+        WHERE h.is_win IS NOT NULL AND h.finished_at >= %s
         ORDER BY h.finished_at ASC
         LIMIT 400
     """, (val_cutoff,))
@@ -207,8 +207,8 @@ def _mark_trained(f_cursor, keys: List[tuple]):
     for eid, fid, param, prefix in keys:
         f_cursor.execute("""
             UPDATE finished_bets SET trained_count = trained_count + 1
-            WHERE event_id = ? AND factor_id = ? AND COALESCE(parameter,'') = COALESCE(?,'')
-              AND COALESCE(market_prefix,'') = COALESCE(?,'')
+            WHERE event_id = %s AND factor_id = %s AND COALESCE(parameter,'') = COALESCE(%s,'')
+              AND COALESCE(market_prefix,'') = COALESCE(%s,'')
         """, (eid, fid, param, prefix))
 
 
@@ -303,7 +303,11 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
     # only if this was invoked without a pinned timestamp (e.g. ai_service restarted and
     # something calls this directly) — that's still "freshest available," just not
     # provably tied to a specific completed scrape.
-    target_ts = scrape_timestamp or cursor.execute("SELECT MAX(last_updated_at) FROM events").fetchone()[0]
+    if scrape_timestamp:
+        target_ts = scrape_timestamp
+    else:
+        cursor.execute("SELECT MAX(last_updated_at) FROM events")
+        target_ts = cursor.fetchone()["max"]
     cursor.execute("""
         SELECT
             l.event_id, l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
@@ -312,7 +316,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         JOIN events e ON l.event_id = e.event_id
         WHERE e.is_live = 1
           AND l.updated_at = e.last_updated_at
-          AND e.last_updated_at = ?
+          AND e.last_updated_at = %s
     """, (target_ts,))
     live_odds_rows = cursor.fetchall()
 
@@ -324,13 +328,12 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
     event_ids = list({row["event_id"] for row in live_odds_rows})
     trajectory_map: Dict[tuple, List[Tuple[float, int]]] = {}
     if event_ids:
-        placeholders = ",".join("?" for _ in event_ids)
-        cursor.execute(f"""
+        cursor.execute("""
             SELECT event_id, factor_id, parameter, market_prefix, coefficient, score_at_time
             FROM odds_history
-            WHERE event_id IN ({placeholders})
+            WHERE event_id = ANY(%s)
             ORDER BY id ASC
-        """, event_ids)
+        """, (event_ids,))
         for h in cursor.fetchall():
             key = (h["event_id"], h["factor_id"], str(h["parameter"] or ""), h["market_prefix"] or "")
             trajectory_map.setdefault(key, []).append(
@@ -401,7 +404,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
     if predictions:
         save_ai_predictions(predictions, timestamp_str)
         add_ai_log("INFERENCE", f"Evaluated predictions for {len(predictions)} active live outcomes. (PyTorch & LightGBM scores saved)")
-    conn.close()
+    release_connection(conn)
 
     # --- Live bankroll: propose bets to backend, which validates freshness, executes,
     # and settles resolved ones on its own cycle (see backend/database.py) ---
@@ -478,14 +481,14 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                        f.sport_path, f.team_1, f.team_2
                 FROM finished_bets h
                 JOIN finished_events f ON h.event_id = f.event_id
-                WHERE h.is_win IS NOT NULL AND (? IS NULL OR h.finished_at < ?)
+                WHERE h.is_win IS NOT NULL AND (%s IS NULL OR h.finished_at < %s)
                 ORDER BY h.finished_at DESC
-                LIMIT ?
+                LIMIT %s
             """, (val_cutoff, val_cutoff, LGB_TRAIN_LIMIT))
             lgb_rows = to_lgb_rows([_row_to_sample(r) for r in f_cursor.fetchall()])
             lgb_val_rows = to_lgb_rows(val_samples)
 
-        f_conn.close()
+        release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished training db: {e}")
 
@@ -510,7 +513,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
             f_cursor2 = f_conn2.cursor()
             _mark_trained(f_cursor2, train_keys)
             f_conn2.commit()
-            f_conn2.close()
+            release_connection(f_conn2)
 
             val_str = (
                 f", val_loss {metrics['val_loss']:.4f} / val_acc {metrics['val_accuracy']:.1f}%"

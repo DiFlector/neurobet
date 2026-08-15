@@ -160,7 +160,7 @@ def read_matches(
         # Returning a JSONResponse directly skips FastAPI's default jsonable_encoder
         # pass, which recursively re-validates every value with isinstance checks — for
         # this payload's ~250k nested odds rows that pass alone took minutes. The data
-        # is already plain str/int/float/bool/None from sqlite3, so plain json.dumps
+        # is already plain str/int/float/bool/None from psycopg2's RealDictCursor, so plain json.dumps
         # (which JSONResponse uses) is sufficient and orders of magnitude faster.
         return JSONResponse(content={
             "status": "success",

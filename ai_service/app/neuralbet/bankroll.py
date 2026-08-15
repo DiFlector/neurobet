@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import torch
 
-from app.core.database import get_finished_connection
+from app.core.database import get_finished_connection, release_connection
 from app.config import BACKEND_URL
 
 # ---- Tunable knobs (env-overridable so they can be tuned without a code change) ----
@@ -53,8 +53,10 @@ def now_iso() -> str:
 
 def get_account(account: str) -> Dict[str, Any]:
     conn = get_finished_connection()
-    row = conn.execute("SELECT * FROM bankroll_accounts WHERE account = ?", (account,)).fetchone()
-    conn.close()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
+    row = cur.fetchone()
+    release_connection(conn)
     if row is None:
         return {
             "account": account, "balance": START_BALANCE, "start_balance": START_BALANCE,
@@ -69,16 +71,17 @@ def reset_account(account: str, start_balance: Optional[float] = None) -> Dict[s
     """Manual reset — the only way the 'live' account can ever come back from ruin."""
     sb = start_balance if start_balance is not None else START_BALANCE
     conn = get_finished_connection()
-    conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         INSERT INTO bankroll_accounts (account, balance, start_balance, peak_balance, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT(account) DO UPDATE SET
             balance = excluded.balance, start_balance = excluded.start_balance,
             peak_balance = excluded.peak_balance, locked = 0, is_ruined = 0,
             updated_at = excluded.updated_at;
     """, (account, sb, sb, sb, now_iso()))
     conn.commit()
-    conn.close()
+    release_connection(conn)
     return get_account(account)
 
 
@@ -96,6 +99,7 @@ def apply_round_result(
     returns, so a fresh round can bet again immediately.
     """
     conn = get_finished_connection()
+    cur = conn.cursor()
     acc = get_account(account)
     balance_before = acc["balance"]
     balance_after = balance_before - staked + returned
@@ -111,23 +115,23 @@ def apply_round_result(
     peak = max(acc["peak_balance"], balance_after)
     round_no = acc["rounds"] + 1
 
-    conn.execute("""
+    cur.execute("""
         UPDATE bankroll_accounts SET
-            balance = ?, peak_balance = ?, rounds = ?, bets_placed = bets_placed + ?,
-            wins = wins + ?, losses = losses + ?, total_staked = total_staked + ?,
-            total_returned = total_returned + ?, ruin_count = ?, is_ruined = ?, updated_at = ?
-        WHERE account = ?
+            balance = %s, peak_balance = %s, rounds = %s, bets_placed = bets_placed + %s,
+            wins = wins + %s, losses = losses + %s, total_staked = total_staked + %s,
+            total_returned = total_returned + %s, ruin_count = %s, is_ruined = %s, updated_at = %s
+        WHERE account = %s
     """, (
         balance_after, peak, round_no, bets_count, wins, losses, staked, returned,
         ruin_count, is_ruined, now_iso(), account,
     ))
-    conn.execute("""
+    cur.execute("""
         INSERT INTO bankroll_ledger
             (account, round_no, balance_before, balance_after, staked, returned, bets_count, ruined, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (account, round_no, balance_before, balance_after, staked, returned, bets_count, int(ruined), now_iso()))
     conn.commit()
-    conn.close()
+    release_connection(conn)
     return get_account(account)
 
 
@@ -136,14 +140,15 @@ def lock_stake(account: str, amount: float) -> None:
     `locked` is money that's already left the spendable balance but hasn't been decided
     yet — it only returns (in part or in full) when settle_stake resolves it."""
     conn = get_finished_connection()
-    conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         UPDATE bankroll_accounts SET
-            balance = balance - ?, locked = locked + ?, bets_placed = bets_placed + 1,
-            total_staked = total_staked + ?, updated_at = ?
-        WHERE account = ?
+            balance = balance - %s, locked = locked + %s, bets_placed = bets_placed + 1,
+            total_staked = total_staked + %s, updated_at = %s
+        WHERE account = %s
     """, (amount, amount, amount, now_iso(), account))
     conn.commit()
-    conn.close()
+    release_connection(conn)
 
 
 def settle_stake(account: str, stake: float, payout: float, outcome: str) -> Dict[str, Any]:
@@ -154,6 +159,7 @@ def settle_stake(account: str, stake: float, payout: float, outcome: str) -> Dic
     one of "win"/"loss"/"void", used only for the wins/losses counters.
     """
     conn = get_finished_connection()
+    cur = conn.cursor()
     acc = get_account(account)
     balance_before = acc["balance"]
     balance_after = balance_before + payout
@@ -169,33 +175,35 @@ def settle_stake(account: str, stake: float, payout: float, outcome: str) -> Dic
         is_ruined = 1
 
     peak = max(acc["peak_balance"], balance_after)
-    conn.execute("""
+    cur.execute("""
         UPDATE bankroll_accounts SET
-            balance = ?, locked = ?, peak_balance = ?, total_returned = total_returned + ?,
-            wins = wins + ?, losses = losses + ?, ruin_count = ?, is_ruined = ?, updated_at = ?
-        WHERE account = ?
+            balance = %s, locked = %s, peak_balance = %s, total_returned = total_returned + %s,
+            wins = wins + %s, losses = losses + %s, ruin_count = %s, is_ruined = %s, updated_at = %s
+        WHERE account = %s
     """, (
         balance_after, locked_after, peak, payout,
         int(outcome == "win"), int(outcome == "loss"),
         ruin_count, is_ruined, now_iso(), account,
     ))
-    conn.execute("""
+    cur.execute("""
         INSERT INTO bankroll_ledger
             (account, round_no, balance_before, balance_after, staked, returned, bets_count, ruined, created_at)
-        VALUES (?, NULL, ?, ?, ?, ?, 1, ?, ?)
+        VALUES (%s, NULL, %s, %s, %s, %s, 1, %s, %s)
     """, (account, balance_before, balance_after, stake, payout, int(ruined), now_iso()))
     conn.commit()
-    conn.close()
+    release_connection(conn)
     return get_account(account)
 
 
 def get_ledger(account: str, limit: int = 200) -> List[Dict[str, Any]]:
     conn = get_finished_connection()
-    rows = conn.execute(
-        "SELECT * FROM bankroll_ledger WHERE account = ? ORDER BY id DESC LIMIT ?",
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM bankroll_ledger WHERE account = %s ORDER BY id DESC LIMIT %s",
         (account, limit),
-    ).fetchall()
-    conn.close()
+    )
+    rows = cur.fetchall()
+    release_connection(conn)
     return [dict(r) for r in rows]
 
 

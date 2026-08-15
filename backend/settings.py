@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     DEEPSEEK_TOKEN: str = ""
 
     # Database Settings
-    DATABASE_PATH: str = str(PROJECT_ROOT / "data" / "autobet.db")
+    DATABASE_URL: str = "postgresql://autobet:autobet@postgres:5432/autobet"
 
     # Scraper Settings
     SCRAPE_INTERVAL_SECONDS: int = 15

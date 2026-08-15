@@ -1,4 +1,27 @@
+# Schema is managed by Alembic (see db/), not auto-applied on container start.
+# First-time setup / after adding a new revision:
+#   docker compose run --rm --no-deps -v ./db:/db -w /db backend alembic upgrade head
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: autobet_postgres
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-autobet}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-autobet}
+      - POSTGRES_DB=${POSTGRES_DB:-autobet}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    # Deliberately no `ports:` mapping — reachable only from other containers on the
+    # Docker network (backend, ai), not from the host.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autobet} -d ${POSTGRES_DB:-autobet}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -9,13 +32,16 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/autobet.db}
+      - DATABASE_URL=${DATABASE_URL}
       - DEEPSEEK_TOKEN=${DEEPSEEK_TOKEN}
       - AI_SERVICE_URL=http://ai:8001
     volumes:
       - ./data:/app/data
     depends_on:
-      - ai
+      ai:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   ai:
@@ -28,13 +54,16 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/autobet.db}
+      - DATABASE_URL=${DATABASE_URL}
       # Internal Docker network address of the backend service — used so ai_service
       # can read its live-account balance and propose bet candidates over HTTP instead
       # of writing bankroll_accounts/live_bets directly (backend is the sole writer).
       - BACKEND_URL=http://backend:8000
     volumes:
       - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:

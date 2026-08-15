@@ -1,4 +1,3 @@
-import sqlite3
 import json
 import math
 import os
@@ -7,330 +6,38 @@ import logging
 from typing import List, Dict, Any, Optional, Iterable, Tuple
 from datetime import datetime, timezone
 
+import psycopg2
+from psycopg2 import pool
+from psycopg2.extras import RealDictCursor
+
 from settings import settings
 from parser_service import OUTCOME_FAMILY_MAP
 
 logger = logging.getLogger("database")
 
-DB_PATH = settings.DATABASE_PATH
-FINISHED_DB_PATH = os.path.join(os.path.dirname(DB_PATH), "autobet_finished.db")
+_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, dsn=settings.DATABASE_URL)
 
-def py_lower(val: Any) -> str:
-    if val is None:
-        return ""
-    return str(val).lower()
-
-def _tune_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
-    # WAL lets readers and the writer work concurrently instead of blocking each other,
-    # and busy_timeout makes a connection wait out a brief lock (e.g. the other process
-    # mid-write) instead of raising "database is locked" immediately. Both DBs are
-    # written from two separate processes (backend + ai_service), so this matters.
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=10000;")
+def get_connection():
+    conn = _pg_pool.getconn()
+    conn.cursor_factory = RealDictCursor
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO live, public")
     return conn
 
-def get_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.create_function("py_lower", 1, py_lower)
-    return _tune_connection(conn)
+def get_finished_connection():
+    conn = _pg_pool.getconn()
+    conn.cursor_factory = RealDictCursor
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO finished, public")
+    return conn
 
-def get_finished_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(FINISHED_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(FINISHED_DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.create_function("py_lower", 1, py_lower)
-    return _tune_connection(conn)
+def release_connection(conn):
+    _pg_pool.putconn(conn)
 
 def init_db():
-    # 1. Initialize LIVE Operational Database (autobet.db)
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Events table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            event_id INTEGER PRIMARY KEY,
-            sport_id INTEGER,
-            sport_path TEXT,
-            match_name TEXT,
-            team_1 TEXT,
-            team_2 TEXT,
-            score_1 INTEGER,
-            score_2 INTEGER,
-            score TEXT,
-            timer TEXT,
-            is_live INTEGER DEFAULT 1,
-            sub_markets_json TEXT,
-            total_odds_count INTEGER DEFAULT 0,
-            last_updated_at TEXT
-        );
-    """)
-
-    # Odds History table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS odds_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            label TEXT,
-            parameter TEXT,
-            coefficient REAL,
-            score_at_time TEXT,
-            timestamp TEXT
-        );
-    """)
-
-    # Latest Odds table (for quick retrieval of current odds per event)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS latest_odds (
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            label TEXT,
-            parameter TEXT,
-            coefficient REAL,
-            initial_coefficient REAL,
-            score_at_time TEXT,
-            updated_at TEXT,
-            PRIMARY KEY (event_id, factor_id, parameter, market_prefix)
-        );
-    """)
-
-    try:
-        cursor.execute("ALTER TABLE latest_odds ADD COLUMN initial_coefficient REAL;")
-    except Exception:
-        pass
-
-    # Grace-period fields: track how long an event has been missing from the
-    # parser's snapshot before it is considered finished (see save_parsed_events).
-    for ddl in (
-        "ALTER TABLE events ADD COLUMN miss_count INTEGER DEFAULT 0;",
-        "ALTER TABLE events ADD COLUMN missing_since TEXT;",
-        # Per-period score (JSON list of [team1, team2] pairs, each period's *own*
-        # score — not cumulative), used by resolve_outcome() to grade period-scoped
-        # bets ("1-й тайм", "2-й период", ...) instead of always voiding them.
-        "ALTER TABLE events ADD COLUMN period_scores_json TEXT;",
-        # Raw liveEventInfos.subscores, JSON dict of {kindName: [c1, c2]} — captured for
-        # investigation only right now, not yet consumed anywhere (see the comment on
-        # _extract_live_score_and_timer in parser_service.py). Not read back with the
-        # never-shrink guard period_scores_json gets, since nothing depends on it yet.
-        "ALTER TABLE events ADD COLUMN named_scores_json TEXT;",
-    ):
-        try:
-            cursor.execute(ddl)
-        except Exception:
-            pass
-    cursor.execute("UPDATE events SET miss_count = 0 WHERE miss_count IS NULL;")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_live_miss ON events (is_live, miss_count);")
-
-    # AI Predictions table (Computed AI predictions for ALL bets)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ai_predictions (
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            parameter TEXT,
-            win_probability REAL,
-            error_rate REAL,
-            expected_roi REAL,
-            lightgbm_score REAL,
-            pytorch_score REAL,
-            updated_at TEXT,
-            PRIMARY KEY (event_id, factor_id, parameter, market_prefix)
-        );
-    """)
-
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_hist_event ON odds_history (event_id);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_hist_lookup ON odds_history (event_id, factor_id, parameter, market_prefix);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_hist_ts ON odds_history (timestamp);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_sport ON events (sport_path);")
-    conn.commit()
-    conn.close()
-
-    # 2. Initialize Dedicated Training Database for Finished Matches (autobet_finished.db)
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS finished_events (
-            event_id INTEGER PRIMARY KEY,
-            sport_id INTEGER,
-            sport_path TEXT,
-            match_name TEXT,
-            team_1 TEXT,
-            team_2 TEXT,
-            score_1 INTEGER,
-            score_2 INTEGER,
-            score TEXT,
-            finished_at TEXT
-        );
-    """)
-
-    try:
-        f_cursor.execute("ALTER TABLE finished_events ADD COLUMN archived_count INTEGER DEFAULT 1;")
-    except Exception:
-        pass
-
-    try:
-        f_cursor.execute("ALTER TABLE finished_events ADD COLUMN period_scores_json TEXT;")
-    except Exception:
-        pass
-
-    try:
-        f_cursor.execute("ALTER TABLE finished_events ADD COLUMN named_scores_json TEXT;")
-    except Exception:
-        pass
-
-    # Legacy table kept for backward compatibility (no longer written to) —
-    # superseded by finished_bets below, which stores one row per unique bet
-    # instead of one row per parser snapshot.
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS finished_odds_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            label TEXT,
-            parameter TEXT,
-            initial_coefficient REAL,
-            final_coefficient REAL,
-            score_at_time TEXT,
-            is_win INTEGER DEFAULT 0,
-            timestamp TEXT,
-            finished_at TEXT
-        );
-    """)
-
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS finished_bets (
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            label TEXT,
-            parameter TEXT,
-            initial_coefficient REAL,
-            final_coefficient REAL,
-            min_coefficient REAL,
-            max_coefficient REAL,
-            samples_count INTEGER,
-            odds_seq_json TEXT,
-            score_at_time TEXT,
-            is_win INTEGER,
-            first_seen_at TEXT,
-            finished_at TEXT,
-            PRIMARY KEY (event_id, factor_id, parameter, market_prefix)
-        );
-    """)
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_finished_bets_win ON finished_bets (event_id, is_win);")
-
-    try:
-        f_cursor.execute("ALTER TABLE finished_bets ADD COLUMN predicted_win_probability REAL;")
-    except Exception:
-        pass
-
-    try:
-        f_cursor.execute("ALTER TABLE finished_odds_history ADD COLUMN timestamp TEXT;")
-    except Exception:
-        pass
-
-    # score_seq_json / score_diff_at_bet: the score trajectory as it actually looked
-    # while the bet was live, captured snapshot-by-snapshot from odds_history.timestamp/
-    # score_at_time — NOT the final score. Training on the final score is a target leak
-    # (the model would never see the final score at inference time, only the live one).
-    # trained_count: lets the online trainer track which resolved bets it has already
-    # replayed, instead of re-fitting the same fixed LIMIT window every cycle.
-    for ddl in (
-        "ALTER TABLE finished_bets ADD COLUMN score_seq_json TEXT;",
-        "ALTER TABLE finished_bets ADD COLUMN score_diff_at_bet INTEGER;",
-        "ALTER TABLE finished_bets ADD COLUMN trained_count INTEGER DEFAULT 0;",
-        # is_win stays NULL for both "genuinely can't grade" and "line push" — is_push
-        # tells those two apart so the UI can show a real return distinct from a bet
-        # that's simply unresolvable (see resolve_outcome's docstring in this file).
-        "ALTER TABLE finished_bets ADD COLUMN is_push INTEGER DEFAULT 0;",
-    ):
-        try:
-            f_cursor.execute(ddl)
-        except Exception:
-            pass
-    f_cursor.execute("UPDATE finished_bets SET trained_count = 0 WHERE trained_count IS NULL;")
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_finished_bets_trained ON finished_bets (trained_count, finished_at);")
-
-    # Bankroll accounts: 'training' (used only inside the online-training loss, resets
-    # to start_balance on ruin) and 'live' (the bot's real simulated bets — locks up on
-    # ruin, only an admin reset can revive it). See ai_service/app/neuralbet/bankroll.py.
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bankroll_accounts (
-            account TEXT PRIMARY KEY,
-            balance REAL NOT NULL,
-            start_balance REAL NOT NULL,
-            peak_balance REAL NOT NULL,
-            locked REAL NOT NULL DEFAULT 0,
-            rounds INTEGER NOT NULL DEFAULT 0,
-            bets_placed INTEGER NOT NULL DEFAULT 0,
-            wins INTEGER NOT NULL DEFAULT 0,
-            losses INTEGER NOT NULL DEFAULT 0,
-            total_staked REAL NOT NULL DEFAULT 0,
-            total_returned REAL NOT NULL DEFAULT 0,
-            ruin_count INTEGER NOT NULL DEFAULT 0,
-            is_ruined INTEGER NOT NULL DEFAULT 0,
-            updated_at TEXT
-        );
-    """)
-
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bankroll_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            account TEXT NOT NULL,
-            round_no INTEGER,
-            balance_before REAL,
-            balance_after REAL,
-            staked REAL,
-            returned REAL,
-            bets_count INTEGER,
-            ruined INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT
-        );
-    """)
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_bankroll_ledger_account ON bankroll_ledger (account, id);")
-
-    f_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS live_bets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id INTEGER,
-            factor_id INTEGER,
-            market_prefix TEXT,
-            parameter TEXT,
-            label TEXT,
-            match_name TEXT,
-            coefficient REAL,
-            stake REAL,
-            stake_fraction REAL,
-            win_probability REAL,
-            status TEXT NOT NULL DEFAULT 'open',
-            payout REAL,
-            placed_at TEXT,
-            settled_at TEXT,
-            UNIQUE(event_id, factor_id, parameter, market_prefix)
-        );
-    """)
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_live_bets_status ON live_bets (status);")
-
-    for account_name in ("training", "live"):
-        f_cursor.execute("""
-            INSERT INTO bankroll_accounts (account, balance, start_balance, peak_balance, updated_at)
-            VALUES (?, 1000.0, 1000.0, 1000.0, datetime('now'))
-            ON CONFLICT(account) DO NOTHING;
-        """, (account_name,))
-
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_finished_events_sport ON finished_events (sport_path);")
-    f_cursor.execute("CREATE INDEX IF NOT EXISTS idx_finished_odds_win ON finished_odds_history (event_id, is_win);")
-    f_conn.commit()
-    f_conn.close()
-
-    logger.info(f"Initialized LIVE DB ({DB_PATH}) & Finished Training DB ({FINISHED_DB_PATH}) successfully.")
+    # Schema is owned by Alembic migrations (db/migrations/versions/) now — this is a
+    # no-op kept so existing callers (backend/main.py) don't need changing.
+    logger.info("Database schema is managed by Alembic migrations; skipping init_db DDL.")
 
 MAIN_MARKET_PREFIX = "Основной матч"
 
@@ -692,7 +399,7 @@ def resolve_outcome(
     # не резолвится: исход не выводится из счёта одного этого матча.
     return None, False
 
-def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
+def archive_finished_events(cursor, timestamp_str: str):
     cursor.execute("SELECT * FROM events WHERE is_live = 0")
     finished = cursor.fetchall()
 
@@ -723,7 +430,7 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
                 event_id, sport_id, sport_path, match_name, team_1, team_2,
                 score_1, score_2, score, finished_at, archived_count, period_scores_json,
                 named_scores_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
             ON CONFLICT(event_id) DO UPDATE SET
                 score_1 = excluded.score_1,
                 score_2 = excluded.score_2,
@@ -741,12 +448,15 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
         # Group the full snapshot-by-snapshot odds_history into one row per unique bet
         # (event_id, factor_id, parameter, market_prefix), with honest initial/final coefficients.
         cursor.execute("""
-            SELECT factor_id, market_prefix, label, parameter,
+            SELECT factor_id,
+                   COALESCE(market_prefix, '') AS market_prefix,
+                   COALESCE(parameter, '') AS parameter,
+                   MIN(label) AS label,
                    COUNT(*) AS samples_count,
                    MIN(coefficient) AS min_coeff, MAX(coefficient) AS max_coeff,
                    MIN(id) AS first_id, MAX(id) AS last_id
               FROM odds_history
-             WHERE event_id = ?
+             WHERE event_id = %s
              GROUP BY factor_id, COALESCE(market_prefix, ''), COALESCE(parameter, '')
         """, (eid,))
         groups = cursor.fetchall()
@@ -756,19 +466,22 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
             prefix = g["market_prefix"] or ""
             param = g["parameter"] or ""
 
-            first_row = cursor.execute(
-                "SELECT coefficient, timestamp FROM odds_history WHERE id = ?", (g["first_id"],)
-            ).fetchone()
-            last_row = cursor.execute(
-                "SELECT coefficient, score_at_time FROM odds_history WHERE id = ?", (g["last_id"],)
-            ).fetchone()
-            seq_rows = cursor.execute(
+            cursor.execute(
+                "SELECT coefficient, timestamp FROM odds_history WHERE id = %s", (g["first_id"],)
+            )
+            first_row = cursor.fetchone()
+            cursor.execute(
+                "SELECT coefficient, score_at_time FROM odds_history WHERE id = %s", (g["last_id"],)
+            )
+            last_row = cursor.fetchone()
+            cursor.execute(
                 """SELECT coefficient, score_at_time FROM odds_history
-                    WHERE event_id = ? AND factor_id = ?
-                      AND COALESCE(parameter, '') = ? AND COALESCE(market_prefix, '') = ?
+                    WHERE event_id = %s AND factor_id = %s
+                      AND COALESCE(parameter, '') = %s AND COALESCE(market_prefix, '') = %s
                     ORDER BY id ASC""",
                 (eid, fid, param, prefix),
-            ).fetchall()
+            )
+            seq_rows = cursor.fetchall()
             odds_seq = [r["coefficient"] for r in seq_rows]
 
             # Score as it actually stood at each snapshot while the bet was live —
@@ -793,13 +506,14 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
             # Capture what the model actually predicted for this bet before it's gone —
             # this is the only way to later check "when the model said 75%, did it really
             # win ~75% of the time?" (calibration).
-            pred_row = cursor.execute(
+            cursor.execute(
                 """SELECT win_probability FROM ai_predictions
-                    WHERE event_id = ? AND factor_id = ?
-                      AND COALESCE(CAST(parameter AS TEXT), '') = ?
-                      AND COALESCE(market_prefix, '') = ?""",
+                    WHERE event_id = %s AND factor_id = %s
+                      AND COALESCE(CAST(parameter AS TEXT), '') = %s
+                      AND COALESCE(market_prefix, '') = %s""",
                 (eid, fid, param, prefix),
-            ).fetchone()
+            )
+            pred_row = cursor.fetchone()
             predicted_win_probability = pred_row["win_probability"] if pred_row else None
 
             f_cursor.execute("""
@@ -808,11 +522,11 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
                     initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
                     samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
                     predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
                 ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                     final_coefficient = excluded.final_coefficient,
-                    min_coefficient = MIN(finished_bets.min_coefficient, excluded.min_coefficient),
-                    max_coefficient = MAX(finished_bets.max_coefficient, excluded.max_coefficient),
+                    min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
+                    max_coefficient = GREATEST(finished_bets.max_coefficient, excluded.max_coefficient),
                     samples_count = excluded.samples_count,
                     odds_seq_json = excluded.odds_seq_json,
                     score_at_time = excluded.score_at_time,
@@ -831,13 +545,13 @@ def archive_finished_events(cursor: sqlite3.Cursor, timestamp_str: str):
                 json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
             ))
 
-        cursor.execute("DELETE FROM latest_odds WHERE event_id = ?", (eid,))
-        cursor.execute("DELETE FROM odds_history WHERE event_id = ?", (eid,))
-        cursor.execute("DELETE FROM events WHERE event_id = ?", (eid,))
-        cursor.execute("DELETE FROM ai_predictions WHERE event_id = ?", (eid,))
+        cursor.execute("DELETE FROM latest_odds WHERE event_id = %s", (eid,))
+        cursor.execute("DELETE FROM odds_history WHERE event_id = %s", (eid,))
+        cursor.execute("DELETE FROM events WHERE event_id = %s", (eid,))
+        cursor.execute("DELETE FROM ai_predictions WHERE event_id = %s", (eid,))
 
     f_conn.commit()
-    f_conn.close()
+    release_connection(f_conn)
 
 def save_parsed_events(
     parsed_events: List[Dict[str, Any]],
@@ -860,17 +574,16 @@ def save_parsed_events(
             f"Snapshot too small ({len(present_ids)} events) — skipping finish-detection this cycle."
         )
     else:
-        placeholders = ",".join("?" for _ in present_ids)
         id_list = list(present_ids)
 
-        cursor.execute("SELECT COUNT(*) FROM events WHERE is_live = 1")
-        live_before = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COUNT(*) AS c FROM events WHERE is_live = 1")
+        live_before = cursor.fetchone()["c"] or 0
 
         cursor.execute(
-            f"SELECT COUNT(*) FROM events WHERE is_live = 1 AND event_id NOT IN ({placeholders})",
-            id_list,
+            "SELECT COUNT(*) AS c FROM events WHERE is_live = 1 AND NOT (event_id = ANY(%s))",
+            (id_list,),
         )
-        missing_count = cursor.fetchone()[0] or 0
+        missing_count = cursor.fetchone()["c"] or 0
 
         # No global "% of live table disappeared" guard here on purpose: it used to
         # freeze ALL grace-period tracking (below) whenever too much of the live table
@@ -886,20 +599,20 @@ def save_parsed_events(
 
         # Present events: reset the miss counter.
         cursor.execute(
-            f"""UPDATE events
+            """UPDATE events
                    SET miss_count = 0, missing_since = NULL
-                 WHERE event_id IN ({placeholders})
+                 WHERE event_id = ANY(%s)
                    AND (miss_count > 0 OR missing_since IS NOT NULL)""",
-            id_list,
+            (id_list,),
         )
         # Missing events: increment the counter and record when they first went missing.
         cursor.execute(
-            f"""UPDATE events
+            """UPDATE events
                    SET miss_count = COALESCE(miss_count, 0) + 1,
-                       missing_since = COALESCE(missing_since, ?)
+                       missing_since = COALESCE(missing_since, %s)
                  WHERE is_live = 1
-                   AND event_id NOT IN ({placeholders})""",
-            [timestamp_str] + id_list,
+                   AND NOT (event_id = ANY(%s))""",
+            (timestamp_str, id_list),
         )
         # Finalize only once BOTH thresholds are satisfied (consecutive misses AND
         # a minimum grace window since the event first went missing) — see settings.py
@@ -908,9 +621,9 @@ def save_parsed_events(
             """UPDATE events
                   SET is_live = 0
                 WHERE is_live = 1
-                  AND miss_count >= ?
+                  AND miss_count >= %s
                   AND missing_since IS NOT NULL
-                  AND (julianday(?) - julianday(missing_since)) * 24.0 * 60.0 >= ?""",
+                  AND EXTRACT(EPOCH FROM (%s::timestamptz - missing_since::timestamptz)) / 60.0 >= %s""",
             (settings.EVENT_MISS_THRESHOLD, timestamp_str, settings.EVENT_MISS_GRACE_MINUTES),
         )
         if cursor.rowcount:
@@ -932,13 +645,47 @@ def save_parsed_events(
             {k: list(v) for k, v in (ev.get("named_scores") or {}).items()}, ensure_ascii=False
         )
 
+        # Never let period_scores_json/named_scores_json shrink. Fonbet's live feed
+        # occasionally omits the "scores"/subscores field on a single poll (seen right
+        # around a match finishing/transitioning), which parses to an empty list/dict —
+        # blindly overwriting with that would erase periods we'd already captured, and
+        # since this can happen on the very last poll before the event goes into its
+        # grace period and archives, that loss would be permanent (nothing upstream ever
+        # re-derives it). Keep whichever value has more entries — computed in Python
+        # (rather than SQL's json_array_length/CASE, which the sqlite version used) since
+        # that requires no JSON-array-length function beyond what psycopg2 needs anyway.
+        cursor.execute(
+            "SELECT period_scores_json, named_scores_json FROM events WHERE event_id = %s", (eid,)
+        )
+        existing = cursor.fetchone()
+        existing_period_json = existing["period_scores_json"] if existing else None
+        existing_named_json = existing["named_scores_json"] if existing else None
+
+        try:
+            new_period_len = len(json.loads(period_scores_json or "[]"))
+        except Exception:
+            new_period_len = 0
+        try:
+            old_period_len = len(json.loads(existing_period_json or "[]"))
+        except Exception:
+            old_period_len = 0
+        period_scores_json_final = (
+            period_scores_json if new_period_len >= old_period_len else (existing_period_json or "[]")
+        )
+
+        new_named_len = len(named_scores_json or "{}")
+        old_named_len = len(existing_named_json or "{}")
+        named_scores_json_final = (
+            named_scores_json if new_named_len >= old_named_len else (existing_named_json or "{}")
+        )
+
         cursor.execute("""
             INSERT INTO events (
                 event_id, sport_id, sport_path, match_name, team_1, team_2,
                 score_1, score_2, score, timer, is_live, sub_markets_json,
                 total_odds_count, last_updated_at, miss_count, missing_since,
                 period_scores_json, named_scores_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, NULL, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s, 0, NULL, %s, %s)
             ON CONFLICT(event_id) DO UPDATE SET
                 sport_id = excluded.sport_id,
                 sport_path = excluded.sport_path,
@@ -955,32 +702,13 @@ def save_parsed_events(
                 last_updated_at = excluded.last_updated_at,
                 miss_count = 0,
                 missing_since = NULL,
-                -- Never let period_scores_json shrink. Fonbet's live feed occasionally
-                -- omits the "scores" field on a single poll (seen right around a match
-                -- finishing/transitioning), which parses to an empty list — blindly
-                -- overwriting with that would erase periods we'd already captured, and
-                -- since this can happen on the very last poll before the event goes into
-                -- its grace period and archives, that loss would be permanent (nothing
-                -- upstream ever re-derives it). Keep whichever list has more entries.
-                period_scores_json = CASE
-                    WHEN json_array_length(excluded.period_scores_json) >= json_array_length(COALESCE(events.period_scores_json, '[]'))
-                    THEN excluded.period_scores_json
-                    ELSE events.period_scores_json
-                END,
-                -- Same shrink guard, string-length proxy since named_scores_json is an
-                -- object not an array (no json_object_length in this SQLite build) —
-                -- good enough to stop a transient empty-subscores poll from erasing the
-                -- one snapshot that might have caught an OT/shootout entry.
-                named_scores_json = CASE
-                    WHEN length(excluded.named_scores_json) >= length(COALESCE(events.named_scores_json, '{}'))
-                    THEN excluded.named_scores_json
-                    ELSE events.named_scores_json
-                END;
+                period_scores_json = excluded.period_scores_json,
+                named_scores_json = excluded.named_scores_json;
         """, (
             eid, ev.get("sport_id"), ev.get("sport_path"), ev.get("match_name"),
             ev.get("team_1"), ev.get("team_2"), ev.get("score_1", 0), ev.get("score_2", 0),
             ev.get("score", "0:0"), ev.get("timer", ""), sub_markets_json,
-            ev.get("total_odds_count", 0), timestamp_str, period_scores_json, named_scores_json
+            ev.get("total_odds_count", 0), timestamp_str, period_scores_json_final, named_scores_json_final
         ))
 
         # Insert odds history & update latest odds
@@ -996,14 +724,14 @@ def save_parsed_events(
             cursor.execute("""
                 INSERT INTO odds_history (
                     event_id, factor_id, market_prefix, label, parameter, coefficient, score_at_time, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (eid, fid, prefix, label, param, coeff, score_str, timestamp_str))
 
             # Upsert latest odds (preserves initial_coefficient on conflict)
             cursor.execute("""
                 INSERT INTO latest_odds (
                     event_id, factor_id, market_prefix, label, parameter, coefficient, initial_coefficient, score_at_time, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                     coefficient = excluded.coefficient,
                     score_at_time = excluded.score_at_time,
@@ -1011,7 +739,7 @@ def save_parsed_events(
             """, (eid, fid, prefix, label, param, coeff, coeff, score_str, timestamp_str))
 
     conn.commit()
-    conn.close()
+    release_connection(conn)
 
     # Runs after the commit above so it sees this cycle's freshly-written
     # period_scores_json — settles period-scoped bets ("1-й тайм", "2-й период", ...)
@@ -1040,11 +768,11 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
     params = []
 
     if sport_filter and sport_filter.lower() != "all":
-        query += " AND py_lower(sport_path) LIKE ?"
+        query += " AND sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
 
     if search:
-        query += " AND (py_lower(match_name) LIKE ? OR py_lower(team_1) LIKE ? OR py_lower(team_2) LIKE ?)"
+        query += " AND (match_name ILIKE %s OR team_1 ILIKE %s OR team_2 ILIKE %s)"
         s_param = f"%{search.lower()}%"
         params.extend([s_param, s_param, s_param])
 
@@ -1054,7 +782,7 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
     events = [dict(r) for r in cursor.fetchall()]
 
     if not events:
-        conn.close()
+        release_connection(conn)
         return []
 
     live_event_ids = [e["event_id"] for e in events]
@@ -1065,7 +793,6 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
     # initial-coefficient query uses a window function to grab the first-ever coefficient
     # per (event_id, factor_id, parameter, market_prefix) group in a single pass over
     # odds_history, scoped to just the live events via the join.
-    placeholders = ",".join("?" * len(live_event_ids))
 
     # l.updated_at = e.last_updated_at restricts this to markets actually present in each
     # event's most recent scrape snapshot. Without it, a market the bookmaker has since
@@ -1077,18 +804,19 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
     # Fonbet's feed *entirely* (grace period hasn't finalized it yet) — both timestamps
     # freeze together in that case, so comparing them to each other alone never notices;
     # comparing against the latest successful scrape cycle's timestamp does.
-    latest_scrape_ts = cursor.execute("SELECT MAX(last_updated_at) FROM events").fetchone()[0]
-    cursor.execute(f"""
+    cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
+    latest_scrape_ts = cursor.fetchone()["max"]
+    cursor.execute("""
         SELECT l.event_id, l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient, l.score_at_time
         FROM latest_odds l
         JOIN events e ON e.event_id = l.event_id
-        WHERE l.event_id IN ({placeholders})
+        WHERE l.event_id = ANY(%s)
           AND l.updated_at = e.last_updated_at
-          AND e.last_updated_at = ?
-    """, live_event_ids + [latest_scrape_ts])
+          AND e.last_updated_at = %s
+    """, (live_event_ids, latest_scrape_ts))
     odds_rows = [dict(o) for o in cursor.fetchall()]
 
-    cursor.execute(f"""
+    cursor.execute("""
         SELECT event_id, factor_id, parameter, market_prefix, coefficient
         FROM (
             SELECT
@@ -1098,10 +826,10 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
                     ORDER BY id ASC
                 ) AS rn
             FROM odds_history
-            WHERE event_id IN ({placeholders})
-        )
+            WHERE event_id = ANY(%s)
+        ) sub
         WHERE rn = 1
-    """, live_event_ids)
+    """, (live_event_ids,))
     initial_map = {
         (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["coefficient"]
         for r in cursor.fetchall()
@@ -1126,29 +854,29 @@ def get_live_matches(sport_filter: Optional[str] = None, search: Optional[str] =
         match_dict["odds"] = odds_by_event.get(match_dict["event_id"], [])
         result.append(match_dict)
 
-    conn.close()
+    release_connection(conn)
     return result
 
 def get_odds_history(event_id: int, factor_id: int, parameter: Optional[str] = None, market_prefix: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    query = "SELECT id, event_id, factor_id, market_prefix, label, parameter, coefficient, score_at_time, timestamp FROM odds_history WHERE event_id = ? AND factor_id = ?"
+    query = "SELECT id, event_id, factor_id, market_prefix, label, parameter, coefficient, score_at_time, timestamp FROM odds_history WHERE event_id = %s AND factor_id = %s"
     params = [event_id, factor_id]
 
     if parameter is not None:
-        query += " AND parameter = ?"
+        query += " AND parameter = %s"
         params.append(parameter)
 
     if market_prefix is not None:
-        query += " AND market_prefix = ?"
+        query += " AND market_prefix = %s"
         params.append(market_prefix)
 
     query += " ORDER BY id ASC"
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
-    conn.close()
+    release_connection(conn)
 
     return [dict(r) for r in rows]
 
@@ -1166,22 +894,25 @@ def get_db_stats() -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM events WHERE is_live = 1")
-    live_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS c FROM events WHERE is_live = 1")
+    live_count = cursor.fetchone()["c"]
 
-    cursor.execute("SELECT COUNT(*) FROM events")
-    total_events = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS c FROM events")
+    total_events = cursor.fetchone()["c"]
 
-    cursor.execute("SELECT COUNT(*) FROM odds_history")
-    history_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS c FROM odds_history")
+    history_count = cursor.fetchone()["c"]
 
-    cursor.execute("SELECT COUNT(*) FROM ai_predictions")
-    predictions_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS c FROM ai_predictions")
+    predictions_count = cursor.fetchone()["c"]
 
-    cursor.execute("SELECT MAX(last_updated_at) FROM events")
-    last_updated = cursor.fetchone()[0]
+    cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
+    last_updated = cursor.fetchone()["max"]
 
-    conn.close()
+    cursor.execute("SELECT pg_database_size(current_database()) AS size")
+    total_db_size_bytes = cursor.fetchone()["size"] or 0
+
+    release_connection(conn)
 
     # Query Dedicated Finished Events DB (autobet_finished.db)
     finished_count = 0
@@ -1194,39 +925,35 @@ def get_db_stats() -> Dict[str, Any]:
     try:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
-        f_cursor.execute("SELECT COUNT(*) FROM finished_events")
-        finished_count = f_cursor.fetchone()[0]
+        f_cursor.execute("SELECT COUNT(*) AS c FROM finished_events")
+        finished_count = f_cursor.fetchone()["c"]
 
-        f_cursor.execute("SELECT COUNT(*) FROM finished_bets")
-        finished_history_count = f_cursor.fetchone()[0]
+        f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets")
+        finished_history_count = f_cursor.fetchone()["c"]
 
         # Calculate real AI prediction error rate on completed, resolvable bets (is_win = 1 vs 0).
         # Bets we couldn't honestly grade (is_win IS NULL — forecasts on forfeits/part-of-match
         # markets etc.) are excluded rather than counted as losses.
         f_cursor.execute("""
-            SELECT COUNT(*), SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END)
+            SELECT COUNT(*) AS total_eval, SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) AS wins
               FROM finished_bets
              WHERE initial_coefficient >= 1.10 AND initial_coefficient <= 2.10
                AND is_win IS NOT NULL
         """)
         row = f_cursor.fetchone()
-        if row and row[0] and row[0] > 0:
-            total_eval = row[0]
-            wins = row[1] or 0
+        if row and row["total_eval"] and row["total_eval"] > 0:
+            total_eval = row["total_eval"]
+            wins = row["wins"] or 0
             losses = total_eval - wins
             error_rate_pct = round((losses / total_eval) * 100.0, 1)
             accuracy_pct = round(100.0 - error_rate_pct, 1)
 
-        f_cursor.execute("SELECT COUNT(*) FROM finished_bets WHERE is_win IS NULL")
-        unresolved_bets_count = f_cursor.fetchone()[0] or 0
+        f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NULL")
+        unresolved_bets_count = f_cursor.fetchone()["c"] or 0
 
-        f_conn.close()
+        release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished db stats: {e}")
-
-    live_db_size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
-    finished_db_size = os.path.getsize(FINISHED_DB_PATH) if os.path.exists(FINISHED_DB_PATH) else 0
-    total_db_size_bytes = live_db_size + finished_db_size
 
     return {
         "live_events_count": live_count,
@@ -1253,7 +980,7 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
                 event_id, factor_id, market_prefix, parameter,
                 win_probability, error_rate, expected_roi,
                 lightgbm_score, pytorch_score, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                 win_probability = excluded.win_probability,
                 error_rate = excluded.error_rate,
@@ -1268,7 +995,7 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
         ))
 
     conn.commit()
-    conn.close()
+    release_connection(conn)
 
 # Pseudo-count for the Bayesian shrinkage used in calibration below. Small buckets (few
 # resolved bets so far) stay close to the model's raw self-reported probability; buckets
@@ -1285,8 +1012,11 @@ def get_calibration_buckets() -> Dict[int, tuple]:
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
+    # FLOOR(...)::INTEGER, not CAST(... AS INTEGER) — Postgres' CAST-to-integer rounds to
+    # the nearest integer, while SQLite's truncates towards zero; predicted_win_probability
+    # is always >= 0 here so FLOOR reproduces the original truncating bucket assignment.
     f_cursor.execute("""
-        SELECT CAST(predicted_win_probability / 10 AS INTEGER) AS bucket,
+        SELECT FLOOR(predicted_win_probability / 10)::INTEGER AS bucket,
                COUNT(*) AS total,
                SUM(CASE WHEN is_win = 1 THEN 1 ELSE 0 END) AS wins
           FROM finished_bets
@@ -1294,7 +1024,7 @@ def get_calibration_buckets() -> Dict[int, tuple]:
          GROUP BY bucket
     """)
     rows = f_cursor.fetchall()
-    f_conn.close()
+    release_connection(f_conn)
     return {int(r["bucket"]): (r["wins"] or 0, r["total"] or 0) for r in rows}
 
 def calibrate_probability(raw_prob: float, buckets: Dict[int, tuple]) -> float:
@@ -1360,15 +1090,15 @@ def get_top_neurobets(
             AND COALESCE(CAST(l.parameter AS TEXT), '') = COALESCE(CAST(p.parameter AS TEXT), '')
             AND COALESCE(l.market_prefix, '') = COALESCE(p.market_prefix, '')
         WHERE e.is_live = 1
-          AND l.coefficient >= ?
-          AND l.coefficient <= ?
+          AND l.coefficient >= %s
+          AND l.coefficient <= %s
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = (SELECT MAX(last_updated_at) FROM events)
     """
     params = [min_odds, max_odds]
 
     if sport_filter and sport_filter.lower() != "all":
-        query += " AND py_lower(e.sport_path) LIKE ?"
+        query += " AND e.sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
 
     # No ORDER BY / LIMIT here: calibration (below) can reshuffle the ranking relative to
@@ -1378,7 +1108,7 @@ def get_top_neurobets(
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
-    conn.close()
+    release_connection(conn)
 
     # Correct the model's raw probability using its actual historical track record —
     # see calibrate_probability(). Falls back to the raw number when there's no
@@ -1454,20 +1184,21 @@ def _void_open_live_bets():
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    open_bets = f_cursor.execute("SELECT id, stake FROM live_bets WHERE status = 'open'").fetchall()
+    f_cursor.execute("SELECT id, stake FROM live_bets WHERE status = 'open'")
+    open_bets = f_cursor.fetchall()
     if not open_bets:
-        f_conn.close()
+        release_connection(f_conn)
         return 0
     total_stake = sum(b["stake"] or 0.0 for b in open_bets)
     f_cursor.execute(
-        "UPDATE live_bets SET status = 'void', payout = stake, settled_at = datetime('now') WHERE status = 'open';"
+        "UPDATE live_bets SET status = 'void', payout = stake, settled_at = now() WHERE status = 'open';"
     )
     f_cursor.execute(
-        "UPDATE bankroll_accounts SET balance = balance + ?, locked = MAX(locked - ?, 0), updated_at = datetime('now') WHERE account = 'live';",
+        "UPDATE bankroll_accounts SET balance = balance + %s, locked = GREATEST(locked - %s, 0), updated_at = now() WHERE account = 'live';",
         (total_stake, total_stake),
     )
     f_conn.commit()
-    f_conn.close()
+    release_connection(f_conn)
     return len(open_bets)
 
 def reset_live_database():
@@ -1484,8 +1215,10 @@ def reset_live_database():
     cursor.execute("DELETE FROM odds_history;")
     cursor.execute("DELETE FROM ai_predictions;")
     conn.commit()
-    cursor.execute("VACUUM;")
-    conn.close()
+    # No explicit VACUUM here (unlike the SQLite version) — VACUUM can't run inside a
+    # transaction block in Postgres, and Postgres autovacuum already reclaims this
+    # space on its own, so there's nothing to replicate.
+    release_connection(conn)
     logger.info(
         f"Successfully reset LIVE database tables (events, latest_odds, odds_history, "
         f"ai_predictions); voided {voided} open bot bet(s)."
@@ -1509,11 +1242,11 @@ def reset_all_databases():
             balance = start_balance, peak_balance = start_balance, locked = 0,
             rounds = 0, bets_placed = 0, wins = 0, losses = 0,
             total_staked = 0, total_returned = 0, ruin_count = 0, is_ruined = 0,
-            updated_at = datetime('now');
+            updated_at = now();
     """)
     f_conn.commit()
-    f_cursor.execute("VACUUM;")
-    f_conn.close()
+    # See reset_live_database's comment — no explicit VACUUM under Postgres.
+    release_connection(f_conn)
 
     # Both model checkpoints must go — leaving lightgbm_model.txt behind after a "full
     # reset" would keep serving predictions from a booster trained on data that's now gone.
@@ -1543,16 +1276,16 @@ def get_neurobets_history(
     base_query = """
         FROM finished_bets h
         JOIN finished_events e ON h.event_id = e.event_id
-        WHERE h.initial_coefficient >= ? AND h.initial_coefficient <= ?
+        WHERE h.initial_coefficient >= %s AND h.initial_coefficient <= %s
     """
     params = [min_odds, max_odds]
 
     if sport_filter and sport_filter.lower() != "all":
-        base_query += " AND py_lower(e.sport_path) LIKE ?"
+        base_query += " AND e.sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
 
     if search:
-        base_query += " AND (py_lower(e.match_name) LIKE ? OR py_lower(e.team_1) LIKE ? OR py_lower(e.team_2) LIKE ?)"
+        base_query += " AND (e.match_name ILIKE %s OR e.team_1 ILIKE %s OR e.team_2 ILIKE %s)"
         s = f"%{search.lower()}%"
         params.extend([s, s, s])
 
@@ -1564,21 +1297,21 @@ def get_neurobets_history(
     # outcome_filter so the counts stay the same totals regardless of which outcome tab
     # is selected — that's what lets them double as filter buttons.
     count_query = f"""
-        SELECT COUNT(*),
-               SUM(CASE WHEN h.is_win = 1 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN h.is_win = 0 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 THEN 1 ELSE 0 END)
+        SELECT COUNT(*) AS total_count,
+               SUM(CASE WHEN h.is_win = 1 THEN 1 ELSE 0 END) AS wins_count,
+               SUM(CASE WHEN h.is_win = 0 THEN 1 ELSE 0 END) AS losses_count,
+               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END) AS push_count,
+               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 THEN 1 ELSE 0 END) AS pending_count
         {base_query}
     """
     f_cursor.execute(count_query, params)
     summary_row = f_cursor.fetchone()
 
-    total_count = summary_row[0] or 0
-    wins_count = summary_row[1] or 0
-    losses_count = summary_row[2] or 0
-    push_count = summary_row[3] or 0
-    pending_count = summary_row[4] or 0
+    total_count = summary_row["total_count"] or 0
+    wins_count = summary_row["wins_count"] or 0
+    losses_count = summary_row["losses_count"] or 0
+    push_count = summary_row["push_count"] or 0
+    pending_count = summary_row["pending_count"] or 0
     resolved_count = wins_count + losses_count
     win_rate_pct = round((wins_count / resolved_count * 100.0), 1) if resolved_count > 0 else 0.0
 
@@ -1595,17 +1328,17 @@ def get_neurobets_history(
 
     data_query = f"""
         SELECT
-            h.rowid AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
+            h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
             h.initial_coefficient, h.final_coefficient, h.score_at_time, h.is_win, h.is_push,
             h.first_seen_at AS timestamp, h.finished_at,
             e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
         {filtered_query}
-        ORDER BY h.finished_at DESC, h.rowid DESC
-        LIMIT ? OFFSET ?
+        ORDER BY h.finished_at DESC, h.id DESC
+        LIMIT %s OFFSET %s
     """
     f_cursor.execute(data_query, params + [limit, offset])
     rows = f_cursor.fetchall()
-    f_conn.close()
+    release_connection(f_conn)
 
     history_items = []
     for r in rows:
@@ -1665,20 +1398,20 @@ def get_bankroll_state() -> Dict[str, Any]:
 
     accounts = {}
     for account in ("training", "live"):
-        row = f_cursor.execute(
-            "SELECT * FROM bankroll_accounts WHERE account = ?", (account,)
-        ).fetchone()
+        f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
+        row = f_cursor.fetchone()
         accounts[account] = dict(row) if row else None
 
     ledger = {}
     for account in ("training", "live"):
-        rows = f_cursor.execute(
-            "SELECT * FROM bankroll_ledger WHERE account = ? ORDER BY id DESC LIMIT 200",
+        f_cursor.execute(
+            "SELECT * FROM bankroll_ledger WHERE account = %s ORDER BY id DESC LIMIT 200",
             (account,),
-        ).fetchall()
+        )
+        rows = f_cursor.fetchall()
         ledger[account] = [dict(r) for r in rows]
 
-    f_conn.close()
+    release_connection(f_conn)
     return _sanitize_non_finite({"accounts": accounts, "ledger": ledger})
 
 
@@ -1688,17 +1421,16 @@ def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     coefficient), not just what it looked like when the bet was placed."""
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    total = f_cursor.execute("SELECT COUNT(*) AS c FROM live_bets").fetchone()["c"]
-    rows = [dict(r) for r in f_cursor.execute(
-        "SELECT * FROM live_bets ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
-    ).fetchall()]
-    f_conn.close()
+    f_cursor.execute("SELECT COUNT(*) AS c FROM live_bets")
+    total = f_cursor.fetchone()["c"]
+    f_cursor.execute("SELECT * FROM live_bets ORDER BY id DESC LIMIT %s OFFSET %s", (limit, offset))
+    rows = [dict(r) for r in f_cursor.fetchall()]
+    release_connection(f_conn)
 
     if not rows:
         return {"total": total, "items": rows}
 
     event_ids = list({r["event_id"] for r in rows})
-    placeholders = ",".join("?" * len(event_ids))
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -1706,27 +1438,27 @@ def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     # is_live=1 with its score/timer/coefficients frozen — comparing last_updated_at to
     # the latest successful scrape cycle's timestamp (not just to itself) is what
     # actually tells "genuinely live right now" apart from "hasn't been finalized yet".
-    latest_scrape_ts = cursor.execute("SELECT MAX(last_updated_at) FROM events").fetchone()[0]
-    live_info = {
-        r["event_id"]: dict(r)
-        for r in cursor.execute(
-            f"SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id IN ({placeholders})",
-            event_ids,
-        ).fetchall()
-    }
+    cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
+    latest_scrape_ts = cursor.fetchone()["max"]
+    cursor.execute(
+        "SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id = ANY(%s)",
+        (event_ids,),
+    )
+    live_info = {r["event_id"]: dict(r) for r in cursor.fetchall()}
+    cursor.execute(
+        """SELECT l.event_id, l.factor_id, l.parameter, l.market_prefix, l.coefficient
+            FROM latest_odds l
+            JOIN events e ON e.event_id = l.event_id
+            WHERE l.event_id = ANY(%s)
+              AND l.updated_at = e.last_updated_at
+              AND e.last_updated_at = %s""",
+        (event_ids, latest_scrape_ts),
+    )
     current_odds = {
         (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["coefficient"]
-        for r in cursor.execute(
-            f"""SELECT l.event_id, l.factor_id, l.parameter, l.market_prefix, l.coefficient
-                FROM latest_odds l
-                JOIN events e ON e.event_id = l.event_id
-                WHERE l.event_id IN ({placeholders})
-                  AND l.updated_at = e.last_updated_at
-                  AND e.last_updated_at = ?""",
-            event_ids + [latest_scrape_ts],
-        ).fetchall()
+        for r in cursor.fetchall()
     }
-    conn.close()
+    release_connection(conn)
 
     # Events not in the live DB anymore have already been archived — fall back to their
     # final score/coefficient so the card still shows something meaningful instead of blanks.
@@ -1736,22 +1468,20 @@ def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     if missing_ids:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
-        f_placeholders = ",".join("?" * len(missing_ids))
-        finished_info = {
-            r["event_id"]: dict(r)
-            for r in f_cursor.execute(
-                f"SELECT event_id, score, score_1, score_2, sport_path FROM finished_events WHERE event_id IN ({f_placeholders})",
-                missing_ids,
-            ).fetchall()
-        }
+        f_cursor.execute(
+            "SELECT event_id, score, score_1, score_2, sport_path FROM finished_events WHERE event_id = ANY(%s)",
+            (missing_ids,),
+        )
+        finished_info = {r["event_id"]: dict(r) for r in f_cursor.fetchall()}
+        f_cursor.execute(
+            "SELECT event_id, factor_id, parameter, market_prefix, final_coefficient FROM finished_bets WHERE event_id = ANY(%s)",
+            (missing_ids,),
+        )
         finished_odds = {
             (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["final_coefficient"]
-            for r in f_cursor.execute(
-                f"SELECT event_id, factor_id, parameter, market_prefix, final_coefficient FROM finished_bets WHERE event_id IN ({f_placeholders})",
-                missing_ids,
-            ).fetchall()
+            for r in f_cursor.fetchall()
         }
-        f_conn.close()
+        release_connection(f_conn)
 
     for b in rows:
         eid = b["event_id"]
@@ -1780,9 +1510,10 @@ def cancel_open_live_bets() -> Dict[str, Any]:
     settle_live_bets() this doesn't wait for the underlying event to finish."""
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    open_bets = f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'").fetchall()
+    f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'")
+    open_bets = f_cursor.fetchall()
     if not open_bets:
-        f_conn.close()
+        release_connection(f_conn)
         return {"cancelled": 0, "refunded": 0.0, "messages": []}
 
     messages: List[Dict[str, str]] = []
@@ -1791,21 +1522,22 @@ def cancel_open_live_bets() -> Dict[str, Any]:
     for b in open_bets:
         stake = b["stake"]
         f_cursor.execute(
-            "UPDATE live_bets SET status = 'cancelled', payout = ?, settled_at = ? WHERE id = ?",
+            "UPDATE live_bets SET status = 'cancelled', payout = %s, settled_at = %s WHERE id = %s",
             (stake, _now_iso(), b["id"]),
         )
-        acc = f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'").fetchone()
+        f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'")
+        acc = f_cursor.fetchone()
         balance_after = acc["balance"] + stake
         locked_after = max(acc["locked"] - stake, 0.0)
         f_cursor.execute("""
             UPDATE bankroll_accounts SET
-                balance = ?, locked = ?, peak_balance = MAX(peak_balance, ?), updated_at = ?
+                balance = %s, locked = %s, peak_balance = GREATEST(peak_balance, %s), updated_at = %s
             WHERE account = 'live'
         """, (balance_after, locked_after, balance_after, _now_iso()))
         f_cursor.execute("""
             INSERT INTO bankroll_ledger
                 (account, round_no, balance_before, balance_after, staked, returned, bets_count, ruined, created_at)
-            VALUES ('live', NULL, ?, ?, ?, ?, 1, 0, ?)
+            VALUES ('live', NULL, %s, %s, %s, %s, 1, 0, %s)
         """, (acc["balance"], balance_after, stake, stake, _now_iso()))
 
         total_refunded += stake
@@ -1819,7 +1551,7 @@ def cancel_open_live_bets() -> Dict[str, Any]:
         })
 
     f_conn.commit()
-    f_conn.close()
+    release_connection(f_conn)
     return {"cancelled": len(open_bets), "refunded": total_refunded, "messages": messages}
 
 
@@ -1860,23 +1592,26 @@ def reset_live_account(start_balance: Optional[float] = None) -> Dict[str, Any]:
     the automatic reset settle_live_bets() does when balance hits zero."""
     sb = start_balance if start_balance is not None else LIVE_START_BALANCE
     f_conn = get_finished_connection()
-    f_conn.execute("""
+    f_cursor = f_conn.cursor()
+    f_cursor.execute("""
         INSERT INTO bankroll_accounts (account, balance, start_balance, peak_balance, updated_at)
-        VALUES ('live', ?, ?, ?, ?)
+        VALUES ('live', %s, %s, %s, %s)
         ON CONFLICT(account) DO UPDATE SET
             balance = excluded.balance, start_balance = excluded.start_balance,
             peak_balance = excluded.peak_balance, locked = 0, is_ruined = 0,
             updated_at = excluded.updated_at;
     """, (sb, sb, sb, _now_iso()))
     f_conn.commit()
-    f_conn.close()
+    release_connection(f_conn)
     return get_live_account()
 
 
 def get_live_account() -> Dict[str, Any]:
     f_conn = get_finished_connection()
-    row = f_conn.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'").fetchone()
-    f_conn.close()
+    f_cursor = f_conn.cursor()
+    f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'")
+    row = f_cursor.fetchone()
+    release_connection(f_conn)
     if row is None:
         return {
             "account": "live", "balance": LIVE_START_BALANCE, "start_balance": LIVE_START_BALANCE,
@@ -1887,7 +1622,7 @@ def get_live_account() -> Dict[str, Any]:
     return dict(row)
 
 
-def _is_market_fresh(cursor: sqlite3.Cursor, event_id: int, factor_id: int, parameter: str, market_prefix: str) -> bool:
+def _is_market_fresh(cursor, event_id: int, factor_id: int, parameter: str, market_prefix: str) -> bool:
     """A market is only bettable if it was actually present in the *most recent
     successful scrape cycle* — not just "the market's own last update matches its
     event's last update," which sounds right but isn't: if the whole event has quietly
@@ -1897,17 +1632,18 @@ def _is_market_fresh(cursor: sqlite3.Cursor, event_id: int, factor_id: int, para
     across all events (the timestamp every event/market touched in the latest scrape
     shares) catches that: an event that didn't appear in this cycle's snapshot falls
     behind it immediately, market-level staleness or not."""
-    row = cursor.execute("""
+    cursor.execute("""
         SELECT 1
         FROM latest_odds l
         JOIN events e ON e.event_id = l.event_id
-        WHERE l.event_id = ? AND l.factor_id = ?
-          AND COALESCE(l.parameter, '') = COALESCE(?, '')
-          AND COALESCE(l.market_prefix, '') = COALESCE(?, '')
+        WHERE l.event_id = %s AND l.factor_id = %s
+          AND COALESCE(l.parameter, '') = COALESCE(%s, '')
+          AND COALESCE(l.market_prefix, '') = COALESCE(%s, '')
           AND e.is_live = 1
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = (SELECT MAX(last_updated_at) FROM events)
-    """, (event_id, factor_id, parameter, market_prefix)).fetchone()
+    """, (event_id, factor_id, parameter, market_prefix))
+    row = cursor.fetchone()
     return row is not None
 
 
@@ -1929,7 +1665,7 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     messages: List[Dict[str, str]] = []
 
     if available <= 0:
-        conn.close()
+        release_connection(conn)
         return {
             "placed": placed,
             "skipped": [{"candidate": c, "reason": "insufficient_balance"} for c in candidates],
@@ -1939,7 +1675,8 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
 
-    open_count = f_cursor.execute("SELECT COUNT(*) FROM live_bets WHERE status = 'open'").fetchone()[0]
+    f_cursor.execute("SELECT COUNT(*) AS c FROM live_bets WHERE status = 'open'")
+    open_count = f_cursor.fetchone()["c"]
     slots_left = MAX_OPEN_LIVE_POSITIONS - open_count
 
     for c in candidates:
@@ -1964,7 +1701,7 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
             INSERT INTO live_bets (
                 event_id, factor_id, market_prefix, parameter, label, match_name,
                 coefficient, stake, stake_fraction, win_probability, status, placed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO NOTHING;
         """, (
             event_id, factor_id, market_prefix, parameter, c.get("label", ""), c.get("match_name", ""),
@@ -1976,8 +1713,8 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
 
         f_cursor.execute("""
             UPDATE bankroll_accounts SET
-                balance = balance - ?, locked = locked + ?, bets_placed = bets_placed + 1,
-                total_staked = total_staked + ?, updated_at = ?
+                balance = balance - %s, locked = locked + %s, bets_placed = bets_placed + 1,
+                total_staked = total_staked + %s, updated_at = %s
             WHERE account = 'live'
         """, (stake, stake, stake, _now_iso()))
 
@@ -1995,12 +1732,12 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
         })
 
     f_conn.commit()
-    f_conn.close()
-    conn.close()
+    release_connection(f_conn)
+    release_connection(conn)
     return {"placed": placed, "skipped": skipped, "messages": messages}
 
 
-def _apply_bet_settlement(f_cursor: sqlite3.Cursor, b: sqlite3.Row, is_win: Optional[int]) -> Tuple[str, List[Dict[str, str]]]:
+def _apply_bet_settlement(f_cursor, b, is_win: Optional[int]) -> Tuple[str, List[Dict[str, str]]]:
     """
     Shared bookkeeping for resolving one open live_bet: writes its row, updates the live
     bankroll account (incl. the both-balance-and-locked ruin check), and logs the ledger
@@ -2036,11 +1773,12 @@ def _apply_bet_settlement(f_cursor: sqlite3.Cursor, b: sqlite3.Row, is_win: Opti
         })
 
     f_cursor.execute(
-        "UPDATE live_bets SET status = ?, payout = ?, settled_at = ? WHERE id = ?",
+        "UPDATE live_bets SET status = %s, payout = %s, settled_at = %s WHERE id = %s",
         (status, payout, _now_iso(), b["id"]),
     )
 
-    acc = f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'").fetchone()
+    f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'")
+    acc = f_cursor.fetchone()
     balance_before = acc["balance"]
     balance_after = balance_before + payout
     locked_after = max(acc["locked"] - stake, 0.0)
@@ -2062,8 +1800,8 @@ def _apply_bet_settlement(f_cursor: sqlite3.Cursor, b: sqlite3.Row, is_win: Opti
 
     f_cursor.execute("""
         UPDATE bankroll_accounts SET
-            balance = ?, locked = ?, peak_balance = ?, total_returned = total_returned + ?,
-            wins = wins + ?, losses = losses + ?, ruin_count = ?, is_ruined = ?, updated_at = ?
+            balance = %s, locked = %s, peak_balance = %s, total_returned = total_returned + %s,
+            wins = wins + %s, losses = losses + %s, ruin_count = %s, is_ruined = %s, updated_at = %s
         WHERE account = 'live'
     """, (
         balance_after, locked_after, peak, payout,
@@ -2073,7 +1811,7 @@ def _apply_bet_settlement(f_cursor: sqlite3.Cursor, b: sqlite3.Row, is_win: Opti
     f_cursor.execute("""
         INSERT INTO bankroll_ledger
             (account, round_no, balance_before, balance_after, staked, returned, bets_count, ruined, created_at)
-        VALUES ('live', NULL, ?, ?, ?, ?, 1, ?, ?)
+        VALUES ('live', NULL, %s, %s, %s, %s, 1, %s, %s)
     """, (balance_before, balance_after, stake, payout, int(ruined), _now_iso()))
 
     if is_ruined:
@@ -2088,8 +1826,9 @@ def _apply_bet_settlement(f_cursor: sqlite3.Cursor, b: sqlite3.Row, is_win: Opti
     return outcome, messages
 
 
-def _cycle_summary_message(won: int, lost: int, void: int, f_cursor: sqlite3.Cursor) -> Dict[str, str]:
-    live_acc = f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'").fetchone()
+def _cycle_summary_message(won: int, lost: int, void: int, f_cursor) -> Dict[str, str]:
+    f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = 'live'")
+    live_acc = f_cursor.fetchone()
     settled = won + lost + void
     return {
         "category": "BANKROLL",
@@ -2110,20 +1849,22 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    open_bets = f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'").fetchall()
+    f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'")
+    open_bets = f_cursor.fetchall()
     if not open_bets:
-        f_conn.close()
+        release_connection(f_conn)
         return {"settled": 0, "won": 0, "lost": 0, "void": 0, "messages": []}
 
     won = lost = void = 0
     messages: List[Dict[str, str]] = []
 
     for b in open_bets:
-        row = f_cursor.execute("""
+        f_cursor.execute("""
             SELECT is_win FROM finished_bets
-            WHERE event_id = ? AND factor_id = ? AND COALESCE(parameter,'') = COALESCE(?,'')
-              AND COALESCE(market_prefix,'') = COALESCE(?,'')
-        """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"])).fetchone()
+            WHERE event_id = %s AND factor_id = %s AND COALESCE(parameter,'') = COALESCE(%s,'')
+              AND COALESCE(market_prefix,'') = COALESCE(%s,'')
+        """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"]))
+        row = f_cursor.fetchone()
         if row is None:
             continue  # event hasn't finished (archived) yet
 
@@ -2141,7 +1882,7 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         messages.append(_cycle_summary_message(won, lost, void, f_cursor))
 
     f_conn.commit()
-    f_conn.close()
+    release_connection(f_conn)
     return {"settled": settled, "won": won, "lost": lost, "void": void, "messages": messages}
 
 
@@ -2165,7 +1906,8 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
 
-    open_bets = f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'").fetchall()
+    f_cursor.execute("SELECT * FROM live_bets WHERE status = 'open'")
+    open_bets = f_cursor.fetchall()
     won = lost = void = 0
     messages: List[Dict[str, str]] = []
 
@@ -2177,10 +1919,11 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
         if ordinal is None:
             continue
 
-        ev = cursor.execute(
-            "SELECT score_1, score_2, sport_path, period_scores_json, is_live FROM events WHERE event_id = ?",
+        cursor.execute(
+            "SELECT score_1, score_2, sport_path, period_scores_json, is_live FROM events WHERE event_id = %s",
             (b["event_id"],),
-        ).fetchone()
+        )
+        ev = cursor.fetchone()
         if ev is None or not ev["is_live"]:
             continue  # event already finished/archived — settle_live_bets handles it
 
@@ -2213,8 +1956,8 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
         messages.append(_cycle_summary_message(won, lost, void, f_cursor))
 
     f_conn.commit()
-    f_conn.close()
-    conn.close()
+    release_connection(f_conn)
+    release_connection(conn)
     return {"settled": settled, "won": won, "lost": lost, "void": void, "messages": messages}
 
 

@@ -15,9 +15,6 @@ RUN uv pip install --system --no-cache -r requirements.txt
 
 COPY . .
 
-# Environment variable for database path inside container
-ENV DATABASE_PATH=/app/data/autobet.db
-
 EXPOSE 8000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

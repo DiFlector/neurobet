@@ -1,34 +1,33 @@
-import sqlite3
-import os
 from typing import List, Dict, Any
-from app.config import DB_PATH, FINISHED_DB_PATH
 
-def py_lower(val: Any) -> str:
-    if val is None:
-        return ""
-    return str(val).lower()
+import psycopg2
+from psycopg2 import pool
+from psycopg2.extras import RealDictCursor
 
-def _tune_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
-    # WAL lets readers and the writer work concurrently instead of blocking each other,
-    # and busy_timeout makes a connection wait out a brief lock (e.g. the backend
-    # process mid-write) instead of raising "database is locked" immediately.
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=10000;")
+from app.config import DATABASE_URL
+
+_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, dsn=DATABASE_URL)
+
+
+def get_connection():
+    conn = _pg_pool.getconn()
+    conn.cursor_factory = RealDictCursor
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO live, public")
     return conn
 
-def get_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.create_function("py_lower", 1, py_lower)
-    return _tune_connection(conn)
 
-def get_finished_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(FINISHED_DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(FINISHED_DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.create_function("py_lower", 1, py_lower)
-    return _tune_connection(conn)
+def get_finished_connection():
+    conn = _pg_pool.getconn()
+    conn.cursor_factory = RealDictCursor
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO finished, public")
+    return conn
+
+
+def release_connection(conn):
+    _pg_pool.putconn(conn)
+
 
 def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
     conn = get_connection()
@@ -40,7 +39,7 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
                 event_id, factor_id, market_prefix, parameter,
                 win_probability, error_rate, expected_roi,
                 lightgbm_score, pytorch_score, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                 win_probability = excluded.win_probability,
                 error_rate = excluded.error_rate,
@@ -55,4 +54,4 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
         ))
 
     conn.commit()
-    conn.close()
+    release_connection(conn)

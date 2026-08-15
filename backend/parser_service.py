@@ -237,6 +237,16 @@ EXCLUDED_MARKET_PREFIXES = {
     # 5, a conversion 2, a penalty 3, a drop goal 3 — ambiguous to reverse-engineer).
     "попытки",
 
+    # "заб/3-х очковые" (basketball made-3-pointers submarket) — same shape as "попытки"
+    # above: reuses the universal Total factor_ids (930/931) under this scope, but we
+    # only track match points (score_1/score_2), never a separate made-3-pointers count,
+    # and points don't map 1:1 to made threes (a 3-pointer is 3 points, same as some
+    # other patterns aren't, and free throws/2-pointers add points too) — confirmed via
+    # a real stuck bet ("Капиата Буллз — Амамбай", score 35:85, Тотал Больше/Меньше 9.5
+    # sitting permanently "не рассчитана" with no way to derive the made-3s count from
+    # the final score alone).
+    "заб/3-х очковые",
+
     # "Дополнительное время" (football extra time) — needs the score for JUST the ET
     # period, not the cumulative match score we actually have; ET isn't a numbered
     # ordinal period ("1-й тайм" etc) so period_scores never covers it either. "Видео-
