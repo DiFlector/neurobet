@@ -30,8 +30,8 @@ export function HeaderNav({
         {/* Left: Brand & Navigation Links */}
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center gap-3 shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#fdcb6e] to-[#ffeaa7] flex items-center justify-center shadow-lg shadow-[#fdcb6e]/20 text-neutral-950 font-black text-xl shrink-0">
-              ⚡
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#fdcb6e] to-[#ffeaa7] flex items-center justify-center shadow-lg shadow-[#fdcb6e]/20 p-1.5 shrink-0">
+              <img src="/logo.svg" alt="Нейроставки" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
               <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 whitespace-nowrap">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, useMotionValue, animate as animateValue } from "framer-motion"
 import {
   BrainCircuit,
   TrendingUp,
@@ -64,6 +64,88 @@ function formatPlacedAt(iso: string | null | undefined): string | null {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return null
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+// Animated ring gauge for the banner's "точность модели" metric — eases the stroke
+// (and the number ticking up inside it) from 0 to `pct` on mount / whenever the
+// underlying stats change, instead of just snapping to the new value.
+function AccuracyRing({ pct, known, size = 68 }: { pct: number; known: boolean; size?: number }) {
+  const stroke = Math.max(6, Math.round(size * 0.09))
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const progress = useMotionValue(0)
+  const [display, setDisplay] = useState(0)
+
+  useEffect(() => {
+    const controls = animateValue(progress, known ? pct : 0, {
+      duration: 1.2,
+      ease: "easeOut",
+      onUpdate: (v) => setDisplay(v)
+    })
+    return () => controls.stop()
+  }, [pct, known, progress])
+
+  const offset = circumference - (Math.max(0, Math.min(100, display)) / 100) * circumference
+
+  const glowId = `accuracy-ring-glow-${size}`
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      {/* Rotation and blur both live inside the SVG's own coordinate space (an SVG
+          feGaussianBlur filter + an animated <g transform="rotate(...)">) instead of a
+          CSS `filter` on an HTML layer spun by `transform`. That combination is what was
+          reading as a jagged/rough edge — the browser re-rasterizes a CSS filter's raster
+          layer whenever the rotation lands on a sub-pixel angle. Keeping everything native
+          SVG lets the renderer redraw the blurred arc at full precision every frame. */}
+      <svg width={size} height={size} className="overflow-visible" shapeRendering="geometricPrecision">
+        <defs>
+          <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation={stroke * 0.55} />
+          </filter>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#262626" strokeWidth={stroke} />
+        <motion.g
+          animate={known ? { rotate: 360 } : { rotate: 0 }}
+          transition={known ? { duration: 6, repeat: Infinity, ease: "linear" } : { duration: 0 }}
+          style={{ transformOrigin: `${size / 2}px ${size / 2}px` }}
+        >
+          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+            {known && (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke="#55efc4"
+                strokeWidth={stroke + 3}
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                opacity={0.8}
+                filter={`url(#${glowId})`}
+              />
+            )}
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={known ? "#55efc4" : "#525252"}
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+            />
+          </g>
+        </motion.g>
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="font-black font-mono text-white" style={{ fontSize: Math.max(13, Math.round(size * 0.19)) }}>
+          {known ? `${display.toFixed(1)}%` : "—"}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 const PAGE_SIZE = 20
@@ -434,13 +516,49 @@ export default function NeurobetsPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
         {/* Banner: AI Engine Overview */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-neutral-950 border border-neutral-800 p-6 md:p-8 shadow-2xl">
-          <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-[#fdcb6e]/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute right-32 top-0 w-48 h-48 bg-[#00b894]/10 rounded-full blur-3xl pointer-events-none" />
+          {/* Ambient blobs drifting slowly in place — pure texture, no message to read */}
+          <motion.div
+            className="absolute -right-10 -bottom-10 w-72 h-72 bg-[#fdcb6e]/10 rounded-full blur-3xl pointer-events-none"
+            animate={{ x: [0, 18, 0], y: [0, -14, 0] }}
+            transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div
+            className="absolute right-32 top-0 w-48 h-48 bg-[#00b894]/10 rounded-full blur-3xl pointer-events-none"
+            animate={{ x: [0, -14, 0], y: [0, 16, 0] }}
+            transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+          />
+          {/* Faint dot-grid texture, so the left half isn't just flat gradient */}
+          <div
+            className="absolute inset-0 opacity-[0.07] pointer-events-none"
+            style={{
+              backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)",
+              backgroundSize: "22px 22px"
+            }}
+          />
+          {/* Slow diagonal sheen sweeping across the banner — a subtle "scanning" cue */}
+          <motion.div
+            className="absolute inset-y-0 w-1/3 pointer-events-none mix-blend-overlay"
+            style={{ background: "linear-gradient(115deg, transparent, rgba(255,255,255,0.08), transparent)" }}
+            animate={{ x: ["-40%", "160%"] }}
+            transition={{ duration: 6, repeat: Infinity, ease: "linear", repeatDelay: 2 }}
+          />
 
           <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-            <div className="space-y-3 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#fdcb6e]/10 border border-[#fdcb6e]/30 text-[#ffeaa7] text-xs font-semibold">
-                <BrainCircuit className="w-4 h-4 text-[#fdcb6e] animate-pulse" />
+            <motion.div
+              className="space-y-3 max-w-2xl"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <div className="relative inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#fdcb6e]/10 border border-[#fdcb6e]/30 text-[#ffeaa7] text-xs font-semibold">
+                <span className="relative flex items-center justify-center">
+                  <motion.span
+                    className="absolute inline-flex h-3 w-3 rounded-full bg-[#fdcb6e]/50"
+                    animate={{ scale: [1, 2.2, 1], opacity: [0, 0.5, 0] }}
+                    transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <BrainCircuit className="relative w-4 h-4 text-[#fdcb6e]" />
+                </span>
                 <span>LightGBM & PyTorch Online Model Ensemble</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
@@ -450,46 +568,73 @@ export default function NeurobetsPage() {
                 Алгоритм непрерывно анализирует прямую трансляцию коэффициентов и движений линий Fonbet LIVE и сам определяет, выиграет исход или проиграет —
                 своим собственным обученным вердиктом, а не по внешнему порогу вероятности. По умолчанию показаны только исходы с вердиктом «выиграет» —
                 переключить на проигрывающие или все можно фильтром ниже.
-                Ставки с коэффициентами меньше <span className="font-mono text-[#ff7675]">1.10</span> (бессмысленные) и больше <span className="font-mono text-[#ff7675]">2.10</span> (слишком рискованные) автоматически отсеиваются.
               </p>
-            </div>
+            </motion.div>
 
-            {/* AI Architecture Stats Badges */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full lg:w-auto">
-              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
-                <div className="text-[10px] text-neutral-400 font-mono uppercase">PyTorch Temporal</div>
-                <div className="text-base font-bold text-[#55efc4] font-mono mt-0.5">Online GRU</div>
-                <div className="text-[9px] text-neutral-500 mt-0.5">Векторы кэф 10m</div>
+            {/* AI Architecture Panel — two compact "engine" chips + a live accuracy ring */}
+            <motion.div
+              className="flex items-stretch gap-3 w-full lg:w-auto"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+            >
+              <div className="flex flex-col gap-3 min-w-[170px] flex-1 lg:flex-initial lg:w-[230px]">
+                <motion.div
+                  whileHover={{ borderColor: "rgba(85,239,196,0.4)" }}
+                  className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-colors"
+                >
+                  <div className="relative w-9 h-9 rounded-lg bg-[#55efc4]/10 flex items-center justify-center shrink-0">
+                    <motion.span
+                      className="absolute inset-0 rounded-lg bg-[#55efc4]/25"
+                      animate={{ scale: [1, 1.35, 1], opacity: [0, 0.5, 0] }}
+                      transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    <Activity className="relative w-[18px] h-[18px] text-[#55efc4]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-neutral-500 font-mono uppercase leading-none">PyTorch Temporal</div>
+                    <div className="text-sm font-bold text-[#55efc4] font-mono mt-1.5 leading-none">Online GRU</div>
+                    <div className="text-[10px] text-neutral-500 mt-1 leading-none">окно 10m</div>
+                  </div>
+                </motion.div>
+                <motion.div
+                  whileHover={{ borderColor: "rgba(253,203,110,0.4)" }}
+                  className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-colors"
+                >
+                  <div className="relative w-9 h-9 rounded-lg bg-[#fdcb6e]/10 flex items-center justify-center shrink-0">
+                    <motion.span
+                      className="absolute inset-0 rounded-lg bg-[#fdcb6e]/25"
+                      animate={{ scale: [1, 1.35, 1], opacity: [0, 0.5, 0] }}
+                      transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
+                    />
+                    <Zap className="relative w-[18px] h-[18px] text-[#fdcb6e]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-neutral-500 font-mono uppercase leading-none">LightGBM GBDT</div>
+                    <div className="text-sm font-bold text-[#fdcb6e] font-mono mt-1.5 leading-none">Leaf Speed</div>
+                    <div className="text-[10px] text-neutral-500 mt-1 leading-none">&lt;5ms инференс</div>
+                  </div>
+                </motion.div>
               </div>
-              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
-                <div className="text-[10px] text-neutral-400 font-mono uppercase">LightGBM GBDT</div>
-                <div className="text-base font-bold text-[#ffeaa7] font-mono mt-0.5">Leaf Speed</div>
-                <div className="text-[9px] text-neutral-500 mt-0.5">&lt; 5ms инференс</div>
+
+              <div className="relative bg-neutral-950/80 border border-neutral-800/80 rounded-xl px-6 py-4 flex flex-col items-center justify-center gap-2 backdrop-blur bg-gradient-to-b from-neutral-950 to-[#55efc4]/5 shrink-0">
+                <div className="text-[10px] text-neutral-400 font-mono uppercase">Точность модели</div>
+                <AccuracyRing
+                  size={96}
+                  pct={stats?.guess_rate_pct != null ? stats.guess_rate_pct : 100 - avgErrorRate}
+                  known={!(stats && stats.miss_rate_pct === null)}
+                />
+                <div className="text-[10px] font-semibold">
+                  {stats && stats.miss_rate_pct === null ? (
+                    <span className="text-neutral-500">нет данных</span>
+                  ) : (
+                    <span className="text-[#ff7675]">
+                      промах {stats?.miss_rate_pct != null ? stats.miss_rate_pct.toFixed(1) : avgErrorRate.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="bg-neutral-950/80 border border-neutral-800 rounded-xl p-3 text-center backdrop-blur">
-                <div className="text-[10px] text-neutral-400 font-mono uppercase">Золотой коридор</div>
-                <div className="text-base font-bold text-[#74b9ff] font-mono mt-0.5">1.10 — 2.10</div>
-                <div className="text-[9px] text-neutral-500 mt-0.5">Safe ROI Bounds</div>
-              </div>
-              <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-xl p-3 text-center backdrop-blur bg-gradient-to-b from-neutral-950 to-[#ff7675]/5 border-[#ff7675]/30">
-                <div className="text-[10px] text-neutral-400 font-mono uppercase">Промах нейросети</div>
-                {stats && stats.miss_rate_pct === null ? (
-                  <>
-                    <div className="text-base font-bold text-neutral-500 font-mono mt-0.5">Нет данных</div>
-                    <div className="text-[9px] text-neutral-500 mt-0.5">Пока нет рассчитанных ставок</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-base font-bold text-[#ff7675] font-mono mt-0.5">
-                      {stats?.miss_rate_pct != null ? `${stats.miss_rate_pct.toFixed(1)}%` : `${avgErrorRate.toFixed(1)}%`}
-                    </div>
-                    <div className="text-[9px] text-[#55efc4] font-semibold mt-0.5">
-                      {stats?.guess_rate_pct != null ? `${stats.guess_rate_pct.toFixed(1)}% угадано` : "предв. оценка"}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            </motion.div>
           </div>
         </div>
 
@@ -816,7 +961,7 @@ export default function NeurobetsPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setVerdictFilter("win")}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
