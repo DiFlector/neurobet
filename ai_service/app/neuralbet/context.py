@@ -139,3 +139,14 @@ def overround_group_key(factor_id: Optional[int], parameter: str) -> Optional[Tu
     if factor_id in _OVERROUND_TOTAL:
         return ("total", parameter)
     return None
+
+# Note: a per-market-family mutual-exclusion grouping (П1 vs П2, Тотал Больше vs
+# Меньше, etc.) used to live here for the training bankroll replay. Superseded by a
+# flat "at most one open position per event" rule everywhere (live betting, the
+# "Активные LIVE прогнозы" display, and training) — see model.py's _bankroll_pass and
+# backend/database.py's place_live_bet_candidates/get_top_neurobets. Two markets on one
+# match can be correlated without being strictly mutually exclusive (e.g. "П1 wins" and
+# "team 2's individual total over 2.5" both individually plausible but pulling against
+# each other), and modeling exactly how correlated any given pair is would need
+# per-sport, per-scoreline statistics no family-based rule could safely approximate —
+# one position per match sidesteps needing that model at all.

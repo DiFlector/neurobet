@@ -447,6 +447,10 @@ def _row_to_sample(r) -> dict[str, Any]:
         "timer_seq": timer_seq,
         "score_diff_at_bet": r["score_diff_at_bet"] or 0,
         "factor_id": r["factor_id"],
+        # Carried through purely so the training bankroll replay can tell when two
+        # samples belong to the same match and avoid staking more than one position on
+        # it in a round — see model.py's _bankroll_pass. Not a model feature.
+        "event_id": r["event_id"],
         "sport_path": r["sport_path"] or "",
         "team_1": r["team_1"] or "",
         "team_2": r["team_2"] or "",
@@ -977,12 +981,19 @@ def _run_neuralbet_inference_and_training_locked(
     # and settles resolved ones on its own cycle (see backend/database.py) ---
     place_result = _place_live_bets(live_candidates)
     if place_result.get("placed"):
-        skipped_stale = sum(
-            1
-            for s in place_result.get("skipped", [])
-            if s.get("reason") == "stale_market"
-        )
-        extra = f" ({skipped_stale} пропущено как устаревшие)" if skipped_stale else ""
+        skip_reasons = [s.get("reason") for s in place_result.get("skipped", [])]
+        skipped_stale = skip_reasons.count("stale_market")
+        skipped_conflict = skip_reasons.count("event_already_has_open_bet")
+        extra_bits = []
+        if skipped_stale:
+            extra_bits.append(f"{skipped_stale} устаревших")
+        if skipped_conflict:
+            # backend refused to open a second position on a match that already has an
+            # open bet (see place_live_bet_candidates' occupied_events) — worth calling
+            # out specifically since it means the model proposed betting on more than
+            # one market of the same live event this cycle.
+            extra_bits.append(f"{skipped_conflict} на уже занятый матч")
+        extra = f" ({', '.join(extra_bits)} пропущено)" if extra_bits else ""
         add_ai_log(
             "BANKROLL",
             f"Live bankroll: opened {place_result['placed']} new bet(s) this cycle.{extra}",

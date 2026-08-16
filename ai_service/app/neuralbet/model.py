@@ -887,6 +887,14 @@ class NeuralBetEnsemble:
             "target": float(sample["is_win"]),
             "coefficient": float(odds_seq[cutoff - 1]),
             "factor_id": sample.get("factor_id"),
+            # Which event this outcome belongs to, so the bankroll replay can refuse to
+            # stake two positions on the same match in one round (see _bankroll_pass) —
+            # not just strictly mutually-exclusive outcomes, but any two markets on the
+            # same event, since even non-exclusive ones are routinely correlated (e.g.
+            # "П1 wins" and "team 2's individual total over 2.5" pull against each
+            # other). None when missing — such a sample simply never conflicts with
+            # anything, which is the safe default.
+            "conflict_key": sample.get("event_id"),
             "overround_close": sample.get("overround_close"),
             "sport_idx": sport_index(sample.get("sport_path")),
             "market_idx": market_family_index(sample.get("factor_id")),
@@ -972,6 +980,40 @@ class NeuralBetEnsemble:
                 # through the softmax weights of whichever candidates the mask keeps.
                 verdict = (torch.sigmoid(logits[:, 1]) >= 0.5).float().detach()
                 fractions = fractions * verdict
+
+                # Never stake more than one position on the same match in one round —
+                # not just strictly mutually-exclusive outcomes, but any two markets on
+                # the same event (they're routinely correlated even when they aren't
+                # exclusive: "П1 wins" and "team 2's individual total over 2.5" pull
+                # against each other). Live betting already refuses this
+                # (backend/database.py's place_live_bet_candidates occupied_events
+                # check) — without the same rule here, the stake head could learn to
+                # split exposure across a match's markets in a way the real bot can
+                # never execute. It genuinely happens in training batches:
+                # _fetch_training_batch takes the freshest resolved bets, and when a
+                # match settles *all* of its markets become fresh at once, so several of
+                # them routinely land in the same round. Keeps whichever candidate on a
+                # given event the allocator sized largest and zeroes the rest; detached
+                # like every other hard keep/drop cut here.
+                conflict_seen: Dict[Any, int] = {}
+                drop_idx: List[int] = []
+                sized = fractions.detach()
+                for idx, c in enumerate(chunk):
+                    key = c.get("conflict_key")
+                    if key is None or sized[idx].item() <= 0.0:
+                        continue
+                    prev = conflict_seen.get(key)
+                    if prev is None:
+                        conflict_seen[key] = idx
+                    elif sized[idx].item() > sized[prev].item():
+                        drop_idx.append(prev)
+                        conflict_seen[key] = idx
+                    else:
+                        drop_idx.append(idx)
+                if drop_idx:
+                    keep_mask = torch.ones_like(fractions)
+                    keep_mask[drop_idx] = 0.0
+                    fractions = fractions * keep_mask
 
                 gain = bankroll.settle(fractions, coeffs, wins)
                 round_loss = -torch.log(torch.clamp(gain, min=0.01))

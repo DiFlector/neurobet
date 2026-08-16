@@ -12,7 +12,6 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from settings import settings
-from parser_service import OUTCOME_FAMILY_MAP
 
 logger = logging.getLogger("database")
 
@@ -1176,8 +1175,8 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # Same three risk-management gates ai_service/app/neuralbet/pipeline.py applies before
 # staking real bankroll money on a candidate (see MAX_BET_COEFF/MIN_BET_EDGE_PCT/
 # MIN_MARKET_SUPPORT there) — duplicated here (small constants, not shared code, same
-# reasoning as OUTCOME_FAMILY_MAP/overround_group_key already being duplicated across
-# this service boundary) so the "Активные LIVE прогнозы"/"Нейроставки AI TOP" list shown
+# reasoning as overround_group_key already being duplicated across this service
+# boundary) so the "Активные LIVE прогнозы"/"Нейроставки AI TOP" list shown
 # to the user matches what the bot would actually risk money on, instead of surfacing
 # verdicts (e.g. a 5.0 coefficient, or a market with a handful of resolved samples ever)
 # the bot itself would never bet. Reads the *same* env vars ai_service reads (both
@@ -1376,35 +1375,26 @@ def get_top_neurobets(
     else:
         candidates.sort(key=lambda d: (d["win_probability"], -d["coefficient"]), reverse=True)
 
-    # De-duplicate mutually-exclusive outcomes of the same market (e.g. "Тотал Больше 2.5"
-    # and "Тотал Меньше 2.5" on the same event) so the list never recommends betting on
-    # both sides of the same market. Rows arrive already sorted best-first, so keeping the
-    # first row seen per group keeps the strongest pick and discards the rest.
-    seen_groups = set()
-    deduped = []
-    for d in candidates:
-        family = OUTCOME_FAMILY_MAP.get(d["factor_id"])
-        param = d.get("parameter")
-
-        if family == "handicap":
-            try:
-                param_key = str(abs(float(param)))
-            except (TypeError, ValueError):
-                param_key = str(param)
-        elif family in ("total", "itotal1", "itotal2"):
-            param_key = str(param)
-        elif family in ("1x2", "btts", "proход"):
-            param_key = ""
-        else:
-            family = f"solo_{d['factor_id']}"
-            param_key = str(param)
-
-        group_key = (d["event_id"], d["market_prefix"], family, param_key)
-        if group_key in seen_groups:
-            continue
-        seen_groups.add(group_key)
-
-        deduped.append(d)
+    # De-duplicate to at most one pick per event — not just per market — so the "win"
+    # list (the bot's real betting pool) never recommends two bets on the same match,
+    # even ones that aren't strictly mutually exclusive (e.g. "П1 wins" and "team 2's
+    # individual total over 2.5" are both individually plausible but pull against each
+    # other; see place_live_bet_candidates' occupied_events for the full reasoning —
+    # this list should show exactly what the bot would actually do). Rows arrive
+    # already sorted best-first, so keeping the first row seen per event keeps the
+    # strongest pick and discards the rest. Only applied to "win": "loss"/"all" exist to
+    # browse everything the network has an opinion on, and collapsing those to one row
+    # per match would just hide information no money is ever at risk on anyway.
+    if verdict == "win":
+        seen_events = set()
+        deduped = []
+        for d in candidates:
+            if d["event_id"] in seen_events:
+                continue
+            seen_events.add(d["event_id"])
+            deduped.append(d)
+    else:
+        deduped = candidates
 
     total = len(deduped)
     page = deduped[offset: offset + limit] if limit else deduped[offset:]
@@ -2102,6 +2092,19 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     open_count = f_cursor.fetchone()["c"]
     slots_left = MAX_OPEN_LIVE_POSITIONS - open_count
 
+    # At most one open bot bet per event, full stop — not just per market. Two markets
+    # on the same match are routinely correlated even when they aren't strictly
+    # mutually exclusive (e.g. "П1 wins" and "team 2's individual total over 2.5" pull
+    # against each other: a match trending toward a P1 win usually means team 2 isn't
+    # scoring much), and modeling *how* correlated any given pair of markets is would
+    # need per-sport, per-scoreline statistics no simpler rule can safely approximate.
+    # One position per match sidesteps needing that model at all. Seeded from
+    # already-open bets, then grown as this batch places its own, so two candidates on
+    # the same event within one batch are also caught (keeping only the first — batches
+    # arrive pre-sorted by expected_roi, so that's the strongest pick).
+    f_cursor.execute("SELECT DISTINCT event_id FROM live_bets WHERE status = 'open'")
+    occupied_events = {r["event_id"] for r in f_cursor.fetchall()}
+
     for c in candidates:
         event_id, factor_id = c["event_id"], c["factor_id"]
         parameter = c.get("parameter") or ""
@@ -2113,6 +2116,10 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
 
         if not _is_market_fresh(cursor, event_id, factor_id, parameter, market_prefix):
             skipped.append({"candidate": c, "reason": "stale_market"})
+            continue
+
+        if event_id in occupied_events:
+            skipped.append({"candidate": c, "reason": "event_already_has_open_bet"})
             continue
 
         stake = available * c["stake_fraction"]
@@ -2133,6 +2140,8 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
         if f_cursor.rowcount == 0:
             skipped.append({"candidate": c, "reason": "already_open"})
             continue
+
+        occupied_events.add(event_id)
 
         f_cursor.execute("""
             UPDATE bankroll_accounts SET
