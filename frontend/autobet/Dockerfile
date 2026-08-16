@@ -16,12 +16,15 @@ COPY . .
 # come in as a build ARG (passed via docker-compose's `build.args`, sourced from .env)
 # and get baked in here, before the build step.
 #
-# Default is empty on purpose: an empty NEXT_PUBLIC_API_URL makes the client fetch
-# same-origin relative paths ("/api/..."), which next.config.ts then proxies server-side
-# to the backend — see that file. Only set NEXT_PUBLIC_API_URL if you deliberately want
-# the browser to call the backend directly on its own exposed origin/port instead.
-ARG NEXT_PUBLIC_API_URL=""
+# На проде корень сайта = /neurobet:
+#   NEXT_PUBLIC_API_URL=/neurobet  → fetch идёт на /neurobet/api/...
+#   NEXT_PUBLIC_BASE_PATH=/neurobet → Next.js basePath (ассеты, Link)
+# Пустой API_URL допустим только локально без basePath (тогда браузер бьёт в /api/...).
+ARG NEXT_PUBLIC_API_URL="/neurobet"
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+ARG NEXT_PUBLIC_BASE_PATH="/neurobet"
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 
 # next.config.ts's rewrites() is evaluated at `next build` time and its destination is
 # baked into .next/routes-manifest.json — a runtime-only `environment:` value in
@@ -36,14 +39,17 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-ARG NEXT_PUBLIC_API_URL=""
+ARG NEXT_PUBLIC_API_URL="/neurobet"
+ARG NEXT_PUBLIC_BASE_PATH="/neurobet"
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 ENV PORT=3000
 
 RUN corepack enable && corepack prepare pnpm@10 --activate
 
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/next.config.ts ./
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules

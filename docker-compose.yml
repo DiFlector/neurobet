@@ -27,8 +27,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: neurobet_backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - .env
     environment:
@@ -48,9 +48,9 @@ services:
     build:
       context: ./ai_service
       dockerfile: Dockerfile
-    container_name: neurobet_ai
-    ports:
-      - "8001:8001"
+    container_name: autobet_ai
+    expose:
+      - "8001"
     env_file:
       - .env
     environment:
@@ -70,25 +70,20 @@ services:
     build:
       context: ./frontend/autobet
       dockerfile: Dockerfile
-      # Leave NEXT_PUBLIC_API_URL unset (empty) unless you deliberately want the
-      # browser to call the backend directly on its own exposed port — the default
-      # (same-origin "/api/..." calls, proxied server-side by next.config.ts to
-      # BACKEND_INTERNAL_URL below) is what lets this work behind a single forwarded
-      # port with no CORS/Private-Network-Access issues. If you DO set it in .env,
-      # remember NEXT_PUBLIC_* is baked in at build time: `docker compose build
-      # frontend` (or `up --build`) is required, a plain restart won't pick it up.
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/neurobet}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/neurobet}
         # Must match BACKEND_INTERNAL_URL below — next.config.ts's rewrites() destination
         # is baked in at `next build` time, so the runtime-only env var isn't enough.
         BACKEND_INTERNAL_URL: http://backend:8000
-    container_name: neurobet_frontend
-    ports:
-      - "3000:3000"
+    container_name: autobet_frontend
+    expose:
+      - "3000"
     env_file:
       - .env
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/neurobet}
+      - NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH:-/neurobet}
       # Internal Docker network address of the backend service — used only by the
       # Next.js server to proxy /api/* (see next.config.ts). Plain env var (no
       # NEXT_PUBLIC_ prefix), so this is read fresh at container start, no rebuild
@@ -97,3 +92,11 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - default
+      - nginx-master-network
+
+# necrolich.ru relocate. Check if change host.
+networks:
+  nginx-master-network:
+    external: true
