@@ -1012,8 +1012,6 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 def get_top_neurobets(
     sport_filter: Optional[str] = None,
     sort_mode: str = "best",
-    min_odds: float = 1.1,
-    max_odds: float = 2.1,
     limit: int = 50,
     offset: int = 0,
     verdict: str = "win",
@@ -1078,12 +1076,10 @@ def get_top_neurobets(
             AND COALESCE(l.market_prefix, '') = COALESCE(p.market_prefix, '')
         WHERE e.is_live = 1
           {verdict_clause}
-          AND l.coefficient >= %s
-          AND l.coefficient <= %s
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = (SELECT MAX(last_updated_at) FROM events)
     """
-    params = [min_odds, max_odds]
+    params = []
 
     if sport_filter and sport_filter.lower() != "all":
         query += " AND e.sport_path ILIKE %s"

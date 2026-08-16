@@ -213,8 +213,6 @@ def read_stats():
 def read_neurobets_top(
     sport: Optional[str] = Query(None, description="Filter by sport path"),
     sort: str = Query("best", description="Sort mode: 'best' or 'safe'"),
-    min_odds: float = Query(1.1, description="Min odds bound"),
-    max_odds: float = Query(2.1, description="Max odds bound"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset"),
     verdict: str = Query("win", description="Filter by model verdict: 'win', 'loss', or 'all'"),
@@ -224,8 +222,6 @@ def read_neurobets_top(
         res = get_top_neurobets(
             sport_filter=sport,
             sort_mode=sort,
-            min_odds=min_odds,
-            max_odds=max_odds,
             limit=limit,
             offset=offset,
             verdict=verdict,

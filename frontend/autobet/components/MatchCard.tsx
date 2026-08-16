@@ -91,11 +91,11 @@ export function MatchCard({
 
   return (
     <>
-      <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 shadow-xl hover:border-neutral-700/80 transition-all duration-200 flex flex-col justify-between backdrop-blur-sm">
+      <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 shadow-xl hover:border-neutral-700/80 hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between backdrop-blur-sm">
         {/* Top Header: Sport & Timer */}
         <div>
           <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="text-[11px] font-semibold text-neutral-400 truncate max-w-[240px] flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-400 truncate max-w-[240px] bg-neutral-950/60 border border-neutral-800/80 px-2 py-1 rounded-full">
               <Trophy className="w-3.5 h-3.5 text-[#0984e3] shrink-0" />
               {sportPath}
             </span>
@@ -295,7 +295,7 @@ export function MatchCard({
         {/* Footer: All markets button */}
         <button
           onClick={() => setDrawerOpen(true)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-neutral-950/80 border border-neutral-800 text-xs font-medium text-neutral-300 hover:text-[#fdcb6e] hover:border-[#fdcb6e]/40 hover:bg-neutral-800/60 transition group mt-2"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-full bg-neutral-950/80 border border-neutral-800 text-xs font-medium text-neutral-300 hover:text-[#fdcb6e] hover:border-[#fdcb6e]/40 hover:bg-neutral-800/60 transition group mt-2"
         >
           <span className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-[#00b894]" />

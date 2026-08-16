@@ -311,6 +311,10 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
     else:
         cursor.execute("SELECT MAX(last_updated_at) FROM events")
         target_ts = cursor.fetchone()["max"]
+    # Combat sports (единоборства/MMA/UFC/бокс) are excluded from betting: Fonbet's live
+    # list has a display-side lag for them that causes premature/incorrect settlement
+    # (see the exclusion in parser_service.py). This is a defense-in-depth guard in case
+    # a combat-sport event was already stored before the parser-level fix took effect.
     cursor.execute("""
         SELECT
             l.event_id, l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
@@ -320,6 +324,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         WHERE e.is_live = 1
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = %s
+          AND e.sport_path !~* '(единоборства|mma|ufc|бокс)'
     """, (target_ts,))
     live_odds_rows = cursor.fetchall()
 

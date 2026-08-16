@@ -702,6 +702,10 @@ export default function AdminPage() {
         </div>
       </main>
 
+      <footer className="border-t border-neutral-900 bg-neutral-950 py-4 px-6 text-center text-xs text-neutral-500">
+        Нейроставки &copy; 2026 — AI прогнозы ставок
+      </footer>
+
       {/* Confirmation Modal */}
       {resetModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

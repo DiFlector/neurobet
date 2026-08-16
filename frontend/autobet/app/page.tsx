@@ -176,8 +176,6 @@ export default function NeurobetsPage() {
   const [activeTab, setActiveTab] = useState<"live" | "history">("live")
   const [sortMode, setSortMode] = useState<"best" | "safe">("best")
   const [selectedSport, setSelectedSport] = useState<string>("all")
-  const [minOdds, setMinOdds] = useState<number>(1.1)
-  const [maxOdds, setMaxOdds] = useState<number>(2.1)
   const [stats, setStats] = useState<any>(null)
   const [bankroll, setBankroll] = useState<any>(null)
   const [openBetsCount, setOpenBetsCount] = useState(0)
@@ -232,7 +230,7 @@ export default function NeurobetsPage() {
     liveOffsetRef.current = 0
     setLiveBets([])
     setLoading(true)
-  }, [sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+  }, [sortMode, selectedSport, verdictFilter, searchQuery])
 
   useEffect(() => {
     historyOffsetRef.current = 0
@@ -270,8 +268,6 @@ export default function NeurobetsPage() {
     try {
       const params = new URLSearchParams({
         sort: sortMode,
-        min_odds: minOdds.toString(),
-        max_odds: maxOdds.toString(),
         limit: "1",
         offset: "0",
         verdict: verdictFilter
@@ -286,7 +282,7 @@ export default function NeurobetsPage() {
     } catch (err) {
       // Ignore — badge just keeps showing the last known count
     }
-  }, [API_BASE, sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+  }, [API_BASE, sortMode, selectedSport, verdictFilter, searchQuery])
 
   const fetchHistoryTotal = useCallback(async () => {
     try {
@@ -378,8 +374,6 @@ export default function NeurobetsPage() {
     try {
       const params = new URLSearchParams({
         sort: sortMode,
-        min_odds: minOdds.toString(),
-        max_odds: maxOdds.toString(),
         limit: limit.toString(),
         offset: offset.toString(),
         verdict: verdictFilter
@@ -449,7 +443,7 @@ export default function NeurobetsPage() {
         setLoadingMoreLive(false)
       }
     }
-  }, [API_BASE, sortMode, selectedSport, minOdds, maxOdds, verdictFilter, searchQuery])
+  }, [API_BASE, sortMode, selectedSport, verdictFilter, searchQuery])
 
   const loadMoreLive = useCallback(() => {
     if (loadingMoreLive || loading) return
@@ -640,16 +634,18 @@ export default function NeurobetsPage() {
 
         {/* Bankroll Panel: live simulated account only — the training bankroll is an
             internal training signal, not something a viewer here needs to see; it's
-            still visible on /admin. */}
-        {bankroll?.accounts?.live && (() => {
-          const acc = bankroll.accounts.live
+            still visible on /admin. Always rendered (with an empty state) rather than
+            disappearing entirely, so a slow/unreachable backend doesn't look like the
+            panel was removed — same treatment as "Ставки нейросети" below. */}
+        {(() => {
+          const acc = bankroll?.accounts?.live
           // ROI must be based on total equity (spendable + locked-in-open-bets), not just
           // spendable balance — money currently staked on an open position hasn't been
           // won or lost yet, so counting it as gone (the old balance-only calculation)
           // showed a "-71.8%" loss for money that was simply still in play. Locked money
           // only actually leaves the total once a bet settles and balance/locked update.
-          const totalEquity = Number(acc.balance) + Number(acc.locked || 0)
-          const roiPct = acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
+          const totalEquity = acc ? Number(acc.balance) + Number(acc.locked || 0) : 0
+          const roiPct = acc && acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
           return (
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
@@ -661,43 +657,54 @@ export default function NeurobetsPage() {
                 </span>
               </div>
 
-              <div className="flex items-end gap-3">
-                <div className="text-3xl font-black font-mono text-white">
-                  {Number(acc.balance).toFixed(1)} ₽
+              {!acc ? (
+                <div className="flex items-center gap-3 bg-neutral-950/60 border border-neutral-800/80 rounded-xl px-4 py-3.5">
+                  <Clock className="w-4 h-4 text-neutral-500 shrink-0" />
+                  <p className="text-xs text-neutral-400">
+                    Нет данных о банке — бэкенд недоступен или live-аккаунт ещё не инициализирован.
+                  </p>
                 </div>
-                <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
-                  {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-end gap-3">
+                    <div className="text-3xl font-black font-mono text-white">
+                      {Number(acc.balance).toFixed(1)} ₽
+                    </div>
+                    <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                      {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-5 gap-2 text-center">
-                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Пик</div>
-                  <div className="text-xs font-bold text-white font-mono">{Number(acc.peak_balance).toFixed(0)}</div>
-                </div>
-                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                  <div className="text-[9px] text-neutral-500 font-mono uppercase">W / L</div>
-                  <div className="text-xs font-bold font-mono">
-                    <span className="text-[#55efc4]">{acc.wins}</span>
-                    <span className="text-neutral-600"> / </span>
-                    <span className="text-[#ff7675]">{acc.losses}</span>
+                  <div className="grid grid-cols-5 gap-2 text-center">
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Пик</div>
+                      <div className="text-xs font-bold text-white font-mono">{Number(acc.peak_balance).toFixed(0)}</div>
+                    </div>
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">W / L</div>
+                      <div className="text-xs font-bold font-mono">
+                        <span className="text-[#55efc4]">{acc.wins}</span>
+                        <span className="text-neutral-600"> / </span>
+                        <span className="text-[#ff7675]">{acc.losses}</span>
+                      </div>
+                    </div>
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Открыто ставок</div>
+                      <div className="text-xs font-bold text-[#74b9ff] font-mono">{openBetsCount}</div>
+                    </div>
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">В игре</div>
+                      <div className="text-xs font-bold text-[#ffeaa7] font-mono">{Number(acc.locked || 0).toFixed(0)}</div>
+                    </div>
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Банкротств</div>
+                      <div className={`text-xs font-bold font-mono ${acc.ruin_count > 0 ? "text-[#ff7675]" : "text-neutral-400"}`}>
+                        {acc.ruin_count}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Открыто ставок</div>
-                  <div className="text-xs font-bold text-[#74b9ff] font-mono">{openBetsCount}</div>
-                </div>
-                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                  <div className="text-[9px] text-neutral-500 font-mono uppercase">В игре</div>
-                  <div className="text-xs font-bold text-[#ffeaa7] font-mono">{Number(acc.locked || 0).toFixed(0)}</div>
-                </div>
-                <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                  <div className="text-[9px] text-neutral-500 font-mono uppercase">Банкротств</div>
-                  <div className={`text-xs font-bold font-mono ${acc.ruin_count > 0 ? "text-[#ff7675]" : "text-neutral-400"}`}>
-                    {acc.ruin_count}
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
           )
         })()}
@@ -705,18 +712,31 @@ export default function NeurobetsPage() {
         {/* Ставки нейросети — the bot's actual open real-money positions, kept visually
             separate from the "Активные LIVE Прогнозы" tab below (which is just every
             live outcome the AI has scored, most of which have no money on them). */}
-        <div className="bg-neutral-900/80 border border-[#00b894]/40 rounded-2xl p-4 md:p-5 space-y-3 backdrop-blur-md">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            🤖 Ставки нейросети
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
-              открыто: {openBotBetsList.length}
-            </span>
-          </h3>
+        <div className="bg-neutral-900/80 border border-[#00b894]/40 rounded-2xl p-4 md:p-5 space-y-3 backdrop-blur-md shadow-lg shadow-[#00b894]/5">
+          <div className="flex items-center gap-3">
+            <div className="relative w-9 h-9 rounded-xl bg-[#00b894]/15 border border-[#00b894]/30 flex items-center justify-center shrink-0">
+              <motion.span
+                className="absolute inset-0 rounded-xl bg-[#00b894]/25"
+                animate={{ scale: [1, 1.3, 1], opacity: [0, 0.5, 0] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <Zap className="relative w-4 h-4 text-[#55efc4]" />
+            </div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              Ставки нейросети
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                открыто: {openBotBetsList.length}
+              </span>
+            </h3>
+          </div>
 
           {openBotBetsList.length === 0 ? (
-            <p className="text-xs text-neutral-400">
-              Сейчас нет открытых ставок — бот ждёт исход с положительным EV и свободным банком.
-            </p>
+            <div className="flex items-center gap-3 bg-neutral-950/60 border border-neutral-800/80 rounded-xl px-4 py-3.5">
+              <Clock className="w-4 h-4 text-neutral-500 shrink-0" />
+              <p className="text-xs text-neutral-400">
+                Сейчас нет открытых ставок — бот ждёт исход с положительным EV и свободным банком.
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {openBotBetsList.map((b) => {
@@ -787,12 +807,17 @@ export default function NeurobetsPage() {
             onClick={() => setHistoryExpanded((v) => !v)}
             className="w-full flex items-center justify-between gap-2 p-4 md:p-5 text-left hover:bg-neutral-800/30 transition"
           >
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              📜 История ставок нейросети
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
-                последние {settledBotBetsList.length}
-              </span>
-            </h3>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-neutral-800/80 border border-neutral-700 flex items-center justify-center shrink-0">
+                <Database className="w-4 h-4 text-neutral-400" />
+              </div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                История ставок нейросети
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700">
+                  последние {settledBotBetsList.length}
+                </span>
+              </h3>
+            </div>
             <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
           </button>
 
@@ -856,32 +881,44 @@ export default function NeurobetsPage() {
         <div className="flex items-center gap-2 bg-neutral-900/90 p-1.5 rounded-2xl border border-neutral-800 backdrop-blur-md shadow-lg">
           <button
             onClick={() => setActiveTab("live")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition ${
-              activeTab === "live"
-                ? "bg-gradient-to-r from-[#fdcb6e] to-[#ffeaa7] text-neutral-950 shadow-lg shadow-[#fdcb6e]/20"
-                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+            className={`relative flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition-colors ${
+              activeTab === "live" ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-200"
             }`}
           >
-            <Zap className="w-4 h-4" />
-            🔥 Активные LIVE Прогнозы ({liveTotal.toLocaleString()})
+            {activeTab === "live" && (
+              <motion.div
+                layoutId="mainTabIndicator"
+                layoutDependency={activeTab}
+                className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#fdcb6e] to-[#ffeaa7] shadow-lg shadow-[#fdcb6e]/20"
+                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+              />
+            )}
+            <Zap className="relative z-10 w-4 h-4" />
+            <span className="relative z-10">🔥 Активные LIVE Прогнозы ({liveTotal.toLocaleString()})</span>
           </button>
 
           <button
             onClick={() => setActiveTab("history")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition ${
-              activeTab === "history"
-                ? "bg-gradient-to-r from-[#00b894] to-[#55efc4] text-neutral-950 shadow-lg shadow-[#00b894]/20"
-                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60"
+            className={`relative flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs md:text-sm font-bold transition-colors ${
+              activeTab === "history" ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-200"
             }`}
           >
-            <Trophy className="w-4 h-4" />
-            📜 История Прогнозов ({historySummary?.total_count || stats?.finished_odds_history_count || 0})
+            {activeTab === "history" && (
+              <motion.div
+                layoutId="mainTabIndicator"
+                layoutDependency={activeTab}
+                className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#00b894] to-[#55efc4] shadow-lg shadow-[#00b894]/20"
+                transition={{ type: "spring", stiffness: 400, damping: 32 }}
+              />
+            )}
+            <Trophy className="relative z-10 w-4 h-4" />
+            <span className="relative z-10">📜 История Прогнозов ({historySummary?.total_count || stats?.finished_odds_history_count || 0})</span>
           </button>
         </div>
 
         {/* Filter Controls & Sort Mode Switcher */}
         <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4 md:p-5 space-y-4 backdrop-blur-md">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
             {/* Sort Mode Buttons (Only shown for LIVE Tab) */}
             {activeTab === "live" ? (
               <div className="space-y-1.5">
@@ -889,29 +926,41 @@ export default function NeurobetsPage() {
                   <BarChart3 className="w-3.5 h-3.5 text-[#fdcb6e]" />
                   Режим сортировки ставок:
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="inline-flex items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
                   <button
                     onClick={() => setSortMode("best")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm ${
-                      sortMode === "best"
-                        ? "bg-[#fdcb6e] text-neutral-950 shadow-[#fdcb6e]/20"
-                        : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      sortMode === "best" ? "text-neutral-950" : "text-neutral-400 hover:text-white"
                     }`}
                   >
-                    <Trophy className="w-3.5 h-3.5" />
-                    ⭐ Самая лучшая (Max ROI / EV)
+                    {sortMode === "best" && (
+                      <motion.div
+                        layoutId="sortModeIndicator"
+                        layoutDependency={sortMode}
+                        className="absolute inset-0 rounded-lg bg-[#fdcb6e] shadow-sm shadow-[#fdcb6e]/20"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <Trophy className="relative z-10 w-3.5 h-3.5" />
+                    <span className="relative z-10">⭐ Самая лучшая (Max ROI / EV)</span>
                   </button>
 
                   <button
                     onClick={() => setSortMode("safe")}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm ${
-                      sortMode === "safe"
-                        ? "bg-[#00b894] text-neutral-950 shadow-[#00b894]/20"
-                        : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      sortMode === "safe" ? "text-neutral-950" : "text-neutral-400 hover:text-white"
                     }`}
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    🛡️ Самая безопасная (Max Win %)
+                    {sortMode === "safe" && (
+                      <motion.div
+                        layoutId="sortModeIndicator"
+                        layoutDependency={sortMode}
+                        className="absolute inset-0 rounded-lg bg-[#00b894] shadow-sm shadow-[#00b894]/20"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <ShieldCheck className="relative z-10 w-3.5 h-3.5" />
+                    <span className="relative z-10">🛡️ Самая безопасная (Max Win %)</span>
                   </button>
                 </div>
               </div>
@@ -919,7 +968,7 @@ export default function NeurobetsPage() {
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   📜 Результаты Прогнозов Нейросети
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
                     Архив завершенных матчей
                   </span>
                 </h3>
@@ -929,70 +978,72 @@ export default function NeurobetsPage() {
               </div>
             )}
 
-            {/* Odds Range Bounds Indicator (live tab only — history is unfiltered by odds) */}
+            {/* Verdict Filter — moved here (was where the now-removed odds-range badge sat) */}
             {activeTab === "live" && (
-              <div className="space-y-1 bg-neutral-950 p-3 rounded-xl border border-neutral-800/80 shrink-0">
-                <div className="text-xs font-semibold text-neutral-300 flex items-center justify-between gap-4">
-                  <span>Границы коэффициентов:</span>
-                  <span className="font-mono text-[#fdcb6e] font-bold">
-                    {minOdds.toFixed(2)} — {maxOdds.toFixed(2)}
-                  </span>
-                </div>
-                <span className="text-[11px] text-neutral-400 italic">
-                  {sortMode === "best"
-                    ? "Баланс шанса выигрыша и размера коэффициента"
-                    : "Фильтр наивысшей вероятности захода"}
-                </span>
+              <div className="self-start lg:self-auto inline-flex flex-wrap items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800 shrink-0">
+                <button
+                  onClick={() => setVerdictFilter("win")}
+                  className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    verdictFilter === "win" ? "text-neutral-950" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  {verdictFilter === "win" && (
+                    <motion.div
+                      layoutId="verdictFilterIndicator"
+                      layoutDependency={verdictFilter}
+                      className="absolute inset-0 rounded-lg bg-[#00b894] shadow-sm shadow-[#00b894]/20"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">🟢 Выигрывающие</span>
+                </button>
+                <button
+                  onClick={() => setVerdictFilter("loss")}
+                  className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    verdictFilter === "loss" ? "text-white" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  {verdictFilter === "loss" && (
+                    <motion.div
+                      layoutId="verdictFilterIndicator"
+                      layoutDependency={verdictFilter}
+                      className="absolute inset-0 rounded-lg bg-[#d63031] shadow-sm shadow-[#d63031]/20"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">🔴 Проигрывающие</span>
+                </button>
+                <button
+                  onClick={() => setVerdictFilter("all")}
+                  className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    verdictFilter === "all" ? "text-white" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  {verdictFilter === "all" && (
+                    <motion.div
+                      layoutId="verdictFilterIndicator"
+                      layoutDependency={verdictFilter}
+                      className="absolute inset-0 rounded-lg bg-neutral-700 shadow-sm"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">⚪ Все</span>
+                </button>
               </div>
             )}
           </div>
 
-          {/* Search & Verdict Filter (LIVE tab only) */}
+          {/* Search (LIVE tab only) — now spans the full row on its own */}
           {activeTab === "live" && (
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3 pt-3 border-t border-neutral-800/80">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Команда, матч или тип ставки — например «Фора 1» или «команда — команда»"
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setVerdictFilter("win")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-                    verdictFilter === "win"
-                      ? "bg-[#00b894] text-neutral-950 shadow-sm shadow-[#00b894]/20"
-                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
-                  }`}
-                >
-                  🟢 Выигрывающие
-                </button>
-                <button
-                  onClick={() => setVerdictFilter("loss")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-                    verdictFilter === "loss"
-                      ? "bg-[#d63031] text-white shadow-sm shadow-[#d63031]/20"
-                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
-                  }`}
-                >
-                  🔴 Проигрывающие
-                </button>
-                <button
-                  onClick={() => setVerdictFilter("all")}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition ${
-                    verdictFilter === "all"
-                      ? "bg-neutral-700 text-white shadow-sm"
-                      : "bg-neutral-950 text-neutral-400 hover:text-white border border-neutral-800"
-                  }`}
-                >
-                  ⚪ Все
-                </button>
-              </div>
+            <div className="relative pt-3 border-t border-neutral-800/80">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Команда, матч или тип ставки — например «Фора 1» или «команда — команда»"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-full pl-10 pr-4 py-2.5 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
+              />
             </div>
           )}
 
@@ -1002,10 +1053,10 @@ export default function NeurobetsPage() {
               <button
                 key={sport.id}
                 onClick={() => setSelectedSport(sport.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
                   selectedSport === sport.id
-                    ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/40 font-bold"
-                    : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800/60"
+                    ? "bg-[#fdcb6e] text-neutral-950 border-[#fdcb6e] font-bold shadow-sm shadow-[#fdcb6e]/20"
+                    : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-neutral-800/60"
                 }`}
               >
                 {sport.label}
@@ -1547,6 +1598,10 @@ export default function NeurobetsPage() {
           </div>
         )}
       </main>
+
+      <footer className="border-t border-neutral-900 bg-neutral-950 py-4 px-6 text-center text-xs text-neutral-500">
+        Нейроставки &copy; 2026 — AI прогнозы ставок
+      </footer>
     </div>
   )
 }

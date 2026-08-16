@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { motion } from "framer-motion"
 import {
   Search,
   RefreshCw,
@@ -135,45 +136,61 @@ export default function Page() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
         {/* Controls Bar: Search & Sport Filters */}
         <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4 space-y-4 backdrop-blur-md">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Search Input */}
-            <div className="relative w-full md:w-80">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            {/* Search Input — full width row on its own, matches the neurobets page pattern */}
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
               <input
                 type="text"
                 placeholder="Поиск по названию команды или матча..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-full pl-10 pr-4 py-2.5 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-[#fdcb6e] transition"
               />
             </div>
 
-            {/* Controls right: Safe Mode & Auto-refresh */}
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
-              {/* Safe Mode Toggle Button */}
-              <button
-                onClick={() => setSafeMode(!safeMode)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
-                  safeMode
-                    ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894] shadow-[#00b894]/10"
-                    : "bg-neutral-950 text-neutral-300 border border-neutral-800 hover:bg-neutral-800"
-                }`}
-              >
-                {safeMode ? (
-                  <>
-                    <ShieldCheck className="w-4 h-4 text-[#00b894]" />
-                    <span>Безопасный режим (1.1 - 2.1)</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="w-4 h-4 text-[#fdcb6e]" />
-                    <span>Показывать все коэффициенты</span>
-                  </>
-                )}
-              </button>
+            {/* Controls right: Safe Mode segmented toggle, Auto-refresh, manual trigger */}
+            <div className="self-start lg:self-auto flex flex-wrap items-center gap-2 shrink-0">
+              {/* Safe Mode — segmented control with a sliding indicator, same language as the neurobets page */}
+              <div className="relative inline-flex items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
+                <button
+                  onClick={() => setSafeMode(true)}
+                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    safeMode ? "text-neutral-950" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  {safeMode && (
+                    <motion.div
+                      layoutId="safeModeIndicator"
+                      layoutDependency={safeMode}
+                      className="absolute inset-0 rounded-lg bg-[#00b894] shadow-sm shadow-[#00b894]/20"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <ShieldCheck className="relative z-10 w-3.5 h-3.5" />
+                  <span className="relative z-10">Безопасный (1.10–2.10)</span>
+                </button>
+                <button
+                  onClick={() => setSafeMode(false)}
+                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    !safeMode ? "text-neutral-950" : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  {!safeMode && (
+                    <motion.div
+                      layoutId="safeModeIndicator"
+                      layoutDependency={safeMode}
+                      className="absolute inset-0 rounded-lg bg-[#fdcb6e] shadow-sm shadow-[#fdcb6e]/20"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <ShieldAlert className="relative z-10 w-3.5 h-3.5" />
+                  <span className="relative z-10">Все коэффициенты</span>
+                </button>
+              </div>
 
               {/* Auto-refresh toggle */}
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300 bg-neutral-950 px-3 py-2 rounded-xl border border-neutral-800">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300 bg-neutral-950 px-3.5 py-2.5 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors">
                 <input
                   type="checkbox"
                   checked={autoRefresh}
@@ -187,7 +204,7 @@ export default function Page() {
               <button
                 onClick={handleManualTrigger}
                 disabled={triggeringScrape}
-                className="flex items-center gap-1.5 bg-[#fdcb6e] hover:bg-[#ffeaa7] text-neutral-950 font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md shadow-[#fdcb6e]/20 disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-gradient-to-r from-[#fdcb6e] to-[#ffeaa7] hover:brightness-105 text-neutral-950 font-bold px-3.5 py-2.5 rounded-xl transition text-xs shadow-md shadow-[#fdcb6e]/20 disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${triggeringScrape ? "animate-spin" : ""}`} />
                 Спарсить
@@ -196,15 +213,15 @@ export default function Page() {
           </div>
 
           {/* Sport Tabs */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-neutral-800/80">
             {sportCategories.map((sport) => (
               <button
                 key={sport.id}
                 onClick={() => setSelectedSport(sport.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
                   selectedSport === sport.id
-                    ? "bg-[#fdcb6e] text-neutral-950 shadow-md shadow-[#fdcb6e]/20"
-                    : "bg-neutral-950 text-neutral-400 hover:text-white hover:bg-neutral-800 border border-neutral-800"
+                    ? "bg-[#fdcb6e] text-neutral-950 border-[#fdcb6e] font-bold shadow-sm shadow-[#fdcb6e]/20"
+                    : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-neutral-800/60"
                 }`}
               >
                 {sport.label}
@@ -216,7 +233,9 @@ export default function Page() {
         {/* Content Section */}
         {error ? (
           <div className="bg-[#d63031]/10 border border-[#d63031]/30 rounded-2xl p-6 text-center space-y-2">
-            <AlertCircle className="w-8 h-8 text-[#ff7675] mx-auto" />
+            <div className="w-12 h-12 rounded-full bg-[#d63031]/15 border border-[#d63031]/30 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-5 h-5 text-[#ff7675]" />
+            </div>
             <h3 className="text-base font-bold text-[#ff7675]">Ошибка взаимодействия с бэкендом</h3>
             <p className="text-xs text-[#ff7675]/80">{error}</p>
             <p className="text-xs text-neutral-400">
@@ -225,12 +244,16 @@ export default function Page() {
           </div>
         ) : loading ? (
           <div className="py-20 text-center space-y-3">
-            <RefreshCw className="w-8 h-8 text-[#fdcb6e] animate-spin mx-auto" />
+            <div className="w-12 h-12 rounded-full bg-[#fdcb6e]/10 border border-[#fdcb6e]/30 flex items-center justify-center mx-auto">
+              <RefreshCw className="w-5 h-5 text-[#fdcb6e] animate-spin" />
+            </div>
             <p className="text-sm font-medium text-neutral-400">Загрузка LIVE матчей...</p>
           </div>
         ) : matches.length === 0 ? (
           <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-2xl py-16 text-center space-y-3">
-            <Filter className="w-10 h-10 text-neutral-600 mx-auto" />
+            <div className="w-14 h-14 rounded-full bg-neutral-800/60 border border-neutral-700 flex items-center justify-center mx-auto">
+              <Filter className="w-6 h-6 text-neutral-500" />
+            </div>
             <h3 className="text-base font-bold text-neutral-300">Матчи не найдены</h3>
             <p className="text-xs text-neutral-500">
               Попробуйте изменить поисковый запрос или выбрать другой вид спорта.
@@ -263,7 +286,7 @@ export default function Page() {
 
       {/* Footer */}
       <footer className="border-t border-neutral-900 bg-neutral-950 py-4 px-6 text-center text-xs text-neutral-500">
-        Fonbet Live Odds Scraper System &copy; 2026. Standard neutral dark theme & Flat UI Colors US Palette accents.
+        Нейроставки &copy; 2026 — AI прогнозы ставок
       </footer>
     </div>
   )

@@ -346,6 +346,10 @@ export default function StatsPage() {
           </>
         )}
       </main>
+
+      <footer className="border-t border-neutral-900 bg-neutral-950 py-4 px-6 text-center text-xs text-neutral-500">
+        Нейроставки &copy; 2026 — AI прогнозы ставок
+      </footer>
     </div>
   )
 }

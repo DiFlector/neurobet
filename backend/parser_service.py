@@ -284,6 +284,24 @@ def _is_fast_format_sport_path(sport_path: str) -> bool:
         return True
     return bool(_FAST_ESPORTS_FORMAT_RE.search(sp))
 
+
+# Fonbet's live list has a display-side lag for combat sports: a match can drop off
+# the live feed for a minute or more (well past EVENT_MISS_THRESHOLD/GRACE) while still
+# actually in progress, then reappear under the same event_id. That gap makes the
+# generic miss/finalize logic in database.py archive the event on a stale mid-fight
+# score, permanently settling any bets on it against the wrong outcome with no way to
+# reconcile later. Rather than special-case the miss/settlement logic per sport, exclude
+# these events outright at parse time — not shown live, not bet on, not archived, not
+# trained on — same treatment as the fast-format exclusion above.
+_EXCLUDED_SPORT_PATH_SUBSTRINGS = (
+    "единоборства", "mma", "ufc", "бокс",
+)
+
+
+def _is_excluded_sport_path(sport_path: str) -> bool:
+    sp = (sport_path or "").lower()
+    return any(s in sp for s in _EXCLUDED_SPORT_PATH_SUBSTRINGS)
+
 # Groups mutually-exclusive outcomes of the same market (e.g. Total Over/Under on the
 # same line, or the two sides of a handicap) so the neurobets ranking can show only the
 # single best pick per market instead of betting on both sides at once. Factor ids not
@@ -617,6 +635,10 @@ class FonbetParserService:
                 # unresolvable. Per explicit instruction: skip the whole event, not just
                 # the period-scoped markets — not shown live, not bet on, not archived,
                 # not trained on.
+                continue
+            if _is_excluded_sport_path(sport_path):
+                # Combat sports (see _EXCLUDED_SPORT_PATH_SUBSTRINGS above): Fonbet's
+                # live-list display lag causes premature/incorrect settlement.
                 continue
 
             t1 = ev.get("team1", "").strip()
