@@ -94,12 +94,12 @@ export function MatchCard({
       <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 shadow-xl hover:border-neutral-700/80 hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between backdrop-blur-sm">
         {/* Top Header: Sport & Timer */}
         <div>
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-400 truncate max-w-[240px] bg-neutral-950/60 border border-neutral-800/80 px-2 py-1 rounded-full">
+          <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-400 truncate max-w-[150px] bg-neutral-950/60 border border-neutral-800/80 px-2 py-1 rounded-full">
               <Trophy className="w-3.5 h-3.5 text-[#0984e3] shrink-0" />
-              {sportPath}
+              <span className="truncate">{sportPath}</span>
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               {isLive && (
                 <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/40">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#d63031] animate-ping" />
@@ -107,7 +107,7 @@ export function MatchCard({
                 </span>
               )}
               {timer && (
-                <span className="text-[11px] font-mono text-neutral-400 flex items-center gap-1 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-800">
+                <span className="text-[11px] font-mono text-neutral-400 flex items-center gap-1 bg-neutral-950 px-2 py-0.5 rounded-full border border-neutral-800">
                   <Clock className="w-3 h-3 text-neutral-500" />
                   {timer}
                 </span>
@@ -117,8 +117,8 @@ export function MatchCard({
 
           {/* Teams and Live Score Display */}
           <div className="bg-neutral-950/80 p-3 rounded-xl border border-neutral-800/80 mb-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1 space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 min-w-0 space-y-1.5">
                 <div className="font-semibold text-sm text-neutral-100 truncate">
                   {team1 || matchName}
                 </div>
@@ -126,8 +126,8 @@ export function MatchCard({
                   {team2 || "Соперник"}
                 </div>
               </div>
-              <div className="flex flex-col items-center justify-center bg-[#fdcb6e]/15 px-3.5 py-1.5 rounded-lg border border-[#fdcb6e]/30">
-                <span className="text-lg font-mono font-extrabold text-[#fdcb6e] tracking-wider">
+              <div className="flex flex-col items-center justify-center bg-gradient-to-br from-[#fdcb6e]/20 to-[#fdcb6e]/5 px-3 py-1.5 rounded-xl border border-[#fdcb6e]/30 shrink-0">
+                <span className="text-lg font-mono font-extrabold text-[#fdcb6e] tracking-wider whitespace-nowrap">
                   {score}
                 </span>
               </div>

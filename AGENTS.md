@@ -1,6 +1,6 @@
-# AGENTS.md - Autobet System Architecture & Agent Guidelines
+# AGENTS.md - NeuroBet System Architecture & Agent Guidelines
 
-Welcome to **Autobet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, SQLite, Next.js, and DeepSeek Web WASM integration.
+Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, SQLite, Next.js, and DeepSeek Web WASM integration.
 
 ---
 

@@ -365,6 +365,66 @@ def read_admin_ai_logs():
         logger.error(f"Error communicating with AI Service: {e}")
     return {"status": "success", "logs": []}
 
+@app.get("/api/admin/training-health")
+def admin_training_health():
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/training-health")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching training health: {e}")
+    # "unknown", not "ok" — ai_service being unreachable is not the same thing as "no
+    # overfitting signals active", and the admin panel's status block should show that
+    # distinction (grey/unknown) rather than falsely reporting green.
+    return {"status": "success", "health": {"status": "unknown", "signals": {}}}
+
+@app.post("/api/admin/reset-model")
+def admin_reset_model():
+    # The UPDATE on finished_bets (clearing trained_count across potentially 100k+ rows)
+    # plus the model wipe should both be quick, but this gets a longer budget than the
+    # 5-10s used by the simple toggle proxies below just in case the archive is large.
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/reset-model")
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting neural network via AI Service: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach AI service for model reset")
+
+@app.post("/api/admin/backtest")
+def admin_run_backtest(payload: Dict[str, Any] = Body(default={})):
+    # A large --limit backtest (default 15000 resolved bets) can take from several
+    # seconds up to roughly a minute of CPU-bound torch/LightGBM inference on
+    # ai_service's side — well past the 5-10s timeout the other admin proxies use here,
+    # so this one gets its own generous budget.
+    try:
+        with httpx.Client(timeout=300.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/backtest", json=payload)
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running backtest via AI Service: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach AI service for backtest")
+
+@app.get("/api/admin/backtest/history")
+def admin_backtest_history():
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/backtest/history")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching backtest history: {e}")
+    return {"status": "success", "runs": []}
+
 @app.post("/api/admin/live-bets/cancel-all")
 def admin_cancel_live_bets():
     try:

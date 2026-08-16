@@ -99,17 +99,17 @@ export function OddsHistoryGraph({
         </div>
         <div className="flex items-center gap-1">
           {isUp && (
-            <span className="flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/40">
+            <span className="flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/40">
               <TrendingUp className="w-3 h-3 mr-0.5" /> +{diff.toFixed(2)}
             </span>
           )}
           {isDown && (
-            <span className="flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/40">
+            <span className="flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/40">
               <TrendingDown className="w-3 h-3 mr-0.5" /> {diff.toFixed(2)}
             </span>
           )}
           {!isUp && !isDown && (
-            <span className="flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+            <span className="flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-neutral-800 text-neutral-400">
               <Minus className="w-3 h-3 mr-0.5" /> 0.00
             </span>
           )}

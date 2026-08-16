@@ -216,6 +216,15 @@ def _build_sequence(step_pairs: List[Tuple]) -> List[List[float]]:
     ]
 
 
+# Ceiling on the "missed profit" cost weight below — uncapped, a coefficient-15 miss
+# outweighs 14 ordinary losses combined, and the decision head learns to chase long
+# shots (exactly the pattern observed live: the network's own verdict concentrating on
+# 10x+ coefficients where its win-probability estimate is least trustworthy) instead of
+# learning a genuine bet/no-bet boundary. Capped so a high-odds miss still counts for
+# more than a near-even-money one, just not without limit.
+DECISION_LOSS_WEIGHT_MAX = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT_MAX", "3.0"))
+
+
 def _decision_loss_weights(coefficients: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     """
     Per-sample cost weights for the decision-head loss: plain BCE would just make the
@@ -224,12 +233,13 @@ def _decision_loss_weights(coefficients: torch.Tensor, targets: torch.Tensor) ->
     costs the whole stake (weight 1.0); predicting "will lose" on a bet that wins costs
     the missed profit (coefficient - 1) — a high-odds miss should be penalized harder than
     passing on a near-even-money one, or the head just learns to say "no" to everything
-    above 1/coeff. Clamped to >= 0.1 so a coefficient near 1.0 doesn't zero out its
-    gradient entirely.
+    above 1/coeff. Clamped to [0.1, DECISION_LOSS_WEIGHT_MAX] so a coefficient near 1.0
+    doesn't zero out its gradient entirely, and a coefficient of 15+ doesn't dominate the
+    whole batch's loss either.
     """
     return torch.where(
         targets >= 0.5,
-        torch.clamp(coefficients - 1.0, min=0.1),
+        torch.clamp(coefficients - 1.0, min=0.1, max=DECISION_LOSS_WEIGHT_MAX),
         torch.ones_like(coefficients),
     )
 
@@ -240,17 +250,37 @@ class NeuralBetEnsemble:
     Saves and loads weight checkpoints from /app/data/models/ persistent volume.
     """
     def __init__(self):
+        self._reset_state()
+        # Load weights if checkpoint exists — reset() reuses this same state-init logic
+        # but deliberately skips this call (a reset means *discarding* whatever's on
+        # disk, not reloading it right back).
+        self.load_checkpoints()
+
+    def _reset_state(self):
+        """
+        Everything that makes this a "fresh, never-trained" ensemble — shared by
+        __init__ (cold container start, then load_checkpoints() may overwrite it with a
+        saved state) and reset() (admin-triggered wipe, which deliberately does NOT
+        reload afterward). Keeping this in one place means the two can never drift apart
+        on what "untrained" actually means.
+        """
         self.pytorch_model = OddsTrajectoryGRU()
         self.pytorch_optimizer = optim.AdamW(self.pytorch_model.parameters(), lr=LEARNING_RATE)
         self.is_trained = False
 
-        # Weight on pytorch_prob in the blended win probability (LightGBM gets
-        # 1 - blend_weight) and the cutoff on the decision head's sigmoid output that
-        # separates "will win" from "will lose". Both used to be fixed constants
-        # (0.35/0.65, 0.5) picked once and never revisited; tune_ensemble() re-picks
+        # Weight on pytorch_prob and on the raw bookmaker-implied probability (1/coeff)
+        # in the blended win probability (LightGBM gets whatever's left:
+        # 1 - blend_weight - market_weight), and the cutoff on the decision head's
+        # sigmoid output that separates "will win" from "will lose". All three used to
+        # be fixed constants picked once and never revisited; tune_ensemble() re-picks
         # them against held-out validation data periodically (see pipeline.py), so
         # these are just the cold-start defaults before the first tune runs.
+        # market_weight anchors the blend on the bookmaker's own price: when the
+        # model's Brier score is worse than the market's (observed in production — see
+        # the neurobets stats page), the grid search in tune_ensemble naturally pushes
+        # weight onto this term instead of onto an undertrained model.
         self.blend_weight = float(os.getenv("NEURALBET_BLEND_WEIGHT_INIT", "0.35"))
+        self.market_weight = float(os.getenv("NEURALBET_MARKET_WEIGHT_INIT", "0.0"))
         self.decision_threshold = float(os.getenv("NEURALBET_DECISION_THRESHOLD_INIT", "0.5"))
 
         # Real gradient-boosted classifier, fit on actual resolved bets (see
@@ -259,8 +289,26 @@ class NeuralBetEnsemble:
         self.lgb_model: Any = None
         self.lgb_trained = False
 
-        # Load weights if checkpoint exists
-        self.load_checkpoints()
+    def reset(self) -> None:
+        """
+        Admin-triggered "reset neural network": discards the live PyTorch weights,
+        optimizer momentum, and LightGBM booster, and puts blend_weight/market_weight/
+        decision_threshold back to their cold-start defaults — then deletes both
+        on-disk checkpoints so a container restart doesn't silently reload the very
+        state this just threw away. Deliberately does NOT touch finished_bets/
+        finished_events: the resolved-bet archive (the expensive-to-recreate part) is
+        left alone on purpose, so the caller (pipeline.reset_neural_network) can zero
+        trained_count on it and let training start over from that same existing history,
+        instead of needing weeks of fresh matches to rebuild a dataset that was already
+        sitting there.
+        """
+        self._reset_state()
+        for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as e:
+                logger.error(f"Error removing checkpoint {path} during reset: {e}")
 
     def save_checkpoints(self, extra: Optional[Dict[str, Any]] = None):
         try:
@@ -269,6 +317,7 @@ class NeuralBetEnsemble:
                 "model_state": self.pytorch_model.state_dict(),
                 "optimizer_state": self.pytorch_optimizer.state_dict(),
                 "blend_weight": self.blend_weight,
+                "market_weight": self.market_weight,
                 "decision_threshold": self.decision_threshold,
             }
             if extra:
@@ -340,6 +389,7 @@ class NeuralBetEnsemble:
                 arch_resized = self._load_model_state_soft(state)
                 if isinstance(blob, dict):
                     self.blend_weight = float(blob.get("blend_weight", self.blend_weight))
+                    self.market_weight = float(blob.get("market_weight", self.market_weight))
                     self.decision_threshold = float(blob.get("decision_threshold", self.decision_threshold))
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
@@ -432,8 +482,20 @@ class NeuralBetEnsemble:
             score_boost = score_diff * 0.025
             lgb_score = min(max(implied_prob + trend_boost + score_boost, 0.12), 0.95)
 
-        ensemble_ratio = self.blend_weight * pytorch_prob + (1.0 - self.blend_weight) * lgb_score
-        win_probability = min(max(ensemble_ratio * 100.0, 12.0), 95.0)
+        # Bookmaker-implied probability, the same odds-only baseline the "Brier (база)"
+        # column in the stats page compares against — folded into the blend itself (not
+        # just the comparison) so a weak model automatically loses influence to it (see
+        # market_weight's docstring in __init__).
+        market_prob = min(max(1.0 / current_coeff, 0.01), 0.99) if current_coeff > 1.0 else 0.99
+        lgb_weight = max(0.0, 1.0 - self.blend_weight - self.market_weight)
+        ensemble_ratio = (
+            self.blend_weight * pytorch_prob + self.market_weight * market_prob + lgb_weight * lgb_score
+        )
+        # Floor/ceiling relaxed from the old 12/95 — that clamp put a hard floor under
+        # how low a probability could ever be shown, which meant a true long-shot
+        # (real chance well under 12%) always looked artificially closer to fair value,
+        # inflating its computed EV. 1/99 only rules out literal 0%/100% certainty.
+        win_probability = min(max(ensemble_ratio * 100.0, 1.0), 99.0)
         error_rate = round(100.0 - win_probability, 1)
 
         return (
@@ -503,12 +565,20 @@ class NeuralBetEnsemble:
                 score_boost = score_diff * 0.025
                 lgb_scores.append(min(max(implied_prob + trend_boost + score_boost, 0.12), 0.95))
 
+        market_probs = [
+            (min(max(1.0 / it["current_coeff"], 0.01), 0.99) if it["current_coeff"] > 1.0 else 0.99)
+            for it in items
+        ]
+        lgb_weight = max(0.0, 1.0 - self.blend_weight - self.market_weight)
+
         results = []
-        for pytorch_prob, lgb_score, decision_prob, stake_logit, exposure_logit in zip(
-            pytorch_probs, lgb_scores, decision_probs, stake_logits, exposure_logits
+        for pytorch_prob, market_prob, lgb_score, decision_prob, stake_logit, exposure_logit in zip(
+            pytorch_probs, market_probs, lgb_scores, decision_probs, stake_logits, exposure_logits
         ):
-            ensemble_ratio = self.blend_weight * pytorch_prob + (1.0 - self.blend_weight) * lgb_score
-            win_probability = min(max(ensemble_ratio * 100.0, 12.0), 95.0)
+            ensemble_ratio = (
+                self.blend_weight * pytorch_prob + self.market_weight * market_prob + lgb_weight * lgb_score
+            )
+            win_probability = min(max(ensemble_ratio * 100.0, 1.0), 99.0)
             error_rate = round(100.0 - win_probability, 1)
             results.append((
                 round(win_probability, 1), error_rate, round(lgb_score, 3), round(pytorch_prob, 3),
@@ -603,33 +673,59 @@ class NeuralBetEnsemble:
             "feature_importance": importance,
         }
 
-    # Grid-search candidates for tune_ensemble(). Coarse (0.05 / 0.02 steps) on purpose —
-    # this runs against a few hundred validation samples at most, so a finer grid would
-    # just be fitting noise, not finding real structure.
-    _BLEND_CANDIDATES = [round(x * 0.05, 2) for x in range(21)]  # 0.00 .. 1.00
+    # Grid-search candidates for tune_ensemble(). blend_weight/market_weight now search
+    # a 2D grid together (w_py + w_market <= 1, LightGBM gets the remainder) — coarser
+    # steps (0.2) than the old single-axis 0.05 so the combined grid (~21 valid pairs)
+    # stays as cheap as the old 1D one, since a few hundred validation samples can't
+    # support a finer 2D search without just fitting noise.
+    _BLEND_CANDIDATES = [round(x * 0.2, 2) for x in range(6)]  # 0.0 .. 1.0
     _THRESHOLD_CANDIDATES = [round(0.30 + x * 0.02, 2) for x in range(21)]  # 0.30 .. 0.70
     _MIN_TUNE_SAMPLES = 30
-    _MIN_THRESHOLD_BETS = 20
+    # Raised from 20 — a threshold accepted on 20-40 validation bets is one long-shot
+    # coefficient away from looking great by pure luck (observed in production: a single
+    # winning 10x+ bet was enough to swing "best" ROI between thresholds cycle to cycle).
+    # 80 doesn't eliminate the noise, but it takes several such flukes instead of one.
+    _MIN_THRESHOLD_BETS = int(os.getenv("NEURALBET_MIN_THRESHOLD_BETS", "80"))
+    # Exponential-smoothing rate applied to every tuned parameter below: a single tuning
+    # pass moves at most this fraction of the way from the current value towards
+    # whatever the grid search preferred this cycle, instead of jumping straight there.
+    # Without this, blend_weight/decision_threshold visibly whipsawed cycle to cycle in
+    # production logs (blend_weight 0.45 -> 0.0 -> 0.3 -> 0.35 -> 0.0 within minutes),
+    # which meant the live "which outcomes count as a predicted win" set was being
+    # driven by tuning noise, not by anything the model had actually learned.
+    _TUNE_SMOOTH_ALPHA = float(os.getenv("NEURALBET_TUNE_SMOOTH_ALPHA", "0.3"))
+    # Subtracted from a threshold candidate's val ROI, divided by sqrt(n_bets), before
+    # comparing candidates — a threshold that only clears _MIN_THRESHOLD_BETS by a
+    # handful is penalized relative to one supported by many more, so the search doesn't
+    # keep picking whichever small sample got luckiest this cycle.
+    _THRESHOLD_SAMPLE_PENALTY = float(os.getenv("NEURALBET_THRESHOLD_SAMPLE_PENALTY", "0.5"))
 
     def tune_ensemble(self, val_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Re-picks blend_weight and decision_threshold against held-out validation data
-        instead of leaving them at whatever they were initialized to forever. Called
-        from pipeline.py at the same cadence as the LightGBM refit, since that's when a
+        Re-picks blend_weight, market_weight and decision_threshold against held-out
+        validation data instead of leaving them at whatever they were initialized to
+        forever. Called from pipeline.py at the same (now throttled — see
+        TUNE_EVERY_CYCLES) cadence as the LightGBM refit, since that's when a
         freshly-fit booster and a validation split are both on hand together.
 
-        - blend_weight: grid search over _BLEND_CANDIDATES, keeping whichever weight on
-          pytorch_prob minimizes Brier score (mean squared error of the blended
-          probability against the true 0/1 outcome) — the blend that's most honestly
-          calibrated on data neither model trained on, not a fixed guess.
+        - blend_weight / market_weight: 2D grid search over _BLEND_CANDIDATES (w_py,
+          w_market pairs with w_py + w_market <= 1; LightGBM gets 1 - w_py - w_market),
+          keeping whichever pair minimizes Brier score (mean squared error of the
+          blended probability against the true 0/1 outcome) on data neither model
+          trained on. market_weight puts the raw bookmaker-implied probability (1/coeff)
+          directly in the blend — when the model's own Brier is worse than the market's
+          (val_brier_base below; this was consistently true in production), the search
+          naturally shifts weight onto the market term instead of an undertrained model.
         - decision_threshold: grid search over _THRESHOLD_CANDIDATES, keeping whichever
-          cutoff on the decision head maximizes simulated flat-stake ROI on validation
-          (stake 1 unit on every sample whose decision_prob clears the threshold; ROI =
-          (returns - stakes) / stakes) — a direct proxy for "does betting on this
-          verdict make money," not just "is the verdict usually right." Thresholds that
-          would place fewer than _MIN_THRESHOLD_BETS bets are skipped as too small a
-          sample to trust; if none qualify, the previous threshold is kept rather than
-          silently resetting to a default.
+          cutoff on the decision head maximizes a sample-size-penalized simulated
+          flat-stake ROI on validation (see _THRESHOLD_SAMPLE_PENALTY) — a direct proxy
+          for "does betting on this verdict make money," not just "is the verdict
+          usually right," while discounting thresholds propped up by a small, lucky
+          sample. Thresholds that would place fewer than _MIN_THRESHOLD_BETS bets are
+          skipped entirely; if none qualify, the previous threshold is kept.
+        - Every parameter is smoothed towards this cycle's grid-search result rather
+          than snapping to it (see _TUNE_SMOOTH_ALPHA) — the target values are reported
+          alongside the smoothed ones so the log line shows both.
 
         Uses the same random-cutoff trajectory view as training (_prepare_sample) so
         this is evaluating the model the way it actually gets scored elsewhere (val_loss,
@@ -649,6 +745,7 @@ class NeuralBetEnsemble:
 
         targets = [p["target"] for p in prepared]
         coeffs = [p["coefficient"] for p in prepared]
+        market_probs = [min(max(1.0 / c, 0.01), 0.99) if c > 1.0 else 0.99 for c in coeffs]
 
         if self.lgb_trained and self.lgb_model is not None:
             X = []
@@ -663,21 +760,29 @@ class NeuralBetEnsemble:
             lgb_scores = [min(max(float(v), 0.02), 0.98) for v in self.lgb_model.predict(np.array(X, dtype=np.float64))]
         else:
             # No booster yet — every blend weight collapses onto pure pytorch_prob, so
-            # the search below still runs (and picks blend_weight=1.0), just without
-            # LightGBM in the mix.
+            # the search below still runs, just without LightGBM in the mix.
             lgb_scores = [0.5] * len(prepared)
 
-        best_blend, best_brier = self.blend_weight, float("inf")
-        for w in self._BLEND_CANDIDATES:
-            brier = sum(
-                (w * gp + (1.0 - w) * lp - t) ** 2
-                for gp, lp, t in zip(pytorch_probs, lgb_scores, targets)
-            ) / len(prepared)
-            if brier < best_brier:
-                best_brier = brier
-                best_blend = w
+        # The odds-only baseline (no model at all) — logged alongside the tuned blend's
+        # Brier so a regression (model doing worse than just trusting the bookmaker) is
+        # visible in every training cycle's log line, not just in an offline export.
+        base_brier = sum((mp - t) ** 2 for mp, t in zip(market_probs, targets)) / len(prepared)
 
-        best_threshold, best_roi, best_bets = self.decision_threshold, float("-inf"), 0
+        best_blend, best_market, best_brier = self.blend_weight, self.market_weight, float("inf")
+        for w_py in self._BLEND_CANDIDATES:
+            for w_mkt in self._BLEND_CANDIDATES:
+                if w_py + w_mkt > 1.0 + 1e-9:
+                    continue
+                w_lgb = 1.0 - w_py - w_mkt
+                brier = sum(
+                    (w_py * gp + w_mkt * mp + w_lgb * lp - t) ** 2
+                    for gp, mp, lp, t in zip(pytorch_probs, market_probs, lgb_scores, targets)
+                ) / len(prepared)
+                if brier < best_brier:
+                    best_brier = brier
+                    best_blend, best_market = w_py, w_mkt
+
+        best_threshold, best_score, best_roi, best_bets = self.decision_threshold, float("-inf"), None, 0
         for thr in self._THRESHOLD_CANDIDATES:
             staked = 0.0
             returned = 0.0
@@ -692,22 +797,34 @@ class NeuralBetEnsemble:
             if n_bets < self._MIN_THRESHOLD_BETS:
                 continue
             roi = (returned - staked) / staked
-            if roi > best_roi:
+            score = roi - self._THRESHOLD_SAMPLE_PENALTY / (n_bets ** 0.5)
+            if score > best_score:
+                best_score = score
                 best_roi = roi
                 best_threshold = thr
                 best_bets = n_bets
 
-        old_blend, old_threshold = self.blend_weight, self.decision_threshold
-        self.blend_weight = best_blend
+        old_blend, old_market, old_threshold = self.blend_weight, self.market_weight, self.decision_threshold
+        a = self._TUNE_SMOOTH_ALPHA
+        self.blend_weight = old_blend + a * (best_blend - old_blend)
+        self.market_weight = old_market + a * (best_market - old_market)
         if best_bets >= self._MIN_THRESHOLD_BETS:
-            self.decision_threshold = best_threshold
+            self.decision_threshold = old_threshold + a * (best_threshold - old_threshold)
 
         return {
             "tuned": True,
             "samples": len(prepared),
-            "blend_weight": {"old": round(old_blend, 2), "new": round(self.blend_weight, 2), "val_brier": round(best_brier, 4)},
+            "val_brier_base": round(base_brier, 4),
+            "blend_weight": {
+                "old": round(old_blend, 2), "new": round(self.blend_weight, 2),
+                "target": round(best_blend, 2), "val_brier": round(best_brier, 4),
+            },
+            "market_weight": {
+                "old": round(old_market, 2), "new": round(self.market_weight, 2), "target": round(best_market, 2),
+            },
             "decision_threshold": {
                 "old": round(old_threshold, 2), "new": round(self.decision_threshold, 2),
+                "target": round(best_threshold, 2) if best_bets >= self._MIN_THRESHOLD_BETS else None,
                 "val_roi_pct": round(best_roi * 100.0, 1) if best_bets >= self._MIN_THRESHOLD_BETS else None,
                 "val_bets": best_bets,
             },

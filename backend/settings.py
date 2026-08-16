@@ -9,7 +9,7 @@ PROJECT_ROOT = BACKEND_DIR.parent
 
 class Settings(BaseSettings):
     # App Information
-    APP_NAME: str = "Autobet Fonbet LIVE Parser"
+    APP_NAME: str = "NeuroBet Fonbet LIVE Parser"
     DEBUG: bool = False
 
     # DeepSeek / AI Integration

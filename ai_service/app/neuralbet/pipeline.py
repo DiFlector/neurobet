@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import threading
 from typing import List, Dict, Any, Optional, Tuple
@@ -56,10 +57,55 @@ VAL_FRACTION = 0.2
 LGB_REFIT_EVERY_CYCLES = 5
 LGB_TRAIN_LIMIT = 20000
 
+# Online-training and ensemble-tuning cadence, in scrape cycles (~15s apart). Both used
+# to run every single cycle — for training that meant a gradient step on whatever
+# handful of matches (as few as ~80) had just finished, val_loss increasing from the
+# very first epoch nearly every pass (pure memorization of that cycle's small batch);
+# for tuning it meant blend_weight/decision_threshold visibly whipsawing cycle to cycle
+# off the same ~20-40 validation bets. Throttling both means: (a) fresh unresolved-until-
+# now bets simply keep accumulating between cycles (trained_count stays 0 — see
+# _fetch_training_batch) so the batch that eventually trains is bigger and less noisy,
+# and (b) tune_ensemble's own smoothing (_TUNE_SMOOTH_ALPHA) has fewer, more meaningful
+# passes to smooth between instead of fighting a new grid-search result every 15s.
+TRAIN_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_EVERY_CYCLES", "3"))
+TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "5"))
+
+# Floor on how many samples (fresh + replay combined — see _fetch_training_batch) a
+# training cycle needs before it's allowed to actually run a gradient step. Below this,
+# a pass is essentially the "82 samples, best epoch 1/11, val_loss rising from the very
+# first epoch" pattern seen in production logs — too few mini-batches (BATCH_SIZE=128)
+# for early stopping to have anything meaningful to select between; it just memorizes
+# whatever tiny slice showed up. Rows fetched on a too-small cycle are deliberately left
+# with trained_count untouched (see the skip branch below) so they aren't wasted on a
+# useless step — they simply get included again, alongside whatever's newly finished, on
+# the next training cycle that clears this floor.
+MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "500"))
+
+# Live bets are capped to this coefficient — the stats export showed ROI strictly
+# worsening as coefficient rises (-3% at 1.0-1.5 down to -44% at 10.0+) while the
+# ensemble's Brier score is worse than the bare bookmaker-implied probability at every
+# band, meaning the model has the least information exactly where a naive EV
+# calculation makes the biggest bets look most attractive. Caps real money to the range
+# where the model is closest to actually knowing something, independent of how the
+# probability/EV pipeline gets fixed above this.
+MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "3.0"))
+
 AI_LOGS: List[Dict[str, Any]] = []
 MAX_LOG_ENTRIES = 300
 
 _cycle_count = 0
+
+# "Is training helping or hurting?" tracking — see get_training_health()'s docstring for
+# the full three-signal playbook this feeds. best_epoch == 1-2 on a single pass is
+# normal noise; a *streak* of them on batches that already cleared MIN_TRAIN_SAMPLES is
+# the real tell (the network is memorizing each fresh batch in one or two epochs instead
+# of generalizing — early stopping is doing its job by bailing out fast, but that itself
+# is the symptom). Counts only real training passes (skipped-for-too-few-samples cycles
+# don't touch this), and resets on reset_neural_network() since a wiped model starting
+# over shouldn't inherit its predecessor's bad streak.
+LOW_EPOCH_ALERT_THRESHOLD = int(os.getenv("NEURALBET_LOW_EPOCH_ALERT_THRESHOLD", "2"))
+LOW_EPOCH_STREAK_ALERT = int(os.getenv("NEURALBET_LOW_EPOCH_STREAK_ALERT", "3"))
+_low_epoch_streak = 0
 
 def add_ai_log(category: str, message: str, level: str = "INFO"):
     timestamp_str = now_moscow().strftime("%Y-%m-%d %H:%M:%S")
@@ -79,6 +125,49 @@ add_ai_log("SYSTEM", "Standalone AI Microservice initialized with PyTorch, Light
 def get_ai_settings() -> Dict[str, Any]:
     return AI_SETTINGS
 
+
+def reset_neural_network() -> Dict[str, Any]:
+    """
+    Admin-triggered "Обнулить нейросеть": wipes the live model (fresh random PyTorch
+    weights, no LightGBM booster, blend/market weight & decision threshold back to
+    defaults — see NeuralBetEnsemble.reset) and clears trained_count on every resolved
+    bet, WITHOUT deleting finished_bets/finished_events themselves. That distinction is
+    the whole point of this being separate from reset-db/all: the archive of resolved
+    matches is normally the expensive, slow-to-rebuild part (weeks of live scraping) —
+    this lets training start over from scratch while immediately having that entire
+    existing archive available again as "fresh" data, instead of needing weeks of new
+    matches to accumulate before the next training cycle has anything to learn from.
+    Runs under _engine_lock like every other mutation of ensemble_engine, and resets
+    _cycle_count to 0 so the very next inference cycle is treated as cycle 1 — which
+    forces an immediate LightGBM refit + training pass + ensemble tune (see the
+    is_train_cycle/is_tune_cycle/is_lgb_cycle "cycle == 1" cold-start overrides below)
+    instead of waiting out TRAIN_EVERY_CYCLES/TUNE_EVERY_CYCLES/LGB_REFIT_EVERY_CYCLES
+    against a model that just started over.
+    """
+    global _cycle_count, _low_epoch_streak
+    with _engine_lock:
+        ensemble_engine.reset()
+
+        f_conn = get_finished_connection()
+        f_cursor = f_conn.cursor()
+        f_cursor.execute("UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0")
+        reset_rows = f_cursor.rowcount
+        f_conn.commit()
+        release_connection(f_conn)
+
+        _cycle_count = 0
+        _low_epoch_streak = 0
+
+    add_ai_log(
+        "SYSTEM",
+        f"Neural network reset by admin: PyTorch weights reinitialized, LightGBM booster "
+        f"discarded, blend/market weight & decision threshold back to defaults, checkpoint "
+        f"files removed, trained_count cleared on {reset_rows} resolved bet(s) — training "
+        f"will restart from scratch using the existing archive.",
+        level="WARNING",
+    )
+    return {"reset_rows": reset_rows}
+
 def update_ai_settings(ai_enabled: Optional[bool] = None, training_enabled: Optional[bool] = None) -> Dict[str, Any]:
     if ai_enabled is not None:
         AI_SETTINGS["ai_enabled"] = ai_enabled
@@ -92,6 +181,91 @@ def update_ai_settings(ai_enabled: Optional[bool] = None, training_enabled: Opti
 
 def get_ai_logs() -> List[Dict[str, Any]]:
     return AI_LOGS
+
+
+# Backtest-trend thresholds for get_training_health()'s signals B/C — how many of the
+# most recent backtest runs (see backtest.py) to look at. 3 matches the "не улучшается
+# 3+ запуска подряд" rule the admin panel's own diagnostic playbook settled on: a single
+# bad backtest is noise (the resolved-bet mix each run pulls can shift day to day), a
+# streak of 3 is a trend.
+TRAINING_HEALTH_BACKTEST_WINDOW = int(os.getenv("NEURALBET_TRAINING_HEALTH_BACKTEST_WINDOW", "3"))
+
+
+def get_training_health() -> Dict[str, Any]:
+    """
+    Traffic-light read on whether online training is currently helping or hurting,
+    combining the three signals from the admin's own diagnostic playbook:
+      A) low_epoch_streak — LOW_EPOCH_STREAK_ALERT+ consecutive real training passes
+         (on batches that already cleared MIN_TRAIN_SAMPLES) where best_epoch was
+         <= LOW_EPOCH_ALERT_THRESHOLD: the network memorized each fresh batch in 1-2
+         epochs instead of generalizing.
+      B) backtest_brier_not_beating_market — the current model's Brier score stayed >=
+         the bare bookmaker-implied Brier (val_brier_base) across the last
+         TRAINING_HEALTH_BACKTEST_WINDOW backtest runs: the model isn't adding
+         information over just trusting the odds, on held-out history.
+      C) backtest_roi_not_improving — the current model's backtest ROI hasn't improved
+         between the oldest and newest run in that same window.
+    One active signal is "presmotret'sya" (warning); all three at once is "definite stop"
+    (danger) — see run_neuralbet_inference_and_training's docstring history / the admin
+    panel's status block, which renders this directly. Needs at least
+    TRAINING_HEALTH_BACKTEST_WINDOW backtest runs on file for B/C to activate at all —
+    with fewer, only signal A (which needs no backtest) can fire.
+
+    Returns status "disabled" (not ok/warning/danger) whenever the admin's own
+    training_enabled toggle is off: with no gradient steps running, none of the three
+    signals describe anything currently happening — they'd just be stale readings from
+    whenever training last ran, and showing a green/red verdict on that would imply an
+    ongoing process that isn't there. Signals are still reported (as their last-known
+    values) so the panel can show the numbers, just not color-coded as if they were live.
+    """
+    from app.neuralbet.backtest import get_backtest_history
+
+    if not AI_SETTINGS["training_enabled"]:
+        return {
+            "status": "disabled",
+            "signals": {
+                "low_epoch_streak": {"active": False, "streak": _low_epoch_streak, "threshold": LOW_EPOCH_STREAK_ALERT},
+                "backtest_brier_not_beating_market": {"active": False, "runs_checked": 0, "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW},
+                "backtest_roi_not_improving": {"active": False, "runs_checked": 0, "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW},
+            },
+        }
+
+    signal_a = _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT
+
+    history = get_backtest_history()  # newest first
+    recent = history[:TRAINING_HEALTH_BACKTEST_WINDOW]
+    have_enough_backtests = len(recent) >= TRAINING_HEALTH_BACKTEST_WINDOW
+
+    signal_b = False
+    signal_c = False
+    if have_enough_backtests:
+        briers = [((r.get("overall") or {}).get("current") or {}).get("brier") for r in recent]
+        market_briers = [(r.get("overall") or {}).get("market_brier") for r in recent]
+        if all(b is not None for b in briers) and all(m is not None for m in market_briers):
+            signal_b = all(b >= m for b, m in zip(briers, market_briers))
+
+        rois = [((r.get("overall") or {}).get("current") or {}).get("roi_pct") for r in recent]
+        if all(v is not None for v in rois):
+            # recent[0] is newest, recent[-1] is oldest in this window.
+            signal_c = rois[0] <= rois[-1]
+
+    active = sum([signal_a, signal_b, signal_c])
+    status = "danger" if active >= 3 else "warning" if active >= 1 else "ok"
+
+    return {
+        "status": status,
+        "signals": {
+            "low_epoch_streak": {
+                "active": signal_a, "streak": _low_epoch_streak, "threshold": LOW_EPOCH_STREAK_ALERT,
+            },
+            "backtest_brier_not_beating_market": {
+                "active": signal_b, "runs_checked": len(recent), "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW,
+            },
+            "backtest_roi_not_improving": {
+                "active": signal_c, "runs_checked": len(recent), "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW,
+            },
+        },
+    }
 
 
 def _parse_score_diff(score_at_time: Optional[str]) -> int:
@@ -506,7 +680,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         param = meta["parameter"]
         coeff = meta["coeff"]
 
-        calibrated_prob = calibrate_probability(win_prob, buckets, sport=meta["sport"])
+        calibrated_prob = calibrate_probability(win_prob, buckets, sport=meta["sport"], coeff=coeff)
         expected_roi = ((calibrated_prob / 100.0) * coeff - 1.0) * 100.0
         # The verdict: the model's own decision head, not a probability/EV cutoff picked
         # from outside — see decision_logit in OddsTrajectoryGRU. Threshold defaults to
@@ -532,7 +706,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
             "decision_confidence": round(decision_prob, 3),
         })
 
-        if predicted_win:
+        if predicted_win and coeff <= MAX_BET_COEFF:
             live_candidates.append({
                 **meta, "win_probability": round(calibrated_prob, 1), "expected_roi": expected_roi,
                 "stake_logit": stake_logit,
@@ -575,6 +749,13 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         add_ai_log("TRAINING", "Online Retraining skipped (Disabled by Admin).", level="WARNING")
         return {"predictions_count": len(predictions), "finished_samples_trained": 0}
 
+    # Force cycle 1 too (cold start — otherwise every one of these stays at its
+    # untrained/untuned default for the first TRAIN_EVERY_CYCLES/TUNE_EVERY_CYCLES/
+    # LGB_REFIT_EVERY_CYCLES cycles after every restart).
+    is_train_cycle = _cycle_count == 1 or _cycle_count % TRAIN_EVERY_CYCLES == 0
+    is_tune_cycle = _cycle_count == 1 or _cycle_count % TUNE_EVERY_CYCLES == 0
+    is_lgb_cycle = _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0
+
     training_samples: List[Dict[str, Any]] = []
     val_samples: List[Dict[str, Any]] = []
     train_keys: List[tuple] = []
@@ -585,8 +766,15 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         f_cursor = f_conn.cursor()
 
         val_event_ids = _get_val_event_ids(f_cursor)
-        training_samples, train_keys = _fetch_training_batch(f_cursor, val_event_ids)
-        val_samples = _fetch_val_batch(f_cursor, val_event_ids)
+        # Skipping the fetch on a non-training cycle isn't just "do less work" — it's
+        # what makes the accumulation in TRAIN_EVERY_CYCLES's docstring actually happen:
+        # matches that finish in between stay trained_count = 0 (see _mark_trained,
+        # only called after a training cycle) until the next training cycle picks them
+        # all up together as one larger batch.
+        if is_train_cycle:
+            training_samples, train_keys = _fetch_training_batch(f_cursor, val_event_ids)
+        if is_train_cycle or is_tune_cycle or is_lgb_cycle:
+            val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
         # LightGBM feature rows use the coefficient/score as they stood at the point in
         # the trajectory used for that sample (the last odds_seq/score_seq entry) — same
@@ -614,10 +802,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 })
             return out
 
-        # Force a refit on the very first cycle too (cold start — otherwise the ensemble
-        # would serve nothing but the odds-implied fallback heuristic for the first
-        # LGB_REFIT_EVERY_CYCLES minutes after every restart).
-        if _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0:
+        if is_lgb_cycle:
             f_cursor.execute("""
                 SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
                        h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
@@ -634,6 +819,19 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished training db: {e}")
+
+    fetched_train_count = len(training_samples)
+    insufficient_for_training = training_samples and fetched_train_count < MIN_TRAIN_SAMPLES
+    if insufficient_for_training:
+        add_ai_log(
+            "TRAINING",
+            f"Skipping training step — only {fetched_train_count} samples available "
+            f"(need {MIN_TRAIN_SAMPLES}+; below that, one epoch is enough to memorize the "
+            "whole batch instead of learning anything general). Rows stay unmarked and "
+            "will be retried, with whatever's newly finished added in, next training cycle.",
+            level="WARNING",
+        )
+        training_samples = []
 
     if training_samples:
         add_ai_log(
@@ -658,6 +856,12 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
             f_conn2.commit()
             release_connection(f_conn2)
 
+            global _low_epoch_streak
+            if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
+                _low_epoch_streak += 1
+            else:
+                _low_epoch_streak = 0
+
             val_str = (
                 f", val_loss {metrics['val_loss']:.4f} / val_guess_rate {metrics['val_guess_rate']:.1f}%"
                 if metrics.get("val_loss") is not None else " (no validation split yet — need more resolved bets)"
@@ -675,6 +879,17 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 + (f" ({bank['ruin_events']} ruin(s) this pass)" if bank.get("ruin_events") else "")
                 + ". Checkpoint saved."
             )
+
+            if _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT:
+                add_ai_log(
+                    "TRAINING",
+                    f"⚠️ Возможное переобучение: best_epoch <= {LOW_EPOCH_ALERT_THRESHOLD} уже "
+                    f"{_low_epoch_streak} проход(ов) подряд на батчах ≥ {MIN_TRAIN_SAMPLES} сэмплов — "
+                    "сеть выучивает каждый свежий батч за 1-2 эпохи вместо обобщения. "
+                    "Проверьте тренд бэктеста; возможно, стоит поднять MIN_TRAIN_SAMPLES ещё выше "
+                    "или временно выключить обучение.",
+                    level="WARNING",
+                )
         else:
             add_ai_log(
                 "TRAINING",
@@ -682,8 +897,16 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 "Skipped gradient step.",
                 level="WARNING",
             )
-    else:
+    elif insufficient_for_training:
+        pass  # already logged above, with the actual count — don't also claim "no matches"
+    elif is_train_cycle:
         add_ai_log("TRAINING", "No new finished matches in database for retraining step.")
+    else:
+        add_ai_log(
+            "TRAINING",
+            f"Online training skipped this cycle (runs every {TRAIN_EVERY_CYCLES} cycles) — "
+            "fresh resolved bets keep accumulating for the next pass.",
+        )
 
     if lgb_rows:
         lgb_metrics = ensemble_engine.train_lightgbm(lgb_rows, val_rows=lgb_val_rows)
@@ -702,20 +925,31 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 level="WARNING",
             )
 
-    if val_samples:
+    if is_tune_cycle and val_samples:
         tune_metrics = ensemble_engine.tune_ensemble(val_samples)
         if tune_metrics.get("tuned"):
             bw = tune_metrics["blend_weight"]
+            mw = tune_metrics["market_weight"]
             dt = tune_metrics["decision_threshold"]
             dt_str = (
-                f"decision_threshold {dt['old']} → {dt['new']} (val ROI {dt['val_roi_pct']}% on {dt['val_bets']} bets)"
+                f"decision_threshold {dt['old']} → {dt['new']} (target {dt['target']}, "
+                f"val ROI {dt['val_roi_pct']}% on {dt['val_bets']} bets)"
                 if dt["val_roi_pct"] is not None
                 else f"decision_threshold kept at {dt['old']} (no candidate cleared {ensemble_engine._MIN_THRESHOLD_BETS} val bets)"
+            )
+            # val_brier vs val_brier_base is the headline "is the model worth anything"
+            # number: if the blended probability's Brier is >= the bare bookmaker-implied
+            # probability's, the model is adding noise, not signal, on this validation
+            # split, and market_weight should (and, on the next tune, will) climb.
+            brier_vs_base = (
+                "model beats market" if bw["val_brier"] < tune_metrics["val_brier_base"] else "market beats model"
             )
             add_ai_log(
                 "TRAINING",
                 f"Ensemble tuned on {tune_metrics['samples']} val samples — "
-                f"blend_weight {bw['old']} → {bw['new']} (val Brier {bw['val_brier']}), {dt_str}."
+                f"blend_weight {bw['old']} → {bw['new']} (target {bw['target']}), "
+                f"market_weight {mw['old']} → {mw['new']} (target {mw['target']}) — "
+                f"val Brier {bw['val_brier']} vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), {dt_str}."
             )
 
     return {

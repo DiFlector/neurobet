@@ -4,7 +4,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: autobet_postgres
+    container_name: neurobet_postgres
     env_file:
       - .env
     environment:
@@ -26,7 +26,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: autobet_backend
+    container_name: neurobet_backend
     ports:
       - "8000:8000"
     env_file:
@@ -48,7 +48,7 @@ services:
     build:
       context: ./ai_service
       dockerfile: Dockerfile
-    container_name: autobet_ai
+    container_name: neurobet_ai
     ports:
       - "8001:8001"
     env_file:
@@ -82,7 +82,7 @@ services:
         # Must match BACKEND_INTERNAL_URL below — next.config.ts's rewrites() destination
         # is baked in at `next build` time, so the runtime-only env var isn't enough.
         BACKEND_INTERNAL_URL: http://backend:8000
-    container_name: autobet_frontend
+    container_name: neurobet_frontend
     ports:
       - "3000:3000"
     env_file:

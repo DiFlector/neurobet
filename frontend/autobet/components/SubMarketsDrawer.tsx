@@ -59,14 +59,14 @@ export function SubMarketsDrawer({
             <div className="text-xs text-[#fdcb6e] font-medium">{sportPath}</div>
             <h2 className="text-lg font-bold flex items-center gap-2 text-white">
               <span>{matchName}</span>
-              <span className="px-2 py-0.5 rounded bg-[#fdcb6e]/20 text-[#ffeaa7] text-sm font-mono border border-[#fdcb6e]/30">
+              <span className="px-2.5 py-0.5 rounded-full bg-[#fdcb6e]/20 text-[#ffeaa7] text-sm font-mono border border-[#fdcb6e]/30">
                 {score}
               </span>
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700 transition"
+            className="p-2 rounded-full bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700 transition"
           >
             <X className="w-5 h-5" />
           </button>

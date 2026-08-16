@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
+import { motion } from "framer-motion"
 import {
   ShieldAlert,
   ShieldCheck,
@@ -19,7 +20,9 @@ import {
   Trash2,
   AlertTriangle,
   Wallet,
-  Ban
+  Ban,
+  FlaskConical,
+  Download
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 
@@ -48,16 +51,25 @@ export default function AdminPage() {
 
   // Reset Confirmation State
   const [resetModalOpen, setResetModalOpen] = useState(false)
-  const [resetType, setResetType] = useState<"live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets" | null>(null)
+  const [resetType, setResetType] = useState<"live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets" | "reset-model" | null>(null)
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null)
   const [openLiveBetsCount, setOpenLiveBetsCount] = useState(0)
+
+  // Training Health State (overfitting traffic light)
+  const [trainingHealth, setTrainingHealth] = useState<any>(null)
+
+  // Backtest State
+  const [backtestRunning, setBacktestRunning] = useState(false)
+  const [backtestResult, setBacktestResult] = useState<any>(null)
+  const [backtestError, setBacktestError] = useState<string | null>(null)
+  const [backtestHistory, setBacktestHistory] = useState<any[]>([])
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 
-  const handleOpenResetModal = (type: "live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets") => {
+  const handleOpenResetModal = (type: "live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets" | "reset-model") => {
     setResetType(type)
     setResetModalOpen(true)
   }
@@ -74,6 +86,14 @@ export default function AdminPage() {
         const data = await res.json()
         setResetSuccessMsg(data.message || "Ставки отменены")
         setTimeout(() => { fetchBankroll(); fetchOpenLiveBetsCount() }, 300)
+      } else if (resetType === "reset-model") {
+        const res = await fetch(`${API_BASE}/api/admin/reset-model`, { method: "POST" })
+        if (!res.ok) throw new Error("Ошибка при обнулении нейросети")
+        const data = await res.json()
+        setResetSuccessMsg(
+          `Нейросеть обнулена. Очищено trained_count у ${data.reset_rows ?? 0} завершённых ставок — обучение начнётся заново на существующем архиве.`
+        )
+        setTimeout(() => { fetchAILogs(); fetchAISettings() }, 300)
       } else if (resetType === "bankroll-live" || resetType === "bankroll-training") {
         const account = resetType === "bankroll-live" ? "live" : "training"
         const res = await fetch(`${API_BASE}/api/admin/bankroll/reset`, {
@@ -196,6 +216,18 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchTrainingHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/training-health`)
+      if (res.ok) {
+        const data = await res.json()
+        setTrainingHealth(data.health || null)
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
@@ -209,6 +241,53 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchBacktestHistory = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/backtest/history`)
+      if (res.ok) {
+        const data = await res.json()
+        setBacktestHistory(data.runs || [])
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  const handleRunBacktest = async () => {
+    setBacktestRunning(true)
+    setBacktestError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/backtest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 15000 })
+      })
+      if (!res.ok) throw new Error("Ошибка при запуске бэктеста")
+      const data = await res.json()
+      if (data.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
+      if (data.status !== "success") throw new Error("Бэктест завершился с ошибкой")
+      setBacktestResult(data)
+      fetchBacktestHistory()
+    } catch (err: any) {
+      setBacktestError(err.message || "Ошибка при запуске бэктеста")
+    } finally {
+      setBacktestRunning(false)
+    }
+  }
+
+  const downloadBacktestJson = () => {
+    if (!backtestResult) return
+    const blob = new Blob([JSON.stringify(backtestResult, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `backtest_${(backtestResult.generated_at || Date.now().toString()).replace(/[:.]/g, "-")}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   useEffect(() => {
     if (!isAuthenticated) return
     fetchAISettings()
@@ -216,15 +295,18 @@ export default function AdminPage() {
     fetchStats()
     fetchBankroll()
     fetchOpenLiveBetsCount()
+    fetchBacktestHistory()
+    fetchTrainingHealth()
 
     const interval = setInterval(() => {
       fetchAILogs()
       fetchStats()
       fetchBankroll()
       fetchOpenLiveBetsCount()
+      fetchTrainingHealth()
     }, 3000)
     return () => clearInterval(interval)
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth])
 
   const toggleAISetting = async (key: "ai_enabled" | "training_enabled", currentValue: boolean) => {
     const newValue = !currentValue
@@ -272,8 +354,8 @@ export default function AdminPage() {
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#fdcb6e]/10 rounded-full blur-2xl pointer-events-none" />
 
           <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#fdcb6e] to-[#ffeaa7] flex items-center justify-center mx-auto shadow-lg shadow-[#fdcb6e]/20 text-neutral-950 font-black text-2xl">
-              ⚡
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#fdcb6e] to-[#ffeaa7] flex items-center justify-center mx-auto shadow-lg shadow-[#fdcb6e]/20 p-2">
+              <img src="/logo.svg" alt="Нейроставки" className="w-full h-full object-contain" />
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white mt-3">
               Панель Управления Админа
@@ -284,7 +366,7 @@ export default function AdminPage() {
           </div>
 
           {loginError && (
-            <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
+            <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl px-4 py-2.5 text-xs text-[#ff7675] flex items-center gap-2">
               <ShieldAlert className="w-4 h-4 shrink-0" />
               <span>{loginError}</span>
             </div>
@@ -345,13 +427,18 @@ export default function AdminPage() {
         {/* Top Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-neutral-900/80 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00b894] to-[#55efc4] text-neutral-950 flex items-center justify-center font-bold text-xl">
-              🛡️
+            <div className="relative w-11 h-11 rounded-xl bg-[#00b894]/15 border border-[#00b894]/30 flex items-center justify-center shrink-0">
+              <motion.span
+                className="absolute inset-0 rounded-xl bg-[#00b894]/25"
+                animate={{ scale: [1, 1.3, 1], opacity: [0, 0.5, 0] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <ShieldCheck className="relative w-5 h-5 text-[#55efc4]" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 Админ-Панель Управления ИИ
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
                   Пользователь: diflector
                 </span>
               </h2>
@@ -381,6 +468,80 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Training Health Status Block — overfitting traffic light */}
+        {(() => {
+          const health = trainingHealth?.status || "unknown"
+          const signals = trainingHealth?.signals || {}
+          const cfg: Record<string, { bg: string; border: string; text: string; icon: any; title: string; blink: boolean }> = {
+            ok: {
+              bg: "bg-[#00b894]/10", border: "border-[#00b894]/50", text: "text-[#55efc4]",
+              icon: ShieldCheck, title: "✅ Обучение в норме — переобучения не видно", blink: false,
+            },
+            warning: {
+              bg: "bg-[#fdcb6e]/10", border: "border-[#fdcb6e]/50", text: "text-[#ffeaa7]",
+              icon: AlertTriangle, title: "⚠️ Есть тревожный признак — присмотритесь", blink: false,
+            },
+            danger: {
+              bg: "bg-[#d63031]/15", border: "border-[#d63031]/60", text: "text-[#ff7675]",
+              icon: ShieldAlert, title: "🔴 Похоже на переобучение — рекомендуется остановить обучение", blink: true,
+            },
+            disabled: {
+              bg: "bg-neutral-900/60", border: "border-neutral-800", text: "text-neutral-500",
+              icon: Power, title: "⏸️ Обучение выключено вручную — статус не отслеживается", blink: false,
+            },
+            unknown: {
+              bg: "bg-neutral-900/60", border: "border-neutral-800", text: "text-neutral-400",
+              icon: Activity, title: "Статус обучения пока неизвестен", blink: false,
+            },
+          }
+          const c = cfg[health] || cfg.unknown
+          const Icon = c.icon
+          const isDisabled = health === "disabled"
+          const s1 = signals.low_epoch_streak
+          const s2 = signals.backtest_brier_not_beating_market
+          const s3 = signals.backtest_roi_not_improving
+
+          return (
+            <div className={`rounded-2xl border p-5 backdrop-blur-md shadow-lg transition ${c.bg} ${c.border} ${c.blink ? "animate-pulse" : ""}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${c.border} ${c.bg}`}>
+                    <Icon className={`w-6 h-6 ${c.text}`} />
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-black ${c.text}`}>{c.title}</h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      {isDisabled
+                        ? "Включите тумблер \"Обучение Нейросети\" ниже, чтобы возобновить отслеживание."
+                        : "Статус обучения нейросети — по стрику коротких эпох и тренду бэктеста. Обновляется каждые 3с."}
+                    </p>
+                  </div>
+                </div>
+
+                {!isDisabled && (
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                  <span className={`px-2.5 py-1.5 rounded-full border ${
+                    s1?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
+                  }`}>
+                    best_epoch≤{s1?.threshold ?? "—"}: {s1?.streak ?? 0} подряд {s1?.active ? "🔴" : "✓"}
+                  </span>
+                  <span className={`px-2.5 py-1.5 rounded-full border ${
+                    s2?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
+                  }`}>
+                    Brier ≥ рынка ({s2?.runs_checked ?? 0}/{s2?.runs_needed ?? "—"} бэктестов) {s2?.active ? "🔴" : "✓"}
+                  </span>
+                  <span className={`px-2.5 py-1.5 rounded-full border ${
+                    s3?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
+                  }`}>
+                    ROI не растёт ({s3?.runs_checked ?? 0}/{s3?.runs_needed ?? "—"} бэктестов) {s3?.active ? "🔴" : "✓"}
+                  </span>
+                </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Training Database Size & Disk Metrics Block */}
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -389,8 +550,8 @@ export default function AdminPage() {
             </div>
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                📁 Обучающая База Данных & Диск SQLite
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30">
+                Обучающая База Данных & Диск SQLite
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30">
                   autobet.db
                 </span>
               </h3>
@@ -446,7 +607,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">
-                ⚠️ Сброс и Обнуление Баз Данных
+                Сброс и Обнуление Баз Данных
               </h3>
               <p className="text-xs text-neutral-400">
                 Управление оперативной LIVE базой и обучающим архивом с обязательным подтверждением
@@ -470,6 +631,14 @@ export default function AdminPage() {
               <Trash2 className="w-3.5 h-3.5 text-[#ff7675]" />
               Обнулить ВСЕ БД (Полный Сброс)
             </button>
+
+            <button
+              onClick={() => handleOpenResetModal("reset-model")}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#a29bfe]/15 hover:bg-[#a29bfe]/25 text-[#a29bfe] border border-[#a29bfe]/40 font-bold px-4 py-2.5 rounded-xl transition text-xs shadow-md"
+            >
+              <BrainCircuit className="w-3.5 h-3.5 text-[#a29bfe]" />
+              Обнулить Нейросеть
+            </button>
           </div>
         </div>
 
@@ -480,7 +649,7 @@ export default function AdminPage() {
               <Wallet className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-bold text-white">💰 Банкроллы Нейросети</h3>
+              <h3 className="text-sm font-bold text-white">Банкроллы Нейросети</h3>
               <p className="text-xs text-neutral-400">
                 Боевой банк — реальные симулированные ставки бота. Обучающий банк — влияет только на процесс обучения, к реальным ставкам отношения не имеет.
                 Оба банка автоматически сбрасываются на 1000 ₽ при обнулении.
@@ -526,6 +695,176 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Backtest Panel */}
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#a29bfe]/15 border border-[#a29bfe]/30 flex items-center justify-center text-[#a29bfe] shrink-0">
+                <FlaskConical className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Бэктест Модели</h3>
+                <p className="text-xs text-neutral-400 max-w-xl">
+                  Пересчитывает текущими весами вердикт и вероятность по последним завершённым ставкам и сравнивает
+                  с тем, что реально предсказывалось тогда, и с голым рынком (1/кэф). Ничего не обучает и не меняет в модели.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleRunBacktest}
+                disabled={backtestRunning}
+                className="flex items-center gap-1.5 bg-[#a29bfe] hover:opacity-90 text-neutral-950 font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md shadow-[#a29bfe]/20 disabled:opacity-50"
+              >
+                <FlaskConical className={`w-3.5 h-3.5 ${backtestRunning ? "animate-pulse" : ""}`} />
+                {backtestRunning ? "Считаю..." : "Запустить бэктест"}
+              </button>
+
+              {backtestResult && (
+                <button
+                  onClick={downloadBacktestJson}
+                  className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#a29bfe]" />
+                  JSON
+                </button>
+              )}
+            </div>
+          </div>
+
+          {backtestError && (
+            <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{backtestError}</span>
+            </div>
+          )}
+
+          {backtestResult && (
+            <div className="space-y-4">
+              <div className="text-[11px] text-neutral-500 font-mono">
+                {backtestResult.samples_evaluated?.toLocaleString()} ставок · {backtestResult.date_range?.from} → {backtestResult.date_range?.to} · заняло {backtestResult.duration_seconds}с ·
+                {" "}blend_weight {backtestResult.config?.blend_weight} · market_weight {backtestResult.config?.market_weight} · порог {backtestResult.config?.decision_threshold} · макс. кэф {backtestResult.config?.max_bet_coeff}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {([
+                  { key: "current", label: "Текущая модель (сейчас)" },
+                  { key: "historical", label: "Как было предсказано тогда" },
+                ] as const).map(({ key, label }) => {
+                  const d = backtestResult.overall?.[key]
+                  return (
+                    <div key={key} className="bg-neutral-950 border border-neutral-800 rounded-xl p-3.5">
+                      <div className="text-[10px] text-neutral-400 uppercase font-mono">{label}</div>
+                      {d ? (
+                        <>
+                          <div className="text-lg font-black text-white font-mono mt-1">
+                            {d.accuracy_pct != null ? `${d.accuracy_pct}%` : "—"}
+                            <span className="text-[10px] text-neutral-500 font-normal ml-1">точность</span>
+                          </div>
+                          <div className={`text-sm font-bold font-mono ${
+                            d.roi_pct == null ? "text-neutral-500" : d.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+                          }`}>
+                            ROI {d.roi_pct != null ? `${d.roi_pct}%` : "—"}
+                          </div>
+                          <div className="text-[10px] text-neutral-500 mt-0.5">
+                            {d.bets} ставок · Brier {d.brier}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-neutral-500 mt-1.5">нет данных</div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-3.5">
+                  <div className="text-[10px] text-neutral-400 uppercase font-mono">Рынок (1/кэф, без модели)</div>
+                  <div className="text-sm font-bold font-mono text-neutral-300 mt-1">
+                    Brier {backtestResult.overall?.market_brier ?? "—"}
+                  </div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5">
+                    базовая линия — калибровка без вердикта/ставок
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs font-mono min-w-[560px]">
+                  <thead>
+                    <tr className="text-neutral-500 text-left border-b border-neutral-800">
+                      <th className="py-1.5 pr-3 font-semibold">Коэффициент</th>
+                      <th className="py-1.5 pr-3 font-semibold">Оценено</th>
+                      <th className="py-1.5 pr-3 font-semibold">Ставок</th>
+                      <th className="py-1.5 pr-3 font-semibold">ROI (текущ.)</th>
+                      <th className="py-1.5 pr-3 font-semibold">Brier (текущ.)</th>
+                      <th className="py-1.5 pr-3 font-semibold">Brier (рынок)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(backtestResult.by_coefficient || []).map((row: any) => (
+                      <tr key={row.bucket} className="border-b border-neutral-900/60">
+                        <td className="py-1.5 pr-3 text-neutral-300">{row.bucket}</td>
+                        <td className="py-1.5 pr-3 text-neutral-400">{row.evaluated}</td>
+                        <td className="py-1.5 pr-3 text-neutral-400">{row.current?.bets ?? "—"}</td>
+                        <td className={`py-1.5 pr-3 font-bold ${
+                          row.current?.roi_pct == null ? "text-neutral-500" : row.current.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+                        }`}>
+                          {row.current?.roi_pct != null ? `${row.current.roi_pct}%` : "—"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-neutral-400">{row.current?.brier ?? "—"}</td>
+                        <td className={`py-1.5 pr-3 ${
+                          row.current?.brier != null && row.market_brier != null && row.current.brier >= row.market_brier
+                            ? "text-[#ff7675]" : "text-neutral-500"
+                        }`}>
+                          {row.market_brier ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {backtestHistory.length > 0 && (
+            <div className="pt-2 border-t border-neutral-800/80">
+              <div className="text-[10px] text-neutral-500 uppercase font-mono mb-2">История запусков (последние {backtestHistory.length})</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] font-mono min-w-[520px]">
+                  <thead>
+                    <tr className="text-neutral-500 text-left border-b border-neutral-800">
+                      <th className="py-1 pr-3 font-semibold">Когда</th>
+                      <th className="py-1 pr-3 font-semibold">Ставок</th>
+                      <th className="py-1 pr-3 font-semibold">Точность</th>
+                      <th className="py-1 pr-3 font-semibold">ROI</th>
+                      <th className="py-1 pr-3 font-semibold">Brier</th>
+                      <th className="py-1 pr-3 font-semibold">Brier рынка</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backtestHistory.slice(0, 10).map((run: any, i: number) => {
+                      const cur = run.overall?.current
+                      return (
+                        <tr key={i} className="border-b border-neutral-900/60 text-neutral-400">
+                          <td className="py-1 pr-3">{run.generated_at}</td>
+                          <td className="py-1 pr-3">{run.samples_evaluated}</td>
+                          <td className="py-1 pr-3">{cur?.accuracy_pct != null ? `${cur.accuracy_pct}%` : "—"}</td>
+                          <td className={cur?.roi_pct == null ? "" : cur.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}>
+                            {cur?.roi_pct != null ? `${cur.roi_pct}%` : "—"}
+                          </td>
+                          <td className="py-1 pr-3">{cur?.brier ?? "—"}</td>
+                          <td className="py-1 pr-3">{run.overall?.market_brier ?? "—"}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
         {resetSuccessMsg && (
           <div className="bg-[#00b894]/15 border border-[#00b894]/40 rounded-xl p-3.5 text-xs text-[#55efc4] flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-[#00b894]" />
@@ -549,7 +888,7 @@ export default function AdminPage() {
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     Нейросеть (Inference)
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
                       aiEnabled ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
                     }`}>
                       {aiEnabled ? "ВКЛЮЧЕНА" : "ОТКЛЮЧЕНА"}
@@ -589,7 +928,7 @@ export default function AdminPage() {
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     Обучение Нейросети
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
                       trainingEnabled ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
                     }`}>
                       {trainingEnabled ? "ВКЛЮЧЕНО" : "ОТКЛЮЧЕНО"}
@@ -624,24 +963,31 @@ export default function AdminPage() {
               <h3 className="text-base font-bold text-white tracking-tight">
                 Консоль Логов Нейросети (Live Stream)
               </h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-950 text-neutral-400 border border-neutral-800">
                 {filteredLogs.length} записей
               </span>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 bg-neutral-950 p-1 rounded-xl border border-neutral-800 text-xs">
+            {/* Filter Tabs — segmented control with a sliding indicator, same language used
+                across the other pages' filter/sort toggles */}
+            <div className="inline-flex flex-wrap items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
               {["ALL", "INFERENCE", "TRAINING", "BANKROLL", "SYSTEM"].map((f) => (
                 <button
                   key={f}
                   onClick={() => setLogFilter(f)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                    logFilter === f
-                      ? "bg-neutral-800 text-white shadow"
-                      : "text-neutral-400 hover:text-neutral-200"
+                  className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    logFilter === f ? "text-white" : "text-neutral-400 hover:text-neutral-200"
                   }`}
                 >
-                  {f}
+                  {logFilter === f && (
+                    <motion.div
+                      layoutId="logFilterIndicator"
+                      layoutDependency={logFilter}
+                      className="absolute inset-0 rounded-lg bg-neutral-700 shadow-sm"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">{f}</span>
                 </button>
               ))}
             </div>
@@ -667,7 +1013,7 @@ export default function AdminPage() {
                   >
                     <span className="text-neutral-500 whitespace-nowrap">{log.timestamp}</span>
                     <span
-                      className={`px-1.5 py-0.2 text-[10px] rounded uppercase font-bold shrink-0 ${
+                      className={`px-1.5 py-0.2 text-[10px] rounded-full uppercase font-bold shrink-0 ${
                         isTraining
                           ? "bg-[#55efc4]/20 text-[#55efc4] border border-[#00b894]/40"
                           : isInference
@@ -721,6 +1067,7 @@ export default function AdminPage() {
                 {resetType === "bankroll-live" && "Сбросить Боевой Банк?"}
                 {resetType === "bankroll-training" && "Сбросить Обучающий Банк?"}
                 {resetType === "cancel-bets" && `Отменить ${openLiveBetsCount} открытых ставок?`}
+                {resetType === "reset-model" && "Обнулить Нейросеть?"}
               </h3>
               <p className="text-xs text-neutral-300">
                 {resetType === "live" &&
@@ -733,6 +1080,8 @@ export default function AdminPage() {
                   "Баланс обучающего банка будет сброшен до 1000 ₽. Это не влияет на веса модели, только на счёт, используемый в обучающем лоссе."}
                 {resetType === "cancel-bets" &&
                   "Все текущие открытые ставки бота будут отменены (не засчитаны как выигрыш/проигрыш), а поставленная сумма полностью вернётся на боевой баланс."}
+                {resetType === "reset-model" &&
+                  "Веса PyTorch будут переинициализированы случайно, бустер LightGBM удалён, blend/market weight и порог решения сброшены к дефолтам, файлы чекпоинтов на диске удалены. У всех завершённых ставок в архиве trained_count обнулится до 0 — обучение начнётся заново, но на уже накопленных исторических данных (архив finished_bets НЕ удаляется)."}
               </p>
             </div>
 
@@ -755,7 +1104,7 @@ export default function AdminPage() {
                 className="flex-1 bg-gradient-to-r from-[#d63031] to-[#ff7675] text-white font-bold py-2.5 rounded-xl transition text-xs shadow-lg shadow-[#d63031]/20 hover:opacity-90 disabled:opacity-50"
               >
                 {resetLoading
-                  ? (resetType === "cancel-bets" ? "Отмена ставок..." : "Обнуление...")
+                  ? (resetType === "cancel-bets" ? "Отмена ставок..." : resetType === "reset-model" ? "Обнуляю нейросеть..." : "Обнуление...")
                   : (resetType === "cancel-bets" ? "Подтвердить отмену" : "Подтвердить обнуление")}
               </button>
             </div>

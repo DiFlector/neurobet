@@ -6,7 +6,11 @@ from app.neuralbet import (
     get_ai_settings,
     update_ai_settings,
     get_ai_logs,
-    add_ai_log
+    add_ai_log,
+    reset_neural_network,
+    get_training_health,
+    run_backtest,
+    get_backtest_history,
 )
 from app.neuralbet import bankroll
 from app.deepseek import test_deepseek_web
@@ -15,7 +19,7 @@ router = APIRouter()
 
 @router.get("/health")
 def health_check():
-    return {"status": "ok", "service": "autobet-ai-microservice", "port": 8001}
+    return {"status": "ok", "service": "neurobet-ai-microservice", "port": 8001}
 
 @router.post("/predict-and-train")
 def predict_and_train(payload: Dict[str, Any] = Body(default={})):
@@ -80,6 +84,52 @@ def reset_bankroll(payload: Dict[str, Any] = Body(...)):
     acc = bankroll.reset_account(account, start_balance=start_balance)
     add_ai_log("BANKROLL", f"{account.capitalize()} bankroll manually reset to {acc['balance']:.1f} ₽ by admin.")
     return {"status": "success", "account": acc}
+
+@router.get("/training-health")
+def training_health():
+    """Traffic-light read on whether online training is helping or hurting right now —
+    see get_training_health's docstring for the three-signal playbook. Polled by the
+    admin panel's status block. Nested under "health" (not spread into the top level)
+    so its own "status" field (ok/warning/danger) can't collide with this response
+    envelope's "status": "success"."""
+    return {"status": "success", "health": get_training_health()}
+
+@router.post("/reset-model")
+def reset_model():
+    """Wipes the live model's weights/booster/blend state back to a fresh, untrained
+    ensemble and clears trained_count on the resolved-bet archive so training restarts
+    from scratch using that same existing history — see reset_neural_network's
+    docstring for why this is deliberately not the same thing as reset-db/all."""
+    try:
+        result = reset_neural_network()
+        return {"status": "success", **result}
+    except Exception as e:
+        add_ai_log("SYSTEM", f"Neural network reset error: {e}", level="WARNING")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/backtest")
+def backtest(payload: Dict[str, Any] = Body(default={})):
+    """
+    Read-only evaluation of the current live ensemble against historical resolved bets
+    — see app/neuralbet/backtest.py's module docstring. Runs under the same
+    ensemble_engine lock as inference/training so it can't race a concurrent
+    train_online() pass; on a large --limit this can take from several seconds up to
+    roughly a minute, which is why the admin panel calls this through a proxy with a
+    generous timeout rather than the default request timeout.
+    """
+    limit = int(payload.get("limit") or 15000)
+    limit = max(100, min(limit, 50000))
+    since = payload.get("since")
+    try:
+        result = run_backtest(limit=limit, since=since)
+        return result
+    except Exception as e:
+        add_ai_log("SYSTEM", f"Backtest error: {e}", level="WARNING")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/backtest/history")
+def backtest_history():
+    return {"status": "success", "runs": get_backtest_history()}
 
 @router.post("/deepseek/ask")
 def ask_deepseek(payload: Dict[str, Any] = Body(...)):

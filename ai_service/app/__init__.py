@@ -1,1 +1,1 @@
-# Autobet AI Service Package
+# NeuroBet AI Service Package

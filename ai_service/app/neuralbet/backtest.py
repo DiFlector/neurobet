@@ -1,0 +1,315 @@
+"""
+Offline evaluation of the *current, already-trained* ensemble against historical
+resolved bets — answers "if today's weights/calibration/threshold had been live back
+then, would the numbers actually look better?" without waiting days for the online
+trainer to accumulate enough new matches to tell.
+
+Deliberately NOT the same thing as the online trainer's val_loss/val_guess_rate: those
+measure the model against a fixed ~400-sample validation slice on a random trajectory
+cutoff, refreshed with every online-training pass. This runs a much larger, deterministic
+sweep (the *closing* trajectory — the full history as recorded up to settlement, not a
+random cutoff), broken down by coefficient band and sport the same way the
+"Статистика" page's ROI table is, and — the actually new part — recomputes each bet
+with the live ensemble's current weights/blend/threshold instead of reading back
+whatever was actually predicted at the time (predicted_win_probability/predicted_win,
+which mixes together however many different model versions were live across the whole
+history window). Read-only: no gradient step, no checkpoint write, no bankroll ledger
+entry. Runs under pipeline._engine_lock like every other read of ensemble_engine, so it
+can't race a concurrent train_online() pass reading torn-mid-update weights.
+"""
+import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from app.config import MODEL_DIR
+from app.core.database import get_finished_connection, release_connection
+from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
+
+logger = logging.getLogger("ai_service_backtest")
+
+BACKTEST_DIR = os.path.join(MODEL_DIR, "backtests")
+HISTORY_PATH = os.path.join(BACKTEST_DIR, "history.json")
+MAX_HISTORY_RUNS = 50
+
+COEFF_BUCKET_LABELS = ["1.0–1.5", "1.5–2.0", "2.0–3.0", "3.0–5.0", "5.0–10.0", "10.0+"]
+
+# predict_batch's own forward pass is cheap per-sample, but chunking bounds peak memory
+# for a large --limit run instead of building one giant tensor up front.
+PREDICT_CHUNK = 4000
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_full_step_pairs(sample: Dict[str, Any]) -> Optional[List[tuple]]:
+    """
+    Same length-reconciliation model.py's _prepare_sample applies to a resolved bet's
+    stored sequences (score_seq/ts_seq/timer_seq may predate the migration that added
+    them, or simply be shorter/absent — see finished_bets' schema notes), but without
+    _prepare_sample's random training-time cutoff: a backtest wants the deterministic
+    *closing* trajectory (the full history as it stood at settlement) so re-running it
+    twice against the same weights gives the same numbers.
+    """
+    odds_seq = sample["odds_seq"]
+    if not odds_seq:
+        return None
+    score_seq = sample["score_seq"]
+    if len(score_seq) != len(odds_seq):
+        score_seq = [sample["score_diff_at_bet"]] * len(odds_seq)
+    ts_seq = sample["ts_seq"]
+    if len(ts_seq) != len(odds_seq):
+        ts_seq = [None] * len(odds_seq)
+    timer_seq = sample["timer_seq"]
+    if len(timer_seq) != len(odds_seq):
+        timer_seq = [None] * len(odds_seq)
+    return list(zip(odds_seq, score_seq, ts_seq, timer_seq))
+
+
+def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
+    f_conn = get_finished_connection()
+    f_cursor = f_conn.cursor()
+    where_since = "AND h.finished_at >= %s" if since else ""
+    params: List[Any] = [since] if since else []
+    f_cursor.execute(f"""
+        SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
+               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
+               h.score_diff_at_bet, h.finished_at, h.overround_close,
+               h.final_coefficient, h.predicted_win_probability, h.predicted_win,
+               f.sport_path, f.team_1, f.team_2
+        FROM finished_bets h
+        JOIN finished_events f ON h.event_id = f.event_id
+        WHERE h.is_win IS NOT NULL {where_since}
+        ORDER BY h.finished_at DESC
+        LIMIT %s
+    """, params + [limit])
+    rows = f_cursor.fetchall()
+    release_connection(f_conn)
+    return rows
+
+
+def _row_to_sample(r) -> Dict[str, Any]:
+    """Local copy of pipeline._row_to_sample's JSON-parsing (kept separate rather than
+    imported, so this module never has to import pipeline.py — see the module docstring
+    on why that direction matters: pipeline owns the live singleton and its lock, and
+    importing *from* pipeline into a read-only reporting module would be backwards)."""
+    try:
+        odds_seq = json.loads(r["odds_seq_json"] or "[]")
+    except Exception:
+        odds_seq = []
+    try:
+        score_seq = json.loads(r["score_seq_json"] or "[]") if r["score_seq_json"] else []
+    except Exception:
+        score_seq = []
+    try:
+        ts_seq = json.loads(r["ts_seq_json"] or "[]") if ("ts_seq_json" in r.keys() and r["ts_seq_json"]) else []
+    except Exception:
+        ts_seq = []
+    try:
+        timer_seq = json.loads(r["timer_seq_json"] or "[]") if ("timer_seq_json" in r.keys() and r["timer_seq_json"]) else []
+    except Exception:
+        timer_seq = []
+    return {
+        "odds_seq": odds_seq, "score_seq": score_seq, "ts_seq": ts_seq, "timer_seq": timer_seq,
+        "score_diff_at_bet": r["score_diff_at_bet"] or 0,
+        "factor_id": r["factor_id"], "sport_path": r["sport_path"] or "",
+        "team_1": r["team_1"] or "", "team_2": r["team_2"] or "",
+        "overround_close": r["overround_close"] if "overround_close" in r.keys() else None,
+    }
+
+
+def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    n = len(records)
+    if n == 0:
+        return None
+
+    def _one(prob_key: str, pred_key: str) -> Optional[Dict[str, Any]]:
+        have_prob = [r for r in records if r.get(prob_key) is not None]
+        evaluated = len(have_prob)
+        if evaluated == 0:
+            return None
+        have_pred = [r for r in have_prob if r.get(pred_key) is not None]
+        guessed = sum(1 for r in have_pred if int(r[pred_key]) == r["is_win"])
+        bets = [r for r in have_pred if int(r[pred_key]) == 1]
+        staked = len(bets)
+        returned = sum(r["coeff"] for r in bets if r["is_win"] == 1)
+        brier = sum((r[prob_key] / 100.0 - r["is_win"]) ** 2 for r in have_prob) / evaluated
+        return {
+            "evaluated": evaluated,
+            "verdict_evaluated": len(have_pred),
+            "accuracy_pct": round(guessed / len(have_pred) * 100.0, 1) if have_pred else None,
+            "bets": staked,
+            "roi_pct": round((returned - staked) / staked * 100.0, 1) if staked else None,
+            "brier": round(brier, 4),
+        }
+
+    market_brier = round(sum((r["market_prob"] / 100.0 - r["is_win"]) ** 2 for r in records) / n, 4)
+
+    return {
+        "evaluated": n,
+        "current": _one("current_prob", "current_pred"),
+        "historical": _one("historical_prob", "historical_pred"),
+        "market_brier": market_brier,
+    }
+
+
+def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Pulls up to `limit` most-recently-resolved bets (optionally only those finished at or
+    after `since`, an ISO timestamp), re-scores every one with the *current* live
+    ensemble's weights/calibration/threshold at its closing trajectory, and reports
+    accuracy/ROI/Brier — overall, by coefficient band, and by sport — alongside the same
+    metrics for (a) what was actually predicted live back when each bet happened, and
+    (b) the bare bookmaker-implied probability. Saves a timestamped snapshot to disk
+    (see save_and_record) so results can be compared run over run.
+    """
+    # Imported lazily (not at module load) so this module has no import-time dependency
+    # on pipeline.py's module-level side effects (constructing the live ensemble_engine
+    # singleton, starting its lock) — only route handlers that actually call this ever
+    # need pipeline's live state.
+    from app.neuralbet.pipeline import MAX_BET_COEFF, _engine_lock, ensemble_engine
+
+    t0 = time.time()
+    rows = _fetch_backtest_rows(limit=limit, since=since)
+    if not rows:
+        return {"status": "no_data", "samples_evaluated": 0}
+
+    items: List[Dict[str, Any]] = []
+    meta: List[Dict[str, Any]] = []
+    for r in rows:
+        sample = _row_to_sample(r)
+        pairs = _build_full_step_pairs(sample)
+        if not pairs:
+            continue
+        coeff = float(r["final_coefficient"] or pairs[-1][0])
+        items.append({
+            "step_pairs": pairs,
+            "current_coeff": coeff,
+            "initial_coeff": pairs[0][0],
+            "factor_id": sample["factor_id"],
+            "sport_path": sample["sport_path"],
+            "team_1": sample["team_1"],
+            "team_2": sample["team_2"],
+            "overround": sample["overround_close"],
+        })
+        sport_top = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
+        meta.append({
+            "sport": sport_top,
+            "coeff": coeff,
+            "is_win": int(r["is_win"]),
+            "historical_prob": r["predicted_win_probability"],
+            "historical_pred": r["predicted_win"],
+        })
+
+    if not items:
+        return {"status": "no_data", "samples_evaluated": 0}
+
+    with _engine_lock:
+        blend_weight = ensemble_engine.blend_weight
+        market_weight = ensemble_engine.market_weight
+        decision_threshold = ensemble_engine.decision_threshold
+        buckets = get_calibration_buckets()
+
+        raw_results: List[tuple] = []
+        for i in range(0, len(items), PREDICT_CHUNK):
+            raw_results.extend(ensemble_engine.predict_batch(items[i:i + PREDICT_CHUNK]))
+
+    records: List[Dict[str, Any]] = []
+    for m, res in zip(meta, raw_results):
+        win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
+        calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
+        current_pred = 1 if (decision_prob >= decision_threshold and m["coeff"] <= MAX_BET_COEFF) else 0
+        market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
+        records.append({
+            "sport": m["sport"],
+            "coeff": m["coeff"],
+            "coeff_bucket": coeff_bucket_index(m["coeff"]),
+            "is_win": m["is_win"],
+            "current_prob": calibrated,
+            "current_pred": current_pred,
+            "historical_prob": m["historical_prob"],
+            "historical_pred": m["historical_pred"],
+            "market_prob": market_prob,
+        })
+
+    by_sport: Dict[str, List[Dict[str, Any]]] = {}
+    by_coeff: Dict[int, List[Dict[str, Any]]] = {}
+    for rec in records:
+        by_sport.setdefault(rec["sport"], []).append(rec)
+        by_coeff.setdefault(rec["coeff_bucket"], []).append(rec)
+
+    result = {
+        "status": "success",
+        "generated_at": now_iso(),
+        "duration_seconds": round(time.time() - t0, 1),
+        "samples_requested": limit,
+        "samples_evaluated": len(records),
+        "since": since,
+        "date_range": {"from": str(rows[-1]["finished_at"]), "to": str(rows[0]["finished_at"])},
+        "config": {
+            "blend_weight": round(blend_weight, 3),
+            "market_weight": round(market_weight, 3),
+            "decision_threshold": round(decision_threshold, 3),
+            "max_bet_coeff": MAX_BET_COEFF,
+        },
+        "overall": _agg_group(records),
+        "by_sport": sorted(
+            [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
+            key=lambda x: -x["evaluated"],
+        ),
+        "by_coefficient": [
+            {"bucket": COEFF_BUCKET_LABELS[b], **_agg_group(rs)}
+            for b, rs in sorted(by_coeff.items())
+        ],
+    }
+
+    save_and_record(result)
+    return result
+
+
+def save_and_record(result: Dict[str, Any]) -> None:
+    """Writes the full result to a timestamped file under BACKTEST_DIR, and appends a
+    condensed summary (no per-sport/per-coefficient breakdown) to history.json capped at
+    MAX_HISTORY_RUNS entries — the trend list the admin panel reads without having to
+    re-download every full run."""
+    try:
+        os.makedirs(BACKTEST_DIR, exist_ok=True)
+        ts_slug = result["generated_at"].replace(":", "-").replace("+00:00", "Z")
+        with open(os.path.join(BACKTEST_DIR, f"backtest_{ts_slug}.json"), "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        history: List[Dict[str, Any]] = []
+        if os.path.exists(HISTORY_PATH):
+            try:
+                with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except Exception:
+                history = []
+
+        history.insert(0, {
+            "generated_at": result["generated_at"],
+            "samples_evaluated": result["samples_evaluated"],
+            "since": result.get("since"),
+            "config": result["config"],
+            "overall": result["overall"],
+        })
+        history = history[:MAX_HISTORY_RUNS]
+
+        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Error persisting backtest result: {e}")
+
+
+def get_backtest_history() -> List[Dict[str, Any]]:
+    if not os.path.exists(HISTORY_PATH):
+        return []
+    try:
+        with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error reading backtest history: {e}")
+        return []
