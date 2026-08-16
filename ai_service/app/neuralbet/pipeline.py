@@ -423,6 +423,16 @@ def _fetch_training_batch(f_cursor, val_event_ids: Optional[set]) -> Tuple[List[
     return samples, keys
 
 
+# 400 -> 1000: everything downstream of this slice — per-epoch early-stopping
+# selection, the tuner's Brier grid, the decision-threshold ROI sweep — was reading a
+# 400-sample view, small enough that batch-to-batch noise in which bets landed in it
+# moved the "best" epoch and threshold around. Bumped alongside TRAIN_BATCH_TOTAL
+# (5000-sample training passes deserve better than a 400-sample yardstick); the val
+# *pool* (VAL_FRACTION of events) was already far bigger than 400, this cap was the
+# only thing keeping most of it unused.
+VAL_BATCH_LIMIT = int(os.getenv("NEURALBET_VAL_BATCH_LIMIT", "1000"))
+
+
 def _fetch_val_batch(f_cursor, val_event_ids: Optional[set]) -> List[Dict[str, Any]]:
     if not val_event_ids:
         return []
@@ -434,8 +444,8 @@ def _fetch_val_batch(f_cursor, val_event_ids: Optional[set]) -> List[Dict[str, A
         JOIN finished_events f ON h.event_id = f.event_id
         WHERE h.is_win IS NOT NULL AND h.event_id = ANY(%s)
         ORDER BY h.finished_at ASC
-        LIMIT 400
-    """, (list(val_event_ids),))
+        LIMIT %s
+    """, (list(val_event_ids), VAL_BATCH_LIMIT))
     return [_row_to_sample(r) for r in f_cursor.fetchall()]
 
 

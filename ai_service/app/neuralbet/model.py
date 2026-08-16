@@ -52,7 +52,12 @@ EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
 # efficiently (more work per Python-level loop iteration) — meaningful now that each
 # epoch sees 10x the samples.
 BATCH_SIZE = int(os.getenv("NEURALBET_BATCH_SIZE", "128"))
-LEARNING_RATE = float(os.getenv("NEURALBET_LEARNING_RATE", "1e-3"))
+# 1e-3 -> 1e-4: 1e-3 is a from-scratch rate; for online fine-tuning of an
+# already-converged network it was large enough that every epoch after the first
+# dragged the weights toward the current batch and away from the general solution —
+# observed as "best epoch 1/11, val_loss rising monotonically from epoch 1" even on
+# 5000-sample batches, where batch size clearly wasn't the cause anymore.
+LEARNING_RATE = float(os.getenv("NEURALBET_LEARNING_RATE", "1e-4"))
 GRAD_CLIP_NORM = 1.0
 
 # Weight on the decision-head loss (the bet/no-bet verdict) relative to the win-head BCE.
@@ -403,6 +408,13 @@ class NeuralBetEnsemble:
                 if not arch_resized and isinstance(blob, dict) and "optimizer_state" in blob:
                     try:
                         self.pytorch_optimizer.load_state_dict(blob["optimizer_state"])
+                        # load_state_dict restores param_groups wholesale, including the
+                        # lr the checkpoint was saved with — without this, lowering
+                        # LEARNING_RATE (env or default) would be silently undone on
+                        # every restart by whatever rate the old checkpoint carried.
+                        # Momentum buffers are what we want restored; the rate is config.
+                        for group in self.pytorch_optimizer.param_groups:
+                            group["lr"] = LEARNING_RATE
                     except Exception:
                         # Optimizer shape changed (e.g. architecture bump) — keep the
                         # fresh optimizer state, the model weights still loaded fine.
