@@ -425,6 +425,60 @@ def admin_backtest_history():
         logger.error(f"Error fetching backtest history: {e}")
     return {"status": "success", "runs": []}
 
+@app.get("/api/ai/overview")
+def read_ai_overview(
+    bet_types_limit: int = Query(5, ge=0, le=200, description="Max bet-type rows per sport in bet_type_stats.bet_types (does not affect roi_stats). 0 omits them, keeping only each sport's totals."),
+    logs_limit: int = Query(60, ge=0, le=300, description="Max recent AI log entries to include, newest first."),
+    backtest_runs: int = Query(10, ge=0, le=50, description="Max recent backtest history entries to include, newest first."),
+):
+    """
+    Single consolidated read of everything the admin panel's "Статистика"/"Нейроставки"
+    pages and the AI diagnostics show, as one public GET — so reviewing model health
+    doesn't require exporting several HTML pages by hand. Combines:
+      - db_stats: archive size / resolved-bet counts (same as the admin panel's DB block)
+      - bet_type_stats: guess-rate by sport and bet type (the "Статистика" page's
+        per-sport breakdown; bet_types_limit trims each sport's tail of rarely-seen
+        markets, since the full breakdown can run into the hundreds of rows)
+      - roi_stats: flat-stake ROI and Brier vs. the bare bookmaker-implied baseline,
+        bucketed by coefficient (the "Статистика" page's headline ROI table)
+      - bankroll: live + training account balances
+      - ai_settings: whether inference/training are currently toggled on
+      - training_health: the overfitting traffic light (see get_training_health)
+      - backtest_history: recent runs from the admin panel's "Бэктест" button
+      - recent_ai_logs: the live TRAINING/INFERENCE/BANKROLL log feed
+    No auth — matches every other /api/* read endpoint in this app (there is no
+    server-side session check anywhere beyond the login endpoint itself validating a
+    password once).
+    """
+    try:
+        db_stats = get_db_stats()
+        bt_stats = get_bet_type_stats()
+        for sport in bt_stats.get("sports", []):
+            sport["bet_types"] = sport["bet_types"][:bet_types_limit]
+        roi = get_roi_stats()
+        bankroll = get_bankroll_state()
+    except Exception as e:
+        logger.error(f"Error building AI overview (local data): {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    ai_settings = read_admin_ai_settings().get("settings")
+    training_health = admin_training_health().get("health")
+    backtest_hist = (admin_backtest_history().get("runs") or [])[:backtest_runs]
+    ai_logs = (read_admin_ai_logs().get("logs") or [])[:logs_limit]
+
+    return {
+        "status": "success",
+        "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
+        "db_stats": db_stats,
+        "bet_type_stats": bt_stats,
+        "roi_stats": roi,
+        "bankroll": bankroll,
+        "ai_settings": ai_settings,
+        "training_health": training_health,
+        "backtest_history": backtest_hist,
+        "recent_ai_logs": ai_logs,
+    }
+
 @app.post("/api/admin/live-bets/cancel-all")
 def admin_cancel_live_bets():
     try:
