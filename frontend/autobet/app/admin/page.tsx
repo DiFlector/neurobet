@@ -523,7 +523,7 @@ export default function AdminPage() {
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s1?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    best_epoch≤{s1?.threshold ?? "—"}: {s1?.streak ?? 0} подряд {s1?.active ? "🔴" : "✓"}
+                    best_epoch ≤ {s1?.threshold ?? "—"}: {s1?.streak ?? 0} подряд {s1?.active ? "🔴" : "✓"}
                   </span>
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s2?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
