@@ -1,8 +1,14 @@
 import logging
+import os
+from datetime import timedelta, timezone
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.neuralbet import add_ai_log, run_backtest
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("ai_service_main")
@@ -18,3 +24,69 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+# Fixed +3 offset — same MOSCOW_TZ every other module in this service already uses
+# (pipeline.py, backtest.py), not a tzdata-based zone name, so this needs no extra
+# timezone-database dependency.
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
+# Same default the admin panel's manual "Запустить бэктест" button uses (see
+# frontend/autobet/app/admin/page.tsx) — the automatic runs and manual ones should
+# cover a comparably representative slice of the archive unless deliberately overridden.
+SCHEDULED_BACKTEST_LIMIT = int(os.getenv("NEURALBET_SCHEDULED_BACKTEST_LIMIT", "40000"))
+
+scheduler = BackgroundScheduler(timezone=MOSCOW_TZ)
+
+
+def run_scheduled_backtest():
+    """
+    Fires 4x/day (00:00/06:00/12:00/18:00 Moscow) via the cron job registered below.
+    Calls run_backtest() directly in-process rather than over HTTP — the admin panel's
+    manual button has to go through backend's proxy (browser -> backend -> ai_service),
+    which is a real request with a timeout on both hops; a scheduled job running inside
+    the same process as the model it's evaluating has no such round trip and therefore
+    no such timeout to spuriously hit while it legitimately waits its turn for
+    pipeline._engine_lock behind a training cycle (see run_backtest's docstring — the
+    lock now covers the backtest's entire scoring pass, not just the forward pass, so
+    training and backtest can never interleave, only queue behind each other).
+    """
+    try:
+        result = run_backtest(limit=SCHEDULED_BACKTEST_LIMIT)
+        if result.get("status") == "success":
+            overall = result.get("overall") or {}
+            current = overall.get("current") or {}
+            add_ai_log(
+                "SYSTEM",
+                f"Плановый бэктест: {result['samples_evaluated']} сэмплов за "
+                f"{result['duration_seconds']:.1f}с — точность {current.get('accuracy_pct')}%, "
+                f"{current.get('bets')} ставок, ROI {current.get('roi_pct')}%, "
+                f"Brier {current.get('brier')} (рынок {overall.get('market_brier')}).",
+            )
+        else:
+            add_ai_log(
+                "SYSTEM",
+                f"Плановый бэктест пропущен: {result.get('status')} — недостаточно данных.",
+                level="WARNING",
+            )
+    except Exception as e:
+        logger.error(f"Scheduled backtest failed: {e}", exc_info=True)
+        add_ai_log("SYSTEM", f"Плановый бэктест завершился ошибкой: {e}", level="WARNING")
+
+
+@app.on_event("startup")
+def startup_event():
+    scheduler.add_job(
+        run_scheduled_backtest,
+        CronTrigger(hour="0,6,12,18", minute=0, timezone=MOSCOW_TZ),
+        id="scheduled_backtest",
+        misfire_grace_time=3600,
+    )
+    scheduler.start()
+    logger.info("Scheduler started! Backtest will run automatically at 00:00/06:00/12:00/18:00 Moscow time.")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    logger.info("Shutting down scheduler...")
+    if scheduler.running:
+        scheduler.shutdown(wait=False)

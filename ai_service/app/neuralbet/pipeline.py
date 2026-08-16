@@ -19,6 +19,7 @@ from app.neuralbet import bankroll
 from app.neuralbet.calibration import calibrate_probability, get_calibration_buckets
 from app.neuralbet.context import OVERROUND_EXPECTED_SIZE, overround_group_key
 from app.neuralbet.model import NeuralBetEnsemble
+from app.neuralbet.training_history import record_training_run
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -237,6 +238,16 @@ TRAINING_HEALTH_BACKTEST_WINDOW = int(
 TRAINING_HEALTH_MIN_ROI_BETS = int(
     os.getenv("NEURALBET_TRAINING_HEALTH_MIN_ROI_BETS", "100")
 )
+# Signal D window (val_loss trend) — needs this many recent training passes with a
+# val_loss on file before it can fire at all. Split into two halves and their means
+# compared (not oldest-vs-newest single points like signal C) because a single
+# training pass's val_loss is far noisier than a whole backtest's aggregate ROI: it's
+# computed on a ~1000-sample slice with a fresh random trajectory cutoff every pass, so
+# two individual passes can easily disagree even when nothing is actually wrong.
+# Averaging over a few passes per side smooths that out without needing a long history.
+TRAINING_HEALTH_VAL_LOSS_WINDOW = int(
+    os.getenv("NEURALBET_TRAINING_HEALTH_VAL_LOSS_WINDOW", "10")
+)
 
 
 def get_training_health() -> dict[str, Any]:
@@ -253,11 +264,19 @@ def get_training_health() -> dict[str, Any]:
          information over just trusting the odds, on held-out history.
       C) backtest_roi_not_improving — the current model's backtest ROI hasn't improved
          between the oldest and newest run in that same window.
-    One active signal is "presmotret'sya" (warning); all three at once is "definite stop"
-    (danger) — see run_neuralbet_inference_and_training's docstring history / the admin
-    panel's status block, which renders this directly. Needs at least
-    TRAINING_HEALTH_BACKTEST_WINDOW backtest runs on file for B/C to activate at all —
-    with fewer, only signal A (which needs no backtest) can fire.
+      D) val_loss_trending_up — the average validation decision-loss over the most
+         recent half of the last TRAINING_HEALTH_VAL_LOSS_WINDOW training passes is
+         higher than the average over the older half: a slower, more gradual drift than
+         signal A (which only catches a single pass memorizing its batch outright) —
+         this is the earliest available signal of all four, since a training pass fires
+         far more often than a backtest, but also the noisiest per-pass, hence the
+         within-window averaging instead of a point-to-point comparison.
+    One active signal is "presmotret'sya" (warning); a majority (3 of 4) is "definite
+    stop" (danger) — see run_neuralbet_inference_and_training's docstring history / the
+    admin panel's status block, which renders this directly. Needs at least
+    TRAINING_HEALTH_BACKTEST_WINDOW backtest runs on file for B/C to activate at all,
+    and TRAINING_HEALTH_VAL_LOSS_WINDOW training passes with a val_loss for D — with
+    fewer of either, only signal A (which needs neither) can fire.
 
     Returns status "disabled" (not ok/warning/danger) whenever the admin's own
     training_enabled toggle is off: with no gradient steps running, none of the three
@@ -287,8 +306,15 @@ def get_training_health() -> dict[str, Any]:
                     "runs_checked": 0,
                     "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW,
                 },
+                "val_loss_trending_up": {
+                    "active": False,
+                    "runs_checked": 0,
+                    "runs_needed": TRAINING_HEALTH_VAL_LOSS_WINDOW,
+                },
             },
         }
+
+    from app.neuralbet.training_history import get_training_history
 
     signal_a = _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT
 
@@ -329,7 +355,20 @@ def get_training_health() -> dict[str, Any]:
             # recent[0] is newest, recent[-1] is oldest in this window.
             signal_c = rois[0] <= rois[-1]
 
-    active = sum([signal_a, signal_b, signal_c])
+    train_history = get_training_history()  # newest first
+    val_losses = [
+        r.get("val_loss") for r in train_history if r.get("val_loss") is not None
+    ][:TRAINING_HEALTH_VAL_LOSS_WINDOW]
+    have_enough_val_passes = len(val_losses) >= TRAINING_HEALTH_VAL_LOSS_WINDOW
+
+    signal_d = False
+    if have_enough_val_passes:
+        half = TRAINING_HEALTH_VAL_LOSS_WINDOW // 2
+        newer_avg = sum(val_losses[:half]) / half
+        older_avg = sum(val_losses[half:]) / (len(val_losses) - half)
+        signal_d = newer_avg > older_avg
+
+    active = sum([signal_a, signal_b, signal_c, signal_d])
     status = "danger" if active >= 3 else "warning" if active >= 1 else "ok"
 
     return {
@@ -349,6 +388,11 @@ def get_training_health() -> dict[str, Any]:
                 "active": signal_c,
                 "runs_checked": len(recent),
                 "runs_needed": TRAINING_HEALTH_BACKTEST_WINDOW,
+            },
+            "val_loss_trending_up": {
+                "active": signal_d,
+                "runs_checked": len(val_losses),
+                "runs_needed": TRAINING_HEALTH_VAL_LOSS_WINDOW,
             },
         },
     }
@@ -1179,6 +1223,20 @@ def _run_neuralbet_inference_and_training_locked(
                 _low_epoch_streak += 1
             else:
                 _low_epoch_streak = 0
+
+            record_training_run({
+                "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
+                "samples_used": metrics["samples_used"],
+                "samples_skipped": metrics["samples_skipped"],
+                "positive_count": metrics["positive_count"],
+                "negative_count": metrics["negative_count"],
+                "best_epoch": metrics["best_epoch"],
+                "epochs_run": metrics["epochs_run"],
+                "train_loss": metrics["final_loss"],
+                "train_guess_rate": metrics["train_guess_rate"],
+                "val_loss": metrics.get("val_loss"),
+                "val_guess_rate": metrics.get("val_guess_rate"),
+            })
 
             val_str = (
                 f", val_loss {metrics['val_loss']:.4f} / val_guess_rate {metrics['val_guess_rate']:.1f}%"

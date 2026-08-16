@@ -11,6 +11,7 @@ from app.neuralbet import (
     get_training_health,
     run_backtest,
     get_backtest_history,
+    get_training_history,
 )
 from app.neuralbet import bankroll
 from app.deepseek import test_deepseek_web
@@ -130,6 +131,14 @@ def backtest(payload: Dict[str, Any] = Body(default={})):
 @router.get("/backtest/history")
 def backtest_history():
     return {"status": "success", "runs": get_backtest_history()}
+
+@router.get("/training-runs")
+def training_runs():
+    """Per-training-pass metrics history (val_loss/val_guess_rate/train_loss/best_epoch)
+    — see app/neuralbet/training_history.py. Feeds the admin panel's training-quality
+    trend chart and get_training_health's val_loss_trending_up signal; distinct from
+    /training-health, which is the derived traffic-light verdict, not the raw series."""
+    return {"status": "success", "runs": get_training_history()}
 
 @router.post("/deepseek/ask")
 def ask_deepseek(payload: Dict[str, Any] = Body(...)):

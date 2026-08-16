@@ -25,6 +25,8 @@ import {
   Download
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
+import { QualityTrendChart } from "@/components/QualityTrendChart"
+import { TrainingTrendChart } from "@/components/TrainingTrendChart"
 
 interface AILog {
   timestamp: string
@@ -58,6 +60,7 @@ export default function AdminPage() {
 
   // Training Health State (overfitting traffic light)
   const [trainingHealth, setTrainingHealth] = useState<any>(null)
+  const [trainingRuns, setTrainingRuns] = useState<any[]>([])
 
   // Backtest State
   const [backtestRunning, setBacktestRunning] = useState(false)
@@ -228,6 +231,18 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchTrainingRuns = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/training-runs`)
+      if (res.ok) {
+        const data = await res.json()
+        setTrainingRuns(data.runs || [])
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
@@ -301,6 +316,7 @@ export default function AdminPage() {
     fetchOpenLiveBetsCount()
     fetchBacktestHistory()
     fetchTrainingHealth()
+    fetchTrainingRuns()
 
     const interval = setInterval(() => {
       fetchAILogs()
@@ -309,8 +325,25 @@ export default function AdminPage() {
       fetchOpenLiveBetsCount()
       fetchTrainingHealth()
     }, 3000)
-    return () => clearInterval(interval)
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth])
+
+    // Backtest history changes far less often than the rest (4x/day via the scheduler,
+    // plus occasional manual runs) — a separate, slower interval instead of piling it
+    // into the 3s one above avoids re-fetching an unchanged 180-entry JSON file on
+    // every tick for no reason. Still automatic: without this, a scheduled backtest
+    // (or one run from another admin tab) would never show up here short of a manual
+    // page reload.
+    const backtestInterval = setInterval(fetchBacktestHistory, 30000)
+
+    // Training passes fire more often than backtests (every couple of minutes when
+    // data allows) but far less often than logs/stats — a middle-ground interval.
+    const trainingRunsInterval = setInterval(fetchTrainingRuns, 15000)
+
+    return () => {
+      clearInterval(interval)
+      clearInterval(backtestInterval)
+      clearInterval(trainingRunsInterval)
+    }
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns])
 
   const toggleAISetting = async (key: "ai_enabled" | "training_enabled", currentValue: boolean) => {
     const newValue = !currentValue
@@ -504,6 +537,7 @@ export default function AdminPage() {
           const s1 = signals.low_epoch_streak
           const s2 = signals.backtest_brier_not_beating_market
           const s3 = signals.backtest_roi_not_improving
+          const s4 = signals.val_loss_trending_up
 
           return (
             <div className={`rounded-2xl border p-5 backdrop-blur-md shadow-lg transition ${c.bg} ${c.border} ${c.blink ? "animate-pulse" : ""}`}>
@@ -539,9 +573,23 @@ export default function AdminPage() {
                   }`}>
                     ROI не растёт ({s3?.runs_checked ?? 0}/{s3?.runs_needed ?? "—"} бэктестов) {s3?.active ? "🔴" : "✓"}
                   </span>
+                  <span className={`px-2.5 py-1.5 rounded-full border ${
+                    s4?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
+                  }`}>
+                    val_loss растёт ({s4?.runs_checked ?? 0}/{s4?.runs_needed ?? "—"} проходов) {s4?.active ? "🔴" : "✓"}
+                  </span>
                 </div>
                 )}
               </div>
+
+              {!isDisabled && trainingRuns.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-neutral-800/60">
+                  <div className="text-[10px] text-neutral-500 uppercase font-mono mb-2">
+                    Тренд обучения по проходам (val_loss / val_guess_rate)
+                  </div>
+                  <TrainingTrendChart history={trainingRuns} />
+                </div>
+              )}
             </div>
           )
         })()}
@@ -828,6 +876,15 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {backtestHistory.length > 0 && (
+            <div className="pt-2 border-t border-neutral-800/80">
+              <div className="text-[10px] text-neutral-500 uppercase font-mono mb-2">
+                Динамика качества модели по прогонам бэктеста (авто в 00:00 / 06:00 / 12:00 / 18:00 МСК + ручные запуски)
+              </div>
+              <QualityTrendChart history={backtestHistory} />
             </div>
           )}
 

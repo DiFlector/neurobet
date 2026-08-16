@@ -9,6 +9,7 @@ from .pipeline import (
     get_training_health,
 )
 from .backtest import run_backtest, get_backtest_history
+from .training_history import get_training_history
 
 __all__ = [
     "NeuralBetEnsemble",
@@ -21,4 +22,5 @@ __all__ = [
     "get_training_health",
     "run_backtest",
     "get_backtest_history",
+    "get_training_history",
 ]
