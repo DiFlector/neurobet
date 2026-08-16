@@ -260,7 +260,11 @@ export default function AdminPage() {
       const res = await fetch(`${API_BASE}/api/admin/backtest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: 15000 })
+        // 15000 -> 40000: at current archive growth (~570k resolved bets) 15k samples
+        // span under an hour of matches — one late-night table-tennis-heavy slice, not
+        // a representative view. 40k covers several hours across sports; the run takes
+        // ~10s instead of ~3s, well within the proxy's 300s budget.
+        body: JSON.stringify({ limit: 40000 })
       })
       if (!res.ok) throw new Error("Ошибка при запуске бэктеста")
       const data = await res.json()

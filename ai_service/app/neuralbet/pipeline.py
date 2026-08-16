@@ -232,6 +232,11 @@ def get_ai_logs() -> list[dict[str, Any]]:
 TRAINING_HEALTH_BACKTEST_WINDOW = int(
     os.getenv("NEURALBET_TRAINING_HEALTH_BACKTEST_WINDOW", "3")
 )
+# Signal C (backtest ROI not improving) only counts runs where the current model
+# actually placed at least this many bets — see its comment in get_training_health.
+TRAINING_HEALTH_MIN_ROI_BETS = int(
+    os.getenv("NEURALBET_TRAINING_HEALTH_MIN_ROI_BETS", "100")
+)
 
 
 def get_training_health() -> dict[str, Any]:
@@ -307,7 +312,20 @@ def get_training_health() -> dict[str, Any]:
             ((r.get("overall") or {}).get("current") or {}).get("roi_pct")
             for r in recent
         ]
-        if all(v is not None for v in rois):
+        bet_counts = [
+            ((r.get("overall") or {}).get("current") or {}).get("bets") or 0
+            for r in recent
+        ]
+        # ROI over a few dozen bets is dominated by variance, not skill — after the
+        # live-betting gates (coeff cap, EV floor, market support, one-per-event)
+        # tightened the funnel, backtest runs routinely place ~30 bets out of 15k+
+        # evaluated outcomes, where a single 2.0-coefficient win swings ROI by ±7pp.
+        # Comparing two such numbers and calling the difference a "trend" would make
+        # this signal flap randomly in both directions, so it stays silent until every
+        # run in the window has enough bets for its ROI to mean anything.
+        if all(v is not None for v in rois) and all(
+            b >= TRAINING_HEALTH_MIN_ROI_BETS for b in bet_counts
+        ):
             # recent[0] is newest, recent[-1] is oldest in this window.
             signal_c = rois[0] <= rois[-1]
 
