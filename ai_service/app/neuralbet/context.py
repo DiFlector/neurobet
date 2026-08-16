@@ -11,7 +11,7 @@ assignment has to stay stable across process restarts for a saved embedding tabl
 mean anything on reload, so this can't be an auto-growing dict.
 """
 import hashlib
-from typing import Optional
+from typing import Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Sport vocabulary — matched against the top-level segment of events.sport_path
@@ -111,3 +111,31 @@ def team_index(name: Optional[str]) -> int:
         return 0
     digest = hashlib.md5(name.encode("utf-8")).hexdigest()
     return (int(digest[:8], 16) % (TEAM_HASH_BUCKETS - 1)) + 1
+
+
+# ---------------------------------------------------------------------------
+# Overround/margin grouping — which sibling outcomes need to be summed (as 1/coeff)
+# to get one market's real bookmaker margin. Mirrors backend/database.py's
+# _overround_group_key (small duplicated constant across the service boundary, same
+# reasoning as MARKET_FAMILIES above: ai_service and backend are separate deployables).
+# Only the core main-outcome markets are covered — see that function's docstring for why.
+# ---------------------------------------------------------------------------
+_OVERROUND_MATCH_RESULT = {921, 922, 923}
+_OVERROUND_DOUBLE_CHANCE = {924, 1571, 925, 926}
+_OVERROUND_TOTAL = {930, 931}
+OVERROUND_EXPECTED_SIZE = {"match_result": 3, "double_chance": 3, "total": 2}
+
+
+def overround_group_key(factor_id: Optional[int], parameter: str) -> Optional[Tuple[str, str]]:
+    """Which (group, parameter) key a factor_id/parameter pair's overround should be
+    accumulated under, or None if it's outside the core set overround is computed for."""
+    if factor_id is None:
+        return None
+    factor_id = int(factor_id)
+    if factor_id in _OVERROUND_MATCH_RESULT:
+        return ("match_result", "")
+    if factor_id in _OVERROUND_DOUBLE_CHANCE:
+        return ("double_chance", "")
+    if factor_id in _OVERROUND_TOTAL:
+        return ("total", parameter)
+    return None

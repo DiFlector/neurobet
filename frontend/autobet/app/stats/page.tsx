@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { BarChart3, RefreshCw, Loader2, Target, CheckCircle2, XCircle, Trophy, Search, ChevronDown } from "lucide-react"
+import { BarChart3, RefreshCw, Loader2, Target, CheckCircle2, XCircle, Trophy, Search, ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { sortBySportOrder } from "@/lib/sports"
 
@@ -44,6 +44,21 @@ interface OverallStat {
   guess_rate_pct: number | null
 }
 
+interface RoiBucket {
+  range: string
+  judged: number
+  bets_placed: number
+  roi_pct: number | null
+  brier: number | null
+  brier_baseline: number | null
+}
+
+interface RoiOverall {
+  judged: number
+  bets_placed: number
+  roi_pct: number | null
+}
+
 // Two-color угадано/не угадано ratio bar — green share = correct/judged, red share =
 // incorrect/judged. Mirrors the plain flex-width bar idiom (no framer-motion needed here,
 // this page isn't a live-refreshing list where an animated width transition earns its keep).
@@ -68,6 +83,8 @@ export default function StatsPage() {
   const [headerStats, setHeaderStats] = useState<any>(null)
   const [betTypeSearch, setBetTypeSearch] = useState("")
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [roiBuckets, setRoiBuckets] = useState<RoiBucket[]>([])
+  const [roiOverall, setRoiOverall] = useState<RoiOverall | null>(null)
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups((prev) => {
@@ -113,6 +130,17 @@ export default function StatsPage() {
   useEffect(() => {
     fetchStatsByType()
   }, [fetchStatsByType])
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/neurobets/roi-stats`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return
+        setRoiBuckets(data.buckets || [])
+        setRoiOverall(data.overall || null)
+      })
+      .catch(() => {})
+  }, [API_BASE])
 
   const activeSport = useMemo(
     () => sports.find((s) => s.sport === selectedSport) || null,
@@ -227,6 +255,91 @@ export default function StatsPage() {
                 </div>
               </div>
             </div>
+
+            {/* ROI / calibration by coefficient bucket — the number that answers "does this
+                actually make money," not just "how often is the verdict right." A model
+                that only ever calls short-odds favorites can guess well and still lose on
+                every bet once the bookmaker's margin is netted out; ROI can't be fooled
+                that way the way guess-rate can. */}
+            {roiBuckets.length > 0 && (
+              <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4 md:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-[#0984e3]" />
+                      ROI и калибровка по коэффициенту
+                    </h3>
+                    <p className="text-[11px] text-neutral-400 mt-1 max-w-xl">
+                      ROI — доходность плоской ставкой (1 юнит) на каждый вердикт «выиграет» сети.
+                      Brier — среднеквадратичная ошибка вероятности против реального исхода (меньше — лучше);
+                      «база» — тот же показатель для голой вероятности букмекера (1/кэф).
+                    </p>
+                  </div>
+                  {roiOverall && (
+                    <div className="text-right shrink-0">
+                      <div className="text-[10px] text-neutral-400 font-mono uppercase">Общий ROI ({roiOverall.bets_placed.toLocaleString()} ставок)</div>
+                      <div
+                        className={`text-xl font-black font-mono ${
+                          roiOverall.roi_pct == null ? "text-neutral-500" : roiOverall.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+                        }`}
+                      >
+                        {roiOverall.roi_pct != null ? `${roiOverall.roi_pct >= 0 ? "+" : ""}${roiOverall.roi_pct.toFixed(1)}%` : "—"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-neutral-400 font-mono uppercase text-[10px] border-b border-neutral-800">
+                        <th className="text-left py-2 pr-3 font-semibold">Коэффициент</th>
+                        <th className="text-right py-2 px-3 font-semibold">Оценено</th>
+                        <th className="text-right py-2 px-3 font-semibold">Ставок</th>
+                        <th className="text-right py-2 px-3 font-semibold">ROI</th>
+                        <th className="text-right py-2 px-3 font-semibold">Brier</th>
+                        <th className="text-right py-2 pl-3 font-semibold">Brier (база)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roiBuckets.map((b) => {
+                        const beatsBaseline = b.brier != null && b.brier_baseline != null && b.brier < b.brier_baseline
+                        return (
+                          <tr key={b.range} className="border-b border-neutral-900 last:border-0">
+                            <td className="py-2 pr-3 font-mono text-neutral-200 whitespace-nowrap">{b.range}</td>
+                            <td className="py-2 px-3 text-right font-mono text-neutral-400">{b.judged.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right font-mono text-neutral-400">{b.bets_placed.toLocaleString()}</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold">
+                              {b.roi_pct == null ? (
+                                <span className="text-neutral-600">—</span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 justify-end ${b.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                                  {b.roi_pct >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                  {b.roi_pct >= 0 ? "+" : ""}{b.roi_pct.toFixed(1)}%
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-neutral-300">{b.brier != null ? b.brier.toFixed(4) : "—"}</td>
+                            <td className="py-2 pl-3 text-right font-mono text-neutral-500">
+                              <span className="inline-flex items-center gap-1 justify-end">
+                                {b.brier_baseline != null ? b.brier_baseline.toFixed(4) : "—"}
+                                {b.brier != null && b.brier_baseline != null && (
+                                  beatsBaseline ? (
+                                    <CheckCircle2 className="w-3 h-3 text-[#55efc4]" />
+                                  ) : (
+                                    <Minus className="w-3 h-3 text-neutral-600" />
+                                  )
+                                )}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Sport tabs */}
             <div className="flex flex-wrap items-center gap-2">

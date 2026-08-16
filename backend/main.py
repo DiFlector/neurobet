@@ -10,7 +10,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
 
@@ -244,6 +244,15 @@ def read_bet_type_stats():
         return {"status": "success", **res}
     except Exception as e:
         logger.error(f"Error fetching bet-type stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/neurobets/roi-stats")
+def read_roi_stats():
+    try:
+        res = get_roi_stats()
+        return {"status": "success", **res}
+    except Exception as e:
+        logger.error(f"Error fetching ROI stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/neurobets/history")

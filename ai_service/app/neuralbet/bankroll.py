@@ -32,7 +32,19 @@ from app.config import BACKEND_URL
 
 # ---- Tunable knobs (env-overridable so they can be tuned without a code change) ----
 START_BALANCE = float(os.getenv("BANKROLL_START_BALANCE", "1000.0"))
-MIN_STAKE_FRACTION = float(os.getenv("BANKROLL_MIN_STAKE_FRACTION", "0.10"))
+# Position sizing is fractional-Kelly now (see allocate()), not "stake the whole bank
+# every round" — MIN_STAKE_FRACTION is just the floor below which a position isn't
+# worth placing (dust), and MAX_POSITION_FRACTION is the hard per-position ceiling. Both
+# lowered from the old 0.10-of-bank floor since a single position no longer needs to be
+# a meaningful slice of the *whole* bank to be worth taking.
+MIN_STAKE_FRACTION = float(os.getenv("BANKROLL_MIN_STAKE_FRACTION", "0.01"))
+MAX_POSITION_FRACTION = float(os.getenv("BANKROLL_MAX_POSITION_FRACTION", "0.05"))
+# Fraction of full Kelly actually staked. Full Kelly (bet exactly your edge) is
+# provably too aggressive the moment the true edge is even slightly overestimated —
+# and a model still mid-training overestimates its edge constantly. Quarter-Kelly is
+# the standard conservative compromise: roughly half the variance of full Kelly for a
+# small growth-rate cost.
+KELLY_FRACTION = float(os.getenv("BANKROLL_KELLY_FRACTION", "0.25"))
 MAX_POSITIONS = int(os.getenv("BANKROLL_MAX_POSITIONS", "6"))
 RUIN_PENALTY = float(os.getenv("BANKROLL_RUIN_PENALTY", "5.0"))
 BANKROLL_LOSS_WEIGHT = float(os.getenv("BANKROLL_LOSS_WEIGHT", "1.0"))
@@ -256,37 +268,40 @@ def submit_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, An
 # Differentiable allocation / settlement — used inside the training loss
 # ---------------------------------------------------------------------------
 
-def allocate(stake_logits: torch.Tensor, exposure_logit: torch.Tensor) -> torch.Tensor:
+def allocate(win_probs: torch.Tensor, coefficients: torch.Tensor, stake_logits: torch.Tensor) -> torch.Tensor:
     """
-    Turns a round's raw per-candidate stake logits into fractions-of-bank to risk on each
-    candidate. Per spec, a round that bets at all stakes the *entire* bank, split across
-    at most MAX_POSITIONS candidates with a hard 10%-of-bank floor per position — no
-    partial exposure, no "keep some in reserve." The network only decides *how* to split
-    the full balance (softmax over `stake_logits`, renormalized after dropping anything
-    under the floor so the survivors' fractions still sum to 1). If nothing clears the
-    10% floor (an undifferentiated/undertrained softmax), the round places no bets rather
-    than force a stake onto a candidate the network hasn't actually favored.
-    `exposure_logit` is unused — kept only so the model's 3-output head (win/stake/
-    exposure) stays checkpoint-compatible; the network no longer gets to choose a
-    fraction of the bank to sit out.
-    Positions dropped by the 10%/MAX_POSITIONS rules are computed on detached values (a
-    hard decision has no useful gradient), but the mask multiplies the *differentiable*
-    softmax weights, so gradient still flows into which candidates end up favored.
+    Turns a round's candidates into independent fractions-of-bank to risk on each —
+    fractional-Kelly sizing, not the old "always stake the entire bank, split by
+    softmax" allocator. Each candidate's edge implies a full-Kelly fraction
+    f* = (p*c - 1) / (c - 1) (0 if there's no edge); we stake KELLY_FRACTION of that,
+    hard-capped at MAX_POSITION_FRACTION of the bank per position regardless of how
+    large the computed edge is — a model that's still learning routinely overestimates
+    its edge, and full Kelly on an overestimated edge is a fast way to ruin. Unlike the
+    old allocator, positions don't have to sum to 1: a round can leave most of the bank
+    un-staked, and total exposure is bounded by MAX_POSITIONS * MAX_POSITION_FRACTION,
+    never the whole balance.
+    `stake_logits` (the network's own stake head, squashed to [0, 1] via sigmoid) scales
+    each position *down* from its capped-Kelly size — the network can still learn to be
+    more cautious than the formula on a given candidate, it just can't bid a fraction up
+    past the cap anymore.
+    The MIN_STAKE_FRACTION/MAX_POSITIONS cuts are computed on detached values (a hard
+    keep/drop decision has no useful gradient), but the mask multiplies the
+    *differentiable* fraction, so gradient still flows into which candidates end up
+    favored and how large their capped-Kelly scale is.
     """
-    raw = torch.softmax(stake_logits, dim=0)
+    edge = win_probs * coefficients - 1.0
+    denom = torch.clamp(coefficients - 1.0, min=1e-6)
+    full_kelly = torch.clamp(edge / denom, min=0.0)
+    capped_kelly = torch.clamp(KELLY_FRACTION * full_kelly, max=MAX_POSITION_FRACTION)
+    fractions = capped_kelly * torch.sigmoid(stake_logits)
 
-    keep = raw.detach() >= MIN_STAKE_FRACTION
+    keep = fractions.detach() >= MIN_STAKE_FRACTION
     if keep.sum().item() > MAX_POSITIONS:
-        topk = torch.topk(raw.detach(), MAX_POSITIONS).indices
-        mask = torch.zeros_like(raw, dtype=torch.bool)
+        topk = torch.topk(fractions.detach(), MAX_POSITIONS).indices
+        mask = torch.zeros_like(fractions, dtype=torch.bool)
         mask[topk] = True
         keep = keep & mask
-    keep_mask = keep.float()
-
-    f = raw * keep_mask
-    total = f.sum()
-    f = f / total.clamp(min=1e-6)
-    return f
+    return fractions * keep.float()
 
 
 def settle(fractions: torch.Tensor, coefficients: torch.Tensor, wins: torch.Tensor) -> torch.Tensor:

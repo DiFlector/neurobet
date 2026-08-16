@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
@@ -10,6 +11,7 @@ from app.core.database import get_connection, get_finished_connection, save_ai_p
 from app.neuralbet.model import NeuralBetEnsemble
 from app.neuralbet import bankroll
 from app.neuralbet.calibration import get_calibration_buckets, calibrate_probability
+from app.neuralbet.context import overround_group_key, OVERROUND_EXPECTED_SIZE
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -100,25 +102,67 @@ def _parse_score_diff(score_at_time: Optional[str]) -> int:
         return 0
 
 
-def _get_val_cutoff(f_cursor) -> Optional[str]:
-    """
-    Finds the finished_at timestamp splitting the last VAL_FRACTION of resolved bets
-    (by time) into a held-out validation set. Everything at or after this timestamp is
-    never used for training — see plan B6. Returns None if there isn't enough resolved
-    history yet to bother holding anything out.
-    """
-    f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NOT NULL")
-    total = f_cursor.fetchone()["c"]
-    if total < VAL_MIN_POOL:
+def _parse_ts_epoch(raw: Any) -> Optional[float]:
+    """odds_history.timestamp ("YYYY-MM-DD HH:MM:SS", naive Moscow time) -> epoch
+    seconds, or None if unparseable. Mirrors backend/database.py's _parse_ts_epoch —
+    only ever consumed as differences between snapshots of one bet, so the naive
+    timezone's absolute offset doesn't matter."""
+    try:
+        return datetime.fromisoformat(str(raw)).timestamp()
+    except Exception:
         return None
-    val_count = max(int(total * VAL_FRACTION), 10)
-    f_cursor.execute(
-        "SELECT finished_at FROM finished_bets WHERE is_win IS NOT NULL "
-        "ORDER BY finished_at DESC LIMIT 1 OFFSET %s",
-        (val_count - 1,),
-    )
-    row = f_cursor.fetchone()
-    return row["finished_at"] if row else None
+
+
+# Mirrors backend/database.py's _parse_timer_seconds — see that function's comment for
+# why unrecognized strings deliberately return None instead of a guessed number.
+_TIMER_MMSS_RE = re.compile(r"^(\d{1,3}):([0-5]\d)$")
+_TIMER_PLUS_RE = re.compile(r"^(\d{1,3})\+(\d{1,2})'?$")
+_TIMER_MIN_RE = re.compile(r"^(\d{1,3})'$")
+
+
+def _parse_timer_seconds(raw: Optional[str]) -> Optional[float]:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    m = _TIMER_MMSS_RE.match(s)
+    if m:
+        return float(int(m.group(1)) * 60 + int(m.group(2)))
+    m = _TIMER_PLUS_RE.match(s)
+    if m:
+        return float((int(m.group(1)) + int(m.group(2))) * 60)
+    m = _TIMER_MIN_RE.match(s)
+    if m:
+        return float(int(m.group(1)) * 60)
+    return None
+
+
+def _get_val_event_ids(f_cursor) -> Optional[set]:
+    """
+    Returns the set of event_ids held out for validation: the most-recently-finished
+    ~VAL_FRACTION of *events* (not bet-rows). Splitting by row count instead of event
+    would skew the held-out set towards whichever sports happen to resolve the most
+    markets per match (a football match settles a dozen+ markets, a 1-on-1 tennis one
+    settles a handful) — event-level counting keeps the split representative, and
+    membership-based filtering (rather than a single finished_at threshold) guarantees
+    every bet from a held-out match lands on the val side together, so no match can ever
+    straddle the train/val boundary — see plan B6. Returns None if there isn't enough
+    resolved history yet to bother holding anything out.
+    """
+    f_cursor.execute("SELECT COUNT(DISTINCT event_id) AS c FROM finished_bets WHERE is_win IS NOT NULL")
+    total_events = f_cursor.fetchone()["c"]
+    if total_events < VAL_MIN_POOL:
+        return None
+    val_event_count = max(int(total_events * VAL_FRACTION), 10)
+    f_cursor.execute("""
+        SELECT event_id FROM (
+            SELECT event_id, MAX(finished_at) AS ev_finished_at
+              FROM finished_bets WHERE is_win IS NOT NULL
+             GROUP BY event_id
+        ) t
+        ORDER BY ev_finished_at DESC
+        LIMIT %s
+    """, (val_event_count,))
+    return {r["event_id"] for r in f_cursor.fetchall()}
 
 
 def _row_to_sample(r) -> Dict[str, Any]:
@@ -130,34 +174,51 @@ def _row_to_sample(r) -> Dict[str, Any]:
         score_seq = json.loads(r["score_seq_json"] or "[]") if r["score_seq_json"] else []
     except Exception:
         score_seq = []
+    try:
+        ts_seq = json.loads(r["ts_seq_json"] or "[]") if ("ts_seq_json" in r.keys() and r["ts_seq_json"]) else []
+    except Exception:
+        ts_seq = []
+    try:
+        timer_seq = json.loads(r["timer_seq_json"] or "[]") if ("timer_seq_json" in r.keys() and r["timer_seq_json"]) else []
+    except Exception:
+        timer_seq = []
     return {
         "is_win": r["is_win"],
         "odds_seq": odds_seq,
         "score_seq": score_seq,
+        "ts_seq": ts_seq,
+        "timer_seq": timer_seq,
         "score_diff_at_bet": r["score_diff_at_bet"] or 0,
         "factor_id": r["factor_id"],
         "sport_path": r["sport_path"] or "",
         "team_1": r["team_1"] or "",
         "team_2": r["team_2"] or "",
+        # NULL for bets archived before the overround_close migration, or for markets
+        # outside the core set it's even computed for (see backend/database.py's
+        # _overround_group_key) — the LightGBM feature builder treats that as "unknown"
+        # (OVERROUND_UNKNOWN sentinel in model.py), not zero margin.
+        "overround_close": r["overround_close"] if "overround_close" in r.keys() else None,
         "_key": (r["event_id"], r["factor_id"], r["parameter"], r["market_prefix"]),
     }
 
 
-def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _fetch_training_batch(f_cursor, val_event_ids: Optional[set]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
     first) + ~30% older ones sampled at random so the model doesn't catastrophically
-    forget history it hasn't seen in a while (see plan B4). Excludes anything in the
-    held-out validation window. Returns (rows, key_list) where key_list is the
-    (event_id, factor_id, parameter, market_prefix) tuples to bump trained_count for.
+    forget history it hasn't seen in a while (see plan B4). Excludes every bet belonging
+    to a held-out validation event (see _get_val_event_ids) — event membership, not a
+    finished_at threshold, so a held-out match's bets can never leak into training no
+    matter when each of its markets settled. Returns (rows, key_list) where key_list is
+    the (event_id, factor_id, parameter, market_prefix) tuples to bump trained_count for.
     """
-    where_val = "AND h.finished_at < %s" if val_cutoff else ""
-    params_val = [val_cutoff] if val_cutoff else []
+    where_val = "AND h.event_id != ALL(%s)" if val_event_ids else ""
+    params_val = [list(val_event_ids)] if val_event_ids else []
 
     fresh_n = int(TRAIN_BATCH_TOTAL * TRAIN_FRESH_SHARE)
     f_cursor.execute(f"""
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.score_diff_at_bet, h.finished_at,
+               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
@@ -172,7 +233,7 @@ def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dic
     if replay_n > 0:
         f_cursor.execute(f"""
             SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-                   h.odds_seq_json, h.score_seq_json, h.score_diff_at_bet, h.finished_at,
+                   h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                    f.sport_path, f.team_1, f.team_2
             FROM finished_bets h
             JOIN finished_events f ON h.event_id = f.event_id
@@ -188,19 +249,19 @@ def _fetch_training_batch(f_cursor, val_cutoff: Optional[str]) -> Tuple[List[Dic
     return samples, keys
 
 
-def _fetch_val_batch(f_cursor, val_cutoff: Optional[str]) -> List[Dict[str, Any]]:
-    if not val_cutoff:
+def _fetch_val_batch(f_cursor, val_event_ids: Optional[set]) -> List[Dict[str, Any]]:
+    if not val_event_ids:
         return []
     f_cursor.execute("""
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.score_diff_at_bet, h.finished_at,
+               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL AND h.finished_at >= %s
+        WHERE h.is_win IS NOT NULL AND h.event_id = ANY(%s)
         ORDER BY h.finished_at ASC
         LIMIT 400
-    """, (val_cutoff,))
+    """, (list(val_event_ids),))
     return [_row_to_sample(r) for r in f_cursor.fetchall()]
 
 
@@ -225,10 +286,12 @@ def _place_live_bets(candidates: List[Dict[str, Any]]):
     Opens new live_bets from this cycle's predicted-win outcomes (the model's own
     decision-head verdict — see decision_logit in OddsTrajectoryGRU; outcomes it expects
     to lose never make it into `candidates` at all, see the caller), sized by the same
-    allocate() the training loss uses — the network's own stake/exposure heads, capped
-    to at most bankroll.MAX_POSITIONS positions and at least bankroll.MIN_STAKE_FRACTION
-    of the *available* (unlocked) live balance per position. If the live account can't
-    cover even one minimum stake, no bets are placed this cycle.
+    fractional-Kelly allocate() the training loss uses — capped-Kelly fraction per
+    candidate (bankroll.MAX_POSITION_FRACTION ceiling), scaled by the network's own
+    stake head, at most bankroll.MAX_POSITIONS positions and at least
+    bankroll.MIN_STAKE_FRACTION of the *available* (unlocked) live balance per position.
+    If the live account can't cover even one minimum stake, no bets are placed this
+    cycle.
     """
     if not candidates:
         return {"placed": 0, "reason": "no_predicted_win_candidates", "candidates": 0}
@@ -237,14 +300,19 @@ def _place_live_bets(candidates: List[Dict[str, Any]]):
     if available <= 0:
         return {"placed": 0, "reason": "insufficient_available_balance", "candidates": len(candidates)}
 
-    # Cap the candidate pool before allocating — allocate() would gladly consider all of
-    # them, but only the strongest few are worth the softmax's attention.
+    # Cap the candidate pool before allocating — allocate() would gladly Kelly-size all
+    # of them, but only the strongest few are worth considering.
     LIVE_CANDIDATE_POOL = 20
     candidates = sorted(candidates, key=lambda c: c["expected_roi"], reverse=True)[:LIVE_CANDIDATE_POOL]
+    # win_probs uses the calibrated probability (same number the "Нейроставки" UI shows
+    # and the one actually stored/acted on — see calibrate_probability), not the raw
+    # ensemble score, so Kelly sizing is staking against the same edge estimate as
+    # everything else that reasons about this bet.
+    win_probs = torch.tensor([c["win_probability"] / 100.0 for c in candidates], dtype=torch.float32)
+    coeffs_t = torch.tensor([c["coeff"] for c in candidates], dtype=torch.float32)
     stake_logits = torch.tensor([c["stake_logit"] for c in candidates], dtype=torch.float32)
-    exposure_logit = torch.tensor([c["exposure_logit"] for c in candidates], dtype=torch.float32).mean()
     with torch.no_grad():
-        fractions = bankroll.allocate(stake_logits, exposure_logit)
+        fractions = bankroll.allocate(win_probs, coeffs_t, stake_logits)
 
     # Sizing (which candidates, how much of the bank) stays a model decision made here.
     # Execution (does this market still exist, does it actually get written, at what
@@ -334,19 +402,47 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
     # trained and served on the same kind of "as it looked live" trajectory, or the
     # LightGBM/PyTorch accuracy numbers are measuring a leak, not real skill.
     event_ids = list({row["event_id"] for row in live_odds_rows})
-    trajectory_map: Dict[tuple, List[Tuple[float, int]]] = {}
+    # Per-step (coefficient, score_diff, ts_epoch, timer_seconds) tuples — ts_epoch/
+    # timer_seconds may be None for an unparseable timestamp/timer string, in which case
+    # _build_sequence falls back to its positional/unknown sentinel for that step.
+    trajectory_map: Dict[tuple, List[Tuple[float, int, Optional[float], Optional[float]]]] = {}
     if event_ids:
         cursor.execute("""
-            SELECT event_id, factor_id, parameter, market_prefix, coefficient, score_at_time
+            SELECT event_id, factor_id, parameter, market_prefix, coefficient, score_at_time, timestamp, timer_at_time
             FROM odds_history
             WHERE event_id = ANY(%s)
             ORDER BY id ASC
         """, (event_ids,))
         for h in cursor.fetchall():
             key = (h["event_id"], h["factor_id"], str(h["parameter"] or ""), h["market_prefix"] or "")
-            trajectory_map.setdefault(key, []).append(
-                (float(h["coefficient"]), _parse_score_diff(h["score_at_time"]))
-            )
+            trajectory_map.setdefault(key, []).append((
+                float(h["coefficient"]), _parse_score_diff(h["score_at_time"]),
+                _parse_ts_epoch(h["timestamp"]), _parse_timer_seconds(h["timer_at_time"]),
+            ))
+
+    # Overround (sum of 1/coeff across sibling outcomes) at the current live snapshot —
+    # a LightGBM feature the raw per-outcome coefficient can't express on its own (see
+    # model.py's LGB_FEATURE_NAMES / OVERROUND_UNKNOWN). Computed from latest_odds
+    # (already the freshest snapshot per market, no history/timing alignment needed)
+    # for the same core outcome set backend/database.py's archival path covers.
+    overround_map: Dict[Tuple[Any, str, str], float] = {}
+    if event_ids:
+        cursor.execute("""
+            SELECT event_id, factor_id, COALESCE(parameter, '') AS parameter, coefficient
+            FROM latest_odds
+            WHERE event_id = ANY(%s)
+        """, (event_ids,))
+        grouped: Dict[Tuple[Any, str, str], List[float]] = {}
+        for r in cursor.fetchall():
+            key = overround_group_key(r["factor_id"], r["parameter"])
+            if key is None:
+                continue
+            coeff = r["coefficient"]
+            if coeff and coeff > 1.0:
+                grouped.setdefault((r["event_id"], key[0], key[1]), []).append(float(coeff))
+        for (oeid, group, oparam), coeffs in grouped.items():
+            if len(coeffs) >= OVERROUND_EXPECTED_SIZE[group]:
+                overround_map[(oeid, group, oparam)] = sum(1.0 / c for c in coeffs)
 
     batch_items = []
     row_meta = []
@@ -359,8 +455,17 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         s1 = int(row["score_1"] or 0)
         s2 = int(row["score_2"] or 0)
 
-        step_pairs = trajectory_map.get((eid, fid, param, prefix)) or [(coeff, s1 - s2)]
+        # No odds_history rows found for this market (freshly appeared this cycle) —
+        # fall back to a single live snapshot, still carrying the event's *current*
+        # timer (e.timer, otherwise unused) so even a brand-new market isn't missing
+        # the match-time feature entirely.
+        step_pairs = trajectory_map.get((eid, fid, param, prefix)) or [
+            (coeff, s1 - s2, None, _parse_timer_seconds(row["timer"]))
+        ]
         initial_coeff = step_pairs[0][0] if step_pairs else coeff
+
+        ov_key = overround_group_key(fid, param)
+        overround = overround_map.get((eid, ov_key[0], ov_key[1])) if ov_key else None
 
         batch_items.append({
             "step_pairs": step_pairs,
@@ -370,10 +475,12 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
             "sport_path": row["sport_path"] or "",
             "team_1": row["team_1"] or "",
             "team_2": row["team_2"] or "",
+            "overround": overround,
         })
         row_meta.append({
             "event_id": eid, "factor_id": fid, "market_prefix": prefix, "parameter": param,
             "coeff": coeff, "label": row["label"] or "", "match_name": row["match_name"] or "",
+            "sport": (row["sport_path"] or "").split("/")[0].strip() or None,
         })
 
     predictions = []
@@ -382,9 +489,11 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
 
     batch_results = ensemble_engine.predict_batch(batch_items)
 
-    # Calibrated once per cycle (not per-row) — same Bayesian-shrinkage correction the
-    # "Нейроставки" UI used to compute separately in backend, now the single source of
-    # truth: whatever gets stored/bet on is this number, not the ensemble's raw one.
+    # Bucket table fetched once per cycle (not per-row) — same Bayesian-shrinkage
+    # correction the "Нейроставки" UI used to compute separately in backend, now the
+    # single source of truth: whatever gets stored/bet on is this number, not the
+    # ensemble's raw one. Buckets are per-sport (see calibration.py) so calibration
+    # itself is still one lookup per row.
     buckets = get_calibration_buckets()
 
     predicted_win_count = 0
@@ -397,11 +506,13 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         param = meta["parameter"]
         coeff = meta["coeff"]
 
-        calibrated_prob = calibrate_probability(win_prob, buckets)
+        calibrated_prob = calibrate_probability(win_prob, buckets, sport=meta["sport"])
         expected_roi = ((calibrated_prob / 100.0) * coeff - 1.0) * 100.0
         # The verdict: the model's own decision head, not a probability/EV cutoff picked
-        # from outside — see decision_logit in OddsTrajectoryGRU. >= 0.5 means "will win."
-        predicted_win = 1 if decision_prob >= 0.5 else 0
+        # from outside — see decision_logit in OddsTrajectoryGRU. Threshold defaults to
+        # 0.5 but is retuned against validation ROI periodically — see
+        # ensemble_engine.tune_ensemble / the TUNING log line below.
+        predicted_win = 1 if decision_prob >= ensemble_engine.decision_threshold else 0
         if predicted_win:
             predicted_win_count += 1
         else:
@@ -424,7 +535,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         if predicted_win:
             live_candidates.append({
                 **meta, "win_probability": round(calibrated_prob, 1), "expected_roi": expected_roi,
-                "stake_logit": stake_logit, "exposure_logit": exposure_logit,
+                "stake_logit": stake_logit,
             })
 
     if predictions:
@@ -473,9 +584,9 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
 
-        val_cutoff = _get_val_cutoff(f_cursor)
-        training_samples, train_keys = _fetch_training_batch(f_cursor, val_cutoff)
-        val_samples = _fetch_val_batch(f_cursor, val_cutoff)
+        val_event_ids = _get_val_event_ids(f_cursor)
+        training_samples, train_keys = _fetch_training_batch(f_cursor, val_event_ids)
+        val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
         # LightGBM feature rows use the coefficient/score as they stood at the point in
         # the trajectory used for that sample (the last odds_seq/score_seq entry) — same
@@ -499,6 +610,7 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                     "sport_path": s["sport_path"],
                     "team_1": s.get("team_1", ""),
                     "team_2": s.get("team_2", ""),
+                    "overround_close": s.get("overround_close"),
                 })
             return out
 
@@ -508,14 +620,14 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
         if _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0:
             f_cursor.execute("""
                 SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-                       h.odds_seq_json, h.score_seq_json, h.score_diff_at_bet, h.finished_at,
+                       h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                        f.sport_path, f.team_1, f.team_2
                 FROM finished_bets h
                 JOIN finished_events f ON h.event_id = f.event_id
-                WHERE h.is_win IS NOT NULL AND (%s IS NULL OR h.finished_at < %s)
+                WHERE h.is_win IS NOT NULL AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
                 ORDER BY h.finished_at DESC
                 LIMIT %s
-            """, (val_cutoff, val_cutoff, LGB_TRAIN_LIMIT))
+            """, (list(val_event_ids) if val_event_ids else None, list(val_event_ids) if val_event_ids else [], LGB_TRAIN_LIMIT))
             lgb_rows = to_lgb_rows([_row_to_sample(r) for r in f_cursor.fetchall()])
             lgb_val_rows = to_lgb_rows(val_samples)
 
@@ -588,6 +700,22 @@ def _run_neuralbet_inference_and_training_locked(scrape_timestamp: Optional[str]
                 "TRAINING",
                 f"LightGBM refit skipped — only {lgb_metrics.get('samples', 0)} resolved bets available (need 50+).",
                 level="WARNING",
+            )
+
+    if val_samples:
+        tune_metrics = ensemble_engine.tune_ensemble(val_samples)
+        if tune_metrics.get("tuned"):
+            bw = tune_metrics["blend_weight"]
+            dt = tune_metrics["decision_threshold"]
+            dt_str = (
+                f"decision_threshold {dt['old']} → {dt['new']} (val ROI {dt['val_roi_pct']}% on {dt['val_bets']} bets)"
+                if dt["val_roi_pct"] is not None
+                else f"decision_threshold kept at {dt['old']} (no candidate cleared {ensemble_engine._MIN_THRESHOLD_BETS} val bets)"
+            )
+            add_ai_log(
+                "TRAINING",
+                f"Ensemble tuned on {tune_metrics['samples']} val samples — "
+                f"blend_weight {bw['old']} → {bw['new']} (val Brier {bw['val_brier']}), {dt_str}."
             )
 
     return {
