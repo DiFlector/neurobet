@@ -81,7 +81,7 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
     where_since = "AND h.finished_at >= %s" if since else ""
     params: List[Any] = [since] if since else []
     f_cursor.execute(f"""
-        SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
+        SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
                h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
                h.score_diff_at_bet, h.finished_at, h.overround_close,
                h.final_coefficient, h.predicted_win_probability, h.predicted_win,
@@ -121,7 +121,7 @@ def _row_to_sample(r) -> Dict[str, Any]:
     return {
         "odds_seq": odds_seq, "score_seq": score_seq, "ts_seq": ts_seq, "timer_seq": timer_seq,
         "score_diff_at_bet": r["score_diff_at_bet"] or 0,
-        "factor_id": r["factor_id"], "sport_path": r["sport_path"] or "",
+        "factor_id": r["factor_id"], "label": r["label"] or "", "sport_path": r["sport_path"] or "",
         "team_1": r["team_1"] or "", "team_2": r["team_2"] or "",
         "overround_close": r["overround_close"] if "overround_close" in r.keys() else None,
     }
@@ -176,9 +176,13 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
     # on pipeline.py's module-level side effects (constructing the live ensemble_engine
     # singleton, starting its lock) — only route handlers that actually call this ever
     # need pipeline's live state.
-    from app.neuralbet.pipeline import MAX_BET_COEFF, _engine_lock, ensemble_engine
+    from app.neuralbet.pipeline import (
+        MAX_BET_COEFF, MIN_BET_EDGE_PCT, MIN_MARKET_SUPPORT, _engine_lock,
+        _refresh_market_support, ensemble_engine,
+    )
 
     t0 = time.time()
+    market_support = _refresh_market_support()
     rows = _fetch_backtest_rows(limit=limit, since=since)
     if not rows:
         return {"status": "no_data", "samples_evaluated": 0}
@@ -205,6 +209,8 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         meta.append({
             "sport": sport_top,
             "coeff": coeff,
+            "factor_id": sample["factor_id"],
+            "label": sample["label"],
             "is_win": int(r["is_win"]),
             "historical_prob": r["predicted_win_probability"],
             "historical_pred": r["predicted_win"],
@@ -227,7 +233,19 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
     for m, res in zip(meta, raw_results):
         win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
         calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
-        current_pred = 1 if (decision_prob >= decision_threshold and m["coeff"] <= MAX_BET_COEFF) else 0
+        expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
+        # Mirrors pipeline._place_live_bets' three gates exactly (coeff cap, minimum EV,
+        # minimum market support — see those constants' docstrings in pipeline.py) so
+        # current_pred answers "would today's live rules actually have bet this," not
+        # just "did the decision head say win" — the whole point of a backtest is
+        # previewing what live betting would produce, and the two had drifted apart
+        # once the EV/support gates were added to live betting but not here.
+        current_pred = 1 if (
+            decision_prob >= decision_threshold
+            and m["coeff"] <= MAX_BET_COEFF
+            and expected_roi >= MIN_BET_EDGE_PCT
+            and not (market_support and market_support.get((m["sport"], m["factor_id"], m["label"]), 0) < MIN_MARKET_SUPPORT)
+        ) else 0
         market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
         records.append({
             "sport": m["sport"],

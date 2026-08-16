@@ -3,8 +3,9 @@ import math
 import os
 import re
 import logging
+import time
 from typing import List, Dict, Any, Optional, Iterable, Tuple
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg2
 from psycopg2 import pool
@@ -1060,20 +1061,60 @@ def get_db_stats() -> Dict[str, Any]:
         finished_history_count = f_cursor.fetchone()["c"]
 
         # Real guess rate: how often the model's own bet/no-bet verdict (predicted_win)
-        # matched what actually happened (is_win), on bets we could honestly grade both
-        # ways. This used to be the raw hit rate of every archived outcome in the
-        # 1.10-2.10 odds band regardless of whether the model even had an opinion on it —
-        # not the same question as "did the model guess right."
+        # matched what actually happened (is_win) — restricted to bets that would also
+        # clear today's live risk-management gates (coefficient cap, minimum EV, minimum
+        # market support — the same three get_top_neurobets applies, see their docstrings
+        # there), and recency-weighted (see GUESS_RATE_HALF_LIFE_HOURS) rather than a
+        # flat all-time average. This used to be every archived judged bet regardless of
+        # whether the bot would ever actually risk money on it (a 10x long shot the
+        # coefficient cap now excludes counted the same as a 1.8 favorite it bets every
+        # day) AND weighted equally no matter how long ago it happened (drowning any
+        # real, recent improvement in a few hundred thousand older predictions — the
+        # ring barely moved even after a genuine model upgrade). The diagnostic
+        # full-history breakdown (every coefficient band, unfiltered, unweighted) still
+        # lives on the "Статистика" page — this headline number specifically answers
+        # "how good is the model *right now* at what it actually bets," not "how good
+        # has it ever been at anything." predicted_win here is the verdict as it was
+        # live at the time (not recomputed with current model weights — that's what the
+        # admin panel's "Бэктест" button is for).
+        recency_cutoff = (_now_moscow_naive() - timedelta(days=GUESS_RATE_LOOKBACK_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
         f_cursor.execute("""
-            SELECT COUNT(*) AS judged, SUM(CASE WHEN predicted_win = is_win THEN 1 ELSE 0 END) AS correct
-              FROM finished_bets
-             WHERE is_win IS NOT NULL AND predicted_win IS NOT NULL
-        """)
-        row = f_cursor.fetchone()
-        if row and row["judged"] and row["judged"] > 0:
-            judged = row["judged"]
-            correct = row["correct"] or 0
-            guess_rate_pct = round((correct / judged) * 100.0, 1)
+            SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label,
+                   h.predicted_win, h.is_win, h.finished_at
+              FROM finished_bets h
+              JOIN finished_events f ON h.event_id = f.event_id
+             WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+               AND h.predicted_win_probability IS NOT NULL
+               AND h.final_coefficient IS NOT NULL AND h.final_coefficient > 1.0
+               AND h.final_coefficient <= %s
+               AND ((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0 >= %s
+               AND h.finished_at >= %s
+        """, (NEUROBET_MAX_BET_COEFF, NEUROBET_MIN_BET_EDGE_PCT, recency_cutoff))
+        graded_rows = f_cursor.fetchall()
+
+        support = _get_market_support()
+        if support:
+            graded_rows = [
+                r for r in graded_rows
+                if support.get((r["sport"] or "", r["factor_id"], r["label"] or ""), 0) >= NEUROBET_MIN_MARKET_SUPPORT
+            ]
+
+        now_naive = _now_moscow_naive()
+        weighted_correct = 0.0
+        weighted_total = 0.0
+        for r in graded_rows:
+            try:
+                finished_dt = datetime.fromisoformat(str(r["finished_at"]))
+            except Exception:
+                continue
+            age_hours = max((now_naive - finished_dt).total_seconds() / 3600.0, 0.0)
+            weight = 0.5 ** (age_hours / GUESS_RATE_HALF_LIFE_HOURS)
+            weighted_total += weight
+            if r["predicted_win"] == r["is_win"]:
+                weighted_correct += weight
+
+        if weighted_total > 0:
+            guess_rate_pct = round(weighted_correct / weighted_total * 100.0, 1)
             miss_rate_pct = round(100.0 - guess_rate_pct, 1)
 
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NULL")
@@ -1131,6 +1172,83 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # read from ai_predictions/finished_bets below is already calibrated; recalibrating it a
 # second time here used to let this page's numbers drift from what the bot actually acted
 # on (it always bet on the raw score) — this file no longer computes calibration at all.
+
+# Same three risk-management gates ai_service/app/neuralbet/pipeline.py applies before
+# staking real bankroll money on a candidate (see MAX_BET_COEFF/MIN_BET_EDGE_PCT/
+# MIN_MARKET_SUPPORT there) — duplicated here (small constants, not shared code, same
+# reasoning as OUTCOME_FAMILY_MAP/overround_group_key already being duplicated across
+# this service boundary) so the "Активные LIVE прогнозы"/"Нейроставки AI TOP" list shown
+# to the user matches what the bot would actually risk money on, instead of surfacing
+# verdicts (e.g. a 5.0 coefficient, or a market with a handful of resolved samples ever)
+# the bot itself would never bet. Reads the *same* env vars ai_service reads (both
+# services share one .env file via docker-compose) so one value change stays in sync
+# across both instead of needing to be set twice.
+NEUROBET_MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
+NEUROBET_MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
+NEUROBET_MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
+NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
+_neurobet_market_support: Dict[Tuple[str, int, str], int] = {}
+_neurobet_market_support_loaded_at = 0.0
+
+# Recency weighting for get_db_stats()'s guess_rate_pct (the "Точность модели" ring on
+# the main page): a bet from GUESS_RATE_HALF_LIFE_HOURS ago counts half as much as one
+# settled just now, one from twice that long ago a quarter as much, and so on — a
+# continuous exponential decay, not a hard cutoff, so the number never jumps when a bet
+# happens to cross some fixed day boundary. Was previously an unweighted all-time
+# average, which meant the ring barely moved even after a real model improvement — a
+# handful of better predictions today drowns in a few hundred thousand historical ones.
+# 24h half-life means "mostly today's results, but still smoothed by a bit of
+# yesterday's" instead of a sharp day-over-day swing. The SQL query is still bounded to
+# GUESS_RATE_LOOKBACK_DAYS (not the whole archive) purely so it doesn't have to scan
+# every row ever recorded — bets older than that already carry a practically-zero weight
+# (0.5^(7*24/24) is far below floating-point-meaningful) so excluding them changes
+# nothing about the result, only the query cost.
+GUESS_RATE_HALF_LIFE_HOURS = float(os.getenv("NEUROBET_GUESS_RATE_HALF_LIFE_HOURS", "24.0"))
+GUESS_RATE_LOOKBACK_DAYS = int(os.getenv("NEUROBET_GUESS_RATE_LOOKBACK_DAYS", "7"))
+
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
+
+def _now_moscow_naive() -> datetime:
+    """Moscow wall-clock time with no tzinfo — matches the format finished_at is stored
+    in (a TEXT "YYYY-MM-DD HH:MM:SS" written from Moscow-local now(), see
+    backend/main.py's now_moscow/now_str), so subtracting a parsed finished_at from this
+    gives the correct elapsed wall-clock time without any timezone-offset ambiguity."""
+    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+
+
+def _get_market_support() -> Dict[Tuple[str, int, str], int]:
+    """
+    {(top_level_sport, factor_id, label): resolved_count} over the whole finished-bets
+    archive, cached for NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS — mirrors ai_service's
+    own _refresh_market_support exactly (same grouping, same cache shape) so both
+    services agree on which markets count as "thin." Cached rather than queried live on
+    every request: get_top_neurobets is polled every ~10s by the frontend, and this
+    aggregates over the full finished_bets table (450k+ rows and growing). On query
+    failure the stale cache (or an empty dict = fail-open, matching ai_service) is kept
+    rather than raising — a DB hiccup here shouldn't take the whole prediction list down.
+    """
+    global _neurobet_market_support, _neurobet_market_support_loaded_at
+    now = time.time()
+    if _neurobet_market_support and now - _neurobet_market_support_loaded_at < NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS:
+        return _neurobet_market_support
+    try:
+        f_conn = get_finished_connection()
+        f_cursor = f_conn.cursor()
+        f_cursor.execute("""
+            SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label, COUNT(*) AS c
+              FROM finished_bets h
+              JOIN finished_events f ON h.event_id = f.event_id
+             WHERE h.is_win IS NOT NULL
+             GROUP BY 1, 2, 3
+        """)
+        _neurobet_market_support = {(r["sport"] or "", r["factor_id"], r["label"] or ""): r["c"] for r in f_cursor.fetchall()}
+        _neurobet_market_support_loaded_at = now
+        release_connection(f_conn)
+    except Exception as e:
+        logger.error(f"Error refreshing neurobet market support counts: {e}")
+    return _neurobet_market_support
+
 
 def get_top_neurobets(
     sport_filter: Optional[str] = None,
@@ -1204,6 +1322,15 @@ def get_top_neurobets(
     """
     params = []
 
+    # Coefficient cap + minimum-EV floor — only for the "win" list (the bot's real
+    # betting pool): "loss"/"all" exist to show what the network rejects or the full
+    # unfiltered board, and forcing the same caps there would just hide information a
+    # human might want to see, not match anything the bot actually risks money on.
+    if verdict == "win":
+        query += " AND l.coefficient <= %s AND p.expected_roi >= %s"
+        params.append(NEUROBET_MAX_BET_COEFF)
+        params.append(NEUROBET_MIN_BET_EDGE_PCT)
+
     if sport_filter and sport_filter.lower() != "all":
         query += " AND e.sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
@@ -1229,6 +1356,20 @@ def get_top_neurobets(
     release_connection(conn)
 
     candidates = [dict(r) for r in rows if r.get("win_probability") is not None]
+
+    # Thin-market filter — applies regardless of verdict (unlike the coeff/EV gates
+    # above): a market with only a handful of resolved outcomes ever isn't reliably
+    # calibrated whichever way the verdict points, so showing it as either a confident
+    # "win" or "loss" pick would be showing noise dressed up as a signal. Fails open
+    # (empty cache = no filtering) rather than hiding everything on a cache miss.
+    support = _get_market_support()
+    if support:
+        candidates = [
+            c for c in candidates
+            if support.get(
+                ((c.get("sport_path") or "").split("/")[0].strip(), c["factor_id"], c.get("label") or ""), 0,
+            ) >= NEUROBET_MIN_MARKET_SUPPORT
+        ]
 
     if sort_mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
