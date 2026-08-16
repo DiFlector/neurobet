@@ -207,6 +207,7 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         })
         sport_top = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
         meta.append({
+            "event_id": r["event_id"],
             "sport": sport_top,
             "coeff": coeff,
             "factor_id": sample["factor_id"],
@@ -248,16 +249,38 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         ) else 0
         market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
         records.append({
+            "event_id": m["event_id"],
             "sport": m["sport"],
             "coeff": m["coeff"],
             "coeff_bucket": coeff_bucket_index(m["coeff"]),
             "is_win": m["is_win"],
             "current_prob": calibrated,
             "current_pred": current_pred,
+            "current_expected_roi": expected_roi,
             "historical_prob": m["historical_prob"],
             "historical_pred": m["historical_pred"],
             "market_prob": market_prob,
         })
+
+    # At most one bet per event — mirrors backend/database.py's occupied_events (live
+    # betting refuses a second position on a match that already has one open) and
+    # model.py's _bankroll_pass (training refuses more than one position per event in a
+    # round). Without this, two markets on the same match that both clear the gates
+    # would each count as a separate "bet" here, overstating both the bet count and the
+    # ROI/accuracy this backtest reports relative to what live betting would actually
+    # place — defeating the whole point of a backtest being a preview of live rules.
+    # Keeps the highest-EV candidate per event (the same ordering live candidate
+    # selection sorts by) and downgrades the rest back to a plain "no bet" prediction.
+    by_event: Dict[Any, List[Dict[str, Any]]] = {}
+    for rec in records:
+        if rec["current_pred"] == 1:
+            by_event.setdefault(rec["event_id"], []).append(rec)
+    for event_records in by_event.values():
+        if len(event_records) < 2:
+            continue
+        event_records.sort(key=lambda r: r["current_expected_roi"], reverse=True)
+        for rec in event_records[1:]:
+            rec["current_pred"] = 0
 
     by_sport: Dict[str, List[Dict[str, Any]]] = {}
     by_coeff: Dict[int, List[Dict[str, Any]]] = {}
