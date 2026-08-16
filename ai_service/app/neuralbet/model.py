@@ -691,7 +691,14 @@ class NeuralBetEnsemble:
     # stays as cheap as the old 1D one, since a few hundred validation samples can't
     # support a finer 2D search without just fitting noise.
     _BLEND_CANDIDATES = [round(x * 0.2, 2) for x in range(6)]  # 0.0 .. 1.0
-    _THRESHOLD_CANDIDATES = [round(0.30 + x * 0.02, 2) for x in range(21)]  # 0.30 .. 0.70
+    # Floor raised 0.30 -> 0.40: with the decision head barely above a coin flip on
+    # held-out data (val_guess_rate ~50-53%), thresholds below ~0.45 turn "will win"
+    # into a label for two-thirds of every live board (observed: 10267 of 15000
+    # backtest outcomes marked as bets at threshold 0.436), and the val-ROI sweep kept
+    # drifting there because a near-random verdict plus a lucky val slice looks like
+    # volume-made money. The floor keeps the sweep inside a range where the verdict
+    # still means something; the EV gate (pipeline.MIN_BET_EDGE_PCT) guards the rest.
+    _THRESHOLD_CANDIDATES = [round(0.40 + x * 0.02, 2) for x in range(16)]  # 0.40 .. 0.70
     _MIN_TUNE_SAMPLES = 30
     # Raised from 20 — a threshold accepted on 20-40 validation bets is one long-shot
     # coefficient away from looking great by pure luck (observed in production: a single

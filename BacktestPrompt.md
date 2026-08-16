@@ -7,7 +7,7 @@ decision-порог, quarter-Kelly, кап кэфа для ставок).
 Что прикладываю (что есть — то есть):
 - логи админки (TRAINING/INFERENCE/BANKROLL за последние часы)
 - JSON бэктеста(ов) из кнопки «Бэктест» в админке (или history.json с трендом запусков)
-- Эндпоинт для получения статистики: https://necrolich.ru/api/ai/overview?bet_types_limit=200
+- Эндпоинт для получения статистики: https://necrolich.ru/neurobet/api/ai/overview?bet_types_limit=200
 ```
 db_stats — размер архива, количество завершённых игр
 bet_type_stats — guess-rate по спорту и типу ставки (то же, что таблица «Разбивка угадывания» на странице «Статистика»)

@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config import MODEL_DIR
@@ -40,9 +40,15 @@ COEFF_BUCKET_LABELS = ["1.0–1.5", "1.5–2.0", "2.0–3.0", "3.0–5.0", "5.0�
 # for a large --limit run instead of building one giant tensor up front.
 PREDICT_CHUNK = 4000
 
+# Same fixed +3 offset pipeline.py's now_moscow() uses — "generated_at" (and the
+# filename slug derived from it, see save_and_record) is what the admin panel's
+# "История запусков" table and the on-disk backtest_*.json filenames show, and both
+# were showing UTC, off by 3 hours from every other timestamp in the app.
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(MOSCOW_TZ).isoformat()
 
 
 def _build_full_step_pairs(sample: Dict[str, Any]) -> Optional[List[tuple]]:
@@ -277,7 +283,11 @@ def save_and_record(result: Dict[str, Any]) -> None:
     re-download every full run."""
     try:
         os.makedirs(BACKTEST_DIR, exist_ok=True)
-        ts_slug = result["generated_at"].replace(":", "-").replace("+00:00", "Z")
+        # Built from a fresh timestamp rather than parsing generated_at's ISO string —
+        # decouples the filename from whatever UTC-offset suffix that string happens to
+        # carry (previously assumed a hardcoded "+00:00" that broke once generated_at
+        # switched to Moscow's "+03:00").
+        ts_slug = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%dT%H-%M-%S-%f")
         with open(os.path.join(BACKTEST_DIR, f"backtest_{ts_slug}.json"), "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
