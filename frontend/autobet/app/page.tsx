@@ -494,13 +494,6 @@ export default function NeurobetsPage() {
     return isNaN(p) ? 1.0 : p
   }
 
-  // Calculate Average Model Error Rate across filtered live bets
-  const avgErrorRate = useMemo(() => {
-    if (liveBets.length === 0) return 3.1
-    const total = liveBets.reduce((acc, b) => acc + b.aiErrorRate, 0)
-    return total / liveBets.length
-  }, [liveBets])
-
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased flex flex-col">
       {/* Shared Header Navigation */}
@@ -615,15 +608,17 @@ export default function NeurobetsPage() {
                 <div className="text-[10px] text-neutral-400 font-mono uppercase">Точность модели</div>
                 <AccuracyRing
                   size={96}
-                  pct={stats?.guess_rate_pct != null ? stats.guess_rate_pct : 100 - avgErrorRate}
-                  known={!(stats && stats.miss_rate_pct === null)}
+                  pct={stats?.guess_rate_pct ?? 0}
+                  known={stats != null && stats.miss_rate_pct !== null}
                 />
                 <div className="text-[10px] font-semibold">
-                  {stats && stats.miss_rate_pct === null ? (
+                  {!stats ? (
+                    <span className="text-neutral-500">загрузка...</span>
+                  ) : stats.miss_rate_pct === null ? (
                     <span className="text-neutral-500">нет данных</span>
                   ) : (
                     <span className="text-[#ff7675]">
-                      промах {stats?.miss_rate_pct != null ? stats.miss_rate_pct.toFixed(1) : avgErrorRate.toFixed(1)}%
+                      промах {stats.miss_rate_pct.toFixed(1)}%
                     </span>
                   )}
                 </div>
