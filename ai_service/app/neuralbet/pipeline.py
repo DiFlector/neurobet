@@ -43,7 +43,7 @@ AI_SETTINGS = {
 # no longer risks eating the next 15s scrape cycle, so there's no reason left to leave
 # this hardware idle. With ~150k+ resolved bets backlogged, 2100 fresh/cycle clears it
 # in a reasonable number of cycles instead of trickling through 210/cycle.
-TRAIN_BATCH_TOTAL = 3000
+TRAIN_BATCH_TOTAL = 5000
 TRAIN_FRESH_SHARE = 0.7
 MAX_REPLAY = 5
 VAL_MIN_POOL = 50
@@ -79,7 +79,7 @@ TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "5"))
 # with trained_count untouched (see the skip branch below) so they aren't wasted on a
 # useless step — they simply get included again, alongside whatever's newly finished, on
 # the next training cycle that clears this floor.
-MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "500"))
+MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "1000"))
 
 # Live bets are capped to this coefficient — the stats export showed ROI strictly
 # worsening as coefficient rises (-3% at 1.0-1.5 down to -44% at 10.0+) while the
