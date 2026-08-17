@@ -49,7 +49,10 @@ AI_SETTINGS = {"ai_enabled": True, "training_enabled": True}
 # no longer risks eating the next 15s scrape cycle, so there's no reason left to leave
 # this hardware idle. With ~150k+ resolved bets backlogged, 2100 fresh/cycle clears it
 # in a reasonable number of cycles instead of trickling through 210/cycle.
-TRAIN_BATCH_TOTAL = 5000
+# 5000 -> 10000: hardware still has headroom (see the note above about 12 cores /
+# 14GB, <5% utilized at the old 300-sample size), and a bigger batch means fewer,
+# more representative training passes instead of more frequent smaller ones.
+TRAIN_BATCH_TOTAL = 10000
 TRAIN_FRESH_SHARE = 0.7
 MAX_REPLAY = 5
 VAL_MIN_POOL = 50
@@ -59,9 +62,14 @@ VAL_FRACTION = 0.2
 # cycle is wasted work once the dataset is large. Refit every Nth cycle instead.
 # LGB_TRAIN_LIMIT raised alongside TRAIN_BATCH_TOTAL — GBDT training is cheap even at
 # tens of thousands of rows with this small a feature count, and a bigger sample gives
-# LightGBM a much more representative picture than 5000 rows out of 150k+.
-LGB_REFIT_EVERY_CYCLES = 5
-LGB_TRAIN_LIMIT = 20000
+# LightGBM a much more representative picture. 20000 -> 40000: the archive has grown
+# past 500k+ resolved bets, so a bigger refit sample stays proportionally representative.
+# LGB_REFIT_EVERY_CYCLES 5 -> 20: a full refit on 40k rows every 5 cycles (~75s) was
+# wasteful — every 20 cycles keeps it synchronized with the GRU's own new cadence below
+# (TRAIN_EVERY_CYCLES) instead of refitting far more often than the data actually turns
+# over.
+LGB_REFIT_EVERY_CYCLES = int(os.getenv("NEURALBET_LGB_REFIT_EVERY_CYCLES", "20"))
+LGB_TRAIN_LIMIT = int(os.getenv("NEURALBET_LGB_TRAIN_LIMIT", "40000"))
 
 # Online-training and ensemble-tuning cadence, in scrape cycles (~15s apart). Both used
 # to run every single cycle — for training that meant a gradient step on whatever
@@ -73,19 +81,29 @@ LGB_TRAIN_LIMIT = 20000
 # _fetch_training_batch) so the batch that eventually trains is bigger and less noisy,
 # and (b) tune_ensemble's own smoothing (_TUNE_SMOOTH_ALPHA) has fewer, more meaningful
 # passes to smooth between instead of fighting a new grid-search result every 15s.
-TRAIN_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_EVERY_CYCLES", "10"))
-TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "5"))
+# TRAIN_EVERY_CYCLES 10 -> 20 (~2.5min -> ~5min cadence): at TRAIN_BATCH_TOTAL=10000 with
+# TRAIN_FRESH_SHARE=0.7 wanting 7000 fresh samples, the real fresh-bet throughput
+# (~800/cycle-window observed) meant most of the batch was replay padding, not new
+# signal, at the old cadence. Doubling the window roughly doubles how much of the batch
+# is genuinely fresh instead of re-chewed history.
+# TUNE_EVERY_CYCLES 5 -> 10: EMA smoothing (_TUNE_SMOOTH_ALPHA) already absorbs
+# cycle-to-cycle noise in the grid-search target; tuning half as often halves how much
+# of that noise it has to smooth away without slowing convergence meaningfully.
+TRAIN_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_EVERY_CYCLES", "20"))
+TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "10"))
 
 # Floor on how many samples (fresh + replay combined — see _fetch_training_batch) a
 # training cycle needs before it's allowed to actually run a gradient step. Below this,
 # a pass is essentially the "82 samples, best epoch 1/11, val_loss rising from the very
-# first epoch" pattern seen in production logs — too few mini-batches (BATCH_SIZE=128)
-# for early stopping to have anything meaningful to select between; it just memorizes
-# whatever tiny slice showed up. Rows fetched on a too-small cycle are deliberately left
-# with trained_count untouched (see the skip branch below) so they aren't wasted on a
-# useless step — they simply get included again, alongside whatever's newly finished, on
-# the next training cycle that clears this floor.
-MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "1000"))
+# first epoch" pattern seen in production logs — too few mini-batches for early stopping
+# to have anything meaningful to select between; it just memorizes whatever tiny slice
+# showed up. Rows fetched on a too-small cycle are deliberately left with trained_count
+# untouched (see the skip branch below) so they aren't wasted on a useless step — they
+# simply get included again, alongside whatever's newly finished, on the next training
+# cycle that clears this floor. 1000 -> 2000: stayed at 10% of TRAIN_BATCH_TOTAL as that
+# grew from 5000 to 10000 — 20% is a safer floor so a "too small" pass doesn't still slip
+# through at a size barely above the old memorization-prone range.
+MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "2000"))
 
 # Live bets are capped to this coefficient — ROI worsens strictly as coefficient rises,
 # and after 12h+ of production data at cap 3.0 the split within the allowed range became
@@ -582,14 +600,14 @@ def _fetch_training_batch(
     return samples, keys
 
 
-# 400 -> 1000: everything downstream of this slice — per-epoch early-stopping
+# 400 -> 1000 -> 2000: everything downstream of this slice — per-epoch early-stopping
 # selection, the tuner's Brier grid, the decision-threshold ROI sweep — was reading a
-# 400-sample view, small enough that batch-to-batch noise in which bets landed in it
-# moved the "best" epoch and threshold around. Bumped alongside TRAIN_BATCH_TOTAL
-# (5000-sample training passes deserve better than a 400-sample yardstick); the val
-# *pool* (VAL_FRACTION of events) was already far bigger than 400, this cap was the
-# only thing keeping most of it unused.
-VAL_BATCH_LIMIT = int(os.getenv("NEURALBET_VAL_BATCH_LIMIT", "1000"))
+# view small enough that batch-to-batch noise in which bets landed in it moved the
+# "best" epoch and threshold around. Bumped alongside TRAIN_BATCH_TOTAL each time
+# (bigger training passes deserve a bigger yardstick); the val *pool* (VAL_FRACTION of
+# events) is already far bigger than this cap, so raising it just uses more of what's
+# already held out rather than needing more data.
+VAL_BATCH_LIMIT = int(os.getenv("NEURALBET_VAL_BATCH_LIMIT", "2000"))
 
 
 def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:

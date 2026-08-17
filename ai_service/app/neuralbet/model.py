@@ -48,10 +48,12 @@ GRU_LAYERS = int(os.getenv("NEURALBET_GRU_LAYERS", "2"))
 # just removes an artificial cap for when a bigger batch needs more passes to converge.
 MAX_EPOCHS = int(os.getenv("NEURALBET_MAX_EPOCHS", "200"))
 EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
-# 64 -> 128: fewer, larger mini-batches per epoch use the CPU's vectorized matmuls more
-# efficiently (more work per Python-level loop iteration) — meaningful now that each
-# epoch sees 10x the samples.
-BATCH_SIZE = int(os.getenv("NEURALBET_BATCH_SIZE", "128"))
+# 64 -> 128 -> 256: fewer, larger mini-batches per epoch use the CPU's vectorized
+# matmuls more efficiently (more work per Python-level loop iteration) — meaningful as
+# each training pass's sample count (pipeline.TRAIN_BATCH_TOTAL) has grown; 256 keeps
+# minibatch count per epoch reasonable (~40 at a 10000-sample pass) without the batch
+# getting so large a single gradient step stops responding to individual examples.
+BATCH_SIZE = int(os.getenv("NEURALBET_BATCH_SIZE", "256"))
 # 1e-3 -> 1e-4: 1e-3 is a from-scratch rate; for online fine-tuning of an
 # already-converged network it was large enough that every epoch after the first
 # dragged the weights toward the current batch and away from the general solution —
