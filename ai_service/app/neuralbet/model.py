@@ -290,6 +290,16 @@ class NeuralBetEnsemble:
         self.market_weight = float(os.getenv("NEURALBET_MARKET_WEIGHT_INIT", "0.0"))
         self.decision_threshold = float(os.getenv("NEURALBET_DECISION_THRESHOLD_INIT", "0.5"))
 
+        # Per-sport overrides of decision_threshold, keyed by top-level sport (same
+        # string calibration.py/backtest.py already group by) — tuned in tune_ensemble()
+        # whenever a sport's val slice clears MIN_THRESHOLD_BETS_PER_SPORT, since a
+        # single global threshold can't be optimal for every sport at once (production
+        # backtests showed the model beating the market's Brier on football/basketball/
+        # hockey while losing on table tennis — a per-sport cutoff targets that gap
+        # directly). Starts empty: every sport falls back to decision_threshold above
+        # until it earns its own tuned value — see sport_threshold().
+        self.sport_decision_thresholds: Dict[str, float] = {}
+
         # Real gradient-boosted classifier, fit on actual resolved bets (see
         # train_lightgbm). None until the first successful training pass — until then
         # predict_single() falls back to the odds-implied heuristic.
@@ -317,6 +327,17 @@ class NeuralBetEnsemble:
             except Exception as e:
                 logger.error(f"Error removing checkpoint {path} during reset: {e}")
 
+    def sport_threshold(self, sport: Optional[str]) -> float:
+        """The decision-head cutoff to use for this sport: its own tuned value if
+        tune_ensemble has ever seen enough validation bets for it, otherwise the global
+        decision_threshold. Single source of truth for this lookup — every caller
+        (pipeline.py's live inference, backtest.py's current_pred) goes through this
+        instead of reading decision_threshold directly, so the two can never drift out
+        of sync on which threshold a given sport actually uses."""
+        if sport is None:
+            return self.decision_threshold
+        return self.sport_decision_thresholds.get(sport, self.decision_threshold)
+
     def save_checkpoints(self, extra: Optional[Dict[str, Any]] = None):
         try:
             os.makedirs(MODEL_DIR, exist_ok=True)
@@ -326,6 +347,7 @@ class NeuralBetEnsemble:
                 "blend_weight": self.blend_weight,
                 "market_weight": self.market_weight,
                 "decision_threshold": self.decision_threshold,
+                "sport_decision_thresholds": self.sport_decision_thresholds,
             }
             if extra:
                 payload.update(extra)
@@ -398,6 +420,10 @@ class NeuralBetEnsemble:
                     self.blend_weight = float(blob.get("blend_weight", self.blend_weight))
                     self.market_weight = float(blob.get("market_weight", self.market_weight))
                     self.decision_threshold = float(blob.get("decision_threshold", self.decision_threshold))
+                    self.sport_decision_thresholds = {
+                        str(k): float(v)
+                        for k, v in (blob.get("sport_decision_thresholds") or {}).items()
+                    }
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
                 # only blows up later, inside optimizer.step()'s elementwise ops against
@@ -720,6 +746,15 @@ class NeuralBetEnsemble:
     # handful is penalized relative to one supported by many more, so the search doesn't
     # keep picking whichever small sample got luckiest this cycle.
     _THRESHOLD_SAMPLE_PENALTY = float(os.getenv("NEURALBET_THRESHOLD_SAMPLE_PENALTY", "0.5"))
+    # Lower than _MIN_THRESHOLD_BETS (80): a per-sport slice of one already-limited val
+    # batch is inherently smaller than the whole batch (table tennis/basketball combined
+    # are roughly half the archive, leaving the rest to split single-digit percentages
+    # each), so demanding the same 80 as the global threshold would mean almost no sport
+    # ever earns its own value. 50 still requires several dozen independent outcomes —
+    # a real floor against small-sample luck, just not as strict as the pooled figure.
+    # Sports that never clear this simply keep using decision_threshold (see
+    # sport_threshold()) — there's no path where a sport ends up with no usable cutoff.
+    _MIN_THRESHOLD_BETS_PER_SPORT = int(os.getenv("NEURALBET_MIN_THRESHOLD_BETS_PER_SPORT", "50"))
 
     def tune_ensemble(self, val_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -737,13 +772,22 @@ class NeuralBetEnsemble:
           directly in the blend — when the model's own Brier is worse than the market's
           (val_brier_base below; this was consistently true in production), the search
           naturally shifts weight onto the market term instead of an undertrained model.
-        - decision_threshold: grid search over _THRESHOLD_CANDIDATES, keeping whichever
-          cutoff on the decision head maximizes a sample-size-penalized simulated
-          flat-stake ROI on validation (see _THRESHOLD_SAMPLE_PENALTY) — a direct proxy
-          for "does betting on this verdict make money," not just "is the verdict
-          usually right," while discounting thresholds propped up by a small, lucky
-          sample. Thresholds that would place fewer than _MIN_THRESHOLD_BETS bets are
-          skipped entirely; if none qualify, the previous threshold is kept.
+        - decision_threshold: grid search over _THRESHOLD_CANDIDATES (see
+          _sweep_threshold), keeping whichever cutoff on the decision head maximizes a
+          sample-size-penalized simulated flat-stake ROI on validation (see
+          _THRESHOLD_SAMPLE_PENALTY) — a direct proxy for "does betting on this verdict
+          make money," not just "is the verdict usually right," while discounting
+          thresholds propped up by a small, lucky sample. Thresholds that would place
+          fewer than _MIN_THRESHOLD_BETS bets are skipped entirely; if none qualify, the
+          previous threshold is kept.
+        - sport_decision_thresholds: the same sweep repeated per top-level sport (see
+          sport_threshold()) — a single global cutoff can't be optimal for every sport
+          when Brier-vs-market quality varies this much between them (production
+          backtests: model beats market on football/basketball/hockey, loses on table
+          tennis). Needs _MIN_THRESHOLD_BETS_PER_SPORT val bets *for that sport
+          specifically* to update at all; sports that don't clear it this pass simply
+          keep whatever they had (or the global decision_threshold, if they've never
+          earned a value).
         - Every parameter is smoothed towards this cycle's grid-search result rather
           than snapping to it (see _TUNE_SMOOTH_ALPHA) — the target values are reported
           alongside the smoothed ones so the log line shows both.
@@ -803,27 +847,9 @@ class NeuralBetEnsemble:
                     best_brier = brier
                     best_blend, best_market = w_py, w_mkt
 
-        best_threshold, best_score, best_roi, best_bets = self.decision_threshold, float("-inf"), None, 0
-        for thr in self._THRESHOLD_CANDIDATES:
-            staked = 0.0
-            returned = 0.0
-            n_bets = 0
-            for dp, c, t in zip(decision_probs, coeffs, targets):
-                if dp < thr:
-                    continue
-                n_bets += 1
-                staked += 1.0
-                if t >= 0.5:
-                    returned += c
-            if n_bets < self._MIN_THRESHOLD_BETS:
-                continue
-            roi = (returned - staked) / staked
-            score = roi - self._THRESHOLD_SAMPLE_PENALTY / (n_bets ** 0.5)
-            if score > best_score:
-                best_score = score
-                best_roi = roi
-                best_threshold = thr
-                best_bets = n_bets
+        best_threshold, best_roi, best_bets = self._sweep_threshold(
+            decision_probs, coeffs, targets, self.decision_threshold, self._MIN_THRESHOLD_BETS,
+        )
 
         old_blend, old_market, old_threshold = self.blend_weight, self.market_weight, self.decision_threshold
         a = self._TUNE_SMOOTH_ALPHA
@@ -831,6 +857,34 @@ class NeuralBetEnsemble:
         self.market_weight = old_market + a * (best_market - old_market)
         if best_bets >= self._MIN_THRESHOLD_BETS:
             self.decision_threshold = old_threshold + a * (best_threshold - old_threshold)
+
+        # Per-sport decision_threshold — same sweep, run again per sport group of the
+        # same val samples (see sport_threshold()'s docstring for why: a single global
+        # cutoff can't be optimal for every sport when Brier-vs-market quality varies
+        # this much between them). Groups with too few val bets this pass are left
+        # untouched — they keep whatever they had before (or the global fallback if
+        # they've never earned a value at all), not overwritten with a worse guess.
+        by_sport: Dict[str, List[int]] = {}
+        for idx, p in enumerate(prepared):
+            by_sport.setdefault(p.get("sport") or "Другое", []).append(idx)
+
+        sport_threshold_report: Dict[str, Dict[str, Any]] = {}
+        for sport, idxs in by_sport.items():
+            sport_dp = [decision_probs[i] for i in idxs]
+            sport_coeffs = [coeffs[i] for i in idxs]
+            sport_targets = [targets[i] for i in idxs]
+            old_sport_thr = self.sport_decision_thresholds.get(sport, self.decision_threshold)
+            thr, roi, bets = self._sweep_threshold(
+                sport_dp, sport_coeffs, sport_targets, old_sport_thr, self._MIN_THRESHOLD_BETS_PER_SPORT,
+            )
+            if bets < self._MIN_THRESHOLD_BETS_PER_SPORT:
+                continue
+            new_sport_thr = old_sport_thr + a * (thr - old_sport_thr)
+            self.sport_decision_thresholds[sport] = new_sport_thr
+            sport_threshold_report[sport] = {
+                "old": round(old_sport_thr, 2), "new": round(new_sport_thr, 2), "target": round(thr, 2),
+                "val_roi_pct": round(roi * 100.0, 1), "val_bets": bets,
+            }
 
         return {
             "tuned": True,
@@ -849,7 +903,50 @@ class NeuralBetEnsemble:
                 "val_roi_pct": round(best_roi * 100.0, 1) if best_bets >= self._MIN_THRESHOLD_BETS else None,
                 "val_bets": best_bets,
             },
+            # Only sports that actually cleared _MIN_THRESHOLD_BETS_PER_SPORT this pass
+            # appear here — most won't, on any given pass, since the val batch splits
+            # across 12+ sports and only the couple of largest ones (table tennis,
+            # basketball) reliably clear the floor. That's expected, not an error: every
+            # other sport keeps using its last tuned value (or decision_threshold, if it
+            # has never earned one) via sport_threshold() — see that method's docstring.
+            "sport_decision_threshold": sport_threshold_report,
         }
+
+    def _sweep_threshold(
+        self, decision_probs: List[float], coeffs: List[float], targets: List[float],
+        current: float, min_bets: int,
+    ) -> Tuple[float, Optional[float], int]:
+        """
+        Grid search over _THRESHOLD_CANDIDATES for the flat-stake-ROI-maximizing cutoff
+        (sample-size-penalized — see _THRESHOLD_SAMPLE_PENALTY), shared by tune_ensemble's
+        global sweep and each of its per-sport sweeps so the two can never drift onto
+        different selection logic. Returns (threshold, roi, n_bets) for whichever
+        candidate scored best; falls back to (`current`, None, 0) if no candidate
+        cleared `min_bets` — the caller decides what "no qualifying candidate" means
+        (global: keep the old threshold; per-sport: leave that sport untouched this pass).
+        """
+        best_threshold, best_score, best_roi, best_bets = current, float("-inf"), None, 0
+        for thr in self._THRESHOLD_CANDIDATES:
+            staked = 0.0
+            returned = 0.0
+            n_bets = 0
+            for dp, c, t in zip(decision_probs, coeffs, targets):
+                if dp < thr:
+                    continue
+                n_bets += 1
+                staked += 1.0
+                if t >= 0.5:
+                    returned += c
+            if n_bets < min_bets:
+                continue
+            roi = (returned - staked) / staked
+            score = roi - self._THRESHOLD_SAMPLE_PENALTY / (n_bets ** 0.5)
+            if score > best_score:
+                best_score = score
+                best_roi = roi
+                best_threshold = thr
+                best_bets = n_bets
+        return best_threshold, best_roi, best_bets
 
     def _prepare_sample(self, sample: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -898,6 +995,11 @@ class NeuralBetEnsemble:
             # anything, which is the safe default.
             "conflict_key": sample.get("event_id"),
             "overround_close": sample.get("overround_close"),
+            # Top-level sport as text (not just the embedding index below) — used by
+            # tune_ensemble to group validation samples for per-sport decision_threshold
+            # tuning (see NeuralBetEnsemble.sport_threshold). Same grouping
+            # calibration.py/backtest.py already use, kept consistent deliberately.
+            "sport": (sample.get("sport_path") or "").split("/")[0].strip() or "Другое",
             "sport_idx": sport_index(sample.get("sport_path")),
             "market_idx": market_family_index(sample.get("factor_id")),
             "team1_idx": team_index(sample.get("team_1")),

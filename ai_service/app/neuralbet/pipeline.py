@@ -992,8 +992,10 @@ def _run_neuralbet_inference_and_training_locked(
         # The verdict: the model's own decision head, not a probability/EV cutoff picked
         # from outside — see decision_logit in OddsTrajectoryGRU. Threshold defaults to
         # 0.5 but is retuned against validation ROI periodically — see
-        # ensemble_engine.tune_ensemble / the TUNING log line below.
-        predicted_win = 1 if decision_prob >= ensemble_engine.decision_threshold else 0
+        # ensemble_engine.tune_ensemble / the TUNING log line below. sport_threshold()
+        # uses this sport's own tuned cutoff when it has one, falling back to the global
+        # decision_threshold otherwise — see that method's docstring.
+        predicted_win = 1 if decision_prob >= ensemble_engine.sport_threshold(meta["sport"]) else 0
         if predicted_win:
             predicted_win_count += 1
         else:
@@ -1357,12 +1359,26 @@ def _run_neuralbet_inference_and_training_locked(
                 if bw["val_brier"] < tune_metrics["val_brier_base"]
                 else "market beats model"
             )
+            # Only sports that actually cleared MIN_THRESHOLD_BETS_PER_SPORT this pass
+            # show up in sport_decision_threshold — most passes, that's just the couple
+            # of largest sports (see tune_ensemble's docstring), so this stays short
+            # rather than listing 12+ "no change" entries every cycle.
+            sport_thresholds = tune_metrics.get("sport_decision_threshold") or {}
+            sport_str = (
+                "; по спорту — " + ", ".join(
+                    f"{sport} {v['old']} → {v['new']} ({v['val_bets']} bets)"
+                    for sport, v in sport_thresholds.items()
+                )
+                if sport_thresholds
+                else ""
+            )
             add_ai_log(
                 "TRAINING",
                 f"Ensemble tuned on {tune_metrics['samples']} val samples — "
                 f"blend_weight {bw['old']} → {bw['new']} (target {bw['target']}), "
                 f"market_weight {mw['old']} → {mw['new']} (target {mw['target']}) — "
-                f"val Brier {bw['val_brier']} vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), {dt_str}.",
+                f"val Brier {bw['val_brier']} vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), "
+                f"{dt_str}{sport_str}.",
             )
 
     return {

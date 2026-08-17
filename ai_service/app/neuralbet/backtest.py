@@ -240,6 +240,10 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         blend_weight = ensemble_engine.blend_weight
         market_weight = ensemble_engine.market_weight
         decision_threshold = ensemble_engine.decision_threshold
+        # Snapshot under the same lock as the other weights above — read fresh after
+        # the lock releases, this dict could be caught mid-update by a concurrent
+        # tune_ensemble() call.
+        sport_decision_thresholds = dict(ensemble_engine.sport_decision_thresholds)
         buckets = get_calibration_buckets()
 
         raw_results: List[tuple] = []
@@ -257,9 +261,11 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
             # have bet this," not just "did the decision head say win" — the whole
             # point of a backtest is previewing what live betting would produce, and the
             # two had drifted apart once the EV/support gates were added to live
-            # betting but not here.
+            # betting but not here. Mirrors pipeline.py's own lookup — this sport's own
+            # tuned decision_threshold when the snapshot above has one, the global one
+            # otherwise (see NeuralBetEnsemble.sport_threshold's docstring).
             current_pred = 1 if (
-                decision_prob >= decision_threshold
+                decision_prob >= sport_decision_thresholds.get(m["sport"], decision_threshold)
                 and m["coeff"] <= MAX_BET_COEFF
                 and expected_roi >= MIN_BET_EDGE_PCT
                 and not (market_support and market_support.get((m["sport"], m["factor_id"], m["label"]), 0) < MIN_MARKET_SUPPORT)
@@ -317,6 +323,12 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
             "blend_weight": round(blend_weight, 3),
             "market_weight": round(market_weight, 3),
             "decision_threshold": round(decision_threshold, 3),
+            # Per-sport overrides actually applied to current_pred above (via
+            # sport_threshold()) — only sports with their own tuned value appear here,
+            # everything else used decision_threshold.
+            "sport_decision_thresholds": {
+                s: round(v, 3) for s, v in sport_decision_thresholds.items()
+            },
             "max_bet_coeff": MAX_BET_COEFF,
         },
         "overall": _agg_group(records),
