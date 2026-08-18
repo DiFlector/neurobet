@@ -1096,8 +1096,8 @@ class NeuralBetEnsemble:
         differentiable bankroll loss for backprop and does not touch the DB.
         Returns {"loss": tensor-or-None, "bank_end": float, "rounds": int, ...}.
         """
-        acc = bankroll.get_account(account)
-        bank = acc["balance"]
+        acc = bankroll.get_account(account) if commit else None
+        bank = float(acc["balance"]) if acc is not None else float(bankroll.START_BALANCE)
         start_bank = bank
         losses = []
         total_staked = 0.0

@@ -1,16 +1,29 @@
 from typing import List, Dict, Any
 
+import time
+
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from app.config import DATABASE_URL
 
-_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, dsn=DATABASE_URL)
+_pg_pool = psycopg2.pool.ThreadedConnectionPool(2, 20, dsn=DATABASE_URL)
+
+
+def _checkout():
+    last = None
+    for _ in range(40):
+        try:
+            return _pg_pool.getconn()
+        except pool.PoolError as e:
+            last = e
+            time.sleep(0.05)
+    raise last
 
 
 def get_connection():
-    conn = _pg_pool.getconn()
+    conn = _checkout()
     conn.cursor_factory = RealDictCursor
     with conn.cursor() as cur:
         cur.execute("SET search_path TO live, public")
@@ -18,7 +31,7 @@ def get_connection():
 
 
 def get_finished_connection():
-    conn = _pg_pool.getconn()
+    conn = _checkout()
     conn.cursor_factory = RealDictCursor
     with conn.cursor() as cur:
         cur.execute("SET search_path TO finished, public")

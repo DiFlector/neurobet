@@ -200,9 +200,12 @@ _last_catch_up: bool | None = None
 # pass cannot be rolled back just because it did not beat a 10k overfit. Then
 # the online loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
 COLD_START_EPOCHS = int(os.getenv("NEURALBET_COLD_START_EPOCHS", "2"))
-# 0 = one pass = the entire train-universe pool (shuffle in Python). 20000 was
-# a thin slice of a ~270k-row archive; from-scratch needs the whole thing.
-COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "0"))
+# One HTTP cycle trains this many archive rows (shuffle in Python). 0 = the entire
+# ~280k pool in one fetch — that OOMs the AI worker during fetchall / exhausts
+# the 10-conn Postgres pool, then Docker restarts and epoch 1/2 begins again.
+# 40000 is large enough for from-scratch GRU + 200 inner epochs; two outer
+# archive epochs still walk the whole pool across cycles via trained_count.
+COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "40000"))
 # Same ceiling as online (early-stopping still cuts it). Two inner epochs on
 # a cold GRU barely move val_loss; let the first two archive passes actually
 # converge.
@@ -1156,20 +1159,36 @@ def _fetch_cold_start_batch(
 ) -> tuple[list[dict[str, Any]], list[tuple]]:
     """Shuffled slice of the train-universe archive. Epoch 1 prefers unseen rows
     so coverage actually advances; later epochs reshuffle the whole pool.
-    COLD_START_CHUNK<=0 takes the entire pool (no SQL RANDOM sort — shuffle here)."""
+    COLD_START_CHUNK<=0 takes the entire pool. RANDOM() runs on key columns only
+    so Postgres does not sort 280k JSON trajectories."""
     uni, where_val, params = _universe_filter(val_event_ids)
     extra = "AND h.trained_count = 0" if epoch <= 1 else ""
     unlimited = COLD_START_CHUNK <= 0
-    order_limit = "" if unlimited else "ORDER BY RANDOM() LIMIT %s"
-    bind = list(params) if unlimited else params + [COLD_START_CHUNK]
-    f_cursor.execute(
-        f"""
-        {_TRAIN_ROW_SELECT}
-        {uni} {where_val} {extra}
-        {order_limit}
-        """,
-        bind,
-    )
+    if unlimited:
+        f_cursor.execute(
+            f"""
+            {_TRAIN_ROW_SELECT}
+            {uni} {where_val} {extra}
+            """,
+            list(params),
+        )
+    else:
+        f_cursor.execute(
+            f"""
+            {_TRAIN_ROW_SELECT}
+            {uni} {where_val} {extra}
+            AND (h.event_id, h.factor_id, h.parameter, h.market_prefix) IN (
+                SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix
+                FROM finished_bets h
+                JOIN finished_events f ON h.event_id = f.event_id
+                WHERE h.is_win IS NOT NULL
+                {uni} {where_val} {extra}
+                ORDER BY RANDOM()
+                LIMIT %s
+            )
+            """,
+            list(params) + list(params) + [COLD_START_CHUNK],
+        )
     samples = _rows_to_train_samples(f_cursor.fetchall())
     random.shuffle(samples)
     keys = [s["_key"] for s in samples]
@@ -1700,7 +1719,15 @@ def _run_neuralbet_inference_and_training_locked(
 
     # --- Live bankroll: propose bets to backend, which validates freshness, executes,
     # and settles resolved ones on its own cycle (see backend/database.py) ---
-    place_result = _place_live_bets(live_candidates)
+    if _load_cold_start().get("active"):
+        add_ai_log(
+            "BANKROLL",
+            "Cold-start in progress — live bets skipped (weights are random "
+            "until the archive walk finishes).",
+        )
+        place_result = {}
+    else:
+        place_result = _place_live_bets(live_candidates)
     if place_result.get("placed"):
         skip_reasons = [s.get("reason") for s in place_result.get("skipped", [])]
         skipped_stale = skip_reasons.count("stale_market")
@@ -1771,8 +1798,18 @@ def _run_neuralbet_inference_and_training_locked(
         if cold_start_active
         else (_cycle_count == 1 or _cycle_count % train_every == 0)
     )
-    is_tune_cycle = _cycle_count == 1 or _cycle_count % TUNE_EVERY_CYCLES == 0
-    is_lgb_cycle = _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0
+    # LightGBM/tuner want their own extra 40k fetch — on top of a cold-start chunk
+    # that already saturates RAM and the connection pool. Refit after the walk.
+    is_tune_cycle = (
+        False
+        if cold_start_active
+        else (_cycle_count == 1 or _cycle_count % TUNE_EVERY_CYCLES == 0)
+    )
+    is_lgb_cycle = (
+        False
+        if cold_start_active
+        else (_cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0)
+    )
 
     training_samples: list[dict[str, Any]] = []
     val_samples: list[dict[str, Any]] = []

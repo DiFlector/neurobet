@@ -71,20 +71,26 @@ def now_iso() -> str:
 # Persistent account state
 # ---------------------------------------------------------------------------
 
+def _row_to_account(row) -> Dict[str, Any]:
+    if row is None:
+        return {
+            "account": "", "balance": START_BALANCE, "start_balance": START_BALANCE,
+            "peak_balance": START_BALANCE, "locked": 0.0, "rounds": 0, "bets_placed": 0,
+            "wins": 0, "losses": 0, "total_staked": 0.0, "total_returned": 0.0,
+            "ruin_count": 0, "is_ruined": 0, "updated_at": None,
+        }
+    return dict(row)
+
+
 def get_account(account: str) -> Dict[str, Any]:
     conn = get_finished_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
     row = cur.fetchone()
     release_connection(conn)
-    if row is None:
-        return {
-            "account": account, "balance": START_BALANCE, "start_balance": START_BALANCE,
-            "peak_balance": START_BALANCE, "locked": 0.0, "rounds": 0, "bets_placed": 0,
-            "wins": 0, "losses": 0, "total_staked": 0.0, "total_returned": 0.0,
-            "ruin_count": 0, "is_ruined": 0, "updated_at": None,
-        }
-    return dict(row)
+    payload = _row_to_account(row)
+    payload["account"] = account
+    return payload
 
 
 def reset_account(account: str, start_balance: Optional[float] = None) -> Dict[str, Any]:
@@ -120,7 +126,9 @@ def apply_round_result(
     """
     conn = get_finished_connection()
     cur = conn.cursor()
-    acc = get_account(account)
+    cur.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
+    acc = _row_to_account(cur.fetchone())
+    acc["account"] = account
     balance_before = acc["balance"]
     balance_after = balance_before - staked + returned
     ruined = balance_after <= RUIN_THRESHOLD
@@ -181,7 +189,9 @@ def settle_stake(account: str, stake: float, payout: float, outcome: str) -> Dic
     """
     conn = get_finished_connection()
     cur = conn.cursor()
-    acc = get_account(account)
+    cur.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
+    acc = _row_to_account(cur.fetchone())
+    acc["account"] = account
     balance_before = acc["balance"]
     balance_after = balance_before + payout
     locked_after = max(acc["locked"] - stake, 0.0)
