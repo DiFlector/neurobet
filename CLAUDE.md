@@ -40,8 +40,11 @@ autobet/
 │   ├── database.py                          # SQLite database schema, py_lower function, stats
 │   ├── parser_service.py                    # Fonbet LIVE API catalog resolver & scraper
 │   ├── main.py                              # FastAPI REST endpoints & background scheduler
+│   ├── mcp_eval.py                          # Streamable HTTP MCP at POST /api/mcp
 │   ├── requirements.txt                     # Dependencies (FastAPI, uvicorn, httpx, wasmtime, etc.)
 │   └── Dockerfile                           # Fast uv-based Docker image
+├── mcp/
+│   └── neurobet_eval.py                     # Stdio MCP fallback (proxies to /api/mcp)
 ├── frontend/
 │   └── autobet/
 │       ├── app/
@@ -84,6 +87,63 @@ autobet/
 * `GET /api/matches/{event_id}/odds-history?factor_id={fid}&parameter={p}&market_prefix={prefix}`: Returns chronological odds history for graph plotting.
 * `GET /api/stats`: Returns live counts, total odds history records, database disk file size, and last update timestamp.
 * `POST /api/trigger-scrape`: Triggers an instant manual scrape.
+* `POST /api/mcp`: Streamable HTTP MCP (tools for stats, admin reads, eval pack). See below.
+
+---
+
+## 🔌 MCP (Model Context Protocol)
+
+Cursor connects as the **client**; NeuroBet is the **server**. Production endpoint is Streamable HTTP — no extra port, it rides the existing `/api` rewrite:
+
+* URL: `https://necrolich.ru/neurobet/api/mcp` (local: `POST /api/mcp` on the backend)
+* Cursor config: `.cursor/mcp.json` (`neurobet-eval`, `"type": "http"`)
+* Implementation: `backend/mcp_eval.py` (source of truth for the tool list)
+* Stdio fallback for offline/dev: `mcp/neurobet_eval.py` — forwards JSON-RPC to `{NEUROBET_API_URL}/api/mcp`
+
+All tools are **read-only** except running a backtest (CPU, 15–60s, does not mutate the model). Destructive admin actions are **not** exposed: reset DB / model / bankroll, cancel live bets, toggle inference/training.
+
+Prefer a **granular** tool when you only need one slice. Use a composite when reviewing the whole picture.
+
+### Composite
+
+| Tool | What it returns | When to use |
+| :--- | :--- | :--- |
+| `get_eval_pack` | Full agent pack: filters, ensemble, latest full backtest JSON, ROI/stats, training health, training runs, bankroll, logs. No new backtest. | Model review / attaching one JSON |
+| `run_eval_pack` | Fresh backtest (default 40000 samples) then the same pack | Judging **current** weights |
+| `get_overview` | Lighter all-in-one: db/ROI/bet-type stats, bankroll, settings, health, backtest history, logs. No ensemble, no full backtest JSON | Quick health check |
+| `get_admin` | Everything the admin panel polls: settings, health, training-run trend, backtest history, DB stats, bankroll, live bets, logs | Admin-page snapshot |
+| `get_stats` | Everything on «Статистика»: `db_stats`, `bet_type_stats`, `roi_stats` | Stats-page snapshot |
+
+### Страница «Статистика»
+
+| Tool | What it returns |
+| :--- | :--- |
+| `get_db_stats` | Live events, odds-history count, DB size, finished-bet counts, headline guess-rate |
+| `get_bet_type_stats` | Guess-rate by sport and market («Разбивка угадывания»). Optional `sport`, `bet_types_limit` |
+| `get_roi_stats` | ROI and Brier vs bookmaker baseline, by coefficient band |
+
+### Админка (read-only)
+
+| Tool | What it returns |
+| :--- | :--- |
+| `get_ai_settings` | `ai_enabled` / `training_enabled` toggles |
+| `get_ai_logs` | TRAINING / INFERENCE / BANKROLL / SYSTEM feed. Optional `category`, `limit` |
+| `get_training_health` | Overfitting traffic light (`ok` / `warning` / `danger` / `unknown`) + signals |
+| `get_training_runs` | Per-pass metrics for TrainingTrendChart (`val_loss`, `val_guess_rate`, `best_epoch`, …) |
+| `get_backtest_history` | Condensed run trend for QualityTrendChart (not the full per-run JSON) |
+| `get_latest_backtest` | Full latest backtest JSON on disk (`overall`, `by_sport`, `by_coefficient`). No new run |
+| `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
+| `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
+| `get_filters` | Live betting gates: allowed sports/factors, coeff band, min EV, min market support |
+| `get_bankroll` | Live + training accounts |
+| `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
+
+### Дашборд нейроставок
+
+| Tool | What it returns |
+| :--- | :--- |
+| `get_top_neurobets` | Active LIVE predictions (`verdict=win` by default — only what the bot would stake) |
+| `get_neurobets_history` | Judged history (guessed / not guessed / push / pending) + summary |
 
 ---
 
