@@ -13,6 +13,7 @@ Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
 """
 import os
+import re
 from typing import Optional, Tuple
 
 # ---------------------------------------------------------------------------
@@ -86,6 +87,8 @@ def in_universe(
     parameter: Optional[str] = None,
 ) -> bool:
     sport = sport_top(sport_path)
+    if is_fast_format_sport_path(sport_path):
+        return False
     if sport not in ALLOWED_SPORTS or factor_id is None:
         return False
     fid = int(factor_id)
@@ -100,6 +103,32 @@ def in_universe(
             return False
         return bounds[0] <= line <= bounds[1]
     return True
+
+
+# Simulated/compressed formats that finish faster than we can snapshot a real score
+# (Setka Cup, NBA 2K Esportsbattle 4Х5, "2x4 мин", …). Under 126.5 settled as a win
+# on a frozen 4:4 while Fonbet's coupon was 69:59 — same class as the earlier
+# Esportsbattle under that graded 64:53 against a 76:57 final. Excluded from the
+# universe (inference, training, stats) AND skipped at parse time.
+_FAST_FORMAT_SPORT_PATH_SUBSTRINGS = (
+    "setka cup", "world tennis", "tt cup", "online live league",
+    "nba 2k", "2k26", "esportsbattle",
+)
+_FAST_ESPORTS_FORMAT_RE = re.compile(r"\d+\s*[xх]\s*\d+\s*мин", re.IGNORECASE)
+# SQL for universe_sql — same tell, case-insensitive. Keep in sync with the Python
+# matcher above. Do not drop the "мин" on the NxM branch: real amateur hockey
+# "RHL 3x10" is a ~30-minute game we still want.
+FAST_FORMAT_SPORT_SQL = (
+    r"(nba 2k|2k26|esportsbattle|setka cup|world tennis|tt cup|online live league|"
+    r"[0-9]+\s*[xх]\s*[0-9]+\s*мин)"
+)
+
+
+def is_fast_format_sport_path(sport_path: Optional[str]) -> bool:
+    sp = (sport_path or "").lower()
+    if any(s in sp for s in _FAST_FORMAT_SPORT_PATH_SUBSTRINGS):
+        return True
+    return bool(_FAST_ESPORTS_FORMAT_RE.search(sp))
 
 
 def in_bet_band(coeff: float) -> bool:
@@ -171,6 +200,7 @@ def universe_sql(event_alias: str, bet_alias: str) -> str:
     return (
         f" AND LOWER(TRIM(SPLIT_PART({event_alias}.sport_path, '/', 1))) = ANY(%s)"
         f" AND {bet_alias}.factor_id = ANY(%s)"
+        f" AND {event_alias}.sport_path !~* '{FAST_FORMAT_SPORT_SQL}'"
         + universe_line_sql(event_alias, bet_alias)
     )
 

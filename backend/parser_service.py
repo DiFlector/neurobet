@@ -3,8 +3,15 @@ import logging
 import datetime
 import os
 import json
-import re
+import sys
+from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
+
+# Docker copies neurobet_filters onto /app; locally it's under repo/shared.
+_shared = Path(__file__).resolve().parent.parent / "shared"
+if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
+    sys.path.insert(0, str(_shared))
+from neurobet_filters import is_fast_format_sport_path  # noqa: E402
 
 logger = logging.getLogger("parser_service")
 
@@ -264,40 +271,15 @@ EXCLUDED_MARKET_PREFIXES = {
     "дополнительное время", "видеопросмотры",
 }
 
-# Whole events we never parse at all — not shown live, not bet on, not archived, not
-# trained on. Confirmed via history audit: matches under these formats overwhelmingly
-# finish (or transition between periods) faster than our poll interval, so
-# period_scores stays permanently empty — 35000+ "не рассчитана" bets traced back to
-# exactly this. Per explicit instruction, these are excluded outright rather than just
-# disabling their period-scoped markets.
-# "Шорт-хоккей" was here too originally, on the assumption "short" meant a compressed
-# simulated format like the others — turned out wrong: watching a real "Шорт-хоккей"
-# match live (RHL. West. 3x10 — a real shootout, see the resolve_outcome named_scores
-# work) showed a normal ~30-minute game with 3 real periods, OT and a shootout. "Short"
-# just means shorter periods (an amateur/streetball-style league format), not a
-# compressed simulation. Do NOT match bare "3x10" / "4x5" without "мин": that would
-# swallow this real hockey too. NBA 2K was in the same "occasional gap" bucket until
-# a live Esportsbattle 4Х5 under (event 67306016, 2026-08-18) settled as a win on a
-# frozen 64:53 while Fonbet's coupon was 76:57 — Under 128.5 should have lost. The
-# league name is "4Х5" with no "мин", so the regex below never fired.
-_FAST_FORMAT_SPORT_PATH_SUBSTRINGS = (
-    "setka cup", "world tennis", "tt cup", "online live league",
-    "nba 2k", "2k26", "esportsbattle",
-)
-# Esports simulated fixtures (FC 24/26, NHL 26, H2H CS, ...) advertise their own
-# compressed real-time duration right in the league name — "2x4 мин.", "3x4 мин.",
-# "4X5 мин", etc. — a reliable, sport-agnostic tell that the whole match plays out in a
-# couple of real minutes, same root problem as the named leagues above. "мин" is
-# required so real amateur formats like RHL 3x10 stay in.
-_FAST_ESPORTS_FORMAT_RE = re.compile(r"\d+\s*[xх]\s*\d+\s*мин", re.IGNORECASE)
-
-
-def _is_fast_format_sport_path(sport_path: str) -> bool:
-    sp = (sport_path or "").lower()
-    if any(s in sp for s in _FAST_FORMAT_SPORT_PATH_SUBSTRINGS):
-        return True
-    return bool(_FAST_ESPORTS_FORMAT_RE.search(sp))
-
+# Whole events we never parse at all — matcher lives in shared/neurobet_filters
+# (`is_fast_format_sport_path`) so inference/training/archive stay in lockstep.
+# Confirmed via history audit: these formats finish faster than our poll, so
+# period_scores stays empty — 35000+ "не рассчитана" plus live 2K unders graded
+# on a frozen score (Esportsbattle 4Х5, 2026-08-18: Under 128.5 won on 64:53
+# against Fonbet 76:57; Under 126.5 won on 4:4 against Fonbet 69:59).
+# Do NOT match bare "3x10" / "4x5" without "мин": that would swallow real amateur
+# hockey (RHL. West. 3x10). League names like "NBA 2K26. Esportsbattle 4Х5" have
+# no "мин", so the substring tell ("nba 2k" / "esportsbattle") is required.
 
 # Fonbet's live list has a display-side lag for combat sports: a match can drop off
 # the live feed for a minute or more (well past EVENT_MISS_THRESHOLD/GRACE) while still
@@ -636,20 +618,20 @@ class FonbetParserService:
                 # Sub-events handled under parent
                 continue
 
+            sport_path = get_sport_path(ev.get("sportId"))
+            if is_fast_format_sport_path(sport_path):
+                # Skip *before* seen_live_ids: leftover 2K rows already in `events`
+                # would otherwise stay "present" forever, then archive on a frozen
+                # score the moment Fonbet drops them. Not adding them lets miss/grace
+                # flush those tails; archive_finished_events voids rather than grades.
+                continue
+
             # Event is genuinely present in this snapshot even if it ends up with
-            # zero odds below (e.g. a quarter-break line pull) — record it as "seen"
-            # so the caller doesn't treat a temporary odds gap as the match ending.
+            # zero odds below (e.g. a quarter-break line pull) or is skipped as a
+            # combat-sport display-lag case — record it as "seen" so the caller
+            # doesn't treat a temporary gap as the match ending.
             seen_live_ids.add(eid)
 
-            sport_path = get_sport_path(ev.get("sportId"))
-            if _is_fast_format_sport_path(sport_path):
-                # These formats reliably finish faster than our 60s poll interval —
-                # period_scores (and sometimes even a single real score snapshot) never
-                # gets captured, so period-scoped bets on them are permanently
-                # unresolvable. Per explicit instruction: skip the whole event, not just
-                # the period-scoped markets — not shown live, not bet on, not archived,
-                # not trained on.
-                continue
             if _is_excluded_sport_path(sport_path):
                 # Combat sports (see _EXCLUDED_SPORT_PATH_SUBSTRINGS above): Fonbet's
                 # live-list display lag causes premature/incorrect settlement.

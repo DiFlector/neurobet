@@ -29,6 +29,7 @@ from neurobet_filters import (
     MAX_BET_COEFF,
     MIN_BET_EDGE_PCT,
     MIN_MARKET_SUPPORT,
+    FAST_FORMAT_SPORT_SQL,
 )
 from app.neuralbet.model import NeuralBetEnsemble
 from app.neuralbet.training_history import record_training_run
@@ -933,10 +934,11 @@ def _run_neuralbet_inference_and_training_locked(
     else:
         cursor.execute("SELECT MAX(last_updated_at) FROM events")
         target_ts = cursor.fetchone()["max"]
-    # Combat sports (единоборства/MMA/UFC/бокс) are excluded from betting: Fonbet's live
-    # list has a display-side lag for them that causes premature/incorrect settlement
-    # (see the exclusion in parser_service.py). This is a defense-in-depth guard in case
-    # a combat-sport event was already stored before the parser-level fix took effect.
+    # Combat sports (единоборства/MMA/UFC/бокс) and compressed sims (NBA 2K /
+    # Esportsbattle 4Х5, Setka Cup, "NxM мин") are excluded from betting: the live
+    # list either lags (combat) or the match finishes faster than a scrape (2K),
+    # so we would settle against a frozen mid-game score. Defense-in-depth in case
+    # such an event was already stored before the parser-level skip took effect.
     sports, factors = universe_sql_params()
     cursor.execute(
         f"""
@@ -949,6 +951,7 @@ def _run_neuralbet_inference_and_training_locked(
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = %s
           AND e.sport_path !~* '(единоборства|mma|ufc|бокс)'
+          AND e.sport_path !~* '{FAST_FORMAT_SPORT_SQL}'
           {universe_sql("e", "l")}
     """,
         (target_ts, sports, factors),

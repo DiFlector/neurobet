@@ -25,6 +25,7 @@ from neurobet_filters import (  # noqa: E402
     universe_sql_params,
     bet_band_sql,
     MIN_MARKET_SUPPORT,
+    is_fast_format_sport_path,
 )
 
 logger = logging.getLogger("database")
@@ -627,11 +628,17 @@ def archive_finished_events(cursor, timestamp_str: str):
                     score_diff_seq.append(0)
             score_diff_at_bet = score_diff_seq[0] if score_diff_seq else 0
 
-            is_win, is_push = resolve_outcome(
-                fid, g["label"] or "", param, s1, s2,
-                market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
-                named_scores=named_scores,
-            )
+            if is_fast_format_sport_path(sport_path):
+                # Frozen mid-sim score is not a final. Grading Under 126.5 as a win
+                # on 4:4 while Fonbet's coupon was 69:59 (Dallas–NY 2K, 2026-08-18)
+                # poisons both the live bankroll and finished_bets training labels.
+                is_win, is_push = None, False
+            else:
+                is_win, is_push = resolve_outcome(
+                    fid, g["label"] or "", param, s1, s2,
+                    market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
+                    named_scores=named_scores,
+                )
 
             # Capture what the model actually predicted for this bet before it's gone —
             # this is the only way to later check "when the model said 75%, did it really
@@ -2407,6 +2414,8 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
         ev = cursor.fetchone()
         if ev is None or not ev["is_live"]:
             continue  # event already finished/archived — settle_live_bets handles it
+        if is_fast_format_sport_path(ev["sport_path"] or ""):
+            continue  # ungradable compressed sim — full-archive path voids it
 
         try:
             period_scores = [tuple(p) for p in json.loads(ev["period_scores_json"] or "[]")]
