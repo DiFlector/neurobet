@@ -380,6 +380,48 @@ class NeuralBetEnsemble:
         except Exception as e:
             logger.error(f"Error saving model weights: {e}")
 
+    def save_ensemble(self) -> bool:
+        """Write blend/market/decision thresholds onto the existing GRU checkpoint
+        without replacing model_state. tune_ensemble runs more often than an accepted
+        train_online pass; if we only persisted those scalars together with a new GRU
+        file, a restart after a reject-storm rolled blend/threshold back to whatever
+        the last accepted cold-start checkpoint carried (seen in production 19 Aug 2026:
+        live 0.06/0.526 vanished, init 0.35/0.52 came back). Returns True if the file
+        was updated."""
+        self._apply_sport_threshold_floors()
+        ensemble_fields = {
+            "blend_weight": self.blend_weight,
+            "market_weight": self.market_weight,
+            "decision_threshold": self.decision_threshold,
+            "sport_decision_thresholds": dict(self.sport_decision_thresholds),
+        }
+        try:
+            os.makedirs(MODEL_DIR, exist_ok=True)
+            if not os.path.exists(PYTORCH_WEIGHTS_PATH):
+                # No GRU file yet — a full save would dump random-init weights as if
+                # they were a real checkpoint. Leave the scalars in memory; the first
+                # accepted train_online pass writes both together.
+                logger.info(
+                    "Ensemble weights not persisted — no GRU checkpoint on disk yet."
+                )
+                return False
+            blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
+            if not isinstance(blob, dict) or "model_state" not in blob:
+                # Bare state_dict from before ensemble fields existed. Full save
+                # keeps the GRU currently in memory (the accepted/restored one) and
+                # adds the scalars.
+                self.save_checkpoints()
+                return True
+            blob.update(ensemble_fields)
+            tmp_path = PYTORCH_WEIGHTS_PATH + ".tmp"
+            torch.save(blob, tmp_path)
+            os.replace(tmp_path, PYTORCH_WEIGHTS_PATH)
+            logger.info(f"Saved ensemble weights to {PYTORCH_WEIGHTS_PATH}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving ensemble weights: {e}")
+            return False
+
     def _snapshot_train_state(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         return (
             copy.deepcopy(self.pytorch_model.state_dict()),
@@ -831,6 +873,9 @@ class NeuralBetEnsemble:
         - Every parameter is smoothed towards this cycle's grid-search result rather
           than snapping to it (see _TUNE_SMOOTH_ALPHA) — the target values are reported
           alongside the smoothed ones so the log line shows both.
+        - The tuned scalars are written onto the existing GRU checkpoint immediately
+          (see save_ensemble): they must survive a container restart even when the
+          next train_online pass is rejected and does not rewrite the file.
 
         Uses the same random-cutoff trajectory view as training (_prepare_sample) so
         this is evaluating the model the way it actually gets scored elsewhere (val_loss,
@@ -935,9 +980,11 @@ class NeuralBetEnsemble:
         # Sports that didn't clear the val-bets floor this pass still need their
         # SPORT_THRESHOLD_FLOORS minimum in the stored dict (backtest snapshots it).
         self._apply_sport_threshold_floors()
+        persisted = self.save_ensemble()
 
         return {
             "tuned": True,
+            "persisted": persisted,
             "samples": len(prepared),
             "val_brier_base": round(base_brier, 4),
             "blend_weight": {

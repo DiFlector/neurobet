@@ -2272,13 +2272,14 @@ def _run_neuralbet_inference_and_training_locked(
                 if sport_thresholds
                 else ""
             )
+            persisted = "saved" if tune_metrics.get("persisted") else "not saved (no GRU checkpoint yet)"
             add_ai_log(
                 "TRAINING",
                 f"Ensemble tuned on {tune_metrics['samples']} val samples — "
                 f"blend_weight {bw['old']} → {bw['new']} (target {bw['target']}), "
                 f"market_weight {mw['old']} → {mw['new']} (target {mw['target']}) — "
                 f"val Brier {bw['val_brier']} vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), "
-                f"{dt_str}{sport_str}.",
+                f"{dt_str}{sport_str}. Ensemble weights {persisted}.",
             )
 
     return {
