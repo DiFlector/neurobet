@@ -103,6 +103,19 @@ LGB_TRAIN_LIMIT = int(os.getenv("NEURALBET_LGB_TRAIN_LIMIT", "40000"))
 # of that noise it has to smooth away without slowing convergence meaningfully.
 TRAIN_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_EVERY_CYCLES", "20"))
 TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "10"))
+# Catch-up cadence: TRAIN_EVERY_CYCLES=20 exists so newly finished bets can accumulate
+# into a full 7000-fresh slice instead of a trickle of replay. That wait is wasted while
+# the archive still has a backlog of trained_count=0 rows — those already fill the fresh
+# slice (newest first, so live arrivals jump the queue). Train every
+# TRAIN_CATCHUP_EVERY_CYCLES until either (a) ≥ TRAIN_CATCHUP_UNTIL_RATIO of the
+# training-universe archive has been seen at least once AND (b) the remaining untrained
+# pool is smaller than one fresh slice. Then fall back to 20 so new finishes pile up.
+TRAIN_CATCHUP_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_CATCHUP_EVERY_CYCLES", "5"))
+TRAIN_CATCHUP_UNTIL_RATIO = float(os.getenv("NEURALBET_TRAIN_CATCHUP_UNTIL_RATIO", "0.80"))
+_COVERAGE_REFRESH_SECONDS = float(os.getenv("NEURALBET_COVERAGE_REFRESH_SECONDS", "60"))
+_coverage_cache: dict[str, Any] | None = None
+_coverage_loaded_at = 0.0
+_last_catch_up: bool | None = None
 
 # Floor on how many samples (fresh + replay combined — see _fetch_training_batch) a
 # training cycle needs before it's allowed to actually run a gradient step. Below this,
@@ -188,6 +201,7 @@ def reset_neural_network() -> dict[str, Any]:
     against a model that just started over.
     """
     global _cycle_count, _low_epoch_streak
+    _invalidate_archive_coverage()
     with _engine_lock:
         ensemble_engine.reset()
 
@@ -257,6 +271,97 @@ TRAINING_HEALTH_VAL_LOSS_WINDOW = int(
 )
 
 
+def _fresh_target() -> int:
+    return int(TRAIN_BATCH_TOTAL * TRAIN_FRESH_SHARE)
+
+
+def _invalidate_archive_coverage() -> None:
+    global _coverage_cache, _coverage_loaded_at
+    _coverage_cache = None
+    _coverage_loaded_at = 0.0
+
+
+def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
+    """Share of the training-universe archive that has trained_count > 0.
+
+    Cached for _COVERAGE_REFRESH_SECONDS: the COUNT over the joined universe is
+    cheap with idx_finished_bets_trained, but the admin panel polls health every
+    few seconds and does not need a live recount that often.
+    """
+    global _coverage_cache, _coverage_loaded_at, _last_catch_up
+    now = time.monotonic()
+    if (
+        not force
+        and _coverage_cache is not None
+        and (now - _coverage_loaded_at) < _COVERAGE_REFRESH_SECONDS
+    ):
+        return _coverage_cache
+
+    untrained = trained = total = 0
+    f_conn = None
+    try:
+        f_conn = get_finished_connection()
+        f_cursor = f_conn.cursor()
+        sports, factors = universe_sql_params()
+        f_cursor.execute(
+            f"""
+            SELECT
+              COUNT(*) FILTER (WHERE h.trained_count = 0) AS untrained,
+              COUNT(*) FILTER (WHERE h.trained_count > 0) AS trained,
+              COUNT(*) AS total
+            FROM finished_bets h
+            JOIN finished_events f ON h.event_id = f.event_id
+            WHERE h.is_win IS NOT NULL
+            {universe_sql("f", "h")}
+            """,
+            [sports, factors],
+        )
+        row = f_cursor.fetchone()
+        if row:
+            untrained = int(row["untrained"] or 0)
+            trained = int(row["trained"] or 0)
+            total = int(row["total"] or 0)
+    except Exception as e:
+        logger.error(f"Error querying archive training coverage: {e}")
+        if _coverage_cache is not None:
+            return _coverage_cache
+    finally:
+        if f_conn is not None:
+            release_connection(f_conn)
+
+    trained_ratio = (trained / total) if total else 0.0
+    fresh_n = _fresh_target()
+    # Still chewing the archive, or enough unseen rows to fill a fresh slice without
+    # waiting for new finishes: train faster. Only sit at TRAIN_EVERY_CYCLES once both
+    # the 80% mark is cleared AND the untrained leftover is smaller than one batch.
+    catch_up = total > 0 and (
+        trained_ratio < TRAIN_CATCHUP_UNTIL_RATIO or untrained >= fresh_n
+    )
+    every = TRAIN_CATCHUP_EVERY_CYCLES if catch_up else TRAIN_EVERY_CYCLES
+    payload = {
+        "untrained": untrained,
+        "trained": trained,
+        "total": total,
+        "trained_ratio": round(trained_ratio, 4),
+        "catch_up": catch_up,
+        "train_every_cycles": every,
+        "fresh_target": fresh_n,
+    }
+    if _last_catch_up is None or catch_up != _last_catch_up:
+        add_ai_log(
+            "TRAINING",
+            (
+                f"Catch-up training {'ON' if catch_up else 'OFF'} — archive "
+                f"{trained_ratio:.0%} trained ({trained}/{total}), {untrained} unseen, "
+                f"cadence every {every} cycles."
+            ),
+        )
+    _last_catch_up = catch_up
+    _coverage_cache = payload
+    _coverage_loaded_at = now
+    return payload
+
+
 def get_training_health() -> dict[str, Any]:
     """
     Traffic-light read on whether online training is currently helping or hurting,
@@ -297,6 +402,7 @@ def get_training_health() -> dict[str, Any]:
     if not AI_SETTINGS["training_enabled"]:
         return {
             "status": "disabled",
+            "archive_coverage": get_archive_training_coverage(),
             "signals": {
                 "low_epoch_streak": {
                     "active": False,
@@ -380,6 +486,7 @@ def get_training_health() -> dict[str, Any]:
 
     return {
         "status": status,
+        "archive_coverage": get_archive_training_coverage(),
         "signals": {
             "low_epoch_streak": {
                 "active": signal_a,
@@ -1127,8 +1234,11 @@ def _run_neuralbet_inference_and_training_locked(
 
     # Force cycle 1 too (cold start — otherwise every one of these stays at its
     # untrained/untuned default for the first TRAIN_EVERY_CYCLES/TUNE_EVERY_CYCLES/
-    # LGB_REFIT_EVERY_CYCLES cycles after every restart).
-    is_train_cycle = _cycle_count == 1 or _cycle_count % TRAIN_EVERY_CYCLES == 0
+    # LGB_REFIT_EVERY_CYCLES cycles after every restart). Catch-up shortens only the
+    # GRU pass (see TRAIN_CATCHUP_EVERY_CYCLES); tuner/LightGBM stay on their cadence.
+    coverage = get_archive_training_coverage()
+    train_every = int(coverage["train_every_cycles"])
+    is_train_cycle = _cycle_count == 1 or _cycle_count % train_every == 0
     is_tune_cycle = _cycle_count == 1 or _cycle_count % TUNE_EVERY_CYCLES == 0
     is_lgb_cycle = _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0
 
@@ -1228,13 +1338,20 @@ def _run_neuralbet_inference_and_training_locked(
         training_samples = []
 
     if training_samples:
+        cov_str = ""
+        if coverage.get("total"):
+            cov_str = (
+                f" Archive {coverage['trained_ratio']:.0%} trained "
+                f"({coverage['trained']}/{coverage['total']}"
+                f"{', catch-up' if coverage.get('catch_up') else ''})."
+            )
         add_ai_log(
             "TRAINING",
             f"Starting online training pass: {len(training_samples)} samples "
             f"({int(len(training_samples) * TRAIN_FRESH_SHARE)} fresh target / rest replay), "
             f"{len(val_samples)} held out for validation "
             "(universe: футбол/баскетбол/НТ/волейбол/теннис × П1/П2 + футбольная ничья "
-            "+ матчевые тоталы; ставки 1.5–2.0).",
+            f"+ матчевые тоталы; ставки 1.5–2.0).{cov_str}",
         )
 
         def _log_epoch(epoch_idx: int, train_loss: float, val_loss: float | None):
@@ -1258,6 +1375,7 @@ def _run_neuralbet_inference_and_training_locked(
             _mark_trained(f_cursor2, train_keys)
             f_conn2.commit()
             release_connection(f_conn2)
+            _invalidate_archive_coverage()
 
             global _low_epoch_streak
             if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
@@ -1346,11 +1464,19 @@ def _run_neuralbet_inference_and_training_locked(
             "TRAINING", "No new finished matches in database for retraining step."
         )
     else:
-        add_ai_log(
-            "TRAINING",
-            f"Online training skipped this cycle (runs every {TRAIN_EVERY_CYCLES} cycles) — "
-            "fresh resolved bets keep accumulating for the next pass.",
-        )
+        if coverage.get("catch_up"):
+            add_ai_log(
+                "TRAINING",
+                f"Online training skipped this cycle (catch-up every {train_every} cycles, "
+                f"archive {coverage['trained_ratio']:.0%} trained, "
+                f"{coverage['untrained']} unseen) — chewing the untrained backlog.",
+            )
+        else:
+            add_ai_log(
+                "TRAINING",
+                f"Online training skipped this cycle (runs every {train_every} cycles) — "
+                "fresh resolved bets keep accumulating for the next pass.",
+            )
 
     if lgb_rows:
         lgb_metrics = ensemble_engine.train_lightgbm(lgb_rows, val_rows=lgb_val_rows)
