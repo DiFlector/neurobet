@@ -49,6 +49,11 @@ GRU_LAYERS = int(os.getenv("NEURALBET_GRU_LAYERS", "2"))
 # just removes an artificial cap for when a bigger batch needs more passes to converge.
 MAX_EPOCHS = int(os.getenv("NEURALBET_MAX_EPOCHS", "200"))
 EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
+# A finished online pass only keeps its weights if they beat the *incoming* model on
+# the same held-out split (see train_online). Same epsilon as the per-epoch check so
+# "did this pass help" and "which epoch of the pass" cannot disagree on what "better"
+# means. Comparing today's val_loss to yesterday's on a different 2000-row split would
+# freeze the net on a lucky batch; this is a paired before/after on one split.
 # 64 -> 128 -> 256: fewer, larger mini-batches per epoch use the CPU's vectorized
 # matmuls more efficiently (more work per Python-level loop iteration) — meaningful as
 # each training pass's sample count (pipeline.TRAIN_BATCH_TOTAL) has grown; 256 keeps
@@ -345,6 +350,21 @@ class NeuralBetEnsemble:
             logger.info(f"Saved PyTorch model weights checkpoint to {PYTORCH_WEIGHTS_PATH}")
         except Exception as e:
             logger.error(f"Error saving model weights: {e}")
+
+    def _snapshot_train_state(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        return (
+            copy.deepcopy(self.pytorch_model.state_dict()),
+            copy.deepcopy(self.pytorch_optimizer.state_dict()),
+        )
+
+    def _restore_train_state(self, model_state: Dict[str, Any], optim_state: Dict[str, Any]) -> None:
+        self.pytorch_model.load_state_dict(model_state)
+        try:
+            self.pytorch_optimizer.load_state_dict(optim_state)
+            for group in self.pytorch_optimizer.param_groups:
+                group["lr"] = LEARNING_RATE
+        except Exception:
+            pass
 
     def _load_model_state_soft(self, state_dict: Dict[str, Any]) -> bool:
         """
@@ -1209,12 +1229,19 @@ class NeuralBetEnsemble:
         val split (not the train set) and committed to the persistent "training"
         bankroll account, so the logged balance is a generalization check rather
         than an in-sample Kelly compound.
+        The pass is then compared to the *incoming* weights on that same val split.
+        If it did not beat them, the snapshot is restored and the checkpoint file is
+        left untouched — otherwise every catch-up batch that failed to generalize
+        would still become the live model (seen as val_loss jumping 0.14 → 0.23
+        across passes while best-epoch-within-pass kept picking the least-bad epoch
+        of a worse pass). Next cycle continues from the restored weights on new data.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
             "negative_count": 0, "epochs_run": 0, "epoch_losses": [], "initial_loss": None,
             "final_loss": None, "train_guess_rate": None, "val_loss": None, "val_guess_rate": None,
-            "best_epoch": None, "bankroll": None,
+            "best_epoch": None, "bankroll": None, "checkpoint_accepted": None,
+            "val_loss_incoming": None, "val_loss_attempted": None,
         }
 
         # The virtual "training" bank compounds round over round purely for the loss
@@ -1231,6 +1258,13 @@ class NeuralBetEnsemble:
             return {**empty_metrics, "samples_skipped": skipped}
 
         prepared_val = [p for p in (self._prepare_sample(s) for s in (val_data or [])) if p is not None]
+
+        incoming_state = None
+        val_incoming = None
+        val_incoming_guess = None
+        if prepared_val:
+            incoming_state = self._snapshot_train_state()
+            val_incoming, val_incoming_guess = self._forward_metrics(prepared_val)
 
         positive_count = sum(1 for p in prepared if p["target"] == 1.0)
         negative_count = len(prepared) - positive_count
@@ -1344,7 +1378,26 @@ class NeuralBetEnsemble:
             f"training bankroll {bank_result['bank_start']:.1f} -> {bank_result['bank_end']:.1f}."
         )
 
-        self.save_checkpoints(extra={"best_epoch": best_epoch})
+        checkpoint_accepted = True
+        val_loss_attempted = final_val_loss
+        if incoming_state is not None and final_val_loss is not None and val_incoming is not None:
+            if final_val_loss >= val_incoming - 1e-4:
+                self._restore_train_state(*incoming_state)
+                checkpoint_accepted = False
+                # Chart / training_runs track the *kept* weights, not the rejected
+                # attempt — a pass that went 0.18 → 0.23 and got rolled back must plot
+                # as 0.18 again, same live model as the previous point.
+                final_val_loss = val_incoming
+                final_val_guess_rate = val_incoming_guess
+                final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
+                logger.info(
+                    f"Online pass did not beat incoming val_loss "
+                    f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
+                    f"restored previous weights, recording val_loss {final_val_loss:.4f}."
+                )
+
+        if checkpoint_accepted:
+            self.save_checkpoints(extra={"best_epoch": best_epoch})
 
         return {
             "samples_used": len(prepared),
@@ -1359,6 +1412,11 @@ class NeuralBetEnsemble:
             "val_loss": round(final_val_loss, 4) if final_val_loss is not None else None,
             "val_guess_rate": round(final_val_guess_rate * 100.0, 1) if final_val_guess_rate is not None else None,
             "best_epoch": best_epoch,
+            "checkpoint_accepted": checkpoint_accepted,
+            "val_loss_incoming": round(val_incoming, 4) if val_incoming is not None else None,
+            "val_loss_attempted": (
+                round(val_loss_attempted, 4) if val_loss_attempted is not None else None
+            ),
             "bankroll": {
                 "start": round(bank_result["bank_start"], 2),
                 "end": round(bank_result["bank_end"], 2),

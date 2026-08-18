@@ -1395,6 +1395,9 @@ def _run_neuralbet_inference_and_training_locked(
                 "train_guess_rate": metrics["train_guess_rate"],
                 "val_loss": metrics.get("val_loss"),
                 "val_guess_rate": metrics.get("val_guess_rate"),
+                "checkpoint_accepted": metrics.get("checkpoint_accepted"),
+                "val_loss_incoming": metrics.get("val_loss_incoming"),
+                "val_loss_attempted": metrics.get("val_loss_attempted"),
             })
 
             val_str = (
@@ -1437,7 +1440,15 @@ def _run_neuralbet_inference_and_training_locked(
                     if bank.get("ruin_events")
                     else ""
                 )
-                + ". Checkpoint saved.",
+                + (
+                    ". Checkpoint saved."
+                    if metrics.get("checkpoint_accepted", True)
+                    else (
+                        f". Checkpoint kept — pass val_loss {metrics.get('val_loss_attempted')} "
+                        f"did not beat incoming {metrics.get('val_loss_incoming')}; "
+                        f"recorded val_loss {metrics['val_loss']} (same weights)."
+                    )
+                ),
             )
 
             if _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT:
