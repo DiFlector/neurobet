@@ -309,7 +309,9 @@ class NeuralBetEnsemble:
         left alone on purpose, so the caller (pipeline.reset_neural_network) can zero
         trained_count on it and let training start over from that same existing history,
         instead of needing weeks of fresh matches to rebuild a dataset that was already
-        sitting there.
+        sitting there. pipeline.reset_neural_network then starts a cold-start walk of
+        that archive (shuffled chunks, from-scratch LR, checkpoint gate off) instead of
+        jumping straight into the online 10k fine-tune loop.
         """
         self._reset_state()
         for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH):
@@ -1204,6 +1206,9 @@ class NeuralBetEnsemble:
         epochs: int = MAX_EPOCHS,
         on_epoch: Any = None,
         chart_val_loss: Optional[float] = None,
+        skip_checkpoint_gate: bool = False,
+        learning_rate: Optional[float] = None,
+        rebalance_classes: bool = True,
     ) -> Dict[str, Any]:
         """
         Online-training pass: mini-batch AdamW over a batch of resolved bets, combining
@@ -1233,6 +1238,12 @@ class NeuralBetEnsemble:
         The pass is then compared to the *incoming* weights on that same val split
         and to `chart_val_loss` (last saved checkpoint). Fail either check → restore,
         file untouched. Next cycle continues from the restored weights on new data.
+        `skip_checkpoint_gate` keeps the new weights regardless (cold-start through
+        the archive: a later chunk is allowed to raise val_loss without rolling back
+        everything learned so far). `learning_rate` temporarily overrides AdamW's
+        param-group rate for this pass, then puts LEARNING_RATE back. `rebalance_classes`
+        toggles BCE pos_weight; leave it off when the caller already drew a harsh
+        win/loss mix, or the weight would cancel that mix back to 50/50.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
@@ -1267,8 +1278,21 @@ class NeuralBetEnsemble:
 
         positive_count = sum(1 for p in prepared if p["target"] == 1.0)
         negative_count = len(prepared) - positive_count
-        pos_weight = torch.tensor([negative_count / max(positive_count, 1)], dtype=torch.float32) if positive_count else None
-        bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        # pos_weight = n_neg/n_pos undoes a caller-imposed class mix (a 10/90 batch
+        # would be trained as if it were 50/50). Cold-start keeps it; online random
+        # mix does not.
+        if rebalance_classes and positive_count and negative_count:
+            pos_weight = torch.tensor(
+                [negative_count / positive_count], dtype=torch.float32
+            )
+            bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        else:
+            bce = nn.BCEWithLogitsLoss()
+
+        old_lrs = [g["lr"] for g in self.pytorch_optimizer.param_groups]
+        if learning_rate is not None:
+            for group in self.pytorch_optimizer.param_groups:
+                group["lr"] = learning_rate
 
         best_val = float("inf")
         best_state = None
@@ -1277,76 +1301,80 @@ class NeuralBetEnsemble:
         epoch_losses: List[float] = []
 
         self.pytorch_model.train()
-        for epoch_idx in range(1, epochs + 1):
-            order = list(range(len(prepared)))
-            random.shuffle(order)
-            epoch_train_losses = []
+        try:
+            for epoch_idx in range(1, epochs + 1):
+                order = list(range(len(prepared)))
+                random.shuffle(order)
+                epoch_train_losses = []
 
-            for start in range(0, len(order), BATCH_SIZE):
-                batch_idx = order[start:start + BATCH_SIZE]
-                batch = [prepared[i] for i in batch_idx]
-                seqs = torch.tensor([_build_sequence(b["step_pairs"]) for b in batch], dtype=torch.float32)
-                targets = torch.tensor([b["target"] for b in batch], dtype=torch.float32).unsqueeze(1)
-                sport_t, market_t, team1_t, team2_t = self._context_tensors(batch)
+                for start in range(0, len(order), BATCH_SIZE):
+                    batch_idx = order[start:start + BATCH_SIZE]
+                    batch = [prepared[i] for i in batch_idx]
+                    seqs = torch.tensor([_build_sequence(b["step_pairs"]) for b in batch], dtype=torch.float32)
+                    targets = torch.tensor([b["target"] for b in batch], dtype=torch.float32).unsqueeze(1)
+                    sport_t, market_t, team1_t, team2_t = self._context_tensors(batch)
 
-                self.pytorch_optimizer.zero_grad()
-                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
-                win_logits = logits[:, 0:1]
-                bce_loss = bce(win_logits, targets)
+                    self.pytorch_optimizer.zero_grad()
+                    logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+                    win_logits = logits[:, 0:1]
+                    bce_loss = bce(win_logits, targets)
 
-                # Decision-head loss: MSE on residual vs the bookmaker (is_win - 1/coeff),
-                # not BCE on is_win — complementary two-way markets are 50/50 by construction.
-                decision_logits = logits[:, 1]
-                coeffs_t = torch.tensor([b["coefficient"] for b in batch], dtype=torch.float32)
-                pred_edge = torch.tanh(decision_logits)
-                true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
-                # Longs (>= MAX_BET_COEFF) are a free "will lose" label that drowns the
-                # residual head — keep them on the win-probability BCE, drop them here.
-                verdict_mask = coeffs_t < MAX_BET_COEFF
-                per = (pred_edge - true_edge) ** 2
-                if int(verdict_mask.sum().item()) == 0:
-                    decision_loss = per.new_zeros(())
+                    # Decision-head loss: MSE on residual vs the bookmaker (is_win - 1/coeff),
+                    # not BCE on is_win — complementary two-way markets are 50/50 by construction.
+                    decision_logits = logits[:, 1]
+                    coeffs_t = torch.tensor([b["coefficient"] for b in batch], dtype=torch.float32)
+                    pred_edge = torch.tanh(decision_logits)
+                    true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
+                    # Longs (>= MAX_BET_COEFF) are a free "will lose" label that drowns the
+                    # residual head — keep them on the win-probability BCE, drop them here.
+                    verdict_mask = coeffs_t < MAX_BET_COEFF
+                    per = (pred_edge - true_edge) ** 2
+                    if int(verdict_mask.sum().item()) == 0:
+                        decision_loss = per.new_zeros(())
+                    else:
+                        decision_loss = per[verdict_mask].mean()
+
+                    loss = bce_loss + DECISION_LOSS_WEIGHT * decision_loss
+
+                    bank_pass = self._bankroll_pass(batch, account="training", commit=False)
+                    if bank_pass["loss"] is not None:
+                        loss = loss + bankroll.BANKROLL_LOSS_WEIGHT * bank_pass["loss"]
+
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.pytorch_model.parameters(), GRAD_CLIP_NORM)
+                    self.pytorch_optimizer.step()
+                    epoch_train_losses.append(float(decision_loss.item()))
+
+                train_loss = sum(epoch_train_losses) / max(len(epoch_train_losses), 1)
+                epoch_losses.append(train_loss)
+
+                val_loss, val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (train_loss, None)
+                selection_metric = val_loss if prepared_val else train_loss
+
+                logger.info(
+                    f"PyTorch online training epoch {epoch_idx}/{epochs} — "
+                    f"train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}"
+                )
+                if on_epoch is not None:
+                    try:
+                        on_epoch(epoch_idx, train_loss, val_loss if prepared_val else None)
+                    except Exception:
+                        pass
+
+                if selection_metric < best_val - 1e-4:
+                    best_val = selection_metric
+                    best_state = copy.deepcopy(self.pytorch_model.state_dict())
+                    best_epoch = epoch_idx
+                    epochs_without_improvement = 0
                 else:
-                    decision_loss = per[verdict_mask].mean()
+                    epochs_without_improvement += 1
+                    if epochs_without_improvement >= EARLY_STOP_PATIENCE:
+                        break
 
-                loss = bce_loss + DECISION_LOSS_WEIGHT * decision_loss
-
-                bank_pass = self._bankroll_pass(batch, account="training", commit=False)
-                if bank_pass["loss"] is not None:
-                    loss = loss + bankroll.BANKROLL_LOSS_WEIGHT * bank_pass["loss"]
-
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.pytorch_model.parameters(), GRAD_CLIP_NORM)
-                self.pytorch_optimizer.step()
-                epoch_train_losses.append(float(decision_loss.item()))
-
-            train_loss = sum(epoch_train_losses) / max(len(epoch_train_losses), 1)
-            epoch_losses.append(train_loss)
-
-            val_loss, val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (train_loss, None)
-            selection_metric = val_loss if prepared_val else train_loss
-
-            logger.info(
-                f"PyTorch online training epoch {epoch_idx}/{epochs} — "
-                f"train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}"
-            )
-            if on_epoch is not None:
-                try:
-                    on_epoch(epoch_idx, train_loss, val_loss if prepared_val else None)
-                except Exception:
-                    pass
-
-            if selection_metric < best_val - 1e-4:
-                best_val = selection_metric
-                best_state = copy.deepcopy(self.pytorch_model.state_dict())
-                best_epoch = epoch_idx
-                epochs_without_improvement = 0
-            else:
-                epochs_without_improvement += 1
-                if epochs_without_improvement >= EARLY_STOP_PATIENCE:
-                    break
-
-            self.pytorch_model.train()
+                self.pytorch_model.train()
+        finally:
+            for group, lr in zip(self.pytorch_optimizer.param_groups, old_lrs):
+                group["lr"] = lr
 
         if best_state is not None:
             self.pytorch_model.load_state_dict(best_state)
@@ -1380,7 +1408,12 @@ class NeuralBetEnsemble:
         checkpoint_accepted = True
         checkpoint_reject_reason = None
         val_loss_attempted = final_val_loss
-        if incoming_state is not None and final_val_loss is not None and val_incoming is not None:
+        if (
+            not skip_checkpoint_gate
+            and incoming_state is not None
+            and final_val_loss is not None
+            and val_incoming is not None
+        ):
             if final_val_loss >= val_incoming - 1e-4:
                 checkpoint_accepted = False
                 checkpoint_reject_reason = "incoming"

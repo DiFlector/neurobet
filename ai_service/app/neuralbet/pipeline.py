@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -32,7 +33,7 @@ from neurobet_filters import (
     FAST_FORMAT_SPORT_SQL,
 )
 from app.config import MODEL_DIR
-from app.neuralbet.model import NeuralBetEnsemble
+from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
 from app.neuralbet.training_history import record_training_run, get_training_history, last_saved_run, clear_training_history
 
 logger = logging.getLogger("ai_service_pipeline")
@@ -124,6 +125,20 @@ _COVERAGE_REFRESH_SECONDS = float(os.getenv("NEURALBET_COVERAGE_REFRESH_SECONDS"
 _coverage_cache: dict[str, Any] | None = None
 _coverage_loaded_at = 0.0
 _last_catch_up: bool | None = None
+
+# After an admin reset the live weights are random: running the online 10k loop
+# (low LR, 50–200 epochs per slice, chart-gate vs the first lucky val_loss) is
+# fine-tuning a model that does not exist yet. Cold-start instead walks the
+# train-universe archive in shuffled chunks, 1–N short epochs each, at a
+# from-scratch LR, with the checkpoint gate off so later chunks cannot be
+# rolled back just because they did not beat a 10k overfit. Then the online
+# loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
+COLD_START_EPOCHS = int(os.getenv("NEURALBET_COLD_START_EPOCHS", "2"))
+COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "20000"))
+COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", "2"))
+COLD_START_LR = float(os.getenv("NEURALBET_COLD_START_LR", "1e-3"))
+COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
+COLD_START_PATH = os.path.join(MODEL_DIR, "cold_start.json")
 
 # Floor on how many samples (fresh + replay combined — see _fetch_training_batch) a
 # training cycle needs before it's allowed to actually run a gradient step. Below this,
@@ -275,7 +290,9 @@ def reset_neural_network() -> dict[str, Any]:
     the val_loss chart and the 1800 ₽ live bank would still describe the discarded
     model. The archive of resolved matches stays: that's the expensive, slow-to-rebuild
     part. Runs under _engine_lock; _cycle_count goes to 0 so the next inference cycle
-    is treated as cycle 1 (immediate LightGBM refit + training + tune).
+    is treated as cycle 1 (immediate LightGBM refit + training + tune). Starts a
+    cold-start walk of the archive (shuffled chunks, from-scratch LR, checkpoint
+    gate off) instead of jumping into the online 10k fine-tune loop.
     """
     global _cycle_count, _low_epoch_streak
     from app.neuralbet.backtest import clear_backtest_history
@@ -306,6 +323,7 @@ def reset_neural_network() -> dict[str, Any]:
 
         _cycle_count = 0
         _low_epoch_streak = 0
+        _begin_cold_start()
 
     add_ai_log(
         "SYSTEM",
@@ -313,7 +331,8 @@ def reset_neural_network() -> dict[str, Any]:
         f"discarded, blend/market weight & decision threshold back to defaults, checkpoint "
         f"files removed, training/backtest charts cleared, live+training bankrolls reset "
         f"to start_balance, trained_count cleared on {reset_rows} resolved bet(s) — "
-        f"training will restart from scratch using the existing archive.",
+        f"cold-start will walk the archive in {COLD_START_CHUNK}-sample shuffled chunks "
+        f"for {COLD_START_EPOCHS} epoch(s) before online 10k fine-tuning resumes.",
         level="WARNING",
     )
     return {"reset_rows": reset_rows}
@@ -378,6 +397,94 @@ def _invalidate_archive_coverage() -> None:
     _coverage_loaded_at = 0.0
 
 
+def _default_cold_start() -> dict[str, Any]:
+    return {
+        "active": False,
+        "epoch": 1,
+        "epochs_total": COLD_START_EPOCHS,
+        "samples_this_epoch": 0,
+        "train_pool_size": 0,
+    }
+
+
+def _load_cold_start() -> dict[str, Any]:
+    state = _default_cold_start()
+    if not os.path.exists(COLD_START_PATH):
+        return state
+    try:
+        with open(COLD_START_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            state.update(saved)
+    except Exception as e:
+        logger.error(f"Error loading cold-start state: {e}")
+    return state
+
+
+def _save_cold_start(state: dict[str, Any]) -> None:
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp_path = COLD_START_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, COLD_START_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting cold-start state: {e}")
+
+
+def _begin_cold_start() -> dict[str, Any]:
+    state = {
+        "active": True,
+        "epoch": 1,
+        "epochs_total": COLD_START_EPOCHS,
+        "samples_this_epoch": 0,
+        "train_pool_size": 0,
+    }
+    _save_cold_start(state)
+    _invalidate_archive_coverage()
+    return state
+
+
+def _finish_cold_start(state: dict[str, Any]) -> dict[str, Any]:
+    state["active"] = False
+    _save_cold_start(state)
+    _invalidate_archive_coverage()
+    add_ai_log(
+        "TRAINING",
+        "Cold-start finished — switching to online 10k passes (chart-gate on, "
+        f"lr={os.getenv('NEURALBET_LEARNING_RATE', '1e-4')}, random win/loss mix).",
+    )
+    return state
+
+
+def _cold_start_lr(epoch: int) -> float:
+    return COLD_START_LR * (COLD_START_LR_DECAY ** max(epoch - 1, 0))
+
+
+def _advance_cold_start(state: dict[str, Any], samples_used: int) -> dict[str, Any]:
+    """Count this chunk toward the current archive epoch; roll to the next
+    epoch or deactivate once the train pool has been seen once."""
+    if not state.get("active"):
+        return state
+    state["samples_this_epoch"] = int(state.get("samples_this_epoch") or 0) + samples_used
+    pool = int(state.get("train_pool_size") or 0)
+    epoch = int(state.get("epoch") or 1)
+    epochs_total = int(state.get("epochs_total") or COLD_START_EPOCHS)
+    if pool > 0 and state["samples_this_epoch"] >= pool:
+        if epoch >= epochs_total:
+            return _finish_cold_start(state)
+        state["epoch"] = epoch + 1
+        state["samples_this_epoch"] = 0
+        add_ai_log(
+            "TRAINING",
+            f"Cold-start epoch {epoch}/{epochs_total} done ({pool} samples) — "
+            f"starting epoch {state['epoch']} at lr={_cold_start_lr(state['epoch']):.4g}.",
+        )
+    _save_cold_start(state)
+    _invalidate_archive_coverage()
+    return state
+
+
 def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
     """Share of the training-universe archive that has trained_count > 0.
 
@@ -428,13 +535,18 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
 
     trained_ratio = (trained / total) if total else 0.0
     fresh_n = _fresh_target()
+    cold_start = _load_cold_start()
     # Still chewing the archive, or enough unseen rows to fill a fresh slice without
     # waiting for new finishes: train faster. Only sit at TRAIN_EVERY_CYCLES once both
     # the 80% mark is cleared AND the untrained leftover is smaller than one batch.
     catch_up = total > 0 and (
         trained_ratio < TRAIN_CATCHUP_UNTIL_RATIO or untrained >= fresh_n
     )
-    every = TRAIN_CATCHUP_EVERY_CYCLES if catch_up else TRAIN_EVERY_CYCLES
+    if cold_start.get("active"):
+        catch_up = True
+        every = 1
+    else:
+        every = TRAIN_CATCHUP_EVERY_CYCLES if catch_up else TRAIN_EVERY_CYCLES
     payload = {
         "untrained": untrained,
         "trained": trained,
@@ -443,6 +555,14 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
         "catch_up": catch_up,
         "train_every_cycles": every,
         "fresh_target": fresh_n,
+        "cold_start": {
+            "active": bool(cold_start.get("active")),
+            "epoch": int(cold_start.get("epoch") or 1),
+            "epochs_total": int(cold_start.get("epochs_total") or COLD_START_EPOCHS),
+            "samples_this_epoch": int(cold_start.get("samples_this_epoch") or 0),
+            "train_pool_size": int(cold_start.get("train_pool_size") or 0),
+            "chunk": COLD_START_CHUNK,
+        },
     }
     if _last_catch_up is None or catch_up != _last_catch_up:
         add_ai_log(
@@ -758,62 +878,158 @@ def _row_to_sample(r) -> dict[str, Any]:
     }
 
 
-def _fetch_training_batch(
-    f_cursor, val_event_ids: set | None
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """
-    Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
-    first) + ~30% older ones sampled at random so the model doesn't catastrophically
-    forget history it hasn't seen in a while (see plan B4). Excludes every bet belonging
-    to a held-out validation event (see _get_val_event_ids) — event membership, not a
-    finished_at threshold, so a held-out match's bets can never leak into training no
-    matter when each of its markets settled. Returns (rows, key_list) where key_list is
-    the (event_id, factor_id, parameter, market_prefix) tuples to bump trained_count for.
-    """
-    sports, factors = universe_sql_params()
-    uni = universe_sql("f", "h")
-    where_val = "AND h.event_id != ALL(%s)" if val_event_ids else ""
-    params_val = [list(val_event_ids)] if val_event_ids else []
-
-    fresh_n = int(TRAIN_BATCH_TOTAL * TRAIN_FRESH_SHARE)
-    f_cursor.execute(
-        f"""
+_TRAIN_ROW_SELECT = """
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
+               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
+               h.score_diff_at_bet, h.finished_at, h.overround_close,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL AND h.trained_count = 0 {uni} {where_val}
-        ORDER BY h.finished_at DESC
-        LIMIT %s
-    """,
-        [sports, factors] + params_val + [fresh_n],
-    )
-    fresh_rows = f_cursor.fetchall()
+        WHERE h.is_win IS NOT NULL
+"""
 
-    replay_n = TRAIN_BATCH_TOTAL - len(fresh_rows)
-    replay_rows = []
-    if replay_n > 0:
-        f_cursor.execute(
-            f"""
-            SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-                   h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
-                   f.sport_path, f.team_1, f.team_2
-            FROM finished_bets h
-            JOIN finished_events f ON h.event_id = f.event_id
-            WHERE h.is_win IS NOT NULL AND h.trained_count BETWEEN 1 AND %s {uni} {where_val}
-            ORDER BY RANDOM()
-            LIMIT %s
-        """,
-            [MAX_REPLAY - 1, sports, factors] + params_val + [replay_n],
-        )
-        replay_rows = f_cursor.fetchall()
 
-    all_rows = list(fresh_rows) + list(replay_rows)
-    samples = [
-        s for s in (_row_to_sample(r) for r in all_rows)
+def _universe_filter(val_event_ids: set | None) -> tuple[str, str, list]:
+    sports, factors = universe_sql_params()
+    uni = universe_sql("f", "h")
+    if val_event_ids:
+        return uni, "AND h.event_id != ALL(%s)", [sports, factors, list(val_event_ids)]
+    return uni, "", [sports, factors]
+
+
+def _rows_to_train_samples(rows) -> list[dict[str, Any]]:
+    return [
+        s
+        for s in (_row_to_sample(r) for r in rows)
         if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
     ]
+
+
+def _count_train_pool(f_cursor, val_event_ids: set | None, untrained_only: bool = False) -> int:
+    uni, where_val, params = _universe_filter(val_event_ids)
+    extra = "AND h.trained_count = 0" if untrained_only else ""
+    f_cursor.execute(
+        f"""
+        SELECT COUNT(*) AS c
+        FROM finished_bets h
+        JOIN finished_events f ON h.event_id = f.event_id
+        WHERE h.is_win IS NOT NULL {extra} {uni} {where_val}
+        """,
+        params,
+    )
+    row = f_cursor.fetchone()
+    return int(row["c"] or 0) if row else 0
+
+
+def _draw_class_quota(total: int) -> tuple[int, int]:
+    """Hard uniform mix: n_win is any integer in [0, total], so 0/100 and 100/0
+    are as likely as 50/50. The model must not see a constant 50/50 prior."""
+    if total <= 0:
+        return 0, 0
+    n_win = random.randint(0, total)
+    return n_win, total - n_win
+
+
+def _fetch_class_rows(
+    f_cursor,
+    val_event_ids: set | None,
+    is_win: int,
+    n: int,
+    seen: set,
+) -> list[dict[str, Any]]:
+    """Fill up to `n` rows of one class: untrained newest first, then replay, then
+    any remaining of that class. Dedupes against `seen` (mutated)."""
+    if n <= 0:
+        return []
+    uni, where_val, base_params = _universe_filter(val_event_ids)
+    win_clause = "AND h.is_win = %s"
+    out: list[dict[str, Any]] = []
+
+    def _take(order_sql: str, extra_where: str, extra_params: list, limit: int) -> None:
+        nonlocal out
+        need = n - len(out)
+        if need <= 0 or limit <= 0:
+            return
+        fetch_n = max(limit * 2, limit + 32)
+        f_cursor.execute(
+            f"""
+            {_TRAIN_ROW_SELECT}
+            {uni} {where_val} {win_clause} {extra_where}
+            {order_sql}
+            LIMIT %s
+            """,
+            base_params + [is_win] + extra_params + [fetch_n],
+        )
+        for s in _rows_to_train_samples(f_cursor.fetchall()):
+            key = s["_key"]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(s)
+            if len(out) >= n:
+                return
+
+    fresh_n = int(n * TRAIN_FRESH_SHARE)
+    if fresh_n <= 0 and n > 0:
+        fresh_n = n
+    replay_n = n - fresh_n
+    _take("ORDER BY h.finished_at DESC", "AND h.trained_count = 0", [], fresh_n)
+    _take(
+        "ORDER BY RANDOM()",
+        "AND h.trained_count BETWEEN 1 AND %s",
+        [MAX_REPLAY - 1],
+        replay_n if replay_n > 0 else (n - len(out)),
+    )
+    if len(out) < n:
+        _take("ORDER BY RANDOM()", "", [], n - len(out))
+    return out
+
+
+def _fetch_training_batch(
+    f_cursor, val_event_ids: set | None
+) -> tuple[list[dict[str, Any]], list[tuple], dict[str, int]]:
+    """
+    Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
+    first) + ~30% older ones sampled at random so the model doesn't catastrophically
+    forget history it hasn't seen in a while (see plan B4). Win/loss counts are drawn
+    uniformly from 0/N through N/0 each pass so the win-head cannot latch onto a
+    constant 50/50 prior. Excludes every bet belonging to a held-out validation event.
+    Returns (rows, key_list, mix) where mix is the drawn quota plus what was actually
+    fetched.
+    """
+    n_win, n_loss = _draw_class_quota(TRAIN_BATCH_TOTAL)
+    seen: set = set()
+    wins = _fetch_class_rows(f_cursor, val_event_ids, 1, n_win, seen)
+    losses = _fetch_class_rows(f_cursor, val_event_ids, 0, n_loss, seen)
+    samples = wins + losses
+    random.shuffle(samples)
+    keys = [s["_key"] for s in samples]
+    mix = {
+        "target_win": n_win,
+        "target_loss": n_loss,
+        "got_win": len(wins),
+        "got_loss": len(losses),
+    }
+    return samples, keys, mix
+
+
+def _fetch_cold_start_batch(
+    f_cursor, val_event_ids: set | None, epoch: int
+) -> tuple[list[dict[str, Any]], list[tuple]]:
+    """Shuffled slice of the train-universe archive. Epoch 1 prefers unseen rows
+    so coverage actually advances; later epochs reshuffle the whole pool."""
+    uni, where_val, params = _universe_filter(val_event_ids)
+    extra = "AND h.trained_count = 0" if epoch <= 1 else ""
+    f_cursor.execute(
+        f"""
+        {_TRAIN_ROW_SELECT}
+        {uni} {where_val} {extra}
+        ORDER BY RANDOM()
+        LIMIT %s
+        """,
+        params + [COLD_START_CHUNK],
+    )
+    samples = _rows_to_train_samples(f_cursor.fetchall())
     keys = [s["_key"] for s in samples]
     return samples, keys
 
@@ -1351,14 +1567,21 @@ def _run_neuralbet_inference_and_training_locked(
     # LGB_REFIT_EVERY_CYCLES cycles after every restart). Catch-up shortens only the
     # GRU pass (see TRAIN_CATCHUP_EVERY_CYCLES); tuner/LightGBM stay on their cadence.
     coverage = get_archive_training_coverage()
+    cold_start = _load_cold_start()
+    cold_start_active = bool(cold_start.get("active"))
     train_every = int(coverage["train_every_cycles"])
-    is_train_cycle = _cycle_count == 1 or _cycle_count % train_every == 0
+    is_train_cycle = (
+        True
+        if cold_start_active
+        else (_cycle_count == 1 or _cycle_count % train_every == 0)
+    )
     is_tune_cycle = _cycle_count == 1 or _cycle_count % TUNE_EVERY_CYCLES == 0
     is_lgb_cycle = _cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0
 
     training_samples: list[dict[str, Any]] = []
     val_samples: list[dict[str, Any]] = []
     train_keys: list[tuple] = []
+    class_mix: dict[str, int] | None = None
     lgb_rows: list[dict[str, Any]] = []
     lgb_val_rows: list[dict[str, Any]] = []
     try:
@@ -1372,14 +1595,33 @@ def _run_neuralbet_inference_and_training_locked(
         # only called after a training cycle) until the next training cycle picks them
         # all up together as one larger batch.
         if is_train_cycle:
-            add_ai_log(
-                "TRAINING",
-                f"Loading training batch (target {TRAIN_BATCH_TOTAL}, "
-                f"archive {coverage.get('untrained', '?')} unseen)...",
-            )
-            training_samples, train_keys = _fetch_training_batch(
-                f_cursor, val_event_ids
-            )
+            if cold_start_active:
+                if not cold_start.get("train_pool_size"):
+                    cold_start["train_pool_size"] = _count_train_pool(
+                        f_cursor, val_event_ids
+                    )
+                    _save_cold_start(cold_start)
+                cs_epoch = int(cold_start.get("epoch") or 1)
+                add_ai_log(
+                    "TRAINING",
+                    f"Loading cold-start batch (chunk {COLD_START_CHUNK}, "
+                    f"epoch {cs_epoch}/{cold_start.get('epochs_total', COLD_START_EPOCHS)}, "
+                    f"seen {cold_start.get('samples_this_epoch', 0)}/"
+                    f"{cold_start.get('train_pool_size', '?')}, "
+                    f"archive {coverage.get('untrained', '?')} unseen)...",
+                )
+                training_samples, train_keys = _fetch_cold_start_batch(
+                    f_cursor, val_event_ids, cs_epoch
+                )
+            else:
+                add_ai_log(
+                    "TRAINING",
+                    f"Loading training batch (target {TRAIN_BATCH_TOTAL}, "
+                    f"archive {coverage.get('untrained', '?')} unseen)...",
+                )
+                training_samples, train_keys, class_mix = _fetch_training_batch(
+                    f_cursor, val_event_ids
+                )
         if is_train_cycle or is_tune_cycle or is_lgb_cycle:
             val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
@@ -1442,19 +1684,41 @@ def _run_neuralbet_inference_and_training_locked(
         logger.error(f"Error querying finished training db: {e}")
 
     fetched_train_count = len(training_samples)
+    min_needed = 2 if cold_start_active else MIN_TRAIN_SAMPLES
     insufficient_for_training = (
-        training_samples and fetched_train_count < MIN_TRAIN_SAMPLES
+        training_samples and fetched_train_count < min_needed
     )
     if insufficient_for_training:
         add_ai_log(
             "TRAINING",
             f"Skipping training step — only {fetched_train_count} samples available "
-            f"(need {MIN_TRAIN_SAMPLES}+; below that, one epoch is enough to memorize the "
+            f"(need {min_needed}+; below that, one epoch is enough to memorize the "
             "whole batch instead of learning anything general). Rows stay unmarked and "
             "will be retried, with whatever's newly finished added in, next training cycle.",
             level="WARNING",
         )
         training_samples = []
+
+    if (
+        cold_start_active
+        and is_train_cycle
+        and not training_samples
+        and not insufficient_for_training
+    ):
+        pool = int(cold_start.get("train_pool_size") or 0)
+        if pool <= 0 or int(cold_start.get("samples_this_epoch") or 0) >= pool:
+            cold_start = _advance_cold_start(
+                cold_start, max(pool - int(cold_start.get("samples_this_epoch") or 0), 0)
+            )
+        else:
+            add_ai_log(
+                "TRAINING",
+                "Cold-start fetch returned 0 rows — advancing to the next archive epoch.",
+            )
+            cold_start["samples_this_epoch"] = pool or int(
+                cold_start.get("samples_this_epoch") or 0
+            )
+            cold_start = _advance_cold_start(cold_start, 0)
 
     if training_samples:
         cov_str = ""
@@ -1464,12 +1728,35 @@ def _run_neuralbet_inference_and_training_locked(
                 f"({coverage['trained']}/{coverage['total']}"
                 f"{', catch-up' if coverage.get('catch_up') else ''})."
             )
+        if cold_start_active:
+            cs_epoch = int(cold_start.get("epoch") or 1)
+            mix_str = (
+                f"natural mix, lr={_cold_start_lr(cs_epoch):.4g}, "
+                f"gates off, {COLD_START_INNER_EPOCHS} inner epoch(s)"
+            )
+            start_msg = (
+                f"Starting cold-start pass: {len(training_samples)} samples "
+                f"(epoch {cs_epoch}/{cold_start.get('epochs_total', COLD_START_EPOCHS)}, "
+                f"{mix_str}), {len(val_samples)} held out for validation "
+            )
+        else:
+            if class_mix:
+                mix_str = (
+                    f"target mix {class_mix['target_win']}/{class_mix['target_loss']} "
+                    f"got {class_mix['got_win']} win / {class_mix['got_loss']} loss"
+                )
+            else:
+                mix_str = (
+                    f"{int(len(training_samples) * TRAIN_FRESH_SHARE)} fresh target / rest replay"
+                )
+            start_msg = (
+                f"Starting online training pass: {len(training_samples)} samples "
+                f"({mix_str}), {len(val_samples)} held out for validation "
+            )
         add_ai_log(
             "TRAINING",
-            f"Starting online training pass: {len(training_samples)} samples "
-            f"({int(len(training_samples) * TRAIN_FRESH_SHARE)} fresh target / rest replay), "
-            f"{len(val_samples)} held out for validation "
-            "(universe: футбол/баскетбол/НТ/волейбол/теннис × П1/П2 + футбольная ничья "
+            start_msg
+            + "(universe: футбол/баскетбол/НТ/волейбол/теннис × П1/П2 + футбольная ничья "
             f"+ матчевые тоталы; ставки 1.5–2.0).{cov_str}",
         )
 
@@ -1485,26 +1772,45 @@ def _run_neuralbet_inference_and_training_locked(
                 )
 
         prev_checkpoint = last_saved_run(get_training_history())
+        cs_epoch = int(cold_start.get("epoch") or 1) if cold_start_active else 1
         metrics = ensemble_engine.train_online(
             training_samples,
             val_data=val_samples,
             on_epoch=_log_epoch,
-            chart_val_loss=(prev_checkpoint or {}).get("val_loss"),
+            chart_val_loss=(
+                None if cold_start_active else (prev_checkpoint or {}).get("val_loss")
+            ),
+            skip_checkpoint_gate=cold_start_active,
+            learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
+            rebalance_classes=cold_start_active,
+            epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
         )
 
         if metrics["samples_used"] > 0:
-            f_conn2 = get_finished_connection()
-            f_cursor2 = f_conn2.cursor()
-            _mark_trained(f_cursor2, train_keys)
-            f_conn2.commit()
-            release_connection(f_conn2)
-            _invalidate_archive_coverage()
+            accepted = metrics.get("checkpoint_accepted", True)
+            if accepted:
+                f_conn2 = get_finished_connection()
+                f_cursor2 = f_conn2.cursor()
+                _mark_trained(f_cursor2, train_keys)
+                f_conn2.commit()
+                release_connection(f_conn2)
+                _invalidate_archive_coverage()
+                if cold_start_active:
+                    cold_start = _advance_cold_start(cold_start, metrics["samples_used"])
+            else:
+                add_ai_log(
+                    "TRAINING",
+                    "trained_count not bumped — weights rolled back, these rows stay "
+                    "unseen so the next pass can retry them.",
+                    level="WARNING",
+                )
 
             global _low_epoch_streak
-            if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
-                _low_epoch_streak += 1
-            else:
-                _low_epoch_streak = 0
+            if not cold_start_active:
+                if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
+                    _low_epoch_streak += 1
+                else:
+                    _low_epoch_streak = 0
 
             run_entry = record_training_run({
                 "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1522,6 +1828,8 @@ def _run_neuralbet_inference_and_training_locked(
                 "val_loss_incoming": metrics.get("val_loss_incoming"),
                 "val_loss_attempted": metrics.get("val_loss_attempted"),
                 "checkpoint_reject_reason": metrics.get("checkpoint_reject_reason"),
+                "cold_start": cold_start_active,
+                "class_mix": class_mix,
             })
 
             pass_val = metrics.get("val_loss_attempted")
@@ -1551,7 +1859,12 @@ def _run_neuralbet_inference_and_training_locked(
                 )
             add_ai_log(
                 "TRAINING",
-                f"Training step complete: {metrics['samples_used']} samples "
+                (
+                    "Cold-start step complete: "
+                    if cold_start_active
+                    else "Training step complete: "
+                )
+                + f"{metrics['samples_used']} samples "
                 f"({metrics['positive_count']} win / {metrics['negative_count']} loss"
                 + (
                     f", {metrics['samples_skipped']} skipped"

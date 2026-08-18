@@ -607,14 +607,20 @@ export default function AdminPage() {
                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
                   {trainingHealth?.archive_coverage && (
                     <span className={`px-2.5 py-1.5 rounded-full border ${
-                      trainingHealth.archive_coverage.catch_up
+                      trainingHealth.archive_coverage.cold_start?.active
+                        ? "bg-[#fdcb6e]/20 border-[#fdcb6e]/50 text-[#ffeaa7]"
+                        : trainingHealth.archive_coverage.catch_up
                         ? "bg-[#0984e3]/20 border-[#0984e3]/50 text-[#74b9ff]"
                         : "bg-neutral-950 border-neutral-800 text-neutral-400"
                     }`}>
-                      архив {Math.round((trainingHealth.archive_coverage.trained_ratio || 0) * 100)}%
-                      {trainingHealth.archive_coverage.catch_up
-                        ? ` · догон каждые ${trainingHealth.archive_coverage.train_every_cycles}`
-                        : ` · каждые ${trainingHealth.archive_coverage.train_every_cycles}`}
+                      {trainingHealth.archive_coverage.cold_start?.active
+                        ? `cold-start ${trainingHealth.archive_coverage.cold_start.epoch}/${trainingHealth.archive_coverage.cold_start.epochs_total} · архив ${Math.round((trainingHealth.archive_coverage.trained_ratio || 0) * 100)}%`
+                        : `архив ${Math.round((trainingHealth.archive_coverage.trained_ratio || 0) * 100)}%`}
+                      {!trainingHealth.archive_coverage.cold_start?.active && (
+                        trainingHealth.archive_coverage.catch_up
+                          ? ` · догон каждые ${trainingHealth.archive_coverage.train_every_cycles}`
+                          : ` · каждые ${trainingHealth.archive_coverage.train_every_cycles}`
+                      )}
                     </span>
                   )}
                   <span className={`px-2.5 py-1.5 rounded-full border ${
