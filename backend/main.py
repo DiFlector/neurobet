@@ -433,7 +433,7 @@ def admin_reset_model():
     # plus the model wipe should both be quick, but this gets a longer budget than the
     # 5-10s used by the simple toggle proxies below just in case the archive is large.
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=180.0) as client:
             res = client.post(f"{AI_SERVICE_URL}/reset-model")
             if res.status_code == 200:
                 return res.json()

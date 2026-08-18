@@ -98,10 +98,9 @@ def training_health():
 
 @router.post("/reset-model")
 def reset_model():
-    """Wipes the live model's weights/booster/blend state back to a fresh, untrained
-    ensemble and clears trained_count on the resolved-bet archive so training restarts
-    from scratch using that same existing history — see reset_neural_network's
-    docstring for why this is deliberately not the same thing as reset-db/all."""
+    """Wipes the live model's weights/booster/blend state, training/backtest charts,
+    and both bankroll accounts, then clears trained_count on the resolved-bet archive
+    so training restarts from that same history — see reset_neural_network."""
     try:
         result = reset_neural_network()
         return {"status": "success", **result}

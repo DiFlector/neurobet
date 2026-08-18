@@ -413,3 +413,20 @@ def get_latest_backtest() -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error reading latest backtest {latest}: {e}")
         return None
+
+
+def clear_backtest_history() -> None:
+    """Removes history.json and every full backtest_*.json so QualityTrendChart and
+    get_latest_backtest start empty after a model reset."""
+    try:
+        if os.path.exists(HISTORY_PATH):
+            os.remove(HISTORY_PATH)
+        if os.path.isdir(BACKTEST_DIR):
+            for name in os.listdir(BACKTEST_DIR):
+                if name.startswith("backtest_") and name.endswith(".json"):
+                    try:
+                        os.remove(os.path.join(BACKTEST_DIR, name))
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.error(f"Error clearing backtest history: {e}")

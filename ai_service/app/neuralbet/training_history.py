@@ -84,3 +84,12 @@ def get_training_history() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error reading training run history: {e}")
         return []
+
+
+def clear_training_history() -> None:
+    """Wipes training_runs.json so the admin val_loss chart starts empty after a model reset."""
+    try:
+        if os.path.exists(TRAINING_HISTORY_PATH):
+            os.remove(TRAINING_HISTORY_PATH)
+    except Exception as e:
+        logger.error(f"Error clearing training run history: {e}")

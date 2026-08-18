@@ -97,9 +97,17 @@ export default function AdminPage() {
         if (!res.ok) throw new Error("Ошибка при обнулении нейросети")
         const data = await res.json()
         setResetSuccessMsg(
-          `Нейросеть обнулена. Очищено trained_count у ${data.reset_rows ?? 0} завершённых ставок — обучение начнётся заново на существующем архиве.`
+          `Нейросеть обнулена. Очищено trained_count у ${data.reset_rows ?? 0} завершённых ставок. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве.`
         )
-        setTimeout(() => { fetchAILogs(); fetchAISettings() }, 300)
+        setTimeout(() => {
+          fetchAILogs()
+          fetchAISettings()
+          fetchBankroll()
+          fetchOpenLiveBetsCount()
+          fetchTrainingRuns()
+          fetchBacktestHistory()
+          fetchTrainingHealth()
+        }, 300)
       } else if (resetType === "bankroll-live" || resetType === "bankroll-training") {
         const account = resetType === "bankroll-live" ? "live" : "training"
         const res = await fetch(`${API_BASE}/api/admin/bankroll/reset`, {
@@ -1205,7 +1213,7 @@ export default function AdminPage() {
                 {resetType === "cancel-bets" &&
                   "Все текущие открытые ставки бота будут отменены (не засчитаны как выигрыш/проигрыш), а поставленная сумма полностью вернётся на боевой баланс."}
                 {resetType === "reset-model" &&
-                  "Веса PyTorch будут переинициализированы случайно, бустер LightGBM удалён, blend/market weight и порог решения сброшены к дефолтам, файлы чекпоинтов на диске удалены. У всех завершённых ставок в архиве trained_count обнулится до 0 — обучение начнётся заново, но на уже накопленных исторических данных (архив finished_bets НЕ удаляется)."}
+                  "Веса PyTorch будут переинициализированы случайно, бустер LightGBM удалён, blend/market weight и порог решения сброшены к дефолтам, файлы чекпоинтов на диске удалены. Графики обучения (val_loss) и бэктеста очистятся. Оба банка (live и training) сбросятся на стартовый баланс, открытые ставки и журнал банка удалятся. У всех завершённых ставок в архиве trained_count обнулится до 0 — обучение начнётся заново на уже накопленных исторических данных (архив finished_bets НЕ удаляется)."}
               </p>
             </div>
 

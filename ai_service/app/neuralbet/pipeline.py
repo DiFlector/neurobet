@@ -33,7 +33,7 @@ from neurobet_filters import (
 )
 from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble
-from app.neuralbet.training_history import record_training_run, get_training_history, last_saved_run
+from app.neuralbet.training_history import record_training_run, get_training_history, last_saved_run, clear_training_history
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -232,23 +232,22 @@ def reset_neural_network() -> dict[str, Any]:
     Admin-triggered "Обнулить нейросеть": wipes the live model (fresh random PyTorch
     weights, no LightGBM booster, blend/market weight & decision threshold back to
     defaults — see NeuralBetEnsemble.reset) and clears trained_count on every resolved
-    bet, WITHOUT deleting finished_bets/finished_events themselves. That distinction is
-    the whole point of this being separate from reset-db/all: the archive of resolved
-    matches is normally the expensive, slow-to-rebuild part (weeks of live scraping) —
-    this lets training start over from scratch while immediately having that entire
-    existing archive available again as "fresh" data, instead of needing weeks of new
-    matches to accumulate before the next training cycle has anything to learn from.
-    Runs under _engine_lock like every other mutation of ensemble_engine, and resets
-    _cycle_count to 0 so the very next inference cycle is treated as cycle 1 — which
-    forces an immediate LightGBM refit + training pass + ensemble tune (see the
-    is_train_cycle/is_tune_cycle/is_lgb_cycle "cycle == 1" cold-start overrides below)
-    instead of waiting out TRAIN_EVERY_CYCLES/TUNE_EVERY_CYCLES/LGB_REFIT_EVERY_CYCLES
-    against a model that just started over.
+    bet, WITHOUT deleting finished_bets/finished_events themselves. Also wipes the
+    training/backtest charts (they belong to the old weights) and both bankroll
+    accounts back to start_balance, including live_bets and the ledger — otherwise
+    the val_loss chart and the 1800 ₽ live bank would still describe the discarded
+    model. The archive of resolved matches stays: that's the expensive, slow-to-rebuild
+    part. Runs under _engine_lock; _cycle_count goes to 0 so the next inference cycle
+    is treated as cycle 1 (immediate LightGBM refit + training + tune).
     """
     global _cycle_count, _low_epoch_streak
+    from app.neuralbet.backtest import clear_backtest_history
+
     _invalidate_archive_coverage()
     with _engine_lock:
         ensemble_engine.reset()
+        clear_training_history()
+        clear_backtest_history()
 
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
@@ -256,6 +255,15 @@ def reset_neural_network() -> dict[str, Any]:
             "UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0"
         )
         reset_rows = f_cursor.rowcount
+        f_cursor.execute("DELETE FROM live_bets;")
+        f_cursor.execute("DELETE FROM bankroll_ledger;")
+        f_cursor.execute("""
+            UPDATE bankroll_accounts SET
+                balance = start_balance, peak_balance = start_balance, locked = 0,
+                rounds = 0, bets_placed = 0, wins = 0, losses = 0,
+                total_staked = 0, total_returned = 0, ruin_count = 0, is_ruined = 0,
+                updated_at = now();
+        """)
         f_conn.commit()
         release_connection(f_conn)
 
@@ -266,8 +274,9 @@ def reset_neural_network() -> dict[str, Any]:
         "SYSTEM",
         f"Neural network reset by admin: PyTorch weights reinitialized, LightGBM booster "
         f"discarded, blend/market weight & decision threshold back to defaults, checkpoint "
-        f"files removed, trained_count cleared on {reset_rows} resolved bet(s) — training "
-        f"will restart from scratch using the existing archive.",
+        f"files removed, training/backtest charts cleared, live+training bankrolls reset "
+        f"to start_balance, trained_count cleared on {reset_rows} resolved bet(s) — "
+        f"training will restart from scratch using the existing archive.",
         level="WARNING",
     )
     return {"reset_rows": reset_rows}
