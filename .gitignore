@@ -7,6 +7,9 @@ __pycache__/
 .next/
 node_modules/
 
+# Python virtualenv (created by scripts/cloud-agent-install.sh)
+.venv/
+
 # SQLite Database
 data/
 *.db
