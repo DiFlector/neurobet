@@ -27,6 +27,14 @@ from neurobet_filters import (  # noqa: E402
     MIN_MARKET_SUPPORT,
     is_fast_format_sport_path,
 )
+from neurobet_features import (  # noqa: E402
+    pack_timer_entry,
+    parse_period_ordinal as _parse_period_ordinal,
+    parse_score_diff,
+    parse_timer,
+    parse_ts_epoch as _parse_ts_epoch,
+    overround_at_latest,
+)
 
 logger = logging.getLogger("database")
 
@@ -188,24 +196,6 @@ FACTORS_BTTS_NO = {4242}
 # trailing-word check, "1-я карта"/"2-я карта"/"3-я карта" (yellow-card-number bets,
 # nothing to do with periods) parsed as ordinals 1/2/3 and got graded against
 # period_scores — 549 card bets had a bogus is_win from this before it was caught.
-_PERIOD_ORDINAL_RE = re.compile(
-    r"^(\d+)-[а-яё]+\s+(сет|тайм|период|четверть|половина)\b", re.IGNORECASE
-)
-
-
-def _parse_period_ordinal(prefix: str) -> Optional[int]:
-    """"1-й тайм" -> 1, "2-й период" -> 2, "3-я четверть" -> 3. Prefixes without a
-    leading ordinal, or whose trailing word isn't a recognized period unit ("Овертайм",
-    "Следующий гол", "1-я карта", ...), return None — deliberately unresolvable."""
-    m = _PERIOD_ORDINAL_RE.match(prefix)
-    if not m:
-        return None
-    try:
-        return int(m.group(1))
-    except Exception:
-        return None
-
-
 def resolve_outcome(
     factor_id: int,
     label: str,
@@ -415,110 +405,6 @@ def resolve_outcome(
     return None, False
 
 
-def _parse_ts_epoch(raw: Any) -> Optional[float]:
-    """odds_history.timestamp ("YYYY-MM-DD HH:MM:SS", naive Moscow time — see
-    backend/main.py's now_str) -> epoch seconds, or None if unparseable. Only ever
-    consumed as *differences* between snapshots of the same bet (elapsed time), so the
-    naive-timezone absolute offset doesn't matter."""
-    try:
-        return datetime.fromisoformat(str(raw)).timestamp()
-    except Exception:
-        return None
-
-
-# Fonbet's live `timer` field (parser_service.py's _extract_live_score_and_timer:
-# `live.get("timer") or misc.get("comment") or ev.get("comment", "")`) is a mostly-free-
-# text field — usually a running match clock, but sometimes a period label or break
-# marker ("Перерыв", "2-й тайм") that isn't a clock at all, and its exact shape across
-# every sport Fonbet covers hasn't been verified against a wide real-data sample (same
-# caution as the subscores note above). Only clock-shaped patterns are recognized; any
-# string a pattern doesn't confidently claim returns None rather than a guessed number —
-# a silently wrong elapsed-time is worse than a missing one the model already knows how
-# to treat as "unknown" (see ai_service's TIMER_UNKNOWN sentinel in model.py).
-_TIMER_MMSS_RE = re.compile(r"^(\d{1,3}):([0-5]\d)$")           # "45:23"
-_TIMER_PLUS_RE = re.compile(r"^(\d{1,3})\+(\d{1,2})'?$")        # "90+3" (stoppage time)
-_TIMER_MIN_RE = re.compile(r"^(\d{1,3})'$")                     # "45'"
-
-
-def _parse_timer_seconds(raw: Any) -> Optional[float]:
-    s = str(raw or "").strip()
-    if not s:
-        return None
-    m = _TIMER_MMSS_RE.match(s)
-    if m:
-        return float(int(m.group(1)) * 60 + int(m.group(2)))
-    m = _TIMER_PLUS_RE.match(s)
-    if m:
-        return float((int(m.group(1)) + int(m.group(2))) * 60)
-    m = _TIMER_MIN_RE.match(s)
-    if m:
-        return float(int(m.group(1)) * 60)
-    return None
-
-
-# Overround (sum of 1/coeff across every outcome that partitions one market) is only
-# computed for the small set of "core" main-outcome markets — same scope
-# ai_service/app/neuralbet/context.py's MARKET_FAMILIES sticks to — rather than every
-# factor_id CORE_FACTOR_MAP knows about (dozens of period/handicap/total variants),
-# since correctly grouping every one of those into its true sibling set isn't worth the
-# risk of a subtly wrong margin for a feature that's a "nice to have," not the model's
-# main signal.
-_OVERROUND_MATCH_RESULT = {921, 922, 923}  # П1 / Х / П2
-# 925 and 926 both alias "Х2" (see CORE_FACTOR_MAP's comment on the 925/1571 swap) —
-# only one of them actually appears on a given event, never both, so summing every id
-# in this set is safe: whichever alias is present contributes once.
-_OVERROUND_DOUBLE_CHANCE = {924, 1571, 925, 926}  # 1Х / 12 / Х2
-_OVERROUND_TOTAL = {930, 931}  # Тотал Больше / Тотал Меньше — must also match `parameter`
-
-
-def _overround_group_key(factor_id: int, parameter: str) -> Optional[Tuple[str, str]]:
-    """Which sibling group (and, for totals, which parameter) a factor_id/parameter
-    pair belongs to, or None if it's outside the core set overround is computed for."""
-    if factor_id in _OVERROUND_MATCH_RESULT:
-        return ("match_result", "")
-    if factor_id in _OVERROUND_DOUBLE_CHANCE:
-        return ("double_chance", "")
-    if factor_id in _OVERROUND_TOTAL:
-        return ("total", parameter)
-    return None
-
-
-def _compute_event_overround(cursor, eid) -> Dict[Tuple[str, str], float]:
-    """
-    For one event, sums 1/coefficient across every sibling outcome sharing a market
-    group (see _overround_group_key), using each outcome's most recent odds_history
-    coefficient — i.e. the same "closing line" moment finished_bets.final_coefficient
-    already captures for the bet's own outcome. Returns {(group, parameter): overround},
-    only for groups where every expected sibling was actually found (a partial set —
-    e.g. only П1 seen, never Х/П2 — would understate the true margin, so it's better
-    left out than reported wrong).
-    """
-    cursor.execute("""
-        SELECT DISTINCT ON (factor_id, COALESCE(parameter, ''))
-               factor_id, COALESCE(parameter, '') AS parameter, coefficient
-          FROM odds_history
-         WHERE event_id = %s
-         ORDER BY factor_id, COALESCE(parameter, ''), id DESC
-    """, (eid,))
-    latest_by_factor = cursor.fetchall()
-
-    grouped: Dict[Tuple[str, str], List[float]] = {}
-    for r in latest_by_factor:
-        key = _overround_group_key(r["factor_id"], r["parameter"])
-        if key is None:
-            continue
-        coeff = r["coefficient"]
-        if coeff and coeff > 1.0:
-            grouped.setdefault(key, []).append(float(coeff))
-
-    expected_size = {"match_result": 3, "double_chance": 3, "total": 2}
-    return {
-        key: sum(1.0 / c for c in coeffs)
-        for key, coeffs in grouped.items()
-        if len(coeffs) >= expected_size[key[0]]
-    }
-
-
 # Fonbet results/v2 event.status — see parser_service.RESULT_STATUS_*.
 _RESULT_STATUS_IN_PLAY = 1
 _RESULT_STATUS_FINISHED = 2
@@ -677,68 +563,60 @@ def archive_finished_events(
                 named_scores_json or "{}"
             ))
 
-            event_overround = _compute_event_overround(cursor, eid)
-
-            # Group the full snapshot-by-snapshot odds_history into one row per unique bet
-            # (event_id, factor_id, parameter, market_prefix), with honest initial/final coefficients.
             cursor.execute("""
-                SELECT factor_id,
+                SELECT id, factor_id,
                        COALESCE(market_prefix, '') AS market_prefix,
                        COALESCE(parameter, '') AS parameter,
-                       MIN(label) AS label,
-                       COUNT(*) AS samples_count,
-                       MIN(coefficient) AS min_coeff, MAX(coefficient) AS max_coeff,
-                       MIN(id) AS first_id, MAX(id) AS last_id
+                       COALESCE(label, '') AS label,
+                       coefficient, score_at_time, timestamp, timer_at_time
                   FROM odds_history
                  WHERE event_id = %s
-                 GROUP BY factor_id, COALESCE(market_prefix, ''), COALESCE(parameter, '')
+                 ORDER BY id ASC
             """, (eid,))
-            groups = cursor.fetchall()
+            hist_rows = cursor.fetchall()
 
-            for g in groups:
-                fid = g["factor_id"]
-                prefix = g["market_prefix"] or ""
-                param = g["parameter"] or ""
+            latest_by_market: Dict[Tuple[int, str, str], float] = {}
+            overround_by_id: Dict[Any, Optional[float]] = {}
+            grouped: Dict[Tuple[Any, str, str], List[Any]] = {}
+            for r in hist_rows:
+                fid = r["factor_id"]
+                prefix = r["market_prefix"] or ""
+                param = r["parameter"] or ""
+                coeff = r["coefficient"]
+                if coeff and float(coeff) > 1.0:
+                    latest_by_market[(int(fid), param, prefix)] = float(coeff)
+                overround_by_id[r["id"]] = overround_at_latest(
+                    latest_by_market, int(fid), param, prefix,
+                )
+                grouped.setdefault((fid, prefix, param), []).append(r)
 
-                cursor.execute(
-                    "SELECT coefficient, timestamp FROM odds_history WHERE id = %s", (g["first_id"],)
-                )
-                first_row = cursor.fetchone()
-                cursor.execute(
-                    "SELECT coefficient, score_at_time FROM odds_history WHERE id = %s", (g["last_id"],)
-                )
-                last_row = cursor.fetchone()
-                cursor.execute(
-                    """SELECT coefficient, score_at_time, timestamp, timer_at_time FROM odds_history
-                        WHERE event_id = %s AND factor_id = %s
-                          AND COALESCE(parameter, '') = %s AND COALESCE(market_prefix, '') = %s
-                        ORDER BY id ASC""",
-                    (eid, fid, param, prefix),
-                )
-                seq_rows = cursor.fetchall()
+            cursor.execute(
+                """SELECT factor_id, COALESCE(CAST(parameter AS TEXT), '') AS parameter,
+                          COALESCE(market_prefix, '') AS market_prefix,
+                          win_probability, predicted_win
+                     FROM ai_predictions WHERE event_id = %s""",
+                (eid,),
+            )
+            pred_by_key = {
+                (p["factor_id"], p["parameter"] or "", p["market_prefix"] or ""): p
+                for p in cursor.fetchall()
+            }
+
+            for (fid, prefix, param), seq_rows in grouped.items():
+                first_row = seq_rows[0]
+                last_row = seq_rows[-1]
                 odds_seq = [r["coefficient"] for r in seq_rows]
-                # Wall-clock epoch seconds per snapshot (None for unparseable rows) — lets
-                # training see real elapsed time between odds moves instead of just their
-                # order (see ts_seq_json migration 0004 / model.py's _build_sequence).
                 ts_seq = [_parse_ts_epoch(r["timestamp"]) for r in seq_rows]
-                # Elapsed match time per snapshot (None where Fonbet's timer field wasn't a
-                # recognizable clock — see _parse_timer_seconds) — lets the GRU tell "odds
-                # moved on minute 5" from "odds moved on minute 85" (see timer_seq_json
-                # migration 0005 / model.py's _build_sequence TIMER_UNKNOWN sentinel).
-                timer_seq = [_parse_timer_seconds(r["timer_at_time"]) for r in seq_rows]
-
-                # Score as it actually stood at each snapshot while the bet was live —
-                # used for training instead of the final score (see score_seq_json migration
-                # note above). "N:M" strings that fail to parse fall back to 0-0 (pre-kickoff).
-                score_diff_seq: List[int] = []
+                timer_seq = []
                 for r in seq_rows:
-                    raw = r["score_at_time"] or "0:0"
-                    try:
-                        a, b = str(raw).split(":", 1)
-                        score_diff_seq.append(int(a) - int(b))
-                    except Exception:
-                        score_diff_seq.append(0)
+                    parsed = parse_timer(r["timer_at_time"])
+                    timer_seq.append(pack_timer_entry(
+                        parsed.match_time_seconds, parsed.set_point_diff,
+                    ))
+                overround_seq = [overround_by_id[r["id"]] for r in seq_rows]
+                score_diff_seq = [parse_score_diff(r["score_at_time"]) for r in seq_rows]
                 score_diff_at_bet = score_diff_seq[0] if score_diff_seq else 0
+                label = next((r["label"] for r in seq_rows if r["label"]), "") or ""
 
                 if is_fast_format_sport_path(sport_path):
                     # Frozen mid-sim score is not a final. Grading Under 126.5 as a win
@@ -747,28 +625,15 @@ def archive_finished_events(
                     is_win, is_push = None, False
                 else:
                     is_win, is_push = resolve_outcome(
-                        fid, g["label"] or "", param, s1, s2,
+                        fid, label, param, s1, s2,
                         market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
                         named_scores=named_scores,
                     )
 
-                # Capture what the model actually predicted for this bet before it's gone —
-                # this is the only way to later check "when the model said 75%, did it really
-                # win ~75% of the time?" (calibration), and whether its own bet/no-bet
-                # verdict (predicted_win) turned out to be right (guessed/not-guessed history).
-                cursor.execute(
-                    """SELECT win_probability, predicted_win FROM ai_predictions
-                        WHERE event_id = %s AND factor_id = %s
-                          AND COALESCE(CAST(parameter AS TEXT), '') = %s
-                          AND COALESCE(market_prefix, '') = %s""",
-                    (eid, fid, param, prefix),
-                )
-                pred_row = cursor.fetchone()
+                pred_row = pred_by_key.get((fid, param, prefix))
                 predicted_win_probability = pred_row["win_probability"] if pred_row else None
                 predicted_win = pred_row["predicted_win"] if pred_row else None
-
-                overround_key = _overround_group_key(fid, param)
-                overround_close = event_overround.get(overround_key) if overround_key else None
+                overround_close = overround_seq[-1] if overround_seq else None
 
                 f_cursor.execute("""
                     INSERT INTO finished_bets (
@@ -776,8 +641,8 @@ def archive_finished_events(
                         initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
                         samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
                         predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push,
-                        predicted_win, overround_close, ts_seq_json, timer_seq_json
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s)
+                        predicted_win, overround_close, ts_seq_json, timer_seq_json, overround_seq_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                         final_coefficient = excluded.final_coefficient,
                         min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
@@ -795,14 +660,18 @@ def archive_finished_events(
                         overround_close = COALESCE(excluded.overround_close, finished_bets.overround_close),
                         ts_seq_json = excluded.ts_seq_json,
                         timer_seq_json = excluded.timer_seq_json,
+                        overround_seq_json = excluded.overround_seq_json,
                         trained_count = 0;
                 """, (
-                    eid, fid, prefix, g["label"] or "", param,
-                    first_row["coefficient"], last_row["coefficient"], g["min_coeff"], g["max_coeff"],
-                    g["samples_count"], json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
+                    eid, fid, prefix, label, param,
+                    first_row["coefficient"], last_row["coefficient"],
+                    min(odds_seq) if odds_seq else None,
+                    max(odds_seq) if odds_seq else None,
+                    len(seq_rows), json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
                     is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
                     json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
                     predicted_win, overround_close, json.dumps(ts_seq), json.dumps(timer_seq),
+                    json.dumps(overround_seq),
                 ))
 
             cursor.execute("DELETE FROM latest_odds WHERE event_id = %s", (eid,))

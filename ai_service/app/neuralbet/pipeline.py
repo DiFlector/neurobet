@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import random
-import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -19,8 +18,16 @@ from app.core.database import (
 from app.neuralbet import bankroll
 from app.neuralbet.calibration import calibrate_probability, get_calibration_buckets
 from app.neuralbet.context import (
-    OVERROUND_EXPECTED_SIZE, overround_group_key,
+    overround_group_key,
     in_train_universe,
+)
+from neurobet_features import (
+    accumulate_overround,
+    build_model_input,
+    live_sample,
+    parse_score_diff,
+    parse_ts_epoch,
+    row_to_sample,
 )
 from neurobet_filters import (
     universe_sql,
@@ -887,48 +894,6 @@ def get_training_health() -> dict[str, Any]:
     }
 
 
-def _parse_score_diff(score_at_time: str | None) -> int:
-    try:
-        a, b = str(score_at_time or "0:0").split(":", 1)
-        return int(a) - int(b)
-    except Exception:
-        return 0
-
-
-def _parse_ts_epoch(raw: Any) -> float | None:
-    """odds_history.timestamp ("YYYY-MM-DD HH:MM:SS", naive Moscow time) -> epoch
-    seconds, or None if unparseable. Mirrors backend/database.py's _parse_ts_epoch —
-    only ever consumed as differences between snapshots of one bet, so the naive
-    timezone's absolute offset doesn't matter."""
-    try:
-        return datetime.fromisoformat(str(raw)).timestamp()
-    except Exception:
-        return None
-
-
-# Mirrors backend/database.py's _parse_timer_seconds — see that function's comment for
-# why unrecognized strings deliberately return None instead of a guessed number.
-_TIMER_MMSS_RE = re.compile(r"^(\d{1,3}):([0-5]\d)$")
-_TIMER_PLUS_RE = re.compile(r"^(\d{1,3})\+(\d{1,2})'?$")
-_TIMER_MIN_RE = re.compile(r"^(\d{1,3})'$")
-
-
-def _parse_timer_seconds(raw: str | None) -> float | None:
-    s = str(raw or "").strip()
-    if not s:
-        return None
-    m = _TIMER_MMSS_RE.match(s)
-    if m:
-        return float(int(m.group(1)) * 60 + int(m.group(2)))
-    m = _TIMER_PLUS_RE.match(s)
-    if m:
-        return float((int(m.group(1)) + int(m.group(2))) * 60)
-    m = _TIMER_MIN_RE.match(s)
-    if m:
-        return float(int(m.group(1)) * 60)
-    return None
-
-
 def _get_val_event_ids(f_cursor) -> set | None:
     """
     Returns the set of event_ids held out for validation: the most-recently-finished
@@ -973,63 +938,13 @@ def _get_val_event_ids(f_cursor) -> set | None:
     return {r["event_id"] for r in f_cursor.fetchall()}
 
 
-def _row_to_sample(r) -> dict[str, Any]:
-    try:
-        odds_seq = json.loads(r["odds_seq_json"] or "[]")
-    except Exception:
-        odds_seq = []
-    try:
-        score_seq = (
-            json.loads(r["score_seq_json"] or "[]") if r["score_seq_json"] else []
-        )
-    except Exception:
-        score_seq = []
-    try:
-        ts_seq = (
-            json.loads(r["ts_seq_json"] or "[]")
-            if ("ts_seq_json" in r.keys() and r["ts_seq_json"])
-            else []
-        )
-    except Exception:
-        ts_seq = []
-    try:
-        timer_seq = (
-            json.loads(r["timer_seq_json"] or "[]")
-            if ("timer_seq_json" in r.keys() and r["timer_seq_json"])
-            else []
-        )
-    except Exception:
-        timer_seq = []
-    return {
-        "is_win": r["is_win"],
-        "odds_seq": odds_seq,
-        "score_seq": score_seq,
-        "ts_seq": ts_seq,
-        "timer_seq": timer_seq,
-        "score_diff_at_bet": r["score_diff_at_bet"] or 0,
-        "factor_id": r["factor_id"],
-        "parameter": r["parameter"] if "parameter" in r.keys() else "",
-        # Carried through purely so the training bankroll replay can tell when two
-        # samples belong to the same match and avoid staking more than one position on
-        # it in a round — see model.py's _bankroll_pass. Not a model feature.
-        "event_id": r["event_id"],
-        "sport_path": r["sport_path"] or "",
-        "team_1": r["team_1"] or "",
-        "team_2": r["team_2"] or "",
-        # NULL for bets archived before the overround_close migration, or for markets
-        # outside the core set it's even computed for (see backend/database.py's
-        # _overround_group_key) — the LightGBM feature builder treats that as "unknown"
-        # (OVERROUND_UNKNOWN sentinel in model.py), not zero margin.
-        "overround_close": r["overround_close"]
-        if "overround_close" in r.keys()
-        else None,
-        "_key": (r["event_id"], r["factor_id"], r["parameter"], r["market_prefix"]),
-    }
+_row_to_sample = row_to_sample
 
 
 _TRAIN_ROW_SELECT = """
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
                h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
+               h.overround_seq_json,
                h.score_diff_at_bet, h.finished_at, h.overround_close,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
@@ -1233,12 +1148,8 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
     sports, factors = universe_sql_params()
     f_cursor.execute(
         f"""
-        SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
-               f.sport_path, f.team_1, f.team_2
-        FROM finished_bets h
-        JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL AND h.event_id = ANY(%s)
+        {_TRAIN_ROW_SELECT}
+        AND h.event_id = ANY(%s)
         {universe_sql("f", "h")}
         ORDER BY h.finished_at ASC
         LIMIT %s
@@ -1519,12 +1430,7 @@ def _run_neuralbet_inference_and_training_locked(
     # trained and served on the same kind of "as it looked live" trajectory, or the
     # LightGBM/PyTorch accuracy numbers are measuring a leak, not real skill.
     event_ids = list({row["event_id"] for row in live_odds_rows})
-    # Per-step (coefficient, score_diff, ts_epoch, timer_seconds) tuples — ts_epoch/
-    # timer_seconds may be None for an unparseable timestamp/timer string, in which case
-    # _build_sequence falls back to its positional/unknown sentinel for that step.
-    trajectory_map: dict[
-        tuple, list[tuple[float, int, float | None, float | None]]
-    ] = {}
+    trajectory_map: dict[tuple, list[tuple[float, int, float | None, Any]]] = {}
     if event_ids:
         cursor.execute(
             """
@@ -1545,40 +1451,24 @@ def _run_neuralbet_inference_and_training_locked(
             trajectory_map.setdefault(key, []).append(
                 (
                     float(h["coefficient"]),
-                    _parse_score_diff(h["score_at_time"]),
-                    _parse_ts_epoch(h["timestamp"]),
-                    _parse_timer_seconds(h["timer_at_time"]),
+                    parse_score_diff(h["score_at_time"]),
+                    parse_ts_epoch(h["timestamp"]),
+                    h["timer_at_time"],
                 )
             )
 
-    # Overround (sum of 1/coeff across sibling outcomes) at the current live snapshot —
-    # a LightGBM feature the raw per-outcome coefficient can't express on its own (see
-    # model.py's LGB_FEATURE_NAMES / OVERROUND_UNKNOWN). Computed from latest_odds
-    # (already the freshest snapshot per market, no history/timing alignment needed)
-    # for the same core outcome set backend/database.py's archival path covers.
-    overround_map: dict[tuple[Any, str, str], float] = {}
+    overround_map: dict = {}
     if event_ids:
         cursor.execute(
             """
-            SELECT event_id, factor_id, COALESCE(parameter, '') AS parameter, coefficient
+            SELECT event_id, factor_id, COALESCE(parameter, '') AS parameter,
+                   COALESCE(market_prefix, '') AS market_prefix, coefficient
             FROM latest_odds
             WHERE event_id = ANY(%s)
         """,
             (event_ids,),
         )
-        grouped: dict[tuple[Any, str, str], list[float]] = {}
-        for r in cursor.fetchall():
-            key = overround_group_key(r["factor_id"], r["parameter"])
-            if key is None:
-                continue
-            coeff = r["coefficient"]
-            if coeff and coeff > 1.0:
-                grouped.setdefault((r["event_id"], key[0], key[1]), []).append(
-                    float(coeff)
-                )
-        for (oeid, group, oparam), coeffs in grouped.items():
-            if len(coeffs) >= OVERROUND_EXPECTED_SIZE[group]:
-                overround_map[(oeid, group, oparam)] = sum(1.0 / c for c in coeffs)
+        overround_map = accumulate_overround(cursor.fetchall())
 
     batch_items = []
     row_meta = []
@@ -1593,30 +1483,34 @@ def _run_neuralbet_inference_and_training_locked(
         s1 = int(row["score_1"] or 0)
         s2 = int(row["score_2"] or 0)
 
-        # No odds_history rows found for this market (freshly appeared this cycle) —
-        # fall back to a single live snapshot, still carrying the event's *current*
-        # timer (e.timer, otherwise unused) so even a brand-new market isn't missing
-        # the match-time feature entirely.
-        step_pairs = trajectory_map.get((eid, fid, param, prefix)) or [
-            (coeff, s1 - s2, None, _parse_timer_seconds(row["timer"]))
+        traj = trajectory_map.get((eid, fid, param, prefix)) or [
+            (coeff, s1 - s2, None, row["timer"])
         ]
-        initial_coeff = step_pairs[0][0] if step_pairs else coeff
+        ov_key = overround_group_key(fid, param, prefix)
+        overround = overround_map.get((eid, ov_key)) if ov_key else None
 
-        ov_key = overround_group_key(fid, param)
-        overround = overround_map.get((eid, ov_key[0], ov_key[1])) if ov_key else None
-
-        batch_items.append(
-            {
-                "step_pairs": step_pairs,
-                "current_coeff": coeff,
-                "initial_coeff": initial_coeff,
-                "factor_id": fid,
-                "sport_path": row["sport_path"] or "",
-                "team_1": row["team_1"] or "",
-                "team_2": row["team_2"] or "",
-                "overround": overround,
-            }
+        view = build_model_input(
+            live_sample(
+                coeffs=[t[0] for t in traj],
+                score_diffs=[t[1] for t in traj],
+                timestamps=[t[2] for t in traj],
+                timer_raws=[t[3] for t in traj],
+                factor_id=fid,
+                parameter=param,
+                market_prefix=prefix,
+                sport_path=row["sport_path"] or "",
+                team_1=row["team_1"] or "",
+                team_2=row["team_2"] or "",
+                overround=overround,
+                event_id=eid,
+            ),
+            mode="serve",
         )
+        if view is None:
+            continue
+        view["current_coeff"] = coeff
+        view["coefficient"] = coeff
+        batch_items.append(view)
         row_meta.append(
             {
                 "event_id": eid,
@@ -1880,43 +1774,11 @@ def _run_neuralbet_inference_and_training_locked(
         if is_train_cycle or is_tune_cycle or is_lgb_cycle:
             val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
-        # LightGBM feature rows use the coefficient/score as they stood at the point in
-        # the trajectory used for that sample (the last odds_seq/score_seq entry) — same
-        # leak fix as the GRU path, not the final match state.
-        def to_lgb_rows(samples):
-            out = []
-            for s in samples:
-                odds_seq = s["odds_seq"]
-                score_seq = s["score_seq"] or [s["score_diff_at_bet"]] * len(odds_seq)
-                if not odds_seq:
-                    continue
-                out.append(
-                    {
-                        "factor_id": s["factor_id"],
-                        "is_win": s["is_win"],
-                        "coefficient": odds_seq[-1],
-                        "initial_coefficient": odds_seq[0],
-                        "min_coefficient": min(odds_seq),
-                        "max_coefficient": max(odds_seq),
-                        "samples_count": len(odds_seq),
-                        "score_diff": score_seq[-1] if score_seq else 0,
-                        "sport_path": s["sport_path"],
-                        "team_1": s.get("team_1", ""),
-                        "team_2": s.get("team_2", ""),
-                        "overround_close": s.get("overround_close"),
-                    }
-                )
-            return out
-
         if is_lgb_cycle:
             f_cursor.execute(
                 f"""
-                SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-                       h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
-                       f.sport_path, f.team_1, f.team_2
-                FROM finished_bets h
-                JOIN finished_events f ON h.event_id = f.event_id
-                WHERE h.is_win IS NOT NULL AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
+                {_TRAIN_ROW_SELECT}
+                  AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
                 {universe_sql("f", "h")}
                 ORDER BY h.finished_at DESC
                 LIMIT %s
@@ -1928,11 +1790,11 @@ def _run_neuralbet_inference_and_training_locked(
                     LGB_TRAIN_LIMIT,
                 ),
             )
-            lgb_rows = to_lgb_rows([
+            lgb_rows = [
                 s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
                 if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
-            ])
-            lgb_val_rows = to_lgb_rows(val_samples)
+            ]
+            lgb_val_rows = val_samples
 
         _untrack_conn(f_conn)
         release_connection(f_conn)

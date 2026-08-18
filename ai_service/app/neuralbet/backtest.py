@@ -7,8 +7,8 @@ trainer to accumulate enough new matches to tell.
 Deliberately NOT the same thing as the online trainer's val_loss/val_guess_rate: those
 measure the model against a fixed ~400-sample validation slice on a random trajectory
 cutoff, refreshed with every online-training pass. This runs a much larger, deterministic
-sweep (the *closing* trajectory — the full history as recorded up to settlement, not a
-random cutoff), broken down by coefficient band and sport the same way the
+sweep (the last in-band snapshot — the moment live staking could actually have
+happened, not the 1.01 close), broken down by coefficient band and sport the same way the
 "Статистика" page's ROI table is, and — the actually new part — recomputes each bet
 with the live ensemble's current weights/blend/threshold instead of reading back
 whatever was actually predicted at the time (predicted_win_probability/predicted_win,
@@ -28,6 +28,7 @@ from app.config import MODEL_DIR
 from app.core.database import get_finished_connection, release_connection
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
 from neurobet_filters import universe_sql, universe_sql_params, passes_live_gates, MIN_BET_COEFF, MAX_BET_COEFF
+from neurobet_features import build_model_input, row_to_sample
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -56,30 +57,6 @@ def now_iso() -> str:
     return datetime.now(MOSCOW_TZ).isoformat()
 
 
-def _build_full_step_pairs(sample: Dict[str, Any]) -> Optional[List[tuple]]:
-    """
-    Same length-reconciliation model.py's _prepare_sample applies to a resolved bet's
-    stored sequences (score_seq/ts_seq/timer_seq may predate the migration that added
-    them, or simply be shorter/absent — see finished_bets' schema notes), but without
-    _prepare_sample's random training-time cutoff: a backtest wants the deterministic
-    *closing* trajectory (the full history as it stood at settlement) so re-running it
-    twice against the same weights gives the same numbers.
-    """
-    odds_seq = sample["odds_seq"]
-    if not odds_seq:
-        return None
-    score_seq = sample["score_seq"]
-    if len(score_seq) != len(odds_seq):
-        score_seq = [sample["score_diff_at_bet"]] * len(odds_seq)
-    ts_seq = sample["ts_seq"]
-    if len(ts_seq) != len(odds_seq):
-        ts_seq = [None] * len(odds_seq)
-    timer_seq = sample["timer_seq"]
-    if len(timer_seq) != len(odds_seq):
-        timer_seq = [None] * len(odds_seq)
-    return list(zip(odds_seq, score_seq, ts_seq, timer_seq))
-
-
 def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
     from app.neuralbet.pipeline import _track_conn, _untrack_conn
     f_conn = _track_conn(get_finished_connection())
@@ -91,6 +68,7 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
         f_cursor.execute(f"""
             SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
                    h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
+                   h.overround_seq_json,
                    h.score_diff_at_bet, h.finished_at, h.overround_close,
                    h.final_coefficient, h.predicted_win_probability, h.predicted_win,
                    f.sport_path, f.team_1, f.team_2
@@ -106,36 +84,6 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
     finally:
         _untrack_conn(f_conn)
         release_connection(f_conn)
-
-
-def _row_to_sample(r) -> Dict[str, Any]:
-    """Local copy of pipeline._row_to_sample's JSON-parsing (kept separate rather than
-    imported, so this module never has to import pipeline.py — see the module docstring
-    on why that direction matters: pipeline owns the live singleton and its lock, and
-    importing *from* pipeline into a read-only reporting module would be backwards)."""
-    try:
-        odds_seq = json.loads(r["odds_seq_json"] or "[]")
-    except Exception:
-        odds_seq = []
-    try:
-        score_seq = json.loads(r["score_seq_json"] or "[]") if r["score_seq_json"] else []
-    except Exception:
-        score_seq = []
-    try:
-        ts_seq = json.loads(r["ts_seq_json"] or "[]") if ("ts_seq_json" in r.keys() and r["ts_seq_json"]) else []
-    except Exception:
-        ts_seq = []
-    try:
-        timer_seq = json.loads(r["timer_seq_json"] or "[]") if ("timer_seq_json" in r.keys() and r["timer_seq_json"]) else []
-    except Exception:
-        timer_seq = []
-    return {
-        "odds_seq": odds_seq, "score_seq": score_seq, "ts_seq": ts_seq, "timer_seq": timer_seq,
-        "score_diff_at_bet": r["score_diff_at_bet"] or 0,
-        "factor_id": r["factor_id"], "label": r["label"] or "", "sport_path": r["sport_path"] or "",
-        "team_1": r["team_1"] or "", "team_2": r["team_2"] or "",
-        "overround_close": r["overround_close"] if "overround_close" in r.keys() else None,
-    }
 
 
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -217,25 +165,16 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         items: List[Dict[str, Any]] = []
         meta: List[Dict[str, Any]] = []
         for r in rows:
-            sample = _row_to_sample(r)
-            pairs = _build_full_step_pairs(sample)
-            if not pairs:
+            sample = row_to_sample(r)
+            view = build_model_input(sample, mode="backtest")
+            if view is None:
                 continue
-            coeff = float(r["final_coefficient"] or pairs[-1][0])
-            items.append({
-                "step_pairs": pairs,
-                "current_coeff": coeff,
-                "initial_coeff": pairs[0][0],
-                "factor_id": sample["factor_id"],
-                "sport_path": sample["sport_path"],
-                "team_1": sample["team_1"],
-                "team_2": sample["team_2"],
-                "overround": sample["overround_close"],
-            })
-            sport_top = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
+            coeff = float(view["current_coeff"])
+            items.append(view)
+            sport_name = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
             meta.append({
                 "event_id": r["event_id"],
-                "sport": sport_top,
+                "sport": sport_name,
                 "coeff": coeff,
                 "factor_id": sample["factor_id"],
                 "label": sample["label"],
