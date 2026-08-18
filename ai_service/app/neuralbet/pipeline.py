@@ -1006,6 +1006,12 @@ def _run_neuralbet_inference_and_training_locked(
 ) -> dict[str, Any]:
     global _cycle_count
     _cycle_count += 1
+    logger.info(
+        f"AI cycle {_cycle_count} start "
+        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
+        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
+        f"scrape_ts={scrape_timestamp})"
+    )
 
     if not AI_SETTINGS["ai_enabled"]:
         add_ai_log(
@@ -1366,6 +1372,11 @@ def _run_neuralbet_inference_and_training_locked(
         # only called after a training cycle) until the next training cycle picks them
         # all up together as one larger batch.
         if is_train_cycle:
+            add_ai_log(
+                "TRAINING",
+                f"Loading training batch (target {TRAIN_BATCH_TOTAL}, "
+                f"archive {coverage.get('untrained', '?')} unseen)...",
+            )
             training_samples, train_keys = _fetch_training_batch(
                 f_cursor, val_event_ids
             )

@@ -526,180 +526,193 @@ def archive_finished_events(cursor, timestamp_str: str):
     if not finished:
         return
 
+    logger.info(f"Archiving {len(finished)} finished event(s) into the training archive...")
+    archive_started = time.time()
     f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
+    try:
+        f_cursor = f_conn.cursor()
 
-    for ev in finished:
-        eid = ev["event_id"]
-        s1 = ev["score_1"] or 0
-        s2 = ev["score_2"] or 0
-        sport_path = ev["sport_path"] or ""
-        period_scores_json = ev["period_scores_json"] if "period_scores_json" in ev.keys() else None
-        try:
-            period_scores = [tuple(p) for p in json.loads(period_scores_json or "[]")]
-        except Exception:
-            period_scores = []
-        named_scores_json = ev["named_scores_json"] if "named_scores_json" in ev.keys() else None
-        try:
-            named_scores = {k: tuple(v) for k, v in json.loads(named_scores_json or "{}").items()}
-        except Exception:
-            named_scores = {}
-
-        f_cursor.execute("""
-            INSERT INTO finished_events (
-                event_id, sport_id, sport_path, match_name, team_1, team_2,
-                score_1, score_2, score, finished_at, archived_count, period_scores_json,
-                named_scores_json
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
-            ON CONFLICT(event_id) DO UPDATE SET
-                score_1 = excluded.score_1,
-                score_2 = excluded.score_2,
-                score = excluded.score,
-                finished_at = excluded.finished_at,
-                archived_count = finished_events.archived_count + 1,
-                period_scores_json = excluded.period_scores_json,
-                named_scores_json = excluded.named_scores_json;
-        """, (
-            eid, ev["sport_id"], sport_path, ev["match_name"],
-            ev["team_1"], ev["team_2"], s1, s2, ev["score"], timestamp_str, period_scores_json or "[]",
-            named_scores_json or "{}"
-        ))
-
-        event_overround = _compute_event_overround(cursor, eid)
-
-        # Group the full snapshot-by-snapshot odds_history into one row per unique bet
-        # (event_id, factor_id, parameter, market_prefix), with honest initial/final coefficients.
-        cursor.execute("""
-            SELECT factor_id,
-                   COALESCE(market_prefix, '') AS market_prefix,
-                   COALESCE(parameter, '') AS parameter,
-                   MIN(label) AS label,
-                   COUNT(*) AS samples_count,
-                   MIN(coefficient) AS min_coeff, MAX(coefficient) AS max_coeff,
-                   MIN(id) AS first_id, MAX(id) AS last_id
-              FROM odds_history
-             WHERE event_id = %s
-             GROUP BY factor_id, COALESCE(market_prefix, ''), COALESCE(parameter, '')
-        """, (eid,))
-        groups = cursor.fetchall()
-
-        for g in groups:
-            fid = g["factor_id"]
-            prefix = g["market_prefix"] or ""
-            param = g["parameter"] or ""
-
-            cursor.execute(
-                "SELECT coefficient, timestamp FROM odds_history WHERE id = %s", (g["first_id"],)
-            )
-            first_row = cursor.fetchone()
-            cursor.execute(
-                "SELECT coefficient, score_at_time FROM odds_history WHERE id = %s", (g["last_id"],)
-            )
-            last_row = cursor.fetchone()
-            cursor.execute(
-                """SELECT coefficient, score_at_time, timestamp, timer_at_time FROM odds_history
-                    WHERE event_id = %s AND factor_id = %s
-                      AND COALESCE(parameter, '') = %s AND COALESCE(market_prefix, '') = %s
-                    ORDER BY id ASC""",
-                (eid, fid, param, prefix),
-            )
-            seq_rows = cursor.fetchall()
-            odds_seq = [r["coefficient"] for r in seq_rows]
-            # Wall-clock epoch seconds per snapshot (None for unparseable rows) — lets
-            # training see real elapsed time between odds moves instead of just their
-            # order (see ts_seq_json migration 0004 / model.py's _build_sequence).
-            ts_seq = [_parse_ts_epoch(r["timestamp"]) for r in seq_rows]
-            # Elapsed match time per snapshot (None where Fonbet's timer field wasn't a
-            # recognizable clock — see _parse_timer_seconds) — lets the GRU tell "odds
-            # moved on minute 5" from "odds moved on minute 85" (see timer_seq_json
-            # migration 0005 / model.py's _build_sequence TIMER_UNKNOWN sentinel).
-            timer_seq = [_parse_timer_seconds(r["timer_at_time"]) for r in seq_rows]
-
-            # Score as it actually stood at each snapshot while the bet was live —
-            # used for training instead of the final score (see score_seq_json migration
-            # note above). "N:M" strings that fail to parse fall back to 0-0 (pre-kickoff).
-            score_diff_seq: List[int] = []
-            for r in seq_rows:
-                raw = r["score_at_time"] or "0:0"
-                try:
-                    a, b = str(raw).split(":", 1)
-                    score_diff_seq.append(int(a) - int(b))
-                except Exception:
-                    score_diff_seq.append(0)
-            score_diff_at_bet = score_diff_seq[0] if score_diff_seq else 0
-
-            if is_fast_format_sport_path(sport_path):
-                # Frozen mid-sim score is not a final. Grading Under 126.5 as a win
-                # on 4:4 while Fonbet's coupon was 69:59 (Dallas–NY 2K, 2026-08-18)
-                # poisons both the live bankroll and finished_bets training labels.
-                is_win, is_push = None, False
-            else:
-                is_win, is_push = resolve_outcome(
-                    fid, g["label"] or "", param, s1, s2,
-                    market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
-                    named_scores=named_scores,
-                )
-
-            # Capture what the model actually predicted for this bet before it's gone —
-            # this is the only way to later check "when the model said 75%, did it really
-            # win ~75% of the time?" (calibration), and whether its own bet/no-bet
-            # verdict (predicted_win) turned out to be right (guessed/not-guessed history).
-            cursor.execute(
-                """SELECT win_probability, predicted_win FROM ai_predictions
-                    WHERE event_id = %s AND factor_id = %s
-                      AND COALESCE(CAST(parameter AS TEXT), '') = %s
-                      AND COALESCE(market_prefix, '') = %s""",
-                (eid, fid, param, prefix),
-            )
-            pred_row = cursor.fetchone()
-            predicted_win_probability = pred_row["win_probability"] if pred_row else None
-            predicted_win = pred_row["predicted_win"] if pred_row else None
-
-            overround_key = _overround_group_key(fid, param)
-            overround_close = event_overround.get(overround_key) if overround_key else None
+        for ev in finished:
+            eid = ev["event_id"]
+            s1 = ev["score_1"] or 0
+            s2 = ev["score_2"] or 0
+            sport_path = ev["sport_path"] or ""
+            period_scores_json = ev["period_scores_json"] if "period_scores_json" in ev.keys() else None
+            try:
+                period_scores = [tuple(p) for p in json.loads(period_scores_json or "[]")]
+            except Exception:
+                period_scores = []
+            named_scores_json = ev["named_scores_json"] if "named_scores_json" in ev.keys() else None
+            try:
+                named_scores = {k: tuple(v) for k, v in json.loads(named_scores_json or "{}").items()}
+            except Exception:
+                named_scores = {}
 
             f_cursor.execute("""
-                INSERT INTO finished_bets (
-                    event_id, factor_id, market_prefix, label, parameter,
-                    initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
-                    samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
-                    predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push,
-                    predicted_win, overround_close, ts_seq_json, timer_seq_json
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s)
-                ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
-                    final_coefficient = excluded.final_coefficient,
-                    min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
-                    max_coefficient = GREATEST(finished_bets.max_coefficient, excluded.max_coefficient),
-                    samples_count = excluded.samples_count,
-                    odds_seq_json = excluded.odds_seq_json,
-                    score_at_time = excluded.score_at_time,
-                    is_win = excluded.is_win,
-                    is_push = excluded.is_push,
+                INSERT INTO finished_events (
+                    event_id, sport_id, sport_path, match_name, team_1, team_2,
+                    score_1, score_2, score, finished_at, archived_count, period_scores_json,
+                    named_scores_json
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
+                ON CONFLICT(event_id) DO UPDATE SET
+                    score_1 = excluded.score_1,
+                    score_2 = excluded.score_2,
+                    score = excluded.score,
                     finished_at = excluded.finished_at,
-                    predicted_win_probability = COALESCE(excluded.predicted_win_probability, finished_bets.predicted_win_probability),
-                    predicted_win = COALESCE(excluded.predicted_win, finished_bets.predicted_win),
-                    score_seq_json = excluded.score_seq_json,
-                    score_diff_at_bet = excluded.score_diff_at_bet,
-                    overround_close = COALESCE(excluded.overround_close, finished_bets.overround_close),
-                    ts_seq_json = excluded.ts_seq_json,
-                    timer_seq_json = excluded.timer_seq_json,
-                    trained_count = 0;
+                    archived_count = finished_events.archived_count + 1,
+                    period_scores_json = excluded.period_scores_json,
+                    named_scores_json = excluded.named_scores_json;
             """, (
-                eid, fid, prefix, g["label"] or "", param,
-                first_row["coefficient"], last_row["coefficient"], g["min_coeff"], g["max_coeff"],
-                g["samples_count"], json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
-                is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
-                json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
-                predicted_win, overround_close, json.dumps(ts_seq), json.dumps(timer_seq),
+                eid, ev["sport_id"], sport_path, ev["match_name"],
+                ev["team_1"], ev["team_2"], s1, s2, ev["score"], timestamp_str, period_scores_json or "[]",
+                named_scores_json or "{}"
             ))
 
-        cursor.execute("DELETE FROM latest_odds WHERE event_id = %s", (eid,))
-        cursor.execute("DELETE FROM odds_history WHERE event_id = %s", (eid,))
-        cursor.execute("DELETE FROM events WHERE event_id = %s", (eid,))
-        cursor.execute("DELETE FROM ai_predictions WHERE event_id = %s", (eid,))
+            event_overround = _compute_event_overround(cursor, eid)
 
-    f_conn.commit()
-    release_connection(f_conn)
+            # Group the full snapshot-by-snapshot odds_history into one row per unique bet
+            # (event_id, factor_id, parameter, market_prefix), with honest initial/final coefficients.
+            cursor.execute("""
+                SELECT factor_id,
+                       COALESCE(market_prefix, '') AS market_prefix,
+                       COALESCE(parameter, '') AS parameter,
+                       MIN(label) AS label,
+                       COUNT(*) AS samples_count,
+                       MIN(coefficient) AS min_coeff, MAX(coefficient) AS max_coeff,
+                       MIN(id) AS first_id, MAX(id) AS last_id
+                  FROM odds_history
+                 WHERE event_id = %s
+                 GROUP BY factor_id, COALESCE(market_prefix, ''), COALESCE(parameter, '')
+            """, (eid,))
+            groups = cursor.fetchall()
+
+            for g in groups:
+                fid = g["factor_id"]
+                prefix = g["market_prefix"] or ""
+                param = g["parameter"] or ""
+
+                cursor.execute(
+                    "SELECT coefficient, timestamp FROM odds_history WHERE id = %s", (g["first_id"],)
+                )
+                first_row = cursor.fetchone()
+                cursor.execute(
+                    "SELECT coefficient, score_at_time FROM odds_history WHERE id = %s", (g["last_id"],)
+                )
+                last_row = cursor.fetchone()
+                cursor.execute(
+                    """SELECT coefficient, score_at_time, timestamp, timer_at_time FROM odds_history
+                        WHERE event_id = %s AND factor_id = %s
+                          AND COALESCE(parameter, '') = %s AND COALESCE(market_prefix, '') = %s
+                        ORDER BY id ASC""",
+                    (eid, fid, param, prefix),
+                )
+                seq_rows = cursor.fetchall()
+                odds_seq = [r["coefficient"] for r in seq_rows]
+                # Wall-clock epoch seconds per snapshot (None for unparseable rows) — lets
+                # training see real elapsed time between odds moves instead of just their
+                # order (see ts_seq_json migration 0004 / model.py's _build_sequence).
+                ts_seq = [_parse_ts_epoch(r["timestamp"]) for r in seq_rows]
+                # Elapsed match time per snapshot (None where Fonbet's timer field wasn't a
+                # recognizable clock — see _parse_timer_seconds) — lets the GRU tell "odds
+                # moved on minute 5" from "odds moved on minute 85" (see timer_seq_json
+                # migration 0005 / model.py's _build_sequence TIMER_UNKNOWN sentinel).
+                timer_seq = [_parse_timer_seconds(r["timer_at_time"]) for r in seq_rows]
+
+                # Score as it actually stood at each snapshot while the bet was live —
+                # used for training instead of the final score (see score_seq_json migration
+                # note above). "N:M" strings that fail to parse fall back to 0-0 (pre-kickoff).
+                score_diff_seq: List[int] = []
+                for r in seq_rows:
+                    raw = r["score_at_time"] or "0:0"
+                    try:
+                        a, b = str(raw).split(":", 1)
+                        score_diff_seq.append(int(a) - int(b))
+                    except Exception:
+                        score_diff_seq.append(0)
+                score_diff_at_bet = score_diff_seq[0] if score_diff_seq else 0
+
+                if is_fast_format_sport_path(sport_path):
+                    # Frozen mid-sim score is not a final. Grading Under 126.5 as a win
+                    # on 4:4 while Fonbet's coupon was 69:59 (Dallas–NY 2K, 2026-08-18)
+                    # poisons both the live bankroll and finished_bets training labels.
+                    is_win, is_push = None, False
+                else:
+                    is_win, is_push = resolve_outcome(
+                        fid, g["label"] or "", param, s1, s2,
+                        market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
+                        named_scores=named_scores,
+                    )
+
+                # Capture what the model actually predicted for this bet before it's gone —
+                # this is the only way to later check "when the model said 75%, did it really
+                # win ~75% of the time?" (calibration), and whether its own bet/no-bet
+                # verdict (predicted_win) turned out to be right (guessed/not-guessed history).
+                cursor.execute(
+                    """SELECT win_probability, predicted_win FROM ai_predictions
+                        WHERE event_id = %s AND factor_id = %s
+                          AND COALESCE(CAST(parameter AS TEXT), '') = %s
+                          AND COALESCE(market_prefix, '') = %s""",
+                    (eid, fid, param, prefix),
+                )
+                pred_row = cursor.fetchone()
+                predicted_win_probability = pred_row["win_probability"] if pred_row else None
+                predicted_win = pred_row["predicted_win"] if pred_row else None
+
+                overround_key = _overround_group_key(fid, param)
+                overround_close = event_overround.get(overround_key) if overround_key else None
+
+                f_cursor.execute("""
+                    INSERT INTO finished_bets (
+                        event_id, factor_id, market_prefix, label, parameter,
+                        initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
+                        samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
+                        predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push,
+                        predicted_win, overround_close, ts_seq_json, timer_seq_json
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s)
+                    ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
+                        final_coefficient = excluded.final_coefficient,
+                        min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
+                        max_coefficient = GREATEST(finished_bets.max_coefficient, excluded.max_coefficient),
+                        samples_count = excluded.samples_count,
+                        odds_seq_json = excluded.odds_seq_json,
+                        score_at_time = excluded.score_at_time,
+                        is_win = excluded.is_win,
+                        is_push = excluded.is_push,
+                        finished_at = excluded.finished_at,
+                        predicted_win_probability = COALESCE(excluded.predicted_win_probability, finished_bets.predicted_win_probability),
+                        predicted_win = COALESCE(excluded.predicted_win, finished_bets.predicted_win),
+                        score_seq_json = excluded.score_seq_json,
+                        score_diff_at_bet = excluded.score_diff_at_bet,
+                        overround_close = COALESCE(excluded.overround_close, finished_bets.overround_close),
+                        ts_seq_json = excluded.ts_seq_json,
+                        timer_seq_json = excluded.timer_seq_json,
+                        trained_count = 0;
+                """, (
+                    eid, fid, prefix, g["label"] or "", param,
+                    first_row["coefficient"], last_row["coefficient"], g["min_coeff"], g["max_coeff"],
+                    g["samples_count"], json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
+                    is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
+                    json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
+                    predicted_win, overround_close, json.dumps(ts_seq), json.dumps(timer_seq),
+                ))
+
+            cursor.execute("DELETE FROM latest_odds WHERE event_id = %s", (eid,))
+            cursor.execute("DELETE FROM odds_history WHERE event_id = %s", (eid,))
+            cursor.execute("DELETE FROM events WHERE event_id = %s", (eid,))
+            cursor.execute("DELETE FROM ai_predictions WHERE event_id = %s", (eid,))
+
+        f_conn.commit()
+        logger.info(
+            f"Archived {len(finished)} event(s) in {time.time() - archive_started:.1f}s"
+        )
+    except Exception:
+        try:
+            f_conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        release_connection(f_conn)
 
 def save_parsed_events(
     parsed_events: List[Dict[str, Any]],
@@ -777,13 +790,11 @@ def save_parsed_events(
         if cursor.rowcount:
             logger.info(f"Finalized {cursor.rowcount} events after grace period.")
 
-    # Archive non-live finished events
-    archive_finished_events(cursor, timestamp_str)
-
-    # Settle any open live_bets whose event just got archived above — right here, in the
-    # same cycle the event finalizes, instead of waiting for ai_service's next inference
-    # tick (which used to be the only place settlement happened, see plan notes).
-    settle_result = settle_live_bets(timestamp_str)
+    # Live snapshot is committed first. Archiving finished events (copying odds
+    # trajectories into finished_bets) can take minutes on a large batch and used
+    # to sit *before* this commit — so last_updated_at froze and the AI trigger
+    # never fired for the whole archive. archive_and_settle() runs after the
+    # caller has already kicked inference.
 
     for ev in parsed_events:
         eid = ev["event_id"]
@@ -889,14 +900,34 @@ def save_parsed_events(
 
     conn.commit()
     release_connection(conn)
+    return {"events_saved": len(parsed_events)}
 
-    # Runs after the commit above so it sees this cycle's freshly-written
-    # period_scores_json — settles period-scoped bets ("1-й тайм", "2-й период", ...)
-    # the moment their own period ends, instead of waiting for the whole match. Wrapped
-    # separately: this opens its own connections and occasionally loses a SQLite lock
-    # race against the many concurrent API reads — that must not take down the whole
-    # scrape cycle (events/odds above are already safely committed either way). A
-    # skipped cycle here just means the affected bet settles on the next one instead.
+
+def archive_and_settle(timestamp_str: str) -> Dict[str, Any]:
+    """Copy finalized (is_live=0) events into the training archive and settle
+    open live_bets. Runs *after* save_parsed_events has already committed the
+    live snapshot so a slow archive cannot freeze last_updated_at or delay
+    the AI trigger. Safe to retry: archived events are deleted from live, so
+    a second call in the same cycle is a no-op once the first commit lands."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        archive_finished_events(cursor, timestamp_str)
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        release_connection(conn)
+
+    settle_result = settle_live_bets(timestamp_str)
+
+    # Period-scoped bets ("1-й тайм", "2-й период", ...) settle once period_scores
+    # has the next period — not waiting for the whole match. Wrapped separately:
+    # this opens its own connections and must not take down the scrape cycle.
     try:
         period_settle_result = settle_completed_period_bets(timestamp_str)
         settle_result["settled"] += period_settle_result["settled"]
@@ -2331,9 +2362,10 @@ def _cycle_summary_message(won: int, lost: int, void: int, f_cursor) -> Dict[str
 def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
     """
     Resolves any 'open' live_bets whose underlying event has since been archived (i.e.
-    finished_bets now has an outcome row for it). Called from save_parsed_events() right
-    after archive_finished_events(), so a bet settles in the same scrape cycle its event
-    finalizes in — not whenever ai_service's own inference cycle next happens to run.
+    finished_bets now has an outcome row for it). Called from archive_and_settle()
+    right after archive_finished_events(), so a bet settles in the same scrape cycle
+    its event finalizes in — not whenever ai_service's own inference cycle next happens
+    to run.
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()

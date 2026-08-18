@@ -14,11 +14,12 @@ if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
 from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
 from neurobet_filters import (
@@ -102,7 +103,15 @@ from mcp_eval import router as mcp_router
 app.include_router(mcp_router)
 
 parser_service = FonbetParserService()
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(
+    timezone=MOSCOW_TZ,
+    executors={"default": ThreadPoolExecutor(max_workers=2)},
+    job_defaults={
+        "coalesce": True,
+        "max_instances": 1,
+        "misfire_grace_time": 60,
+    },
+)
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai:8001")
 
@@ -177,6 +186,7 @@ def push_ai_logs(messages: List[Dict[str, str]]):
 
 def run_scrape_task():
     logger.info("Executing background Fonbet LIVE scrape task...")
+    started = datetime.datetime.now(MOSCOW_TZ)
     try:
         parsed_events, seen_live_ids = parser_service.parse_live()
         now_str = now_moscow().strftime("%Y-%m-%d %H:%M:%S")
@@ -188,14 +198,28 @@ def run_scrape_task():
             logger.warning("Empty LIVE snapshot from Fonbet — skipping save/finalize cycle.")
             return
 
-        settle_result = save_parsed_events(parsed_events, now_str, present_event_ids=seen_live_ids)
+        save_parsed_events(parsed_events, now_str, present_event_ids=seen_live_ids)
         logger.info(f"Successfully scraped and stored {len(parsed_events)} events at {now_str}")
-        push_ai_logs(settle_result.get("messages", []))
 
-        # Trigger AI Service Microservice Container (Port 8001)
+        # Kick inference as soon as the live snapshot is committed. Archiving
+        # finished matches can take minutes and used to run first, which froze
+        # last_updated_at and left the admin AI log silent for the whole copy.
         trigger_ai_pipeline(now_str)
+
+        try:
+            settle_result = archive_and_settle(now_str)
+            push_ai_logs(settle_result.get("messages", []))
+        except Exception as e:
+            logger.error(
+                f"Error archiving/settling after live save (AI already triggered): {e}",
+                exc_info=True,
+            )
     except Exception as e:
         logger.error(f"Error during scheduled scrape: {e}", exc_info=True)
+    finally:
+        elapsed = (datetime.datetime.now(MOSCOW_TZ) - started).total_seconds()
+        if elapsed >= 30:
+            logger.warning(f"Fonbet scrape cycle took {elapsed:.1f}s")
 
 @app.on_event("startup")
 def startup_event():
@@ -204,12 +228,21 @@ def startup_event():
 
     # Schedule recurring task based on settings
     interval = settings.SCRAPE_INTERVAL_SECONDS
-    scheduler.add_job(run_scrape_task, 'interval', seconds=interval, id="fonbet_scraper")
+    # next_run_time=now: first scrape immediately, same job id as the interval
+    # so it cannot overlap with a second "initial_scrape_job" on the shared
+    # (not thread-safe) httpx client.
+    scheduler.add_job(
+        run_scrape_task,
+        "interval",
+        seconds=interval,
+        id="fonbet_scraper",
+        next_run_time=now_moscow(),
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=max(interval, 30),
+    )
     scheduler.start()
     logger.info(f"Scheduler started! Fonbet LIVE matches will be scraped every {interval} seconds.")
-    
-    # Run initial scrape in background job so port 8000 opens instantly
-    scheduler.add_job(run_scrape_task, id="initial_scrape_job")
 
 @app.on_event("shutdown")
 def shutdown_event():
