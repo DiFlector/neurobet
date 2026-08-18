@@ -1039,28 +1039,49 @@ class NeuralBetEnsemble:
         Hit rate is how often a +EV verdict (predicted edge >= 0) actually won — the
         number that matters once the head is a bet/no-bet gate, not a 50/50 classifier
         on complementary markets.
+        Chunked by BATCH_SIZE: a single tensor of a 280k-row cold-start pool OOMs
+        the AI worker right after early-stopping, which then restarts epoch 1 forever.
         """
         if not prepared:
             return float("nan"), float("nan")
-        seqs = torch.tensor([_build_sequence(p["step_pairs"]) for p in prepared], dtype=torch.float32)
-        targets = torch.tensor([p["target"] for p in prepared], dtype=torch.float32)
-        coeffs = torch.tensor([p["coefficient"] for p in prepared], dtype=torch.float32)
-        sport_t, market_t, team1_t, team2_t = self._context_tensors(prepared)
+        loss_sum = 0.0
+        loss_n = 0
+        hit_sum = 0.0
+        hit_n = 0
         self.pytorch_model.eval()
         with torch.no_grad():
-            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1]
-            pred_edge = torch.tanh(logits)
-            true_edge = targets - _market_prob_tensor(coeffs)
-            verdict_mask = coeffs < MAX_BET_COEFF
-            if int(verdict_mask.sum().item()) == 0:
-                loss = float("nan")
-            else:
-                loss = nn.functional.mse_loss(pred_edge[verdict_mask], true_edge[verdict_mask]).item()
-            would_bet = (pred_edge >= 0) & (coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)
-            if int(would_bet.sum().item()) == 0:
-                hit_rate = 0.0
-            else:
-                hit_rate = (targets[would_bet] >= 0.5).float().mean().item()
+            for i in range(0, len(prepared), BATCH_SIZE):
+                chunk = prepared[i:i + BATCH_SIZE]
+                seqs = torch.tensor(
+                    [_build_sequence(p["step_pairs"]) for p in chunk], dtype=torch.float32
+                )
+                targets = torch.tensor([p["target"] for p in chunk], dtype=torch.float32)
+                coeffs = torch.tensor(
+                    [p["coefficient"] for p in chunk], dtype=torch.float32
+                )
+                sport_t, market_t, team1_t, team2_t = self._context_tensors(chunk)
+                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1]
+                pred_edge = torch.tanh(logits)
+                true_edge = targets - _market_prob_tensor(coeffs)
+                verdict_mask = coeffs < MAX_BET_COEFF
+                n_verdict = int(verdict_mask.sum().item())
+                if n_verdict:
+                    chunk_loss = nn.functional.mse_loss(
+                        pred_edge[verdict_mask], true_edge[verdict_mask]
+                    ).item()
+                    loss_sum += chunk_loss * n_verdict
+                    loss_n += n_verdict
+                would_bet = (
+                    (pred_edge >= 0)
+                    & (coeffs >= MIN_BET_COEFF)
+                    & (coeffs <= MAX_BET_COEFF)
+                )
+                n_bet = int(would_bet.sum().item())
+                if n_bet:
+                    hit_sum += float((targets[would_bet] >= 0.5).sum().item())
+                    hit_n += n_bet
+        loss = (loss_sum / loss_n) if loss_n else float("nan")
+        hit_rate = (hit_sum / hit_n) if hit_n else 0.0
         return loss, hit_rate
 
     def _bankroll_pass(
@@ -1414,11 +1435,15 @@ class NeuralBetEnsemble:
         # was a Kelly compound over the *training* set (10000 / ROUND_SIZE ≈ 500
         # rounds) after the network had just fitted that same set. A 1–2% in-sample
         # edge becomes a thousand-fold "profit" and says nothing about whether the
-        # model can bet. Replay on held-out val instead (and still run the in-sample
-        # pass without writing, so the log can show the gap when it explodes).
-        in_sample_bank = self._bankroll_pass(prepared, account="training", commit=False)
+        # model can bet. Replay on held-out val instead. Skip the in-sample replay
+        # on a full-archive cold-start: commit=False keeps autograd on, and 270k
+        # rounds of that after early-stopping is what killed the worker every
+        # ~22 min (epoch 11, then process restart, epoch 1/2 from scratch).
+        in_sample_bank: Dict[str, Any] = {"bank_end": None}
+        if len(prepared) <= 20000:
+            in_sample_bank = self._bankroll_pass(prepared, account="training", commit=False)
         bank_result = self._bankroll_pass(
-            prepared_val if prepared_val else prepared,
+            prepared_val if prepared_val else prepared[:20000],
             account="training",
             commit=True,
         )
@@ -1500,7 +1525,11 @@ class NeuralBetEnsemble:
                     else None
                 ),
                 "on_val": bool(prepared_val),
-                "in_sample_end": round(in_sample_bank["bank_end"], 2),
+                "in_sample_end": (
+                    round(in_sample_bank["bank_end"], 2)
+                    if in_sample_bank.get("bank_end") is not None
+                    else None
+                ),
                 "ruin_events": bank_result["ruin_events"],
             },
         }

@@ -175,17 +175,12 @@ def trigger_ai_pipeline(scrape_timestamp: str):
     def _fire():
         global _ai_trigger_in_flight
         try:
-            # 120s -> 300s: a training cycle can now have to queue behind a backtest
-            # holding ai_service's engine lock for its entire scoring pass (see
-            # ai_service/app/neuralbet/backtest.py's run_backtest — the lock covers row
-            # fetch + inference, not just the forward pass, and a backtest run can take
-            # up to a minute or so at the 40k-sample size the admin panel and the 4x/day
-            # scheduled job both use). A premature timeout here doesn't corrupt anything
-            # (ai_service keeps running the request server-side either way, engine_lock
-            # still serializes everything correctly) but it does reset
-            # _ai_trigger_in_flight early, letting backend fire an overlapping request
-            # that just piles up waiting on the same lock — worth avoiding.
-            with httpx.Client(timeout=300.0) as client:
+            # 120s -> 300s -> 3600s: a cold-start pass over the full archive is
+            # ~20 min of GRU epochs plus wrap-up. 300s cleared _ai_trigger_in_flight
+            # while the worker was still busy, so every scrape queued another
+            # /predict-and-train behind the same lock. After the first pass finished
+            # (or the worker died) those queued calls would start epoch 1 again.
+            with httpx.Client(timeout=3600.0) as client:
                 res = client.post(f"{AI_SERVICE_URL}/predict-and-train", json={"scrape_timestamp": scrape_timestamp})
                 if res.status_code == 200:
                     logger.info(f"AI Service trigger response: {res.json()}")
