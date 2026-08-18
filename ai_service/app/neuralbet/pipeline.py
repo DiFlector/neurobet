@@ -52,6 +52,71 @@ ensemble_engine = NeuralBetEnsemble()
 # POST /predict-and-train calls would otherwise interleave those mutations and corrupt
 # training. Everything that touches ensemble_engine goes through this lock.
 _engine_lock = threading.Lock()
+# Set by reset_neural_network *before* it waits on _engine_lock, so an in-flight
+# predict-and-train / backtest can drop out at the next minibatch or cancelled SQL
+# instead of making the admin "Обнулить" button hang until the whole pass finishes
+# (Next/nginx then 504s and the UI shows "Ошибка при обнулении" even though the
+# wipe still runs a minute later).
+_abort_cycle = threading.Event()
+_tracked_conns_lock = threading.Lock()
+_tracked_conns: list = []
+
+
+def cycle_aborted() -> bool:
+    return _abort_cycle.is_set()
+
+
+def _track_conn(conn):
+    with _tracked_conns_lock:
+        _tracked_conns.append(conn)
+    return conn
+
+
+def _untrack_conn(conn):
+    with _tracked_conns_lock:
+        try:
+            _tracked_conns.remove(conn)
+        except ValueError:
+            pass
+
+
+def _release_tracked_conns() -> None:
+    with _tracked_conns_lock:
+        conns = list(_tracked_conns)
+        _tracked_conns.clear()
+    for conn in conns:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            release_connection(conn)
+        except Exception:
+            pass
+
+
+def abort_in_flight_cycle() -> None:
+    """Stop inference, training and backtest so a model reset can take the engine lock."""
+    _abort_cycle.set()
+    with _tracked_conns_lock:
+        conns = list(_tracked_conns)
+    for conn in conns:
+        try:
+            conn.cancel()
+        except Exception as e:
+            logger.warning(f"Could not cancel in-flight DB query during reset: {e}")
+
+
+def _is_query_canceled(exc: BaseException) -> bool:
+    try:
+        from psycopg2 import errors as pg_errors
+        if isinstance(exc, pg_errors.QueryCanceled):
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return "canceling statement" in msg or "querycanceled" in msg
+
 
 # Defaults only apply when no saved file exists yet. After an admin toggle the values
 # live in AI_SETTINGS_PATH on the /app/data volume so a container restart does not
@@ -129,16 +194,65 @@ _last_catch_up: bool | None = None
 # After an admin reset the live weights are random: running the online 10k loop
 # (low LR, 50–200 epochs per slice, chart-gate vs the first lucky val_loss) is
 # fine-tuning a model that does not exist yet. Cold-start instead walks the
-# train-universe archive in shuffled chunks, 1–N short epochs each, at a
-# from-scratch LR, with the checkpoint gate off so later chunks cannot be
-# rolled back just because they did not beat a 10k overfit. Then the online
-# loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
+# entire train-universe archive for COLD_START_EPOCHS shuffled passes, up to
+# MAX_EPOCHS inner epochs each (early-stopping still cuts a pass that has
+# converged), at a from-scratch LR, with the checkpoint gate off so a later
+# pass cannot be rolled back just because it did not beat a 10k overfit. Then
+# the online loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
 COLD_START_EPOCHS = int(os.getenv("NEURALBET_COLD_START_EPOCHS", "2"))
-COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "20000"))
-COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", "2"))
+# 0 = one pass = the entire train-universe pool (shuffle in Python). 20000 was
+# a thin slice of a ~270k-row archive; from-scratch needs the whole thing.
+COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "0"))
+# Same ceiling as online (early-stopping still cuts it). Two inner epochs on
+# a cold GRU barely move val_loss; let the first two archive passes actually
+# converge.
+COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", str(MAX_EPOCHS)))
 COLD_START_LR = float(os.getenv("NEURALBET_COLD_START_LR", "1e-3"))
 COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
 COLD_START_PATH = os.path.join(MODEL_DIR, "cold_start.json")
+RESET_PROGRESS_PATH = os.path.join(MODEL_DIR, "reset_progress.json")
+_reset_progress_lock = threading.Lock()
+_reset_progress: dict[str, Any] = {
+    "active": False,
+    "step": "idle",
+    "label": "",
+    "pct": 0,
+}
+
+
+def _cold_start_chunk_label() -> str:
+    if COLD_START_CHUNK <= 0:
+        return "entire train pool"
+    return f"{COLD_START_CHUNK}-sample chunks"
+
+
+def _persist_reset_progress(payload: dict[str, Any]) -> None:
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp_path = RESET_PROGRESS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp_path, RESET_PROGRESS_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting reset progress: {e}")
+
+
+def set_reset_progress(step: str, label: str, pct: int, active: bool = True) -> None:
+    with _reset_progress_lock:
+        _reset_progress.update({
+            "active": active,
+            "step": step,
+            "label": label,
+            "pct": max(0, min(int(pct), 100)),
+        })
+        payload = dict(_reset_progress)
+    _persist_reset_progress(payload)
+    logger.info(f"Reset progress {payload['pct']}% — {payload['label']}")
+
+
+def get_reset_progress() -> dict[str, Any]:
+    with _reset_progress_lock:
+        return dict(_reset_progress)
 
 # Floor on how many samples (fresh + replay combined — see _fetch_training_batch) a
 # training cycle needs before it's allowed to actually run a gradient step. Below this,
@@ -291,51 +405,75 @@ def reset_neural_network() -> dict[str, Any]:
     model. The archive of resolved matches stays: that's the expensive, slow-to-rebuild
     part. Runs under _engine_lock; _cycle_count goes to 0 so the next inference cycle
     is treated as cycle 1 (immediate LightGBM refit + training + tune). Starts a
-    cold-start walk of the archive (shuffled chunks, from-scratch LR, checkpoint
-    gate off) instead of jumping into the online 10k fine-tune loop.
+    cold-start walk of the whole archive (from-scratch LR, checkpoint gate off)
+    instead of jumping into the online 10k fine-tune loop.
     """
     global _cycle_count, _low_epoch_streak
     from app.neuralbet.backtest import clear_backtest_history
 
-    _invalidate_archive_coverage()
-    with _engine_lock:
-        ensemble_engine.reset()
-        clear_training_history()
-        clear_backtest_history()
-
-        f_conn = get_finished_connection()
-        f_cursor = f_conn.cursor()
-        f_cursor.execute(
-            "UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0"
+    reset_rows = 0
+    try:
+        add_ai_log(
+            "SYSTEM",
+            "Reset requested — stopping in-flight inference, training and backtest.",
+            level="WARNING",
         )
-        reset_rows = f_cursor.rowcount
-        f_cursor.execute("DELETE FROM live_bets;")
-        f_cursor.execute("DELETE FROM bankroll_ledger;")
-        f_cursor.execute("""
-            UPDATE bankroll_accounts SET
-                balance = start_balance, peak_balance = start_balance, locked = 0,
-                rounds = 0, bets_placed = 0, wins = 0, losses = 0,
-                total_staked = 0, total_returned = 0, ruin_count = 0, is_ruined = 0,
-                updated_at = now();
-        """)
-        f_conn.commit()
-        release_connection(f_conn)
+        set_reset_progress("stopping", "Останавливаю обучение и бэктест…", 8)
+        abort_in_flight_cycle()
+        _invalidate_archive_coverage()
+        set_reset_progress("waiting_lock", "Жду завершения текущего цикла…", 22)
+        with _engine_lock:
+            try:
+                set_reset_progress("wiping", "Сбрасываю веса модели…", 40)
+                ensemble_engine.reset()
+                set_reset_progress("charts", "Чищу графики обучения и бэктеста…", 52)
+                clear_training_history()
+                clear_backtest_history()
 
-        _cycle_count = 0
-        _low_epoch_streak = 0
-        _begin_cold_start()
+                set_reset_progress("archive", "Обнуляю trained_count в архиве…", 65)
+                f_conn = get_finished_connection()
+                f_cursor = f_conn.cursor()
+                f_cursor.execute(
+                    "UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0"
+                )
+                reset_rows = f_cursor.rowcount
+                set_reset_progress("bankroll", "Сбрасываю банки и открытые ставки…", 85)
+                f_cursor.execute("DELETE FROM live_bets;")
+                f_cursor.execute("DELETE FROM bankroll_ledger;")
+                f_cursor.execute("""
+                    UPDATE bankroll_accounts SET
+                        balance = start_balance, peak_balance = start_balance, locked = 0,
+                        rounds = 0, bets_placed = 0, wins = 0, losses = 0,
+                        total_staked = 0, total_returned = 0, ruin_count = 0, is_ruined = 0,
+                        updated_at = now();
+                """)
+                f_conn.commit()
+                release_connection(f_conn)
 
-    add_ai_log(
-        "SYSTEM",
-        f"Neural network reset by admin: PyTorch weights reinitialized, LightGBM booster "
-        f"discarded, blend/market weight & decision threshold back to defaults, checkpoint "
-        f"files removed, training/backtest charts cleared, live+training bankrolls reset "
-        f"to start_balance, trained_count cleared on {reset_rows} resolved bet(s) — "
-        f"cold-start will walk the archive in {COLD_START_CHUNK}-sample shuffled chunks "
-        f"for {COLD_START_EPOCHS} epoch(s) before online 10k fine-tuning resumes.",
-        level="WARNING",
-    )
-    return {"reset_rows": reset_rows}
+                _cycle_count = 0
+                _low_epoch_streak = 0
+                set_reset_progress("cold_start", "Запускаю cold-start на всём архиве…", 94)
+                _begin_cold_start()
+            finally:
+                _abort_cycle.clear()
+                _release_tracked_conns()
+
+        add_ai_log(
+            "SYSTEM",
+            f"Neural network reset by admin: PyTorch weights reinitialized, LightGBM booster "
+            f"discarded, blend/market weight & decision threshold back to defaults, checkpoint "
+            f"files removed, training/backtest charts cleared, live+training bankrolls reset "
+            f"to start_balance, trained_count cleared on {reset_rows} resolved bet(s) — "
+            f"cold-start will walk the archive in {_cold_start_chunk_label()} "
+            f"for {COLD_START_EPOCHS} epoch(s) × up to {COLD_START_INNER_EPOCHS} inner epochs "
+            f"before online 10k fine-tuning resumes.",
+            level="WARNING",
+        )
+        set_reset_progress("done", "Готово", 100, active=True)
+        return {"reset_rows": reset_rows}
+    except Exception:
+        set_reset_progress("error", "Ошибка при обнулении", 0, active=False)
+        raise
 
 
 def update_ai_settings(
@@ -1017,19 +1155,23 @@ def _fetch_cold_start_batch(
     f_cursor, val_event_ids: set | None, epoch: int
 ) -> tuple[list[dict[str, Any]], list[tuple]]:
     """Shuffled slice of the train-universe archive. Epoch 1 prefers unseen rows
-    so coverage actually advances; later epochs reshuffle the whole pool."""
+    so coverage actually advances; later epochs reshuffle the whole pool.
+    COLD_START_CHUNK<=0 takes the entire pool (no SQL RANDOM sort — shuffle here)."""
     uni, where_val, params = _universe_filter(val_event_ids)
     extra = "AND h.trained_count = 0" if epoch <= 1 else ""
+    unlimited = COLD_START_CHUNK <= 0
+    order_limit = "" if unlimited else "ORDER BY RANDOM() LIMIT %s"
+    bind = list(params) if unlimited else params + [COLD_START_CHUNK]
     f_cursor.execute(
         f"""
         {_TRAIN_ROW_SELECT}
         {uni} {where_val} {extra}
-        ORDER BY RANDOM()
-        LIMIT %s
+        {order_limit}
         """,
-        params + [COLD_START_CHUNK],
+        bind,
     )
     samples = _rows_to_train_samples(f_cursor.fetchall())
+    random.shuffle(samples)
     keys = [s["_key"] for s in samples]
     return samples, keys
 
@@ -1103,8 +1245,9 @@ def _refresh_market_support() -> dict[tuple, int]:
         and now - _market_support_loaded_at < MARKET_SUPPORT_REFRESH_SECONDS
     ):
         return _market_support
+    f_conn = None
     try:
-        f_conn = get_finished_connection()
+        f_conn = _track_conn(get_finished_connection())
         f_cursor = f_conn.cursor()
         f_cursor.execute("""
             SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label, COUNT(*) AS c
@@ -1118,9 +1261,15 @@ def _refresh_market_support() -> dict[tuple, int]:
             for r in f_cursor.fetchall()
         }
         _market_support_loaded_at = now
+        _untrack_conn(f_conn)
         release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error refreshing market support counts: {e}")
+        if f_conn is not None:
+            try:
+                _untrack_conn(f_conn)
+            except Exception:
+                pass
     return _market_support
 
 
@@ -1213,8 +1362,38 @@ def run_neuralbet_inference_and_training(
     scrape_timestamp: str | None = None,
 ) -> dict[str, Any]:
     global _cycle_count
+    if cycle_aborted():
+        add_ai_log("SYSTEM", "AI cycle skipped — model reset in progress.")
+        return {
+            "status": "aborted",
+            "predictions_count": 0,
+            "finished_samples_trained": 0,
+        }
     with _engine_lock:
-        return _run_neuralbet_inference_and_training_locked(scrape_timestamp)
+        if cycle_aborted():
+            add_ai_log("SYSTEM", "AI cycle skipped — model reset in progress.")
+            return {
+                "status": "aborted",
+                "predictions_count": 0,
+                "finished_samples_trained": 0,
+            }
+        try:
+            return _run_neuralbet_inference_and_training_locked(scrape_timestamp)
+        except Exception as e:
+            if cycle_aborted() or _is_query_canceled(e):
+                add_ai_log(
+                    "SYSTEM",
+                    "AI cycle aborted so the neural network can reset.",
+                    level="WARNING",
+                )
+                return {
+                    "status": "aborted",
+                    "predictions_count": 0,
+                    "finished_samples_trained": 0,
+                }
+            raise
+        finally:
+            _release_tracked_conns()
 
 
 def _run_neuralbet_inference_and_training_locked(
@@ -1239,7 +1418,15 @@ def _run_neuralbet_inference_and_training_locked(
             "finished_samples_trained": 0,
         }
 
-    conn = get_connection()
+    if cycle_aborted():
+        add_ai_log("SYSTEM", "AI cycle aborted before inference.")
+        return {
+            "status": "aborted",
+            "predictions_count": 0,
+            "finished_samples_trained": 0,
+        }
+
+    conn = _track_conn(get_connection())
     cursor = conn.cursor()
 
     # l.updated_at = e.last_updated_at restricts this to markets that were actually
@@ -1508,6 +1695,7 @@ def _run_neuralbet_inference_and_training_locked(
             f"{predicted_win_count} verdict 'ставить' / {predicted_loss_count} verdict 'пропуск'. "
             "(PyTorch & LightGBM scores saved)",
         )
+    _untrack_conn(conn)
     release_connection(conn)
 
     # --- Live bankroll: propose bets to backend, which validates freshness, executes,
@@ -1554,6 +1742,14 @@ def _run_neuralbet_inference_and_training_locked(
                 level="WARNING",
             )
 
+    if cycle_aborted():
+        add_ai_log("SYSTEM", "AI cycle aborted after inference — skipping training.")
+        return {
+            "status": "aborted",
+            "predictions_count": len(predictions),
+            "finished_samples_trained": 0,
+        }
+
     if not AI_SETTINGS["training_enabled"]:
         add_ai_log(
             "TRAINING",
@@ -1585,7 +1781,7 @@ def _run_neuralbet_inference_and_training_locked(
     lgb_rows: list[dict[str, Any]] = []
     lgb_val_rows: list[dict[str, Any]] = []
     try:
-        f_conn = get_finished_connection()
+        f_conn = _track_conn(get_finished_connection())
         f_cursor = f_conn.cursor()
 
         val_event_ids = _get_val_event_ids(f_cursor)
@@ -1604,7 +1800,7 @@ def _run_neuralbet_inference_and_training_locked(
                 cs_epoch = int(cold_start.get("epoch") or 1)
                 add_ai_log(
                     "TRAINING",
-                    f"Loading cold-start batch (chunk {COLD_START_CHUNK}, "
+                    f"Loading cold-start batch ({_cold_start_chunk_label()}, "
                     f"epoch {cs_epoch}/{cold_start.get('epochs_total', COLD_START_EPOCHS)}, "
                     f"seen {cold_start.get('samples_this_epoch', 0)}/"
                     f"{cold_start.get('train_pool_size', '?')}, "
@@ -1679,9 +1875,17 @@ def _run_neuralbet_inference_and_training_locked(
             ])
             lgb_val_rows = to_lgb_rows(val_samples)
 
+        _untrack_conn(f_conn)
         release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished training db: {e}")
+        if cycle_aborted() or _is_query_canceled(e):
+            add_ai_log("SYSTEM", "Training fetch aborted for model reset.", level="WARNING")
+            return {
+                "status": "aborted",
+                "predictions_count": len(predictions),
+                "finished_samples_trained": 0,
+            }
 
     fetched_train_count = len(training_samples)
     min_needed = 2 if cold_start_active else MIN_TRAIN_SAMPLES
@@ -1784,7 +1988,16 @@ def _run_neuralbet_inference_and_training_locked(
             learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
             rebalance_classes=cold_start_active,
             epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
+            should_abort=cycle_aborted,
         )
+
+        if metrics.get("checkpoint_reject_reason") == "aborted" or cycle_aborted():
+            add_ai_log("SYSTEM", "Training pass aborted for model reset.", level="WARNING")
+            return {
+                "status": "aborted",
+                "predictions_count": len(predictions),
+                "finished_samples_trained": 0,
+            }
 
         if metrics["samples_used"] > 0:
             accepted = metrics.get("checkpoint_accepted", True)
@@ -1934,6 +2147,14 @@ def _run_neuralbet_inference_and_training_locked(
                 f"Online training skipped this cycle (runs every {train_every} cycles) — "
                 "fresh resolved bets keep accumulating for the next pass.",
             )
+
+    if cycle_aborted():
+        add_ai_log("SYSTEM", "AI cycle aborted before LightGBM/tune.", level="WARNING")
+        return {
+            "status": "aborted",
+            "predictions_count": len(predictions),
+            "finished_samples_trained": 0,
+        }
 
     if lgb_rows:
         lgb_metrics = ensemble_engine.train_lightgbm(lgb_rows, val_rows=lgb_val_rows)

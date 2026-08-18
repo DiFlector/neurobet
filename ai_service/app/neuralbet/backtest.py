@@ -81,27 +81,31 @@ def _build_full_step_pairs(sample: Dict[str, Any]) -> Optional[List[tuple]]:
 
 
 def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-    where_since = "AND h.finished_at >= %s" if since else ""
-    params: List[Any] = [since] if since else []
-    sports, factors = universe_sql_params()
-    f_cursor.execute(f"""
-        SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
-               h.score_diff_at_bet, h.finished_at, h.overround_close,
-               h.final_coefficient, h.predicted_win_probability, h.predicted_win,
-               f.sport_path, f.team_1, f.team_2
-        FROM finished_bets h
-        JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL {where_since}
-          {universe_sql("f", "h")}
-        ORDER BY h.finished_at DESC
-        LIMIT %s
-    """, params + [sports, factors, limit])
-    rows = f_cursor.fetchall()
-    release_connection(f_conn)
-    return rows
+    from app.neuralbet.pipeline import _track_conn, _untrack_conn
+    f_conn = _track_conn(get_finished_connection())
+    try:
+        f_cursor = f_conn.cursor()
+        where_since = "AND h.finished_at >= %s" if since else ""
+        params: List[Any] = [since] if since else []
+        sports, factors = universe_sql_params()
+        f_cursor.execute(f"""
+            SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
+                   h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
+                   h.score_diff_at_bet, h.finished_at, h.overround_close,
+                   h.final_coefficient, h.predicted_win_probability, h.predicted_win,
+                   f.sport_path, f.team_1, f.team_2
+            FROM finished_bets h
+            JOIN finished_events f ON h.event_id = f.event_id
+            WHERE h.is_win IS NOT NULL {where_since}
+              {universe_sql("f", "h")}
+            ORDER BY h.finished_at DESC
+            LIMIT %s
+        """, params + [sports, factors, limit])
+        rows = f_cursor.fetchall()
+        return rows
+    finally:
+        _untrack_conn(f_conn)
+        release_connection(f_conn)
 
 
 def _row_to_sample(r) -> Dict[str, Any]:
@@ -198,10 +202,13 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
     from app.neuralbet.pipeline import (
         _engine_lock,
         _refresh_market_support, ensemble_engine,
+        cycle_aborted,
     )
 
     t0 = time.time()
     with _engine_lock:
+        if cycle_aborted():
+            return {"status": "aborted", "samples_evaluated": 0}
         market_support = _refresh_market_support()
         rows = _fetch_backtest_rows(limit=limit, since=since)
         if not rows:
@@ -251,6 +258,8 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
 
         raw_results: List[tuple] = []
         for i in range(0, len(items), PREDICT_CHUNK):
+            if cycle_aborted():
+                return {"status": "aborted", "samples_evaluated": 0}
             raw_results.extend(ensemble_engine.predict_batch(items[i:i + PREDICT_CHUNK]))
 
         records: List[Dict[str, Any]] = []

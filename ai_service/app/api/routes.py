@@ -8,6 +8,7 @@ from app.neuralbet import (
     get_ai_logs,
     add_ai_log,
     reset_neural_network,
+    get_reset_progress,
     get_training_health,
     run_backtest,
     get_backtest_history,
@@ -95,6 +96,12 @@ def training_health():
     so its own "status" field (ok/warning/danger) can't collide with this response
     envelope's "status": "success"."""
     return {"status": "success", "health": get_training_health()}
+
+@router.get("/reset-progress")
+def reset_progress():
+    """Admin poll while POST /reset-model holds the worker. Backend prefers the
+    JSON file on the shared volume so this endpoint is only a fallback."""
+    return {"status": "success", "progress": get_reset_progress()}
 
 @router.post("/reset-model")
 def reset_model():

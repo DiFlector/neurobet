@@ -310,8 +310,8 @@ class NeuralBetEnsemble:
         trained_count on it and let training start over from that same existing history,
         instead of needing weeks of fresh matches to rebuild a dataset that was already
         sitting there. pipeline.reset_neural_network then starts a cold-start walk of
-        that archive (shuffled chunks, from-scratch LR, checkpoint gate off) instead of
-        jumping straight into the online 10k fine-tune loop.
+        that archive (full train-pool passes, from-scratch LR, checkpoint gate off)
+        instead of jumping straight into the online 10k fine-tune loop.
         """
         self._reset_state()
         for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH):
@@ -1209,6 +1209,7 @@ class NeuralBetEnsemble:
         skip_checkpoint_gate: bool = False,
         learning_rate: Optional[float] = None,
         rebalance_classes: bool = True,
+        should_abort: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Online-training pass: mini-batch AdamW over a batch of resolved bets, combining
@@ -1301,13 +1302,20 @@ class NeuralBetEnsemble:
         epoch_losses: List[float] = []
 
         self.pytorch_model.train()
+        aborted = False
         try:
             for epoch_idx in range(1, epochs + 1):
+                if should_abort is not None and should_abort():
+                    aborted = True
+                    break
                 order = list(range(len(prepared)))
                 random.shuffle(order)
                 epoch_train_losses = []
 
                 for start in range(0, len(order), BATCH_SIZE):
+                    if should_abort is not None and should_abort():
+                        aborted = True
+                        break
                     batch_idx = order[start:start + BATCH_SIZE]
                     batch = [prepared[i] for i in batch_idx]
                     seqs = torch.tensor([_build_sequence(b["step_pairs"]) for b in batch], dtype=torch.float32)
@@ -1345,6 +1353,9 @@ class NeuralBetEnsemble:
                     self.pytorch_optimizer.step()
                     epoch_train_losses.append(float(decision_loss.item()))
 
+                if aborted:
+                    break
+
                 train_loss = sum(epoch_train_losses) / max(len(epoch_train_losses), 1)
                 epoch_losses.append(train_loss)
 
@@ -1372,9 +1383,26 @@ class NeuralBetEnsemble:
                         break
 
                 self.pytorch_model.train()
+                if aborted:
+                    break
         finally:
             for group, lr in zip(self.pytorch_optimizer.param_groups, old_lrs):
                 group["lr"] = lr
+
+        if aborted:
+            if incoming_state is not None:
+                self._restore_train_state(*incoming_state)
+            logger.info("PyTorch online training aborted for model reset.")
+            return {
+                **empty_metrics,
+                "samples_used": len(prepared),
+                "samples_skipped": skipped,
+                "positive_count": positive_count,
+                "negative_count": negative_count,
+                "epochs_run": len(epoch_losses),
+                "checkpoint_accepted": False,
+                "checkpoint_reject_reason": "aborted",
+            }
 
         if best_state is not None:
             self.pytorch_model.load_state_dict(best_state)

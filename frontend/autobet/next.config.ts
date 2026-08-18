@@ -15,6 +15,12 @@ const BACKEND_INTERNAL_URL = process.env.BACKEND_INTERNAL_URL || "http://localho
 
 const nextConfig: NextConfig = {
   basePath: SITE_BASE_PATH,
+  // Reset waits for an in-flight training pass to abort; default rewrite timeout
+  // is too short and the admin UI reports "Ошибка при обнулении" while the wipe
+  // still finishes server-side.
+  experimental: {
+    proxyTimeout: 180_000,
+  },
   // Иначе /neurobet/ ↔ /neurobet даёт петлю с прокси
   skipTrailingSlashRedirect: true,
   async rewrites() {

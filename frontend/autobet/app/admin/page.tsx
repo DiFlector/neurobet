@@ -58,6 +58,9 @@ export default function AdminPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null)
   const [openLiveBetsCount, setOpenLiveBetsCount] = useState(0)
+  const [resetProgress, setResetProgress] = useState<{ pct: number; label: string; step: string; active: boolean }>({
+    pct: 0, label: "", step: "idle", active: false,
+  })
 
   // Training Health State (overfitting traffic light)
   const [trainingHealth, setTrainingHealth] = useState<any>(null)
@@ -77,7 +80,23 @@ export default function AdminPage() {
 
   const handleOpenResetModal = (type: "live" | "all" | "bankroll-live" | "bankroll-training" | "cancel-bets" | "reset-model") => {
     setResetType(type)
+    setResetProgress({ pct: 0, label: "", step: "idle", active: false })
     setResetModalOpen(true)
+  }
+
+  const fetchResetProgress = async () => {
+    const res = await fetch(`${API_BASE}/api/admin/reset-progress`, { cache: "no-store" })
+    if (!res.ok) return null
+    const data = await res.json()
+    const p = data.progress || data
+    const next = {
+      pct: Math.max(0, Math.min(100, Number(p.pct) || 0)),
+      label: String(p.label || ""),
+      step: String(p.step || "idle"),
+      active: Boolean(p.active),
+    }
+    setResetProgress(next)
+    return next
   }
 
   const handleConfirmReset = async () => {
@@ -93,21 +112,64 @@ export default function AdminPage() {
         setResetSuccessMsg(data.message || "Ставки отменены")
         setTimeout(() => { fetchBankroll(); fetchOpenLiveBetsCount() }, 300)
       } else if (resetType === "reset-model") {
-        const res = await fetch(`${API_BASE}/api/admin/reset-model`, { method: "POST" })
-        if (!res.ok) throw new Error("Ошибка при обнулении нейросети")
-        const data = await res.json()
-        setResetSuccessMsg(
-          `Нейросеть обнулена. Очищено trained_count у ${data.reset_rows ?? 0} завершённых ставок. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве.`
-        )
-        setTimeout(() => {
-          fetchAILogs()
-          fetchAISettings()
-          fetchBankroll()
-          fetchOpenLiveBetsCount()
-          fetchTrainingRuns()
-          fetchBacktestHistory()
-          fetchTrainingHealth()
-        }, 300)
+        setResetProgress({ pct: 4, label: "Отправляю запрос…", step: "request", active: true })
+        let poll = 0
+        try {
+          poll = window.setInterval(() => {
+            fetchResetProgress().catch(() => {})
+          }, 400)
+
+          let postData: { reset_rows?: number } | null = null
+          try {
+            const res = await fetch(`${API_BASE}/api/admin/reset-model`, { method: "POST" })
+            if (res.ok) {
+              postData = await res.json()
+            }
+          } catch {
+            // 504/network: wipe may still be running — keep polling the progress file.
+          }
+
+          let latest: { pct: number; label: string; step: string; active: boolean } | null = null
+          let started = false
+          if (!postData) {
+            const deadline = Date.now() + 180_000
+            while (Date.now() < deadline) {
+              latest = await fetchResetProgress().catch(() => latest)
+              if (latest && !["idle", "done"].includes(latest.step)) {
+                started = true
+              }
+              if (started && latest?.step === "error") {
+                throw new Error(latest.label || "Ошибка при обнулении нейросети")
+              }
+              if (started && (latest?.step === "done" || (latest?.pct ?? 0) >= 100)) break
+              await new Promise((r) => setTimeout(r, 400))
+            }
+          }
+
+          if (!(postData || (started && (latest?.step === "done" || (latest?.pct ?? 0) >= 100)))) {
+            throw new Error("Ошибка при обнулении нейросети")
+          }
+
+          setResetProgress({ pct: 100, label: "Готово", step: "done", active: true })
+          const rows = postData?.reset_rows
+          setResetSuccessMsg(
+            rows != null
+              ? `Нейросеть обнулена. Очищено trained_count у ${rows} завершённых ставок. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве.`
+              : "Нейросеть обнулена. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве."
+          )
+          await new Promise((r) => setTimeout(r, 700))
+          setTimeout(() => {
+            fetchAILogs()
+            fetchAISettings()
+            fetchBankroll()
+            fetchOpenLiveBetsCount()
+            fetchTrainingRuns()
+            fetchBacktestHistory()
+            fetchTrainingHealth()
+          }, 300)
+        } finally {
+          if (poll) window.clearInterval(poll)
+        }
       } else if (resetType === "bankroll-live" || resetType === "bankroll-training") {
         const account = resetType === "bankroll-live" ? "live" : "training"
         const res = await fetch(`${API_BASE}/api/admin/bankroll/reset`, {
@@ -559,19 +621,19 @@ export default function AdminPage() {
           const cfg: Record<string, { bg: string; border: string; text: string; icon: any; title: string; blink: boolean }> = {
             ok: {
               bg: "bg-[#00b894]/10", border: "border-[#00b894]/50", text: "text-[#55efc4]",
-              icon: ShieldCheck, title: "✅ Обучение в норме — переобучения не видно", blink: false,
+              icon: ShieldCheck, title: "Обучение в норме — переобучения не видно", blink: false,
             },
             warning: {
               bg: "bg-[#fdcb6e]/10", border: "border-[#fdcb6e]/50", text: "text-[#ffeaa7]",
-              icon: AlertTriangle, title: "⚠️ Есть тревожный признак — присмотритесь", blink: false,
+              icon: AlertTriangle, title: "Есть тревожный признак — присмотритесь", blink: false,
             },
             danger: {
               bg: "bg-[#d63031]/15", border: "border-[#d63031]/60", text: "text-[#ff7675]",
-              icon: ShieldAlert, title: "🔴 Похоже на переобучение — рекомендуется остановить обучение", blink: true,
+              icon: ShieldAlert, title: "Похоже на переобучение — рекомендуется остановить обучение", blink: true,
             },
             disabled: {
               bg: "bg-neutral-900/60", border: "border-neutral-800", text: "text-neutral-500",
-              icon: Power, title: "⏸️ Обучение выключено вручную — статус не отслеживается", blink: false,
+              icon: Power, title: "Обучение выключено вручную — статус не отслеживается", blink: false,
             },
             unknown: {
               bg: "bg-neutral-900/60", border: "border-neutral-800", text: "text-neutral-400",
@@ -1223,13 +1285,28 @@ export default function AdminPage() {
                 {resetType === "cancel-bets" &&
                   "Все текущие открытые ставки бота будут отменены (не засчитаны как выигрыш/проигрыш), а поставленная сумма полностью вернётся на боевой баланс."}
                 {resetType === "reset-model" &&
-                  "Веса PyTorch будут переинициализированы случайно, бустер LightGBM удалён, blend/market weight и порог решения сброшены к дефолтам, файлы чекпоинтов на диске удалены. Графики обучения (val_loss) и бэктеста очистятся. Оба банка (live и training) сбросятся на стартовый баланс, открытые ставки и журнал банка удалятся. У всех завершённых ставок в архиве trained_count обнулится до 0 — обучение начнётся заново на уже накопленных исторических данных (архив finished_bets НЕ удаляется)."}
+                  "Веса PyTorch будут переинициализированы случайно, бустер LightGBM удалён, blend/market weight и порог решения сброшены к дефолтам, файлы чекпоинтов на диске удалены. Графики обучения (val_loss) и бэктеста очистятся. Оба банка (live и training) сбросятся на стартовый баланс, открытые ставки и журнал банка удалятся. У всех завершённых ставок в архиве trained_count обнулится до 0 — обучение начнётся заново на уже накопленных исторических данных (архив finished_bets НЕ удаляется). Первые 2 прохода cold-start идут по всему архиву (до 200 эпох с early stopping), затем обычные циклы по 10k."}
               </p>
             </div>
 
             <div className="bg-[#d63031]/10 border border-[#d63031]/30 rounded-xl p-3 text-xs text-[#ff7675] font-semibold text-center">
               ⚠️ Данное действие необратимо! Вы уверены?
             </div>
+
+            {resetType === "reset-model" && resetLoading && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 text-[10px] font-mono uppercase tracking-wide text-neutral-400">
+                  <span className="truncate text-left">{resetProgress.label || "Обнуление…"}</span>
+                  <span className="shrink-0 text-[#74b9ff]">{resetProgress.pct}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#0984e3] transition-all duration-300"
+                    style={{ width: `${resetProgress.pct}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-3">
               <button

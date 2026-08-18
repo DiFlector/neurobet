@@ -6,6 +6,7 @@ from .pipeline import (
     get_ai_logs,
     add_ai_log,
     reset_neural_network,
+    get_reset_progress,
     get_training_health,
 )
 from .backtest import run_backtest, get_backtest_history, get_latest_backtest
@@ -19,6 +20,7 @@ __all__ = [
     "get_ai_logs",
     "add_ai_log",
     "reset_neural_network",
+    "get_reset_progress",
     "get_training_health",
     "run_backtest",
     "get_backtest_history",

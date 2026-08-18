@@ -48,6 +48,7 @@ class AISettingsRequest(BaseModel):
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
+_RESET_PROGRESS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "reset_progress.json")
 
 
 def _fallback_ai_settings() -> dict:
@@ -78,6 +79,30 @@ def _read_ai_logs_file() -> Optional[list]:
         return None
     except Exception as e:
         logger.error(f"Error reading persisted AI logs: {e}")
+    return None
+
+
+_IDLE_RESET_PROGRESS = {"active": False, "step": "idle", "label": "", "pct": 0}
+
+
+def _read_reset_progress_file() -> Optional[dict]:
+    """Written by ai_service before each slow reset step. Read from the shared
+    volume so the admin bar keeps moving while POST /reset-model holds the
+    single AI worker (HTTP GET /reset-progress would otherwise hang/timeout)."""
+    try:
+        with open(_RESET_PROGRESS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            return {
+                "active": bool(saved.get("active")),
+                "step": str(saved.get("step") or "idle"),
+                "label": str(saved.get("label") or ""),
+                "pct": max(0, min(int(saved.get("pct") or 0), 100)),
+            }
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.error(f"Error reading reset progress: {e}")
     return None
 
 
@@ -483,6 +508,21 @@ def admin_training_health():
     # overfitting signals active", and the admin panel's status block should show that
     # distinction (grey/unknown) rather than falsely reporting green.
     return {"status": "success", "health": {"status": "unknown", "signals": {}}}
+
+@app.get("/api/admin/reset-progress")
+def admin_reset_progress():
+    progress = _read_reset_progress_file()
+    if progress is not None:
+        return {"status": "success", "progress": progress}
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/reset-progress")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching reset progress from AI Service: {e}")
+    return {"status": "success", "progress": dict(_IDLE_RESET_PROGRESS)}
+
 
 @app.post("/api/admin/reset-model")
 def admin_reset_model():
