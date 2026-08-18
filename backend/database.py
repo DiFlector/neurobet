@@ -6,7 +6,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Iterable, Tuple
+from typing import List, Dict, Any, Optional, Iterable, Tuple, Callable
 from datetime import datetime, timedelta, timezone
 
 import psycopg2
@@ -519,20 +519,129 @@ def _compute_event_overround(cursor, eid) -> Dict[Tuple[str, str], float]:
     }
 
 
-def archive_finished_events(cursor, timestamp_str: str):
+# Fonbet results/v2 event.status — see parser_service.RESULT_STATUS_*.
+_RESULT_STATUS_IN_PLAY = 1
+_RESULT_STATUS_FINISHED = 2
+
+
+def _minutes_since(start_raw: Any, timestamp_str: str) -> Optional[float]:
+    a = _parse_ts_epoch(start_raw)
+    b = _parse_ts_epoch(timestamp_str)
+    if a is None or b is None:
+        return None
+    return max(b - a, 0.0) / 60.0
+
+
+def _period_looks_finished(sport_path: str, s1: int, s2: int) -> bool:
+    """True when this period's point score looks like a completed set/map.
+
+    Incomplete last-set snapshots (8:10 in table tennis, still needing 11 and a
+    2-point lead) must not be treated as finals. Sports we don't have a rule for
+    return True so we don't strip data we can't judge.
+    """
+    sport = (sport_path or "").lower()
+    try:
+        a, b = int(s1), int(s2)
+    except Exception:
+        return False
+    hi, lo = max(a, b), min(a, b)
+    if "настольный теннис" in sport:
+        return hi >= 11 and hi - lo >= 2
+    if "бадминтон" in sport:
+        return hi >= 21 and hi - lo >= 2
+    if "волейбол" in sport:
+        return hi >= 15 and hi - lo >= 2
+    if "counter-strike" in sport:
+        return hi >= 13
+    if "теннис" in sport:
+        return (hi >= 6 and hi - lo >= 2) or hi >= 7
+    return True
+
+
+def _drop_incomplete_last_period(sport_path: str, period_scores: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    if not period_scores:
+        return period_scores
+    last = period_scores[-1]
+    if _period_looks_finished(sport_path, last[0], last[1]):
+        return period_scores
+    return period_scores[:-1]
+
+
+def archive_finished_events(
+    cursor, timestamp_str: str, official_results: Optional[Dict[int, Dict[str, Any]]] = None,
+):
     cursor.execute("SELECT * FROM events WHERE is_live = 0")
     finished = cursor.fetchall()
 
     if not finished:
         return
 
-    logger.info(f"Archiving {len(finished)} finished event(s) into the training archive...")
+    official_results = official_results or {}
+    wait_min = float(settings.EVENT_MISS_GRACE_MINUTES + settings.EVENT_RESULTS_WAIT_MINUTES)
+    ready: List[Any] = []
+    for raw in finished:
+        ev = dict(raw)
+        eid = ev["event_id"]
+        sport_path = ev["sport_path"] or ""
+        official = official_results.get(int(eid))
+        age = _minutes_since(ev.get("missing_since"), timestamp_str)
+        timed_out = age is None or age >= wait_min
+
+        if official and int(official.get("status") or 0) == _RESULT_STATUS_FINISHED:
+            s1 = int(official.get("score_1") or 0)
+            s2 = int(official.get("score_2") or 0)
+            periods = [tuple(p) for p in (official.get("period_scores") or [])]
+            ev["score_1"] = s1
+            ev["score_2"] = s2
+            ev["score"] = f"{s1}:{s2}"
+            if periods:
+                ev["period_scores_json"] = json.dumps([list(p) for p in periods], ensure_ascii=False)
+            cursor.execute(
+                """UPDATE events SET score_1 = %s, score_2 = %s, score = %s, period_scores_json = %s
+                    WHERE event_id = %s AND is_live = 0""",
+                (s1, s2, ev["score"], ev.get("period_scores_json") or "[]", eid),
+            )
+            logger.info(
+                f"Official results for {eid}: {s1}:{s2} periods={periods or 'kept-live'}"
+            )
+            ready.append(ev)
+            continue
+
+        if not timed_out:
+            why = "waiting for Fonbet results"
+            if official and int(official.get("status") or 0) == _RESULT_STATUS_IN_PLAY:
+                why = "Fonbet results still in-play"
+            logger.info(f"Delaying archive of {eid}: {why}.")
+            continue
+
+        # Timed out (or results never listed this event as finished). Don't grade
+        # a frozen last set — drop it so period markets void instead of settling
+        # on 8:10 when the set was actually 8:11.
+        try:
+            periods = [tuple(p) for p in json.loads(ev["period_scores_json"] or "[]")]
+        except Exception:
+            periods = []
+        stripped = _drop_incomplete_last_period(sport_path, periods)
+        if stripped != periods:
+            ev["period_scores_json"] = json.dumps([list(p) for p in stripped], ensure_ascii=False)
+            logger.warning(
+                f"Archiving {eid} without a finished official result; "
+                f"dropped incomplete last period {periods[-1]} → {stripped}"
+            )
+        else:
+            logger.warning(f"Archiving {eid} without a finished official result after wait.")
+        ready.append(ev)
+
+    if not ready:
+        return
+
+    logger.info(f"Archiving {len(ready)} finished event(s) into the training archive...")
     archive_started = time.time()
     f_conn = get_finished_connection()
     try:
         f_cursor = f_conn.cursor()
 
-        for ev in finished:
+        for ev in ready:
             eid = ev["event_id"]
             s1 = ev["score_1"] or 0
             s2 = ev["score_2"] or 0
@@ -703,7 +812,7 @@ def archive_finished_events(cursor, timestamp_str: str):
 
         f_conn.commit()
         logger.info(
-            f"Archived {len(finished)} event(s) in {time.time() - archive_started:.1f}s"
+            f"Archived {len(ready)} event(s) in {time.time() - archive_started:.1f}s"
         )
     except Exception:
         try:
@@ -903,16 +1012,34 @@ def save_parsed_events(
     return {"events_saved": len(parsed_events)}
 
 
-def archive_and_settle(timestamp_str: str) -> Dict[str, Any]:
+def archive_and_settle(
+    timestamp_str: str,
+    official_results: Optional[Dict[int, Dict[str, Any]]] = None,
+    results_fetcher: Optional[Callable[[str], Dict[int, Dict[str, Any]]]] = None,
+) -> Dict[str, Any]:
     """Copy finalized (is_live=0) events into the training archive and settle
     open live_bets. Runs *after* save_parsed_events has already committed the
     live snapshot so a slow archive cannot freeze last_updated_at or delay
     the AI trigger. Safe to retry: archived events are deleted from live, so
-    a second call in the same cycle is a no-op once the first commit lands."""
+    a second call in the same cycle is a no-op once the first commit lands.
+
+    official_results overlays Fonbet's results-page finals (set scores included)
+    before grading — the live feed often drops the event one point too early.
+    If omitted, results_fetcher(timestamp_str) is called only when at least one
+    event is waiting to archive.
+    """
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        archive_finished_events(cursor, timestamp_str)
+        if official_results is None and results_fetcher is not None:
+            cursor.execute("SELECT 1 FROM events WHERE is_live = 0 LIMIT 1")
+            if cursor.fetchone():
+                try:
+                    official_results = results_fetcher(timestamp_str)
+                except Exception as e:
+                    logger.warning(f"Fonbet results fetch skipped: {e}")
+                    official_results = None
+        archive_finished_events(cursor, timestamp_str, official_results=official_results)
         conn.commit()
     except Exception:
         try:
@@ -2255,7 +2382,9 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     return {"placed": placed, "skipped": skipped, "messages": messages}
 
 
-def _apply_bet_settlement(f_cursor, b, is_win: Optional[int]) -> Tuple[str, List[Dict[str, str]]]:
+def _apply_bet_settlement(
+    f_cursor, b, is_win: Optional[int], is_push: bool = False,
+) -> Tuple[str, List[Dict[str, str]]]:
     """
     Shared bookkeeping for resolving one open live_bet: writes its row, updates the live
     bankroll account (incl. the both-balance-and-locked ruin check), and logs the ledger
@@ -2270,9 +2399,13 @@ def _apply_bet_settlement(f_cursor, b, is_win: Optional[int]) -> Tuple[str, List
 
     if is_win is None:
         status, payout, outcome = "void", stake, "void"
+        if is_push:
+            reason = "возврат: линия легла ровно"
+        else:
+            reason = "исход не рассчитан"
         messages.append({
             "category": "BANKROLL", "level": "INFO",
-            "message": f"⚪ Ставка аннулирована (исход не рассчитан): {outcome_desc} — {stake:.1f} ₽ возвращено на баланс.",
+            "message": f"⚪ Ставка аннулирована ({reason}): {outcome_desc} — {stake:.1f} ₽ возвращено на баланс.",
         })
     elif is_win:
         status, payout, outcome = "won", stake * b["coefficient"], "win"
@@ -2380,7 +2513,7 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
 
     for b in open_bets:
         f_cursor.execute("""
-            SELECT is_win FROM finished_bets
+            SELECT is_win, is_push FROM finished_bets
             WHERE event_id = %s AND factor_id = %s AND COALESCE(parameter,'') = COALESCE(%s,'')
               AND COALESCE(market_prefix,'') = COALESCE(%s,'')
         """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"]))
@@ -2388,7 +2521,9 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         if row is None:
             continue  # event hasn't finished (archived) yet
 
-        outcome, msgs = _apply_bet_settlement(f_cursor, b, row["is_win"])
+        outcome, msgs = _apply_bet_settlement(
+            f_cursor, b, row["is_win"], bool(row["is_push"]),
+        )
         messages.extend(msgs)
         if outcome == "win":
             won += 1

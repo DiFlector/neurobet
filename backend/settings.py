@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # intermission that was never going to trigger this in the first place.
     EVENT_MISS_THRESHOLD: int = 1
     EVENT_MISS_GRACE_MINUTES: int = 1
+    # After the live feed drops an event we still wait this many extra minutes for
+    # Fonbet's results API (clientsapi .../results/v2/getByDate) to publish the
+    # official final, including the last set's last point. Confirmed 2026-08-18:
+    # table tennis Przykazski–Koubek left live at 1:2 / 8:10, then results had
+    # 1:3 / 8:11. Without this wait we graded the frozen live snapshot.
+    EVENT_RESULTS_WAIT_MINUTES: int = 5
     # Snapshot sanity guard, to avoid finalizing events on a parser/API hiccup: an
     # almost-empty snapshot is skipped entirely (see save_parsed_events).
     MIN_SNAPSHOT_EVENTS: int = 5

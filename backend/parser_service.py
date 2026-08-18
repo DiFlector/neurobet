@@ -22,6 +22,79 @@ CDN_HOSTS = [
     "line01.bkfonbet.com"
 ]
 
+# Results live on the clientsapi hosts (not the line CDN). Same bk6bba family;
+# confirmed via the website's own /results page: GET /results/v2/getByDate.
+RESULTS_HOSTS = [
+    "clientsapi-lb61-w.bk6bba-resources.com",
+    "clientsapi-lb54-w.bk6bba-resources.com",
+]
+
+# Fonbet results/v2/getByDate eventMisc.status — observed live 2026-08-18:
+# 1 = still in play (partial subScores), 2 = finished with the official score.
+RESULT_STATUS_IN_PLAY = 1
+RESULT_STATUS_FINISHED = 2
+
+
+def _result_line_dates(timestamp_str: str) -> List[str]:
+    """Moscow calendar day of the scrape, plus yesterday near midnight so a
+    match that started before 00:00 and finished after is still found."""
+    try:
+        dt = datetime.datetime.fromisoformat(str(timestamp_str).replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+    except Exception:
+        dt = datetime.datetime.utcnow()
+    days = [dt.strftime("%Y-%m-%d")]
+    if dt.hour < 3:
+        days.append((dt - datetime.timedelta(days=1)).strftime("%Y-%m-%d"))
+    return days
+
+
+def _parse_results_payload(payload: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+    """event_id -> {status, score_1, score_2, period_scores} from getByDate."""
+    out: Dict[int, Dict[str, Any]] = {}
+    for misc in payload.get("eventMiscs") or []:
+        try:
+            eid = int(misc.get("id"))
+        except Exception:
+            continue
+        periods: List[Tuple[int, int]] = []
+        for sub in misc.get("subScores") or []:
+            if not isinstance(sub, dict):
+                continue
+            try:
+                periods.append((int(sub.get("score1", 0)), int(sub.get("score2", 0))))
+            except Exception:
+                continue
+        try:
+            s1 = int(misc.get("score1", 0) or 0)
+            s2 = int(misc.get("score2", 0) or 0)
+        except Exception:
+            s1, s2 = 0, 0
+        try:
+            status = int(misc.get("status", 0) or 0)
+        except Exception:
+            status = 0
+        # status is on the event row in this payload, not always on eventMiscs.
+        out[eid] = {
+            "status": status,
+            "score_1": s1,
+            "score_2": s2,
+            "period_scores": periods,
+        }
+
+    for ev in payload.get("events") or []:
+        try:
+            eid = int(ev.get("id"))
+        except Exception:
+            continue
+        row = out.setdefault(eid, {"status": 0, "score_1": 0, "score_2": 0, "period_scores": []})
+        try:
+            row["status"] = int(ev.get("status") or row.get("status") or 0)
+        except Exception:
+            pass
+    return out
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json",
@@ -400,6 +473,47 @@ class FonbetParserService:
                 last_error = e
 
         raise RuntimeError(f"Could not fetch Fonbet data from any host. Last error: {last_error}")
+
+    def fetch_official_results(self, timestamp_str: str) -> Dict[int, Dict[str, Any]]:
+        """Official finals from Fonbet's results page API (not the live feed).
+
+        Live drops a match the instant it ends, often one rally before the last
+        point is in eventMiscs/liveEventInfos. /results/v2/getByDate keeps the
+        finished row with full subScores — Przykazski–Koubek 2026-08-18 was
+        1:2/8:10 live vs 1:3/8:11 in results.
+        """
+        dates = _result_line_dates(timestamp_str)
+        merged: Dict[int, Dict[str, Any]] = {}
+        for day in dates:
+            payload = self._fetch_results_by_date(day)
+            if not payload:
+                continue
+            parsed = _parse_results_payload(payload)
+            for eid, row in parsed.items():
+                prev = merged.get(eid)
+                if prev is None or int(row.get("status") or 0) >= int(prev.get("status") or 0):
+                    merged[eid] = row
+        logger.info(f"Fonbet results: {len(merged)} event(s) for {', '.join(dates)}")
+        return merged
+
+    def _fetch_results_by_date(self, line_date: str) -> Optional[Dict[str, Any]]:
+        last_error = None
+        for host in RESULTS_HOSTS:
+            url = (
+                f"https://{host}/results/v2/getByDate"
+                f"?lang=ru&lineDate={line_date}&scopeMarket=1600"
+            )
+            try:
+                resp = self.client.get(url, headers={"Referer": "https://fon.bet/results"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("eventMiscs"):
+                        return data
+            except Exception as e:
+                logger.warning(f"Failed results host {host}: {e}")
+                last_error = e
+        logger.warning(f"Could not fetch Fonbet results for {line_date}. Last error: {last_error}")
+        return None
 
     def fetch_factors_catalog(self) -> List[Dict[str, Any]]:
         catalogs = []

@@ -207,7 +207,9 @@ def run_scrape_task():
         trigger_ai_pipeline(now_str)
 
         try:
-            settle_result = archive_and_settle(now_str)
+            settle_result = archive_and_settle(
+                now_str, results_fetcher=parser_service.fetch_official_results,
+            )
             push_ai_logs(settle_result.get("messages", []))
         except Exception as e:
             logger.error(
