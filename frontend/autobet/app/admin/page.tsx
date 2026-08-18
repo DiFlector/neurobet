@@ -199,10 +199,14 @@ export default function AdminPage() {
       const res = await fetch(`${API_BASE}/api/admin/ai-logs`)
       if (res.ok) {
         const data = await res.json()
-        setLogs(data.logs || [])
+        const next = Array.isArray(data.logs) ? data.logs : null
+        if (!next) return
+        // Keep the last snapshot if the proxy timed out on a busy training pass
+        // and returned an empty placeholder — wiping the console looks "frozen".
+        setLogs((prev) => (next.length > 0 || prev.length === 0 ? next : prev))
       }
     } catch (err) {
-      // Ignore
+      // Ignore — keep last snapshot
     }
   }, [API_BASE])
 
@@ -1140,7 +1144,7 @@ export default function AdminPage() {
 
                 return (
                   <div
-                    key={i}
+                    key={`${log.timestamp}-${log.category}-${i}`}
                     className="flex items-start gap-3 py-1 border-b border-neutral-900/60 last:border-0 hover:bg-neutral-900/40 px-2 rounded transition"
                   >
                     <span className="text-neutral-500 whitespace-nowrap">{log.timestamp}</span>

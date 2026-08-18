@@ -150,6 +150,15 @@ _market_support_loaded_at = 0.0
 
 AI_LOGS: list[dict[str, Any]] = []
 MAX_LOG_ENTRIES = 300
+# Shared volume with backend (see docker-compose `./data:/app/data`). Admin "Live Stream"
+# used to poll GET /logs over HTTP — that hangs for the whole training pass because this
+# process is a single Uvicorn worker doing CPU-bound torch/LightGBM inside the request
+# handler (backend/main.py's trigger_ai_pipeline documents the same stall). Backend
+# then timed out at 5s and returned `{logs: []}`, which wiped the console. Epoch lines
+# are written here from the training thread itself; persisting them to this file lets
+# backend serve the feed without talking to a busy worker.
+AI_LOGS_PATH = os.path.join(MODEL_DIR, "ai_logs.json")
+_logs_lock = threading.Lock()
 
 _cycle_count = 0
 
@@ -166,6 +175,31 @@ LOW_EPOCH_STREAK_ALERT = int(os.getenv("NEURALBET_LOW_EPOCH_STREAK_ALERT", "3"))
 _low_epoch_streak = 0
 
 
+def _persist_ai_logs() -> None:
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp_path = AI_LOGS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(AI_LOGS, f, ensure_ascii=False)
+        os.replace(tmp_path, AI_LOGS_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting AI logs: {e}")
+
+
+def _restore_ai_logs() -> None:
+    if not os.path.exists(AI_LOGS_PATH):
+        return
+    try:
+        with open(AI_LOGS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, list):
+            with _logs_lock:
+                AI_LOGS.clear()
+                AI_LOGS.extend(saved[:MAX_LOG_ENTRIES])
+    except Exception as e:
+        logger.error(f"Error loading AI logs: {e}")
+
+
 def add_ai_log(category: str, message: str, level: str = "INFO"):
     timestamp_str = now_moscow().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
@@ -174,12 +208,15 @@ def add_ai_log(category: str, message: str, level: str = "INFO"):
         "level": level,
         "message": message,
     }
-    AI_LOGS.insert(0, entry)
-    if len(AI_LOGS) > MAX_LOG_ENTRIES:
-        AI_LOGS.pop()
+    with _logs_lock:
+        AI_LOGS.insert(0, entry)
+        if len(AI_LOGS) > MAX_LOG_ENTRIES:
+            AI_LOGS.pop()
+        _persist_ai_logs()
     logger.info(f"[{category}] {message}")
 
 
+_restore_ai_logs()
 add_ai_log(
     "SYSTEM",
     "Standalone AI Microservice initialized with PyTorch, LightGBM & DeepSeek Web WASM engine.",
@@ -302,7 +339,8 @@ def update_ai_settings(
 
 
 def get_ai_logs() -> list[dict[str, Any]]:
-    return AI_LOGS
+    with _logs_lock:
+        return list(AI_LOGS)
 
 
 # Backtest-trend thresholds for get_training_health()'s signals B/C — how many of the

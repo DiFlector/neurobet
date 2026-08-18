@@ -1,7 +1,7 @@
 """
 Rolling on-disk history of online-training passes — val_loss/val_guess_rate/train_loss/
-best_epoch used to only ever appear as ephemeral text in AI_LOGS (capped at
-MAX_LOG_ENTRIES=300, lost on every container restart), with no way to see how they
+best_epoch used to only ever appear as a short rolling window in AI_LOGS (capped at
+MAX_LOG_ENTRIES=300), with no way to see how they
 moved over more than the last few passes. Mirrors backtest.py's save_and_record/
 get_backtest_history pattern deliberately (own file, own cap, newest-first) — same
 shape, same reasoning, just a different cadence: training passes fire far more often

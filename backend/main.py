@@ -46,6 +46,7 @@ class AISettingsRequest(BaseModel):
     training_enabled: Optional[bool] = None
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
+_AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
 
 
 def _fallback_ai_settings() -> dict:
@@ -60,6 +61,24 @@ def _fallback_ai_settings() -> dict:
         }
     except Exception:
         return {"ai_enabled": True, "training_enabled": True}
+
+
+def _read_ai_logs_file() -> Optional[list]:
+    """Ring buffer written by ai_service on every add_ai_log. Prefer this over HTTP
+    GET /logs — that endpoint is unreachable for the whole training pass (single
+    Uvicorn worker, CPU-bound torch inside the request handler), and the 5s timeout
+    used to return `{logs: []}` which wiped the admin console."""
+    try:
+        with open(_AI_LOGS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, list):
+            return saved
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.error(f"Error reading persisted AI logs: {e}")
+    return None
+
 
 class BankrollResetRequest(BaseModel):
     account: str
@@ -404,6 +423,9 @@ def update_admin_ai_settings(req: AISettingsRequest):
 
 @app.get("/api/admin/ai-logs")
 def read_admin_ai_logs():
+    logs = _read_ai_logs_file()
+    if logs is not None:
+        return {"status": "success", "logs": logs}
     try:
         with httpx.Client(timeout=5.0) as client:
             res = client.get(f"{AI_SERVICE_URL}/logs")
