@@ -112,11 +112,13 @@ TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "10"))
 # Catch-up cadence: TRAIN_EVERY_CYCLES=20 exists so newly finished bets can accumulate
 # into a full 7000-fresh slice instead of a trickle of replay. That wait is wasted while
 # the archive still has a backlog of trained_count=0 rows — those already fill the fresh
-# slice (newest first, so live arrivals jump the queue). Train every
-# TRAIN_CATCHUP_EVERY_CYCLES until either (a) ≥ TRAIN_CATCHUP_UNTIL_RATIO of the
-# training-universe archive has been seen at least once AND (b) the remaining untrained
-# pool is smaller than one fresh slice. Then fall back to 20 so new finishes pile up.
-TRAIN_CATCHUP_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_CATCHUP_EVERY_CYCLES", "5"))
+# slice (newest first, so live arrivals jump the queue). Train every other cycle
+# (train–skip–train, TRAIN_CATCHUP_EVERY_CYCLES=2) until either (a) ≥
+# TRAIN_CATCHUP_UNTIL_RATIO of the training-universe archive has been seen at least
+# once AND (b) the remaining untrained pool is smaller than one fresh slice. Then
+# fall back to 20 so new finishes pile up. Was 5 (four skips between passes) —
+# backlog chew was leaving too many unseen rows sitting while we waited.
+TRAIN_CATCHUP_EVERY_CYCLES = int(os.getenv("NEURALBET_TRAIN_CATCHUP_EVERY_CYCLES", "2"))
 TRAIN_CATCHUP_UNTIL_RATIO = float(os.getenv("NEURALBET_TRAIN_CATCHUP_UNTIL_RATIO", "0.80"))
 _COVERAGE_REFRESH_SECONDS = float(os.getenv("NEURALBET_COVERAGE_REFRESH_SECONDS", "60"))
 _coverage_cache: dict[str, Any] | None = None
