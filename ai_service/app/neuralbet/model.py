@@ -49,11 +49,11 @@ GRU_LAYERS = int(os.getenv("NEURALBET_GRU_LAYERS", "2"))
 # just removes an artificial cap for when a bigger batch needs more passes to converge.
 MAX_EPOCHS = int(os.getenv("NEURALBET_MAX_EPOCHS", "200"))
 EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
-# A finished online pass only keeps its weights if they beat the *incoming* model on
-# the same held-out split (see train_online). Same epsilon as the per-epoch check so
-# "did this pass help" and "which epoch of the pass" cannot disagree on what "better"
-# means. Comparing today's val_loss to yesterday's on a different 2000-row split would
-# freeze the net on a lucky batch; this is a paired before/after on one split.
+# A finished online pass only keeps its weights if they beat BOTH: the incoming
+# model on this pass's val split, AND the last saved checkpoint's recorded val_loss
+# (the number on the admin chart). Same-split stops a failed pass becoming live;
+# the chart cap stops a "barely better than incoming on a hard val" (0.2654 vs
+# 0.2658) from overwriting a 0.20 checkpoint. Same epsilon as the per-epoch check.
 # 64 -> 128 -> 256: fewer, larger mini-batches per epoch use the CPU's vectorized
 # matmuls more efficiently (more work per Python-level loop iteration) — meaningful as
 # each training pass's sample count (pipeline.TRAIN_BATCH_TOTAL) has grown; 256 keeps
@@ -1203,6 +1203,7 @@ class NeuralBetEnsemble:
         val_data: Optional[List[Dict[str, Any]]] = None,
         epochs: int = MAX_EPOCHS,
         on_epoch: Any = None,
+        chart_val_loss: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Online-training pass: mini-batch AdamW over a batch of resolved bets, combining
@@ -1229,12 +1230,9 @@ class NeuralBetEnsemble:
         val split (not the train set) and committed to the persistent "training"
         bankroll account, so the logged balance is a generalization check rather
         than an in-sample Kelly compound.
-        The pass is then compared to the *incoming* weights on that same val split.
-        If it did not beat them, the snapshot is restored and the checkpoint file is
-        left untouched — otherwise every catch-up batch that failed to generalize
-        would still become the live model (seen as val_loss jumping 0.14 → 0.23
-        across passes while best-epoch-within-pass kept picking the least-bad epoch
-        of a worse pass). Next cycle continues from the restored weights on new data.
+        The pass is then compared to the *incoming* weights on that same val split
+        and to `chart_val_loss` (last saved checkpoint). Fail either check → restore,
+        file untouched. Next cycle continues from the restored weights on new data.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
@@ -1242,6 +1240,7 @@ class NeuralBetEnsemble:
             "final_loss": None, "train_guess_rate": None, "val_loss": None, "val_guess_rate": None,
             "best_epoch": None, "bankroll": None, "checkpoint_accepted": None,
             "val_loss_incoming": None, "val_loss_attempted": None,
+            "checkpoint_reject_reason": None,
         }
 
         # The virtual "training" bank compounds round over round purely for the loss
@@ -1379,19 +1378,31 @@ class NeuralBetEnsemble:
         )
 
         checkpoint_accepted = True
+        checkpoint_reject_reason = None
         val_loss_attempted = final_val_loss
         if incoming_state is not None and final_val_loss is not None and val_incoming is not None:
             if final_val_loss >= val_incoming - 1e-4:
-                self._restore_train_state(*incoming_state)
                 checkpoint_accepted = False
-                # File stays as-is. training_runs copies the previous checkpoint's
-                # val_loss onto this timestamp (0.18 → 0.18), not val_incoming on a
-                # new split and not the rejected attempt.
+                checkpoint_reject_reason = "incoming"
                 logger.info(
                     f"Online pass did not beat incoming val_loss "
                     f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
                     f"restored previous weights, checkpoint file unchanged."
                 )
+            elif (
+                chart_val_loss is not None
+                and final_val_loss >= chart_val_loss - 1e-4
+            ):
+                checkpoint_accepted = False
+                checkpoint_reject_reason = "chart"
+                logger.info(
+                    f"Online pass beat incoming {val_incoming:.4f} but not the "
+                    f"saved checkpoint val_loss {chart_val_loss:.4f} "
+                    f"(attempt {val_loss_attempted:.4f}); "
+                    f"restored previous weights, checkpoint file unchanged."
+                )
+            if not checkpoint_accepted:
+                self._restore_train_state(*incoming_state)
 
         if checkpoint_accepted:
             self.save_checkpoints(extra={"best_epoch": best_epoch})
@@ -1410,6 +1421,7 @@ class NeuralBetEnsemble:
             "val_guess_rate": round(final_val_guess_rate * 100.0, 1) if final_val_guess_rate is not None else None,
             "best_epoch": best_epoch,
             "checkpoint_accepted": checkpoint_accepted,
+            "checkpoint_reject_reason": checkpoint_reject_reason,
             "val_loss_incoming": round(val_incoming, 4) if val_incoming is not None else None,
             "val_loss_attempted": (
                 round(val_loss_attempted, 4) if val_loss_attempted is not None else None

@@ -31,8 +31,9 @@ from neurobet_filters import (
     MIN_MARKET_SUPPORT,
     FAST_FORMAT_SPORT_SQL,
 )
+from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble
-from app.neuralbet.training_history import record_training_run, get_training_history
+from app.neuralbet.training_history import record_training_run, get_training_history, last_saved_run
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -51,7 +52,11 @@ ensemble_engine = NeuralBetEnsemble()
 # training. Everything that touches ensemble_engine goes through this lock.
 _engine_lock = threading.Lock()
 
+# Defaults only apply when no saved file exists yet. After an admin toggle the values
+# live in AI_SETTINGS_PATH on the /app/data volume so a container restart does not
+# flip inference/training back on.
 AI_SETTINGS = {"ai_enabled": True, "training_enabled": True}
+AI_SETTINGS_PATH = os.path.join(MODEL_DIR, "ai_settings.json")
 
 # Replay-buffer knobs for the online trainer (see B4 in the plan): a resolved bet is
 # eligible as "fresh" until it's been trained on MAX_REPLAY times, after which it can
@@ -179,6 +184,43 @@ add_ai_log(
 )
 
 
+def _persist_ai_settings() -> None:
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        payload = {
+            "ai_enabled": bool(AI_SETTINGS["ai_enabled"]),
+            "training_enabled": bool(AI_SETTINGS["training_enabled"]),
+        }
+        tmp_path = AI_SETTINGS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, AI_SETTINGS_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting AI settings: {e}")
+
+
+def _restore_ai_settings() -> None:
+    if not os.path.exists(AI_SETTINGS_PATH):
+        return
+    try:
+        with open(AI_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        for key in ("ai_enabled", "training_enabled"):
+            if key in saved and saved[key] is not None:
+                AI_SETTINGS[key] = bool(saved[key])
+        add_ai_log(
+            "SYSTEM",
+            "AI settings restored from disk: "
+            f"inference={'ENABLED' if AI_SETTINGS['ai_enabled'] else 'DISABLED'}, "
+            f"training={'ENABLED' if AI_SETTINGS['training_enabled'] else 'DISABLED'}.",
+        )
+    except Exception as e:
+        logger.error(f"Error loading AI settings: {e}")
+
+
+_restore_ai_settings()
+
+
 def get_ai_settings() -> dict[str, Any]:
     return AI_SETTINGS
 
@@ -232,14 +274,19 @@ def reset_neural_network() -> dict[str, Any]:
 def update_ai_settings(
     ai_enabled: bool | None = None, training_enabled: bool | None = None
 ) -> dict[str, Any]:
+    changed = False
     if ai_enabled is not None:
-        AI_SETTINGS["ai_enabled"] = ai_enabled
-        status_str = "ENABLED" if ai_enabled else "DISABLED"
+        AI_SETTINGS["ai_enabled"] = bool(ai_enabled)
+        status_str = "ENABLED" if AI_SETTINGS["ai_enabled"] else "DISABLED"
         add_ai_log("SYSTEM", f"AI Inference toggle changed: {status_str}")
+        changed = True
     if training_enabled is not None:
-        AI_SETTINGS["training_enabled"] = training_enabled
-        status_str = "ENABLED" if training_enabled else "DISABLED"
+        AI_SETTINGS["training_enabled"] = bool(training_enabled)
+        status_str = "ENABLED" if AI_SETTINGS["training_enabled"] else "DISABLED"
         add_ai_log("SYSTEM", f"Online Training toggle changed: {status_str}")
+        changed = True
+    if changed:
+        _persist_ai_settings()
     return AI_SETTINGS
 
 
@@ -1377,8 +1424,12 @@ def _run_neuralbet_inference_and_training_locked(
                     "TRAINING", f"Epoch {epoch_idx} — train_loss: {train_loss:.4f}"
                 )
 
+        prev_checkpoint = last_saved_run(get_training_history())
         metrics = ensemble_engine.train_online(
-            training_samples, val_data=val_samples, on_epoch=_log_epoch
+            training_samples,
+            val_data=val_samples,
+            on_epoch=_log_epoch,
+            chart_val_loss=(prev_checkpoint or {}).get("val_loss"),
         )
 
         if metrics["samples_used"] > 0:
@@ -1410,11 +1461,15 @@ def _run_neuralbet_inference_and_training_locked(
                 "checkpoint_accepted": metrics.get("checkpoint_accepted"),
                 "val_loss_incoming": metrics.get("val_loss_incoming"),
                 "val_loss_attempted": metrics.get("val_loss_attempted"),
+                "checkpoint_reject_reason": metrics.get("checkpoint_reject_reason"),
             })
 
+            pass_val = metrics.get("val_loss_attempted")
+            if pass_val is None:
+                pass_val = metrics.get("val_loss")
             val_str = (
-                f", val_loss {run_entry['val_loss']:.4f} / val_hit_rate {run_entry['val_guess_rate']:.1f}%"
-                if run_entry.get("val_loss") is not None
+                f", val_loss {pass_val:.4f} / val_hit_rate {metrics['val_guess_rate']:.1f}%"
+                if pass_val is not None
                 else " (no validation split yet — need more resolved bets)"
             )
             bank = metrics.get("bankroll") or {}
@@ -1444,8 +1499,7 @@ def _run_neuralbet_inference_and_training_locked(
                     else ""
                 )
                 + f") — best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
-                f"train_loss {run_entry.get('train_loss', metrics['final_loss']):.4f} "
-                f"(hit_rate {run_entry.get('train_guess_rate', metrics['train_guess_rate']):.1f}%)"
+                f"train_loss {metrics['final_loss']:.4f} (hit_rate {metrics['train_guess_rate']:.1f}%)"
                 + val_str
                 + bank_str
                 + (
@@ -1458,8 +1512,14 @@ def _run_neuralbet_inference_and_training_locked(
                     if metrics.get("checkpoint_accepted", True)
                     else (
                         f". Checkpoint kept — pass val_loss {metrics.get('val_loss_attempted')} "
-                        f"did not beat incoming {metrics.get('val_loss_incoming')}; "
-                        f"recorded val_loss {run_entry.get('val_loss')} (previous checkpoint)."
+                        + (
+                            f"did not beat previous checkpoint {run_entry.get('val_loss')}"
+                            if metrics.get("checkpoint_reject_reason") == "chart"
+                            else (
+                                f"did not beat incoming {metrics.get('val_loss_incoming')}"
+                            )
+                        )
+                        + f"; recorded val_loss {run_entry.get('val_loss')} (previous checkpoint)."
                     )
                 ),
             )

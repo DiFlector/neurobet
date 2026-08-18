@@ -1,3 +1,4 @@
+import json
 import logging
 import datetime
 import os
@@ -43,6 +44,22 @@ class AdminLoginRequest(BaseModel):
 class AISettingsRequest(BaseModel):
     ai_enabled: Optional[bool] = None
     training_enabled: Optional[bool] = None
+
+_AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
+
+
+def _fallback_ai_settings() -> dict:
+    """Last-known admin toggles from the shared data volume. Used only when ai_service
+    is unreachable (e.g. mid-restart) so the UI does not flash both switches back on."""
+    try:
+        with open(_AI_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        return {
+            "ai_enabled": bool(saved["ai_enabled"]) if "ai_enabled" in saved else True,
+            "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else True,
+        }
+    except Exception:
+        return {"ai_enabled": True, "training_enabled": True}
 
 class BankrollResetRequest(BaseModel):
     account: str
@@ -372,7 +389,7 @@ def read_admin_ai_settings():
                 return res.json()
     except Exception as e:
         logger.error(f"Error communicating with AI Service: {e}")
-    return {"status": "success", "settings": {"ai_enabled": True, "training_enabled": True}}
+    return {"status": "success", "settings": _fallback_ai_settings()}
 
 @app.post("/api/admin/ai-settings")
 def update_admin_ai_settings(req: AISettingsRequest):
