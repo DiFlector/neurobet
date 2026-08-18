@@ -15,6 +15,9 @@ interface TrainingRun {
   train_guess_rate: number | null
   val_loss: number | null
   val_guess_rate: number | null
+  checkpoint_accepted?: boolean | null
+  val_loss_incoming?: number | null
+  val_loss_attempted?: number | null
 }
 
 interface TrainingTrendChartProps {
@@ -46,21 +49,37 @@ function MiniTooltip({ active, payload, formatter }: any) {
 
 export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
   // training_runs.json arrives newest-first — reversed so the chart reads
-  // left-to-right as oldest-to-newest. Passes without a val split yet (val_loss null —
-  // not enough resolved bets held out) are kept in the series with a null value so the
-  // line just has a gap there instead of the x-axis compressing around them.
+  // left-to-right as oldest-to-newest. A rejected pass still occupies its
+  // timestamp, but val/train metrics are the previous checkpoint's (0.18 stayed
+  // 0.18). Carry-forward here too so already-written rejected rows plot that way
+  // before the next training pass rewrites them.
   const chartData = useMemo(() => {
     const chronological = [...history].reverse()
-    return limitChartPoints(chronological).map((r) => ({
-      label: formatTick(r.generated_at),
-      fullDate: r.generated_at,
-      samplesUsed: r.samples_used,
-      bestEpoch: r.best_epoch,
-      epochsRun: r.epochs_run,
-      trainLoss: r.train_loss,
-      valLoss: r.val_loss,
-      valGuessRate: r.val_guess_rate,
-    }))
+    let lastVal: number | null = null
+    let lastTrain: number | null = null
+    let lastGuess: number | null = null
+    const carried = chronological.map((r) => {
+      const saved = r.checkpoint_accepted !== false
+      if (saved) {
+        lastVal = r.val_loss
+        lastTrain = r.train_loss
+        lastGuess = r.val_guess_rate
+      }
+      return {
+        label: formatTick(r.generated_at),
+        fullDate: r.generated_at,
+        samplesUsed: r.samples_used,
+        bestEpoch: r.best_epoch,
+        epochsRun: r.epochs_run,
+        saved,
+        trainLoss: saved ? r.train_loss : lastTrain,
+        valLoss: saved ? r.val_loss : lastVal,
+        valGuessRate: saved ? r.val_guess_rate : lastGuess,
+        valIncoming: r.val_loss_incoming ?? null,
+        valAttempted: r.val_loss_attempted ?? null,
+      }
+    })
+    return limitChartPoints(carried)
   }, [history])
 
   if (chartData.length < 2) {
@@ -89,9 +108,19 @@ export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
                     {...p}
                     formatter={(d: any) => (
                       <>
+                        {!d.saved && (
+                          <div className="text-[10px] font-semibold text-[#fdcb6e]">
+                            веса те же, хуже не записали
+                          </div>
+                        )}
                         <div className="font-bold text-xs text-[#fd79a8]">
                           val_loss: {d.valLoss != null ? d.valLoss.toFixed(4) : "—"}
                         </div>
+                        {d.valAttempted != null && d.valIncoming != null && !d.saved && (
+                          <div className="text-xs text-neutral-500">
+                            попытка {d.valAttempted.toFixed(4)} (вход {d.valIncoming.toFixed(4)})
+                          </div>
+                        )}
                         <div className="text-xs text-neutral-400">
                           train_loss: {d.trainLoss != null ? d.trainLoss.toFixed(4) : "—"}
                         </div>
@@ -122,9 +151,16 @@ export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
                   <MiniTooltip
                     {...p}
                     formatter={(d: any) => (
-                      <div className="font-bold text-xs text-[#0984e3]">
-                        val_guess_rate: {d.valGuessRate != null ? `${d.valGuessRate}%` : "—"}
-                      </div>
+                      <>
+                        {!d.saved && (
+                          <div className="text-[10px] font-semibold text-[#fdcb6e]">
+                            веса те же, хуже не записали
+                          </div>
+                        )}
+                        <div className="font-bold text-xs text-[#0984e3]">
+                          val_guess_rate: {d.valGuessRate != null ? `${d.valGuessRate}%` : "—"}
+                        </div>
+                      </>
                     )}
                   />
                 )}

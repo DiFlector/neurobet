@@ -1384,16 +1384,13 @@ class NeuralBetEnsemble:
             if final_val_loss >= val_incoming - 1e-4:
                 self._restore_train_state(*incoming_state)
                 checkpoint_accepted = False
-                # Chart / training_runs track the *kept* weights, not the rejected
-                # attempt — a pass that went 0.18 → 0.23 and got rolled back must plot
-                # as 0.18 again, same live model as the previous point.
-                final_val_loss = val_incoming
-                final_val_guess_rate = val_incoming_guess
-                final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
+                # File stays as-is. training_runs copies the previous checkpoint's
+                # val_loss onto this timestamp (0.18 → 0.18), not val_incoming on a
+                # new split and not the rejected attempt.
                 logger.info(
                     f"Online pass did not beat incoming val_loss "
                     f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
-                    f"restored previous weights, recording val_loss {final_val_loss:.4f}."
+                    f"restored previous weights, checkpoint file unchanged."
                 )
 
         if checkpoint_accepted:

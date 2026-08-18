@@ -32,7 +32,7 @@ from neurobet_filters import (
     FAST_FORMAT_SPORT_SQL,
 )
 from app.neuralbet.model import NeuralBetEnsemble
-from app.neuralbet.training_history import record_training_run
+from app.neuralbet.training_history import record_training_run, get_training_history
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -470,8 +470,17 @@ def get_training_health() -> dict[str, Any]:
             signal_c = rois[0] <= rois[-1]
 
     train_history = get_training_history()  # newest first
+    # Rejected passes copy the previous checkpoint's val_loss onto the chart.
+    # Health still wants "live weights on this pass's val": incoming when we
+    # kept the file, recorded val_loss when we actually wrote new weights.
+    def _health_val_loss(row: dict) -> float | None:
+        if row.get("checkpoint_accepted") is False:
+            incoming = row.get("val_loss_incoming")
+            return incoming if incoming is not None else row.get("val_loss")
+        return row.get("val_loss")
+
     val_losses = [
-        r.get("val_loss") for r in train_history if r.get("val_loss") is not None
+        v for v in (_health_val_loss(r) for r in train_history) if v is not None
     ][:TRAINING_HEALTH_VAL_LOSS_WINDOW]
     have_enough_val_passes = len(val_losses) >= TRAINING_HEALTH_VAL_LOSS_WINDOW
 
@@ -1386,7 +1395,7 @@ def _run_neuralbet_inference_and_training_locked(
             else:
                 _low_epoch_streak = 0
 
-            record_training_run({
+            run_entry = record_training_run({
                 "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
                 "samples_used": metrics["samples_used"],
                 "samples_skipped": metrics["samples_skipped"],
@@ -1404,8 +1413,8 @@ def _run_neuralbet_inference_and_training_locked(
             })
 
             val_str = (
-                f", val_loss {metrics['val_loss']:.4f} / val_hit_rate {metrics['val_guess_rate']:.1f}%"
-                if metrics.get("val_loss") is not None
+                f", val_loss {run_entry['val_loss']:.4f} / val_hit_rate {run_entry['val_guess_rate']:.1f}%"
+                if run_entry.get("val_loss") is not None
                 else " (no validation split yet — need more resolved bets)"
             )
             bank = metrics.get("bankroll") or {}
@@ -1435,7 +1444,8 @@ def _run_neuralbet_inference_and_training_locked(
                     else ""
                 )
                 + f") — best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
-                f"train_loss {metrics['final_loss']:.4f} (hit_rate {metrics['train_guess_rate']:.1f}%)"
+                f"train_loss {run_entry.get('train_loss', metrics['final_loss']):.4f} "
+                f"(hit_rate {run_entry.get('train_guess_rate', metrics['train_guess_rate']):.1f}%)"
                 + val_str
                 + bank_str
                 + (
@@ -1449,7 +1459,7 @@ def _run_neuralbet_inference_and_training_locked(
                     else (
                         f". Checkpoint kept — pass val_loss {metrics.get('val_loss_attempted')} "
                         f"did not beat incoming {metrics.get('val_loss_incoming')}; "
-                        f"recorded val_loss {metrics['val_loss']} (same weights)."
+                        f"recorded val_loss {run_entry.get('val_loss')} (previous checkpoint)."
                     )
                 ),
             )

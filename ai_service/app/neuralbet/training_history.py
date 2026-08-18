@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.config import MODEL_DIR
 
@@ -30,9 +30,27 @@ def now_iso() -> str:
     return datetime.now(MOSCOW_TZ).isoformat()
 
 
-def record_training_run(entry: Dict[str, Any]) -> None:
+_CARRY_FIELDS = ("val_loss", "train_loss", "val_guess_rate", "train_guess_rate")
+
+
+def last_saved_run(history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Newest pass whose weights actually landed on disk. Rows from before the
+    checkpoint gate have no `checkpoint_accepted` flag and always wrote the file."""
+    for row in history:
+        if row.get("checkpoint_accepted") is False:
+            continue
+        if row.get("val_loss") is None:
+            continue
+        return row
+    return None
+
+
+def record_training_run(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Appends one training pass's summary metrics (see pipeline.py's call site for the
-    exact fields) to the front of the history file, capped at MAX_TRAINING_HISTORY."""
+    exact fields) to the front of the history file, capped at MAX_TRAINING_HISTORY.
+    A rejected pass still gets a new timestamped point, but val/train loss are copied
+    from the last saved checkpoint — 0.18 stayed 0.18, not the 0.19 attempt and not
+    a fresh eval of the same weights on a different val split."""
     try:
         os.makedirs(MODEL_DIR, exist_ok=True)
         history: List[Dict[str, Any]] = []
@@ -42,12 +60,19 @@ def record_training_run(entry: Dict[str, Any]) -> None:
                     history = json.load(f)
             except Exception:
                 history = []
+        if entry.get("checkpoint_accepted") is False:
+            prev = last_saved_run(history)
+            if prev is not None:
+                for field in _CARRY_FIELDS:
+                    if prev.get(field) is not None:
+                        entry[field] = prev[field]
         history.insert(0, entry)
         history = history[:MAX_TRAINING_HISTORY]
         with open(TRAINING_HISTORY_PATH, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Error persisting training run history: {e}")
+    return entry
 
 
 def get_training_history() -> List[Dict[str, Any]]:
