@@ -126,7 +126,16 @@ def _handle(msg: dict) -> Optional[dict]:
 
 
 def _read() -> Optional[dict]:
-    header = b""
+    """Stdio MCP is newline-delimited JSON. Also accept LSP Content-Length framing."""
+    first = sys.stdin.buffer.readline()
+    if not first:
+        return None
+    stripped = first.strip()
+    if not stripped:
+        return _read()
+    if stripped[:1] == b"{":
+        return json.loads(stripped.decode("utf-8"))
+    header = first
     while True:
         line = sys.stdin.buffer.readline()
         if not line:
@@ -146,7 +155,7 @@ def _read() -> Optional[dict]:
 
 def _write(msg: dict) -> None:
     data = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-    sys.stdout.buffer.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data)
+    sys.stdout.buffer.write(data + b"\n")
     sys.stdout.buffer.flush()
 
 

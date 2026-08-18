@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "neurobet-eval": {
-      "command": "python",
-      "args": ["mcp/neurobet_eval.py"],
+      "type": "stdio",
+      "command": "C:\\Users\\diflector\\AppData\\Local\\Programs\\Python\\Python314\\python.exe",
+      "args": [
+        "D:\\Codes\\autobet\\mcp\\neurobet_eval.py"
+      ],
       "env": {
         "NEUROBET_API_URL": "https://necrolich.ru/neurobet"
       }
