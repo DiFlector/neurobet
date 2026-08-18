@@ -5,6 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine, Legend
 } from "recharts"
+import { limitChartPoints } from "@/lib/chartPoints"
 
 interface BacktestRun {
   generated_at: string
@@ -45,7 +46,8 @@ export function QualityTrendChart({ history }: QualityTrendChartProps) {
   // reversed here so the chart reads left-to-right as oldest-to-newest, the way a trend
   // is normally read.
   const chartData = useMemo(() => {
-    return [...history].reverse().map((r) => {
+    const chronological = [...history].reverse()
+    return limitChartPoints(chronological).map((r) => {
       const cur = r.overall?.current
       return {
         label: formatTick(r.generated_at),
@@ -91,7 +93,7 @@ export function QualityTrendChart({ history }: QualityTrendChartProps) {
                   />
                 )}
               />
-              <Line type="monotone" dataKey="roi" stroke="#55efc4" strokeWidth={2} dot={{ r: 2, fill: "#55efc4" }} activeDot={{ r: 5, stroke: "#fff" }} connectNulls />
+              <Line type="monotone" dataKey="roi" stroke="#55efc4" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff" }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -117,7 +119,7 @@ export function QualityTrendChart({ history }: QualityTrendChartProps) {
                   />
                 )}
               />
-              <Line type="monotone" dataKey="accuracy" stroke="#74b9ff" strokeWidth={2} dot={{ r: 2, fill: "#74b9ff" }} activeDot={{ r: 5, stroke: "#fff" }} connectNulls />
+              <Line type="monotone" dataKey="accuracy" stroke="#74b9ff" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff" }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -147,7 +149,7 @@ export function QualityTrendChart({ history }: QualityTrendChartProps) {
                 )}
               />
               <Legend wrapperStyle={{ fontSize: 9 }} formatter={(v) => (v === "brier" ? "Модель" : "Рынок")} />
-              <Line type="monotone" dataKey="brier" stroke="#a29bfe" strokeWidth={2} dot={{ r: 2, fill: "#a29bfe" }} activeDot={{ r: 5, stroke: "#fff" }} connectNulls />
+              <Line type="monotone" dataKey="brier" stroke="#a29bfe" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff" }} connectNulls />
               <Line type="monotone" dataKey="marketBrier" stroke="#737373" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
             </LineChart>
           </ResponsiveContainer>

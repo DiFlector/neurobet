@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from "recharts"
+import { limitChartPoints } from "@/lib/chartPoints"
 
 interface TrainingRun {
   generated_at: string
@@ -49,7 +50,8 @@ export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
   // not enough resolved bets held out) are kept in the series with a null value so the
   // line just has a gap there instead of the x-axis compressing around them.
   const chartData = useMemo(() => {
-    return [...history].reverse().map((r) => ({
+    const chronological = [...history].reverse()
+    return limitChartPoints(chronological).map((r) => ({
       label: formatTick(r.generated_at),
       fullDate: r.generated_at,
       samplesUsed: r.samples_used,
@@ -98,7 +100,7 @@ export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
                   />
                 )}
               />
-              <Line type="monotone" dataKey="valLoss" stroke="#fd79a8" strokeWidth={2} dot={{ r: 2, fill: "#fd79a8" }} activeDot={{ r: 5, stroke: "#fff" }} connectNulls />
+              <Line type="monotone" dataKey="valLoss" stroke="#fd79a8" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff" }} connectNulls />
               <Line type="monotone" dataKey="trainLoss" stroke="#525252" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
             </LineChart>
           </ResponsiveContainer>
@@ -127,7 +129,7 @@ export function TrainingTrendChart({ history }: TrainingTrendChartProps) {
                   />
                 )}
               />
-              <Line type="monotone" dataKey="valGuessRate" stroke="#0984e3" strokeWidth={2} dot={{ r: 2, fill: "#0984e3" }} activeDot={{ r: 5, stroke: "#fff" }} connectNulls />
+              <Line type="monotone" dataKey="valGuessRate" stroke="#0984e3" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "#fff" }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
