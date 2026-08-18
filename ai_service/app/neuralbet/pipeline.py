@@ -734,13 +734,16 @@ def get_training_health() -> dict[str, Any]:
          information over just trusting the odds, on held-out history.
       C) backtest_roi_not_improving — the current model's backtest ROI hasn't improved
          between the oldest and newest run in that same window.
-      D) val_loss_trending_up — the average validation decision-loss over the most
-         recent half of the last TRAINING_HEALTH_VAL_LOSS_WINDOW training passes is
-         higher than the average over the older half: a slower, more gradual drift than
-         signal A (which only catches a single pass memorizing its batch outright) —
-         this is the earliest available signal of all four, since a training pass fires
-         far more often than a backtest, but also the noisiest per-pass, hence the
-         within-window averaging instead of a point-to-point comparison.
+      D) val_loss_trending_up — the average validation decision-loss *attempted this
+         pass* (val_loss_attempted, not the chart's carried-forward checkpoint value)
+         over the most recent half of the last TRAINING_HEALTH_VAL_LOSS_WINDOW training
+         passes is higher than the average over the older half: a slower, more gradual
+         drift than signal A (which only catches a single pass memorizing its batch
+         outright) — this is the earliest available signal of all four, since a
+         training pass fires far more often than a backtest, but also the noisiest
+         per-pass, hence the within-window averaging instead of a point-to-point
+         comparison. Rejected passes still count: using the frozen chart val_loss
+         would hide a reject-storm behind a flat "ok" line.
     One active signal is "presmotret'sya" (warning); a majority (3 of 4) is "definite
     stop" (danger) — see run_neuralbet_inference_and_training's docstring history / the
     admin panel's status block, which renders this directly. Needs at least
@@ -827,10 +830,15 @@ def get_training_health() -> dict[str, Any]:
             signal_c = rois[0] <= rois[-1]
 
     train_history = get_training_history()  # newest first
-    # Rejected passes copy the previous checkpoint's val_loss onto the chart.
-    # Health still wants "live weights on this pass's val": incoming when we
-    # kept the file, recorded val_loss when we actually wrote new weights.
+    # Rejected passes copy the previous checkpoint's val_loss onto the admin
+    # chart (so 0.1497 stays 0.1497). Health must look at this pass's actual
+    # trained val_loss — val_loss_attempted — otherwise a reject-storm reports
+    # "ok". Fall back to incoming (live weights on this val split) then to the
+    # recorded chart value for rows from before those fields existed.
     def _health_val_loss(row: dict) -> float | None:
+        attempted = row.get("val_loss_attempted")
+        if attempted is not None:
+            return attempted
         if row.get("checkpoint_accepted") is False:
             incoming = row.get("val_loss_incoming")
             return incoming if incoming is not None else row.get("val_loss")
@@ -1062,12 +1070,25 @@ def _count_train_pool(f_cursor, val_event_ids: set | None, untrained_only: bool 
     return int(row["c"] or 0) if row else 0
 
 
+# Floor/ceiling on the per-pass win share. A hard 0/N–N/0 draw (the original
+# "don't latch onto 50/50") produced batches like 223/9777: the GRU memorized the
+# majority class in 1–2 epochs, the checkpoint gate rejected the pass, and
+# training spun in place. 20–80% still moves the prior around each cycle without
+# collapsing a 10k batch into a single-class prior.
+TRAIN_CLASS_QUOTA_MIN_FRAC = float(os.getenv("NEURALBET_TRAIN_CLASS_QUOTA_MIN_FRAC", "0.20"))
+
+
 def _draw_class_quota(total: int) -> tuple[int, int]:
-    """Hard uniform mix: n_win is any integer in [0, total], so 0/100 and 100/0
-    are as likely as 50/50. The model must not see a constant 50/50 prior."""
+    """Win/loss counts drawn uniformly from [frac, 1-frac] of `total` so the
+    win-head cannot latch onto a constant 50/50 prior, but never a 0/N or N/0
+    batch. `frac` is TRAIN_CLASS_QUOTA_MIN_FRAC (default 0.20)."""
     if total <= 0:
         return 0, 0
-    n_win = random.randint(0, total)
+    lo = int(round(total * TRAIN_CLASS_QUOTA_MIN_FRAC))
+    hi = total - lo
+    if lo > hi:
+        lo, hi = hi, lo
+    n_win = lo if lo == hi else random.randint(lo, hi)
     return n_win, total - n_win
 
 
@@ -1133,8 +1154,9 @@ def _fetch_training_batch(
     Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
     first) + ~30% older ones sampled at random so the model doesn't catastrophically
     forget history it hasn't seen in a while (see plan B4). Win/loss counts are drawn
-    uniformly from 0/N through N/0 each pass so the win-head cannot latch onto a
-    constant 50/50 prior. Excludes every bet belonging to a held-out validation event.
+    uniformly from 20/80 through 80/20 each pass so the win-head cannot latch onto a
+    constant 50/50 prior without collapsing the batch into a single class. Excludes
+    every bet belonging to a held-out validation event.
     Returns (rows, key_list, mix) where mix is the drawn quota plus what was actually
     fetched.
     """

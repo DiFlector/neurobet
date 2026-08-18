@@ -252,7 +252,9 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
         decision_threshold = ensemble_engine.decision_threshold
         # Snapshot under the same lock as the other weights above — read fresh after
         # the lock releases, this dict could be caught mid-update by a concurrent
-        # tune_ensemble() call.
+        # tune_ensemble() call. Apply sport floors first so a football (etc.) minimum
+        # is in the copy even if this process loaded a checkpoint from before the floor.
+        ensemble_engine._apply_sport_threshold_floors()
         sport_decision_thresholds = dict(ensemble_engine.sport_decision_thresholds)
         buckets = get_calibration_buckets()
 

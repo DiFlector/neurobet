@@ -232,6 +232,21 @@ def _build_sequence(step_pairs: List[Tuple]) -> List[List[float]]:
 # Floor on the decision threshold after the residual-head change: 0.5 means predicted
 # edge 0. Anything below that is "the market is too high, do not bet."
 VALUE_THRESHOLD_FLOOR = 0.50
+# Per-sport *minimum* decision_threshold. The tuner may raise a sport above this
+# (and EMA-smooth as usual) but cannot ease it back below — live inference and
+# backtest both go through sport_threshold() / the floors-applied dict.
+# Football: 40k backtest 19 Aug 2026 put −4.5% ROI on 98 football bets at the
+# then-global ~0.56 cutoff, while table tennis on the same run was +9.4%. 0.62
+# is three grid steps more selective than that losing cutoff without a full ban.
+SPORT_THRESHOLD_FLOORS: Dict[str, float] = {
+    "Футбол": float(os.getenv("NEURALBET_FOOTBALL_THRESHOLD_FLOOR", "0.62")),
+}
+
+
+def _sport_threshold_floor(sport: Optional[str]) -> float:
+    if not sport:
+        return VALUE_THRESHOLD_FLOOR
+    return max(VALUE_THRESHOLD_FLOOR, SPORT_THRESHOLD_FLOORS.get(sport, VALUE_THRESHOLD_FLOOR))
 
 
 def _market_prob_tensor(coefficients: torch.Tensor) -> torch.Tensor:
@@ -285,12 +300,11 @@ class NeuralBetEnsemble:
         # Per-sport overrides of decision_threshold, keyed by top-level sport (same
         # string calibration.py/backtest.py already group by) — tuned in tune_ensemble()
         # whenever a sport's val slice clears MIN_THRESHOLD_BETS_PER_SPORT, since a
-        # single global threshold can't be optimal for every sport at once (production
-        # backtests showed the model beating the market's Brier on football/basketball/
-        # hockey while losing on table tennis — a per-sport cutoff targets that gap
-        # directly). Starts empty: every sport falls back to decision_threshold above
-        # until it earns its own tuned value — see sport_threshold().
+        # single global threshold can't be optimal for every sport at once. Sports in
+        # SPORT_THRESHOLD_FLOORS also get a minimum cutoff even before they earn a
+        # tuned value (football, after a hold-out ROI leak at the global threshold).
         self.sport_decision_thresholds: Dict[str, float] = {}
+        self._apply_sport_threshold_floors()
 
         # Real gradient-boosted classifier, fit on actual resolved bets (see
         # train_lightgbm). None until the first successful training pass — until then
@@ -321,23 +335,36 @@ class NeuralBetEnsemble:
             except Exception as e:
                 logger.error(f"Error removing checkpoint {path} during reset: {e}")
 
+    def _apply_sport_threshold_floors(self) -> None:
+        """Ensure every sport in SPORT_THRESHOLD_FLOORS has a stored cutoff at least
+        as high as its floor. Mutates sport_decision_thresholds in place so a
+        backtest snapshot of the dict (see backtest.py) sees the same values live
+        inference uses via sport_threshold()."""
+        for sport, floor in SPORT_THRESHOLD_FLOORS.items():
+            current = self.sport_decision_thresholds.get(sport)
+            if current is None or current < floor:
+                self.sport_decision_thresholds[sport] = floor
+
     def sport_threshold(self, sport: Optional[str]) -> float:
         """The decision-head cutoff to use for this sport: its own tuned value if
         tune_ensemble has ever seen enough validation bets for it, otherwise the global
-        decision_threshold. Single source of truth for this lookup — every caller
+        decision_threshold — then raised to that sport's SPORT_THRESHOLD_FLOORS entry
+        if one exists. Single source of truth for this lookup — every caller
         (pipeline.py's live inference, backtest.py's current_pred) goes through this
         instead of reading decision_threshold directly, so the two can never drift out
         of sync on which threshold a given sport actually uses."""
+        floor = _sport_threshold_floor(sport)
         if sport is None:
-            return max(VALUE_THRESHOLD_FLOOR, self.decision_threshold)
+            return max(floor, self.decision_threshold)
         return max(
-            VALUE_THRESHOLD_FLOOR,
+            floor,
             self.sport_decision_thresholds.get(sport, self.decision_threshold),
         )
 
     def save_checkpoints(self, extra: Optional[Dict[str, Any]] = None):
         try:
             os.makedirs(MODEL_DIR, exist_ok=True)
+            self._apply_sport_threshold_floors()
             payload = {
                 "model_state": self.pytorch_model.state_dict(),
                 "optimizer_state": self.pytorch_optimizer.state_dict(),
@@ -439,6 +466,7 @@ class NeuralBetEnsemble:
                         str(k): max(VALUE_THRESHOLD_FLOOR, float(v))
                         for k, v in (blob.get("sport_decision_thresholds") or {}).items()
                     }
+                    self._apply_sport_threshold_floors()
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
                 # only blows up later, inside optimizer.step()'s elementwise ops against
@@ -895,7 +923,7 @@ class NeuralBetEnsemble:
             if bets < self._MIN_THRESHOLD_BETS_PER_SPORT:
                 continue
             new_sport_thr = max(
-                VALUE_THRESHOLD_FLOOR,
+                _sport_threshold_floor(sport),
                 old_sport_thr + a * (thr - old_sport_thr),
             )
             self.sport_decision_thresholds[sport] = new_sport_thr
@@ -903,6 +931,10 @@ class NeuralBetEnsemble:
                 "old": round(old_sport_thr, 2), "new": round(new_sport_thr, 2), "target": round(thr, 2),
                 "val_roi_pct": round(roi * 100.0, 1), "val_bets": bets,
             }
+
+        # Sports that didn't clear the val-bets floor this pass still need their
+        # SPORT_THRESHOLD_FLOORS minimum in the stored dict (backtest snapshots it).
+        self._apply_sport_threshold_floors()
 
         return {
             "tuned": True,
