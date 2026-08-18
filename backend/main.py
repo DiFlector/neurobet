@@ -20,6 +20,16 @@ from pydantic import BaseModel
 from database import init_db, save_parsed_events, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
+from neurobet_filters import (
+    ALLOWED_SPORTS,
+    ALLOWED_FACTOR_IDS,
+    DRAW_FACTOR_ID,
+    TOTAL_LINE_RANGES,
+    MIN_BET_COEFF,
+    MAX_BET_COEFF,
+    MIN_BET_EDGE_PCT,
+    MIN_MARKET_SUPPORT,
+)
 
 MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
 
@@ -452,6 +462,117 @@ def admin_training_runs():
     except Exception as e:
         logger.error(f"Error fetching training run history: {e}")
     return {"status": "success", "runs": []}
+
+
+def _filters_snapshot() -> Dict[str, Any]:
+    return {
+        "allowed_sports": sorted(ALLOWED_SPORTS),
+        "allowed_factor_ids": sorted(ALLOWED_FACTOR_IDS),
+        "draw_factor_id": DRAW_FACTOR_ID,
+        "total_line_ranges": {k: [lo, hi] for k, (lo, hi) in TOTAL_LINE_RANGES.items()},
+        "min_bet_coeff": MIN_BET_COEFF,
+        "max_bet_coeff": MAX_BET_COEFF,
+        "min_bet_edge_pct": MIN_BET_EDGE_PCT,
+        "min_market_support": MIN_MARKET_SUPPORT,
+    }
+
+
+def _ai_eval_snapshot(
+    training_runs_limit: int = 40,
+    logs_limit: int = 80,
+    backtest_runs: int = 15,
+) -> Dict[str, Any]:
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.get(
+                f"{AI_SERVICE_URL}/eval-snapshot",
+                params={
+                    "training_runs_limit": training_runs_limit,
+                    "logs_limit": logs_limit,
+                    "backtest_runs": backtest_runs,
+                },
+            )
+            if res.status_code == 200:
+                return res.json()
+            logger.error(f"eval-snapshot HTTP {res.status_code}: {res.text[:300]}")
+    except Exception as e:
+        logger.error(f"Error fetching AI eval snapshot: {e}")
+    return {}
+
+
+def build_eval_pack(
+    fresh_backtest: Optional[Dict[str, Any]] = None,
+    bet_types_limit: int = 40,
+    training_runs_limit: int = 40,
+    logs_limit: int = 80,
+    backtest_runs: int = 15,
+) -> Dict[str, Any]:
+    """Single JSON an agent needs to judge the live model: filters, ensemble, full
+    latest backtest, ROI/stats (already live-pool filtered), training health, logs."""
+    bt_stats = get_bet_type_stats()
+    for sport in bt_stats.get("sports", []):
+        sport["bet_types"] = sport["bet_types"][:bet_types_limit]
+    snap = _ai_eval_snapshot(training_runs_limit, logs_limit, backtest_runs)
+    latest = fresh_backtest if fresh_backtest and fresh_backtest.get("status") == "success" else snap.get("latest_backtest")
+    return {
+        "kind": "neurobet_eval_pack",
+        "schema_version": 1,
+        "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
+        "backtest_ran": bool(fresh_backtest and fresh_backtest.get("status") == "success"),
+        "filters": _filters_snapshot(),
+        "ensemble": snap.get("ensemble"),
+        "ai_settings": snap.get("settings"),
+        "training_health": snap.get("training_health"),
+        "training_runs": snap.get("training_runs") or [],
+        "latest_backtest": latest,
+        "backtest_history": snap.get("backtest_history") or [],
+        "db_stats": get_db_stats(),
+        "bet_type_stats": bt_stats,
+        "roi_stats": get_roi_stats(),
+        "bankroll": get_bankroll_state(),
+        "recent_ai_logs": snap.get("logs") or [],
+    }
+
+
+@app.get("/api/ai/eval-pack")
+def read_eval_pack(
+    bet_types_limit: int = Query(40, ge=0, le=200),
+    training_runs_limit: int = Query(40, ge=0, le=200),
+    logs_limit: int = Query(80, ge=0, le=300),
+    backtest_runs: int = Query(15, ge=0, le=50),
+):
+    """Snapshot without running a new backtest — last full run on disk if any."""
+    try:
+        return build_eval_pack(
+            bet_types_limit=bet_types_limit,
+            training_runs_limit=training_runs_limit,
+            logs_limit=logs_limit,
+            backtest_runs=backtest_runs,
+        )
+    except Exception as e:
+        logger.error(f"Error building eval pack: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class EvalPackRequest(BaseModel):
+    run_backtest: bool = True
+    limit: int = 40000
+
+
+@app.post("/api/ai/eval-pack")
+def create_eval_pack(payload: Optional[EvalPackRequest] = None):
+    """Optional fresh backtest (default on) then the same snapshot as GET. Admin
+    'пакет для агента' uses this so the attached JSON includes current weights."""
+    req = payload or EvalPackRequest()
+    fresh = None
+    if req.run_backtest:
+        limit = max(100, min(int(req.limit or 40000), 50000))
+        fresh = admin_run_backtest({"limit": limit})
+    try:
+        return build_eval_pack(fresh_backtest=fresh)
+    except Exception as e:
+        logger.error(f"Error building eval pack after backtest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ai/overview")
 def read_ai_overview(

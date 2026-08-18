@@ -22,7 +22,8 @@ import {
   Wallet,
   Ban,
   FlaskConical,
-  Download
+  Download,
+  FileJson
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
@@ -67,6 +68,8 @@ export default function AdminPage() {
   const [backtestResult, setBacktestResult] = useState<any>(null)
   const [backtestError, setBacktestError] = useState<string | null>(null)
   const [backtestHistory, setBacktestHistory] = useState<any[]>([])
+  const [evalPackLoading, setEvalPackLoading] = useState(false)
+  const [evalPackError, setEvalPackError] = useState<string | null>(null)
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
@@ -305,6 +308,38 @@ export default function AdminPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  const downloadEvalPack = async () => {
+    setEvalPackLoading(true)
+    setEvalPackError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/eval-pack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_backtest: true, limit: 40000 }),
+      })
+      if (!res.ok) throw new Error("Не удалось собрать пакет")
+      const data = await res.json()
+      if (data.latest_backtest?.status === "success") {
+        setBacktestResult(data.latest_backtest)
+        fetchBacktestHistory()
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const stamp = (data.generated_at || new Date().toISOString()).replace(/[:.]/g, "-")
+      a.download = `neurobet_eval_pack_${stamp}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setEvalPackError(err.message || "Ошибка выгрузки пакета")
+    } finally {
+      setEvalPackLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -766,7 +801,7 @@ export default function AdminPage() {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={handleRunBacktest}
-                disabled={backtestRunning}
+                disabled={backtestRunning || evalPackLoading}
                 className="flex items-center gap-1.5 bg-[#a29bfe] hover:opacity-90 text-neutral-950 font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md shadow-[#a29bfe]/20 disabled:opacity-50"
               >
                 <FlaskConical className={`w-3.5 h-3.5 ${backtestRunning ? "animate-pulse" : ""}`} />
@@ -782,8 +817,24 @@ export default function AdminPage() {
                   JSON
                 </button>
               )}
+              <button
+                onClick={downloadEvalPack}
+                disabled={evalPackLoading || backtestRunning}
+                className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 disabled:opacity-50"
+                title="Бэктест + фильтры + ROI + здоровье обучения + логи — один JSON для агента"
+              >
+                <FileJson className={`w-3.5 h-3.5 text-[#fdcb6e] ${evalPackLoading ? "animate-pulse" : ""}`} />
+                {evalPackLoading ? "Собираю пакет..." : "Пакет для агента"}
+              </button>
             </div>
           </div>
+
+          {evalPackError && (
+            <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{evalPackError}</span>
+            </div>
+          )}
 
           {backtestError && (
             <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">

@@ -11,6 +11,7 @@ from app.neuralbet import (
     get_training_health,
     run_backtest,
     get_backtest_history,
+    get_latest_backtest,
     get_training_history,
 )
 from app.neuralbet import bankroll
@@ -139,6 +140,37 @@ def training_runs():
     trend chart and get_training_health's val_loss_trending_up signal; distinct from
     /training-health, which is the derived traffic-light verdict, not the raw series."""
     return {"status": "success", "runs": get_training_history()}
+
+
+@router.get("/eval-snapshot")
+def eval_snapshot(
+    training_runs_limit: int = 40,
+    logs_limit: int = 80,
+    backtest_runs: int = 15,
+):
+    """Model-side half of the eval pack: ensemble weights, training health, recent
+    training passes, condensed backtest history, and the latest *full* backtest JSON
+    (with by_sport / by_coefficient). Backend adds filters, ROI, bankroll, db stats."""
+    from app.neuralbet.pipeline import ensemble_engine
+
+    e = ensemble_engine
+    return {
+        "status": "success",
+        "settings": get_ai_settings(),
+        "training_health": get_training_health(),
+        "training_runs": get_training_history()[: max(0, min(training_runs_limit, 200))],
+        "backtest_history": get_backtest_history()[: max(0, min(backtest_runs, 50))],
+        "latest_backtest": get_latest_backtest(),
+        "logs": get_ai_logs()[: max(0, min(logs_limit, 300))],
+        "ensemble": {
+            "blend_weight": round(e.blend_weight, 3),
+            "market_weight": round(e.market_weight, 3),
+            "decision_threshold": round(e.decision_threshold, 3),
+            "sport_decision_thresholds": {
+                k: round(v, 3) for k, v in e.sport_decision_thresholds.items()
+            },
+        },
+    }
 
 @router.post("/deepseek/ask")
 def ask_deepseek(payload: Dict[str, Any] = Body(...)):

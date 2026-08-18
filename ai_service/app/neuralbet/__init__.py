@@ -8,7 +8,7 @@ from .pipeline import (
     reset_neural_network,
     get_training_health,
 )
-from .backtest import run_backtest, get_backtest_history
+from .backtest import run_backtest, get_backtest_history, get_latest_backtest
 from .training_history import get_training_history
 
 __all__ = [
@@ -22,5 +22,6 @@ __all__ = [
     "get_training_health",
     "run_backtest",
     "get_backtest_history",
+    "get_latest_backtest",
     "get_training_history",
 ]

@@ -392,3 +392,24 @@ def get_backtest_history() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error reading backtest history: {e}")
         return []
+
+
+def get_latest_backtest() -> Optional[Dict[str, Any]]:
+    """Full last run (by_sport / by_coefficient), not the condensed history.json row.
+    Used by the eval-pack so an agent can judge the model without a separate download."""
+    if not os.path.isdir(BACKTEST_DIR):
+        return None
+    files = [
+        os.path.join(BACKTEST_DIR, name)
+        for name in os.listdir(BACKTEST_DIR)
+        if name.startswith("backtest_") and name.endswith(".json")
+    ]
+    if not files:
+        return None
+    latest = max(files, key=os.path.getmtime)
+    try:
+        with open(latest, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error reading latest backtest {latest}: {e}")
+        return None

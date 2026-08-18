@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "neurobet-eval": {
+      "command": "python",
+      "args": ["mcp/neurobet_eval.py"],
+      "env": {
+        "NEUROBET_API_URL": "https://necrolich.ru/neurobet"
+      }
+    }
+  }
+}
