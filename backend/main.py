@@ -59,7 +59,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id", "MCP-Protocol-Version"],
 )
+
+from mcp_eval import router as mcp_router
+app.include_router(mcp_router)
 
 parser_service = FonbetParserService()
 scheduler = AsyncIOScheduler()

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """
+Local stdio fallback. Production is Streamable HTTP on the backend:
+
+  https://necrolich.ru/neurobet/api/mcp
+
+Cursor is the client — see .cursor/mcp.json. This script is only for offline/dev.
+
 Minimal MCP stdio server: fetch NeuroBet's eval pack so an agent can judge the
 live model without a manual JSON download.
 
