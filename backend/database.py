@@ -3,7 +3,9 @@ import math
 import os
 import re
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Iterable, Tuple
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +14,18 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from settings import settings
+
+# Docker copies neurobet_filters onto /app; locally it's under repo/shared.
+_shared = Path(__file__).resolve().parent.parent / "shared"
+if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
+    sys.path.insert(0, str(_shared))
+
+from neurobet_filters import (  # noqa: E402
+    universe_sql,
+    universe_sql_params,
+    bet_band_sql,
+    MIN_MARKET_SUPPORT,
+)
 
 logger = logging.getLogger("database")
 
@@ -1061,23 +1075,18 @@ def get_db_stats() -> Dict[str, Any]:
 
         # Real guess rate: how often the model's own bet/no-bet verdict (predicted_win)
         # matched what actually happened (is_win) — restricted to bets that would also
-        # clear today's live risk-management gates (coefficient cap, minimum EV, minimum
-        # market support — the same three get_top_neurobets applies, see their docstrings
-        # there), and recency-weighted (see GUESS_RATE_HALF_LIFE_HOURS) rather than a
-        # flat all-time average. This used to be every archived judged bet regardless of
-        # whether the bot would ever actually risk money on it (a 10x long shot the
-        # coefficient cap now excludes counted the same as a 1.8 favorite it bets every
-        # day) AND weighted equally no matter how long ago it happened (drowning any
-        # real, recent improvement in a few hundred thousand older predictions — the
-        # ring barely moved even after a genuine model upgrade). The diagnostic
-        # full-history breakdown (every coefficient band, unfiltered, unweighted) still
-        # lives on the "Статистика" page — this headline number specifically answers
-        # "how good is the model *right now* at what it actually bets," not "how good
-        # has it ever been at anything." predicted_win here is the verdict as it was
-        # live at the time (not recomputed with current model weights — that's what the
-        # admin panel's "Бэктест" button is for).
+        # clear today's live risk-management gates AND the training universe (see
+        # shared/neurobet_filters), and recency-weighted (see GUESS_RATE_HALF_LIFE_HOURS)
+        # rather than a flat all-time average. The "Статистика" page uses the same
+        # universe so old handicaps / out-of-universe sports don't pollute the breakdown;
+        # this headline number additionally applies the live coeff/EV/support gates.
         recency_cutoff = (_now_moscow_naive() - timedelta(days=GUESS_RATE_LOOKBACK_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
-        f_cursor.execute("""
+        band_sql, band_params = bet_band_sql(
+            "h.final_coefficient",
+            "((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0",
+        )
+        sports, factors = universe_sql_params()
+        f_cursor.execute(f"""
             SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label,
                    h.predicted_win, h.is_win, h.finished_at
               FROM finished_bets h
@@ -1085,17 +1094,17 @@ def get_db_stats() -> Dict[str, Any]:
              WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
                AND h.predicted_win_probability IS NOT NULL
                AND h.final_coefficient IS NOT NULL AND h.final_coefficient > 1.0
-               AND h.final_coefficient <= %s
-               AND ((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0 >= %s
+               {universe_sql("f", "h")}
+               {band_sql}
                AND h.finished_at >= %s
-        """, (NEUROBET_MAX_BET_COEFF, NEUROBET_MIN_BET_EDGE_PCT, recency_cutoff))
+        """, (sports, factors, *band_params, recency_cutoff))
         graded_rows = f_cursor.fetchall()
 
         support = _get_market_support()
         if support:
             graded_rows = [
                 r for r in graded_rows
-                if support.get((r["sport"] or "", r["factor_id"], r["label"] or ""), 0) >= NEUROBET_MIN_MARKET_SUPPORT
+                if support.get((r["sport"] or "", r["factor_id"], r["label"] or ""), 0) >= MIN_MARKET_SUPPORT
             ]
 
         now_naive = _now_moscow_naive()
@@ -1172,19 +1181,10 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # second time here used to let this page's numbers drift from what the bot actually acted
 # on (it always bet on the raw score) — this file no longer computes calibration at all.
 
-# Same three risk-management gates ai_service/app/neuralbet/pipeline.py applies before
-# staking real bankroll money on a candidate (see MAX_BET_COEFF/MIN_BET_EDGE_PCT/
-# MIN_MARKET_SUPPORT there) — duplicated here (small constants, not shared code, same
-# reasoning as overround_group_key already being duplicated across this service
-# boundary) so the "Активные LIVE прогнозы"/"Нейроставки AI TOP" list shown
-# to the user matches what the bot would actually risk money on, instead of surfacing
-# verdicts (e.g. a 5.0 coefficient, or a market with a handful of resolved samples ever)
-# the bot itself would never bet. Reads the *same* env vars ai_service reads (both
-# services share one .env file via docker-compose) so one value change stays in sync
-# across both instead of needing to be set twice.
-NEUROBET_MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
-NEUROBET_MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
-NEUROBET_MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
+# Same live gates as ai_service (coeff band, min EV, min market support) — sourced
+# from shared/neurobet_filters so the "Активные LIVE прогнозы" list matches what the
+# bot would actually risk money on. Refresh interval stays local: it's a cache TTL,
+# not a filter.
 NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
 _neurobet_market_support: Dict[Tuple[str, int, str], int] = {}
 _neurobet_market_support_loaded_at = 0.0
@@ -1318,17 +1318,19 @@ def get_top_neurobets(
           {verdict_clause}
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = (SELECT MAX(last_updated_at) FROM events)
+          {universe_sql("e", "l")}
     """
-    params = []
+    sports, factors = universe_sql_params()
+    params = [sports, factors]
 
     # Coefficient cap + minimum-EV floor — only for the "win" list (the bot's real
     # betting pool): "loss"/"all" exist to show what the network rejects or the full
     # unfiltered board, and forcing the same caps there would just hide information a
     # human might want to see, not match anything the bot actually risks money on.
     if verdict == "win":
-        query += " AND l.coefficient <= %s AND p.expected_roi >= %s"
-        params.append(NEUROBET_MAX_BET_COEFF)
-        params.append(NEUROBET_MIN_BET_EDGE_PCT)
+        band_sql, band_params = bet_band_sql("l.coefficient", "p.expected_roi")
+        query += band_sql
+        params.extend(band_params)
 
     if sport_filter and sport_filter.lower() != "all":
         query += " AND e.sport_path ILIKE %s"
@@ -1367,7 +1369,7 @@ def get_top_neurobets(
             c for c in candidates
             if support.get(
                 ((c.get("sport_path") or "").split("/")[0].strip(), c["factor_id"], c.get("label") or ""), 0,
-            ) >= NEUROBET_MIN_MARKET_SUPPORT
+            ) >= MIN_MARKET_SUPPORT
         ]
 
     if sort_mode == "best":
@@ -1488,24 +1490,57 @@ def reset_all_databases():
 
     logger.info("Successfully reset ALL databases (LIVE & Finished training archive), bankroll accounts, and cleared model checkpoints.")
 
+def _live_pool_sql(event_alias: str, bet_alias: str, coeff_expr: str) -> Tuple[str, list]:
+    """Universe + coefficient band + min-EV — the same live-pool SQL get_db_stats and
+    get_top_neurobets(verdict=win) already apply, so /stats never surfaces sports,
+    markets, or odds the bot would not stake."""
+    band_sql, band_params = bet_band_sql(
+        coeff_expr,
+        f"(({bet_alias}.predicted_win_probability / 100.0) * {coeff_expr} - 1.0) * 100.0",
+    )
+    sports, factors = universe_sql_params()
+    sql = (
+        f" AND {bet_alias}.predicted_win_probability IS NOT NULL"
+        f" AND {coeff_expr} IS NOT NULL AND {coeff_expr} > 1.0"
+        + universe_sql(event_alias, bet_alias)
+        + band_sql
+    )
+    return sql, [sports, factors, *band_params]
+
+
+def _filter_by_market_support(rows: list, sport_key: str = "sport") -> list:
+    support = _get_market_support()
+    if not support:
+        return rows
+    return [
+        r for r in rows
+        if support.get((r[sport_key] or "", r["factor_id"], r["label"] or ""), 0) >= MIN_MARKET_SUPPORT
+    ]
+
+
 def get_bet_type_stats() -> Dict[str, Any]:
     """
     Guess-rate breakdown by sport and bet type — same "guessed" definition as
     get_neurobets_history/get_db_stats (predicted_win vs is_win on resolved,
     model-scored bets), just grouped instead of listed individually.
 
+    Restricted to the live betting pool (universe + coeff band + min EV + market
+    support): /stats and this API must not show sports, markets, or odds the bot
+    no longer stakes.
+
     Grouped by (top-level sport, factor_id, label) — not by parameter separately:
     `label` already bakes the parameter in (resolve_factor_label() in
-    backend/parser_service.py always appends it, e.g. "Фора 2 (1.5)", "Тотал Больше
-    (2.5)"), so factor_id + label alone already distinguishes "Фора 2" from "Фора 1.5"
-    the way a human reads Fonbet's own market names. Top-level sport is split out of
-    sport_path's " / "-joined breadcrumb the same way the frontend does
+    backend/parser_service.py always appends it, e.g. "Тотал Больше (2.5)"), so
+    factor_id + label alone already distinguishes lines the way a human reads
+    Fonbet's own market names. Top-level sport is split out of sport_path's
+    " / "-joined breadcrumb the same way the frontend does
     (sport_path.split("/")[0] in neurobets/page.tsx) so e.g. "П1" in football and "П1"
     in basketball are never lumped into one bar.
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    f_cursor.execute("""
+    pool_sql, pool_params = _live_pool_sql("e", "h", "h.final_coefficient")
+    f_cursor.execute(f"""
         SELECT TRIM(SPLIT_PART(e.sport_path, '/', 1)) AS sport,
                h.factor_id, h.label,
                COUNT(*) AS judged,
@@ -1513,9 +1548,10 @@ def get_bet_type_stats() -> Dict[str, Any]:
           FROM finished_bets h
           JOIN finished_events e ON h.event_id = e.event_id
          WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+           {pool_sql}
          GROUP BY 1, 2, 3
-    """)
-    rows = f_cursor.fetchall()
+    """, pool_params)
+    rows = _filter_by_market_support(f_cursor.fetchall())
     release_connection(f_conn)
 
     sports: Dict[str, Dict[str, Any]] = {}
@@ -1584,6 +1620,10 @@ def get_roi_stats() -> Dict[str, Any]:
     """
     Flat-stake ROI and Brier-score calibration, bucketed by coefficient — the numbers
     that actually answer "is this model profitable," not just "how often is it right."
+    Restricted to the same live pool as /stats-by-type (universe + coeff band + min EV
+    + market support). Empty coefficient buckets are omitted so 1.0–1.5 / 2.0+ no
+    longer appear once those bands are outside the stake rules.
+
     A model that only ever calls favorites at ~1.2 can hit an 80%+ guess-rate while
     still losing money on every single bet once the bookmaker's margin is netted out —
     guess-rate alone can't tell those two situations apart, ROI can.
@@ -1603,13 +1643,17 @@ def get_roi_stats() -> Dict[str, Any]:
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    f_cursor.execute("""
-        SELECT final_coefficient, is_win, predicted_win, predicted_win_probability
-          FROM finished_bets
-         WHERE is_win IS NOT NULL AND predicted_win IS NOT NULL
-           AND final_coefficient IS NOT NULL AND final_coefficient > 1.0
-    """)
-    rows = f_cursor.fetchall()
+    pool_sql, pool_params = _live_pool_sql("e", "h", "h.final_coefficient")
+    f_cursor.execute(f"""
+        SELECT TRIM(SPLIT_PART(e.sport_path, '/', 1)) AS sport,
+               h.factor_id, h.label,
+               h.final_coefficient, h.is_win, h.predicted_win, h.predicted_win_probability
+          FROM finished_bets h
+          JOIN finished_events e ON h.event_id = e.event_id
+         WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+           {pool_sql}
+    """, pool_params)
+    rows = _filter_by_market_support(f_cursor.fetchall())
     release_connection(f_conn)
 
     def bucket_name(coeff: float) -> Optional[str]:
@@ -1653,6 +1697,8 @@ def get_roi_stats() -> Dict[str, Any]:
     buckets = []
     for _, _, name in ROI_COEFF_BUCKETS:
         b = acc[name]
+        if b["judged"] == 0:
+            continue
         buckets.append({
             "range": name,
             "judged": b["judged"],
@@ -1681,12 +1727,14 @@ def get_neurobets_history(
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
 
-    base_query = """
+    base_query = f"""
         FROM finished_bets h
         JOIN finished_events e ON h.event_id = e.event_id
         WHERE 1=1
+        {universe_sql("e", "h")}
     """
-    params = []
+    uni_sports, uni_factors = universe_sql_params()
+    params = [uni_sports, uni_factors]
 
     if sport_filter and sport_filter.lower() != "all":
         base_query += " AND e.sport_path ILIKE %s"

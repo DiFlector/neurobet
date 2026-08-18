@@ -1,6 +1,13 @@
 import logging
 import os
+import sys
 from datetime import timedelta, timezone
+from pathlib import Path
+
+# Docker copies neurobet_filters onto /app; locally it's under repo/shared.
+_shared = Path(__file__).resolve().parent.parent / "shared"
+if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
+    sys.path.insert(0, str(_shared))
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger

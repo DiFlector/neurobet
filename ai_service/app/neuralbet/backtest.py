@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 from app.config import MODEL_DIR
 from app.core.database import get_finished_connection, release_connection
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
+from neurobet_filters import universe_sql, universe_sql_params, passes_live_gates, MIN_BET_COEFF, MAX_BET_COEFF
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -84,6 +85,7 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
     f_cursor = f_conn.cursor()
     where_since = "AND h.finished_at >= %s" if since else ""
     params: List[Any] = [since] if since else []
+    sports, factors = universe_sql_params()
     f_cursor.execute(f"""
         SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
                h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
@@ -93,9 +95,10 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
         WHERE h.is_win IS NOT NULL {where_since}
+          {universe_sql("f", "h")}
         ORDER BY h.finished_at DESC
         LIMIT %s
-    """, params + [limit])
+    """, params + [sports, factors, limit])
     rows = f_cursor.fetchall()
     release_connection(f_conn)
     return rows
@@ -193,7 +196,7 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
     # singleton, starting its lock) — only route handlers that actually call this ever
     # need pipeline's live state.
     from app.neuralbet.pipeline import (
-        MAX_BET_COEFF, MIN_BET_EDGE_PCT, MIN_MARKET_SUPPORT, _engine_lock,
+        _engine_lock,
         _refresh_market_support, ensemble_engine,
     )
 
@@ -255,20 +258,15 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
             win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
             calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
             expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-            # Mirrors pipeline._place_live_bets' three gates exactly (coeff cap, minimum
-            # EV, minimum market support — see those constants' docstrings in
-            # pipeline.py) so current_pred answers "would today's live rules actually
-            # have bet this," not just "did the decision head say win" — the whole
-            # point of a backtest is previewing what live betting would produce, and the
-            # two had drifted apart once the EV/support gates were added to live
-            # betting but not here. Mirrors pipeline.py's own lookup — this sport's own
-            # tuned decision_threshold when the snapshot above has one, the global one
-            # otherwise (see NeuralBetEnsemble.sport_threshold's docstring).
+            # Verdict threshold is per-sport (see NeuralBetEnsemble.sport_threshold);
+            # coeff / EV / support gates live in neurobet_filters.passes_live_gates so
+            # current_pred matches what live betting would actually stake.
+            support_count = None
+            if market_support:
+                support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
             current_pred = 1 if (
                 decision_prob >= sport_decision_thresholds.get(m["sport"], decision_threshold)
-                and m["coeff"] <= MAX_BET_COEFF
-                and expected_roi >= MIN_BET_EDGE_PCT
-                and not (market_support and market_support.get((m["sport"], m["factor_id"], m["label"]), 0) < MIN_MARKET_SUPPORT)
+                and passes_live_gates(m["coeff"], expected_roi, support_count)
             ) else 0
             market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
             records.append({
@@ -330,6 +328,7 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
                 s: round(v, 3) for s, v in sport_decision_thresholds.items()
             },
             "max_bet_coeff": MAX_BET_COEFF,
+            "min_bet_coeff": MIN_BET_COEFF,
         },
         "overall": _agg_group(records),
         "by_sport": sorted(

@@ -11,7 +11,33 @@ assignment has to stay stable across process restarts for a saved embedding tabl
 mean anything on reload, so this can't be an auto-growing dict.
 """
 import hashlib
+import sys
+from pathlib import Path
 from typing import Optional, Tuple
+
+# Docker copies neurobet_filters onto /app; locally it's under repo/shared.
+_here = Path(__file__).resolve()
+for _parent in _here.parents:
+    _shared = _parent / "shared"
+    if (_shared / "neurobet_filters").is_dir():
+        if str(_shared) not in sys.path:
+            sys.path.insert(0, str(_shared))
+        break
+
+from neurobet_filters import (  # noqa: E402
+    TOTAL_OVER_IDS,
+    TOTAL_UNDER_IDS,
+    in_universe as in_train_universe,
+    universe_sql,
+    universe_sql_params,
+    universe_line_sql,
+    ALLOWED_SPORTS,
+    ALLOWED_FACTOR_IDS,
+    DRAW_FACTOR_ID,
+    TOTAL_LINE_RANGES,
+    sport_top,
+    parse_total_line,
+)
 
 # ---------------------------------------------------------------------------
 # Sport vocabulary — matched against the top-level segment of events.sport_path
@@ -55,12 +81,10 @@ def sport_index(sport_path: Optional[str]) -> int:
 
 # ---------------------------------------------------------------------------
 # Market-family vocabulary — "what is this bet actually on," independent of sport.
-# factor_id sets mirror CORE_FACTOR_MAP / FACTORS_* in backend/database.py (kept as a
-# small duplicated constant here rather than importing across the service boundary —
-# ai_service and backend are separate deployables with no shared package). Anything
-# with a factor_id outside these known main-match outcomes (handicaps, part-of-match
-# markets, sport-specific props, ...) falls into OTHER — still a real, distinct
-# category the model can learn "this is some other/exotic market" from.
+# Totals IDs come from shared/neurobet_filters (same set the universe filter uses).
+# Anything with a factor_id outside these known main-match outcomes (handicaps,
+# part-of-match markets, sport-specific props, ...) falls into OTHER — still a real,
+# distinct category the model can learn "this is some other/exotic market" from.
 # ---------------------------------------------------------------------------
 MARKET_FAMILIES = ["other", "w1", "draw", "w2", "double_chance_1x", "double_chance_12", "double_chance_x2", "total_over", "total_under"]
 MARKET_FAMILY_VOCAB = {name: i for i, name in enumerate(MARKET_FAMILIES)}
@@ -72,7 +96,8 @@ _FACTOR_TO_FAMILY = {
     # sportBasicFactors) maps factor 925 to "X2" and 1571 to "12", confirmed against
     # live data (see backend/parser_service.py's CORE_FACTOR_MAP comment).
     924: "double_chance_1x", 1571: "double_chance_12", 925: "double_chance_x2", 926: "double_chance_x2",
-    930: "total_over", 931: "total_under",
+    **{fid: "total_over" for fid in TOTAL_OVER_IDS},
+    **{fid: "total_under" for fid in TOTAL_UNDER_IDS},
 }
 
 
@@ -116,13 +141,12 @@ def team_index(name: Optional[str]) -> int:
 # ---------------------------------------------------------------------------
 # Overround/margin grouping — which sibling outcomes need to be summed (as 1/coeff)
 # to get one market's real bookmaker margin. Mirrors backend/database.py's
-# _overround_group_key (small duplicated constant across the service boundary, same
-# reasoning as MARKET_FAMILIES above: ai_service and backend are separate deployables).
-# Only the core main-outcome markets are covered — see that function's docstring for why.
+# _overround_group_key. Totals IDs come from neurobet_filters so a new total factor
+# added to the universe is automatically part of the overround group too.
 # ---------------------------------------------------------------------------
 _OVERROUND_MATCH_RESULT = {921, 922, 923}
 _OVERROUND_DOUBLE_CHANCE = {924, 1571, 925, 926}
-_OVERROUND_TOTAL = {930, 931}
+_OVERROUND_TOTAL = TOTAL_OVER_IDS | TOTAL_UNDER_IDS
 OVERROUND_EXPECTED_SIZE = {"match_result": 3, "double_chance": 3, "total": 2}
 
 

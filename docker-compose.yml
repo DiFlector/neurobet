@@ -24,8 +24,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: neurobet_backend
     expose:
       - "8000"
@@ -46,8 +46,8 @@ services:
 
   ai:
     build:
-      context: ./ai_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ai_service/Dockerfile
     container_name: neurobet_ai
     expose:
       - "8001"

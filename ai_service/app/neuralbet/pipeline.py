@@ -17,7 +17,19 @@ from app.core.database import (
 )
 from app.neuralbet import bankroll
 from app.neuralbet.calibration import calibrate_probability, get_calibration_buckets
-from app.neuralbet.context import OVERROUND_EXPECTED_SIZE, overround_group_key
+from app.neuralbet.context import (
+    OVERROUND_EXPECTED_SIZE, overround_group_key,
+    in_train_universe,
+)
+from neurobet_filters import (
+    universe_sql,
+    universe_sql_params,
+    live_gate_skip_reason,
+    MIN_BET_COEFF,
+    MAX_BET_COEFF,
+    MIN_BET_EDGE_PCT,
+    MIN_MARKET_SUPPORT,
+)
 from app.neuralbet.model import NeuralBetEnsemble
 from app.neuralbet.training_history import record_training_run
 
@@ -105,33 +117,10 @@ TUNE_EVERY_CYCLES = int(os.getenv("NEURALBET_TUNE_EVERY_CYCLES", "10"))
 # through at a size barely above the old memorization-prone range.
 MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "2000"))
 
-# Live bets are capped to this coefficient — ROI worsens strictly as coefficient rises,
-# and after 12h+ of production data at cap 3.0 the split within the allowed range became
-# unambiguous: 1.0-1.5 -> -3.1% ROI (55k bets), 1.5-2.0 -> +0.1% (92k bets, the only
-# breakeven band), 2.0-3.0 -> -23.2% (32k bets; backtest verdict accuracy there is 41.5%
-# — worse than a coin flip). 3.0 -> 2.0 cuts the one systematically toxic zone the old
-# cap still allowed while keeping every band that's at or near breakeven.
-MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
-
-# A live bet also needs a minimum *edge*, not just a "will win" verdict: with the
-# decision threshold tuned down into the 0.43-0.46 range, the verdict alone marks ~68%
-# of all live outcomes as "will win" (observed in backtests: 10267 bets out of 15000
-# evaluated), and staking a flat slice of everything the bookmaker offers just pays the
-# margin. expected_roi here is the calibrated probability's EV — requiring it to clear
-# a few percent keeps only candidates where the model's own numbers claim real value,
-# not merely "more likely to win than not."
-MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
-
-# Markets this thinly represented in the resolved archive can't be calibrated — a
-# (sport, factor_id, label) triple with a few dozen settled samples has a win-rate
-# estimate that's mostly noise, and ~10% of all judged bets historically came from such
-# long-tail markets (3800+ distinct bet types in the archive). They stay IN training
-# (they still teach the shared encoder how odds curves move, and the "other" market
-# family embedding already isolates the exotic ones) — they're only excluded from
-# risking live-bankroll money. Support counts are cached and refreshed at most every
-# MARKET_SUPPORT_REFRESH_SECONDS; an empty cache (query failed) fails open so a DB
-# hiccup can't silently stop all betting.
-MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
+# Live coefficient band / EV / support live in shared/neurobet_filters (MIN_BET_COEFF,
+# MAX_BET_COEFF, MIN_BET_EDGE_PCT, MIN_MARKET_SUPPORT) so training, inference, backtest
+# and the backend UI cannot drift. Markets this thinly represented still stay IN
+# training — they're only excluded from risking live-bankroll money.
 MARKET_SUPPORT_REFRESH_SECONDS = float(
     os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300")
 )
@@ -470,24 +459,34 @@ def _get_val_event_ids(f_cursor) -> set | None:
     straddle the train/val boundary — see plan B6. Returns None if there isn't enough
     resolved history yet to bother holding anything out.
     """
+    sports, factors = universe_sql_params()
     f_cursor.execute(
-        "SELECT COUNT(DISTINCT event_id) AS c FROM finished_bets WHERE is_win IS NOT NULL"
-    )
+        f"""
+        SELECT COUNT(DISTINCT h.event_id) AS c
+        FROM finished_bets h
+        JOIN finished_events f ON h.event_id = f.event_id
+        WHERE h.is_win IS NOT NULL
+        {universe_sql("f", "h")}
+        """
+    , (sports, factors))
     total_events = f_cursor.fetchone()["c"]
     if total_events < VAL_MIN_POOL:
         return None
     val_event_count = max(int(total_events * VAL_FRACTION), 10)
     f_cursor.execute(
-        """
+        f"""
         SELECT event_id FROM (
-            SELECT event_id, MAX(finished_at) AS ev_finished_at
-              FROM finished_bets WHERE is_win IS NOT NULL
-             GROUP BY event_id
+            SELECT h.event_id, MAX(h.finished_at) AS ev_finished_at
+              FROM finished_bets h
+              JOIN finished_events f ON h.event_id = f.event_id
+             WHERE h.is_win IS NOT NULL
+             {universe_sql("f", "h")}
+             GROUP BY h.event_id
         ) t
         ORDER BY ev_finished_at DESC
         LIMIT %s
     """,
-        (val_event_count,),
+        (sports, factors, val_event_count),
     )
     return {r["event_id"] for r in f_cursor.fetchall()}
 
@@ -527,6 +526,7 @@ def _row_to_sample(r) -> dict[str, Any]:
         "timer_seq": timer_seq,
         "score_diff_at_bet": r["score_diff_at_bet"] or 0,
         "factor_id": r["factor_id"],
+        "parameter": r["parameter"] if "parameter" in r.keys() else "",
         # Carried through purely so the training bankroll replay can tell when two
         # samples belong to the same match and avoid staking more than one position on
         # it in a round — see model.py's _bankroll_pass. Not a model feature.
@@ -557,6 +557,8 @@ def _fetch_training_batch(
     matter when each of its markets settled. Returns (rows, key_list) where key_list is
     the (event_id, factor_id, parameter, market_prefix) tuples to bump trained_count for.
     """
+    sports, factors = universe_sql_params()
+    uni = universe_sql("f", "h")
     where_val = "AND h.event_id != ALL(%s)" if val_event_ids else ""
     params_val = [list(val_event_ids)] if val_event_ids else []
 
@@ -568,11 +570,11 @@ def _fetch_training_batch(
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
-        WHERE h.is_win IS NOT NULL AND h.trained_count = 0 {where_val}
+        WHERE h.is_win IS NOT NULL AND h.trained_count = 0 {uni} {where_val}
         ORDER BY h.finished_at DESC
         LIMIT %s
     """,
-        params_val + [fresh_n],
+        [sports, factors] + params_val + [fresh_n],
     )
     fresh_rows = f_cursor.fetchall()
 
@@ -586,16 +588,19 @@ def _fetch_training_batch(
                    f.sport_path, f.team_1, f.team_2
             FROM finished_bets h
             JOIN finished_events f ON h.event_id = f.event_id
-            WHERE h.is_win IS NOT NULL AND h.trained_count BETWEEN 1 AND %s {where_val}
+            WHERE h.is_win IS NOT NULL AND h.trained_count BETWEEN 1 AND %s {uni} {where_val}
             ORDER BY RANDOM()
             LIMIT %s
         """,
-            [MAX_REPLAY - 1] + params_val + [replay_n],
+            [MAX_REPLAY - 1, sports, factors] + params_val + [replay_n],
         )
         replay_rows = f_cursor.fetchall()
 
     all_rows = list(fresh_rows) + list(replay_rows)
-    samples = [_row_to_sample(r) for r in all_rows]
+    samples = [
+        s for s in (_row_to_sample(r) for r in all_rows)
+        if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
+    ]
     keys = [s["_key"] for s in samples]
     return samples, keys
 
@@ -613,20 +618,25 @@ VAL_BATCH_LIMIT = int(os.getenv("NEURALBET_VAL_BATCH_LIMIT", "2000"))
 def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
     if not val_event_ids:
         return []
+    sports, factors = universe_sql_params()
     f_cursor.execute(
-        """
+        f"""
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
                h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
         WHERE h.is_win IS NOT NULL AND h.event_id = ANY(%s)
+        {universe_sql("f", "h")}
         ORDER BY h.finished_at ASC
         LIMIT %s
     """,
-        (list(val_event_ids), VAL_BATCH_LIMIT),
+        (list(val_event_ids), sports, factors, VAL_BATCH_LIMIT),
     )
-    return [_row_to_sample(r) for r in f_cursor.fetchall()]
+    return [
+        s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
+        if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
+    ]
 
 
 def _mark_trained(f_cursor, keys: list[tuple]):
@@ -820,8 +830,9 @@ def _run_neuralbet_inference_and_training_locked(
     # list has a display-side lag for them that causes premature/incorrect settlement
     # (see the exclusion in parser_service.py). This is a defense-in-depth guard in case
     # a combat-sport event was already stored before the parser-level fix took effect.
+    sports, factors = universe_sql_params()
     cursor.execute(
-        """
+        f"""
         SELECT
             l.event_id, l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
             e.sport_path, e.match_name, e.score_1, e.score_2, e.timer, e.team_1, e.team_2
@@ -831,8 +842,9 @@ def _run_neuralbet_inference_and_training_locked(
           AND l.updated_at = e.last_updated_at
           AND e.last_updated_at = %s
           AND e.sport_path !~* '(единоборства|mma|ufc|бокс)'
+          {universe_sql("e", "l")}
     """,
-        (target_ts,),
+        (target_ts, sports, factors),
     )
     live_odds_rows = cursor.fetchall()
 
@@ -906,6 +918,8 @@ def _run_neuralbet_inference_and_training_locked(
     batch_items = []
     row_meta = []
     for row in live_odds_rows:
+        if not in_train_universe(row["sport_path"], row["factor_id"], row["parameter"]):
+            continue
         eid = row["event_id"]
         fid = row["factor_id"]
         prefix = row["market_prefix"] or ""
@@ -968,6 +982,7 @@ def _run_neuralbet_inference_and_training_locked(
     predicted_loss_count = 0
     skipped_low_edge = 0
     skipped_low_support = 0
+    skipped_coeff = 0
     market_support = _refresh_market_support()
 
     for meta, (
@@ -989,12 +1004,10 @@ def _run_neuralbet_inference_and_training_locked(
             win_prob, buckets, sport=meta["sport"], coeff=coeff
         )
         expected_roi = ((calibrated_prob / 100.0) * coeff - 1.0) * 100.0
-        # The verdict: the model's own decision head, not a probability/EV cutoff picked
-        # from outside — see decision_logit in OddsTrajectoryGRU. Threshold defaults to
-        # 0.5 but is retuned against validation ROI periodically — see
-        # ensemble_engine.tune_ensemble / the TUNING log line below. sport_threshold()
-        # uses this sport's own tuned cutoff when it has one, falling back to the global
-        # decision_threshold otherwise — see that method's docstring.
+        # The verdict: residual-edge confidence mapped to [0, 1] (>= 0.5 means the
+        # market underprices this outcome, not "this line will win") — see
+        # decision_logit in OddsTrajectoryGRU. Threshold defaults to 0.52 (~4pp
+        # predicted edge) and is retuned against validation ROI periodically.
         predicted_win = 1 if decision_prob >= ensemble_engine.sport_threshold(meta["sport"]) else 0
         if predicted_win:
             predicted_win_count += 1
@@ -1017,19 +1030,18 @@ def _run_neuralbet_inference_and_training_locked(
             }
         )
 
-        if predicted_win and coeff <= MAX_BET_COEFF:
-            # Two more gates beyond the verdict+coefficient cap (see MIN_BET_EDGE_PCT /
-            # MIN_MARKET_SUPPORT): the calibrated EV must claim real value, and the
-            # market must have enough resolved history to have been calibrated at all.
-            if expected_roi < MIN_BET_EDGE_PCT:
-                skipped_low_edge += 1
-            elif (
-                market_support
-                and market_support.get(
+        if predicted_win:
+            support_count = None
+            if market_support:
+                support_count = market_support.get(
                     (meta["sport"] or "", fid, meta["label"] or ""), 0
                 )
-                < MIN_MARKET_SUPPORT
-            ):
+            reason = live_gate_skip_reason(coeff, expected_roi, support_count)
+            if reason == "coeff":
+                skipped_coeff += 1
+            elif reason == "edge":
+                skipped_low_edge += 1
+            elif reason == "support":
                 skipped_low_support += 1
             else:
                 live_candidates.append(
@@ -1041,10 +1053,12 @@ def _run_neuralbet_inference_and_training_locked(
                     }
                 )
 
-    if skipped_low_edge or skipped_low_support:
+    if skipped_low_edge or skipped_low_support or skipped_coeff:
         add_ai_log(
             "BANKROLL",
-            f"Кандидаты в ставки отфильтрованы: {skipped_low_edge} — EV ниже {MIN_BET_EDGE_PCT:.0f}%, "
+            f"Кандидаты в ставки отфильтрованы: {skipped_coeff} — кэф вне "
+            f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f}, "
+            f"{skipped_low_edge} — EV ниже {MIN_BET_EDGE_PCT:.0f}%, "
             f"{skipped_low_support} — рынок реже {MIN_MARKET_SUPPORT} решённых исходов в архиве. "
             f"Осталось {len(live_candidates)}.",
         )
@@ -1054,7 +1068,7 @@ def _run_neuralbet_inference_and_training_locked(
         add_ai_log(
             "INFERENCE",
             f"Evaluated predictions for {len(predictions)} active live outcomes — "
-            f"{predicted_win_count} verdict 'выиграет' / {predicted_loss_count} verdict 'проиграет'. "
+            f"{predicted_win_count} verdict 'ставить' / {predicted_loss_count} verdict 'пропуск'. "
             "(PyTorch & LightGBM scores saved)",
         )
     release_connection(conn)
@@ -1170,23 +1184,28 @@ def _run_neuralbet_inference_and_training_locked(
 
         if is_lgb_cycle:
             f_cursor.execute(
-                """
+                f"""
                 SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
                        h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json, h.score_diff_at_bet, h.finished_at, h.overround_close,
                        f.sport_path, f.team_1, f.team_2
                 FROM finished_bets h
                 JOIN finished_events f ON h.event_id = f.event_id
                 WHERE h.is_win IS NOT NULL AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
+                {universe_sql("f", "h")}
                 ORDER BY h.finished_at DESC
                 LIMIT %s
             """,
                 (
                     list(val_event_ids) if val_event_ids else None,
                     list(val_event_ids) if val_event_ids else [],
+                    *universe_sql_params(),
                     LGB_TRAIN_LIMIT,
                 ),
             )
-            lgb_rows = to_lgb_rows([_row_to_sample(r) for r in f_cursor.fetchall()])
+            lgb_rows = to_lgb_rows([
+                s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
+                if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
+            ])
             lgb_val_rows = to_lgb_rows(val_samples)
 
         release_connection(f_conn)
@@ -1213,7 +1232,9 @@ def _run_neuralbet_inference_and_training_locked(
             "TRAINING",
             f"Starting online training pass: {len(training_samples)} samples "
             f"({int(len(training_samples) * TRAIN_FRESH_SHARE)} fresh target / rest replay), "
-            f"{len(val_samples)} held out for validation.",
+            f"{len(val_samples)} held out for validation "
+            "(universe: футбол/баскетбол/НТ/волейбол/теннис × П1/П2 + футбольная ничья "
+            "+ матчевые тоталы; ставки 1.5–2.0).",
         )
 
         def _log_epoch(epoch_idx: int, train_loss: float, val_loss: float | None):
@@ -1259,11 +1280,27 @@ def _run_neuralbet_inference_and_training_locked(
             })
 
             val_str = (
-                f", val_loss {metrics['val_loss']:.4f} / val_guess_rate {metrics['val_guess_rate']:.1f}%"
+                f", val_loss {metrics['val_loss']:.4f} / val_hit_rate {metrics['val_guess_rate']:.1f}%"
                 if metrics.get("val_loss") is not None
                 else " (no validation split yet — need more resolved bets)"
             )
             bank = metrics.get("bankroll") or {}
+            bank_label = "Val bankroll" if bank.get("on_val") else "Training bankroll"
+            turnover = bank.get("turnover_roi")
+            bank_str = (
+                f". {bank_label}: {bank.get('start', 0):.1f} → {bank.get('end', 0):.1f} ₽"
+                + (f" (turnover ROI {turnover:+.1f}%)" if turnover is not None else "")
+            )
+            in_sample_end = bank.get("in_sample_end")
+            if (
+                bank.get("on_val")
+                and in_sample_end is not None
+                and in_sample_end > max(float(bank.get("end") or 0), 1.0) * 2
+            ):
+                bank_str += (
+                    f"; in-sample compound {bank.get('start', 0):.0f} → {in_sample_end:.0f} ₽ "
+                    "(overfit, not counted)"
+                )
             add_ai_log(
                 "TRAINING",
                 f"Training step complete: {metrics['samples_used']} samples "
@@ -1274,9 +1311,9 @@ def _run_neuralbet_inference_and_training_locked(
                     else ""
                 )
                 + f") — best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
-                f"train_loss {metrics['final_loss']:.4f} (guess_rate {metrics['train_guess_rate']:.1f}%)"
+                f"train_loss {metrics['final_loss']:.4f} (hit_rate {metrics['train_guess_rate']:.1f}%)"
                 + val_str
-                + f". Training bankroll: {bank.get('start', 0):.1f} → {bank.get('end', 0):.1f} ₽"
+                + bank_str
                 + (
                     f" ({bank['ruin_events']} ruin(s) this pass)"
                     if bank.get("ruin_events")

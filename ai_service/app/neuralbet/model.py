@@ -17,6 +17,7 @@ from app.neuralbet.context import (
     NUM_SPORTS, NUM_MARKET_FAMILIES, sport_index, market_family_index,
     TEAM_HASH_BUCKETS, team_index,
 )
+from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, in_bet_band
 
 logger = logging.getLogger("ai_service_model")
 
@@ -106,11 +107,11 @@ class OddsTrajectoryGRU(nn.Module):
     exposure_logit]:
       - win_logit: sigmoid() gives the win-probability estimate (same role the old
         single-output head had) — still an input to the LightGBM/PyTorch ensemble blend.
-      - decision_logit: sigmoid() gives the model's own confidence in its bet/no-bet
-        verdict — >= 0.5 means "this outcome will win," trained with a cost-sensitive
-        loss (see train_online) instead of copying win_logit's threshold, so the network
-        learns where its own decision boundary should sit rather than inheriting a fixed
-        confidence cutoff from outside the model.
+      - decision_logit: tanh() is the predicted residual vs the bookmaker
+        (is_win - 1/coeff). Mapped to [0, 1] as (tanh+1)/2 for storage/thresholds:
+        0.5 means "no edge", above 0.5 means "bet — the market underprices this".
+        Trained with MSE on that residual, not BCE on is_win — a two-way book is
+        50/50 by construction, so "will this line win" has no headroom.
       - stake_logit: sigmoid() scales a candidate's position size down from its
         formula-capped fractional-Kelly size — see bankroll.allocate(). Unused at plain
         inference.
@@ -223,32 +224,18 @@ def _build_sequence(step_pairs: List[Tuple]) -> List[List[float]]:
     ]
 
 
-# Ceiling on the "missed profit" cost weight below — uncapped, a coefficient-15 miss
-# outweighs 14 ordinary losses combined, and the decision head learns to chase long
-# shots (exactly the pattern observed live: the network's own verdict concentrating on
-# 10x+ coefficients where its win-probability estimate is least trustworthy) instead of
-# learning a genuine bet/no-bet boundary. Capped so a high-odds miss still counts for
-# more than a near-even-money one, just not without limit.
-DECISION_LOSS_WEIGHT_MAX = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT_MAX", "3.0"))
+# Floor on the decision threshold after the residual-head change: 0.5 means predicted
+# edge 0. Anything below that is "the market is too high, do not bet."
+VALUE_THRESHOLD_FLOOR = 0.50
 
 
-def _decision_loss_weights(coefficients: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    """
-    Per-sample cost weights for the decision-head loss: plain BCE would just make the
-    verdict head copy the win head's 0.5 threshold, so instead the price of each mistake
-    is what it would actually cost a real bet. Predicting "will win" on a bet that loses
-    costs the whole stake (weight 1.0); predicting "will lose" on a bet that wins costs
-    the missed profit (coefficient - 1) — a high-odds miss should be penalized harder than
-    passing on a near-even-money one, or the head just learns to say "no" to everything
-    above 1/coeff. Clamped to [0.1, DECISION_LOSS_WEIGHT_MAX] so a coefficient near 1.0
-    doesn't zero out its gradient entirely, and a coefficient of 15+ doesn't dominate the
-    whole batch's loss either.
-    """
-    return torch.where(
-        targets >= 0.5,
-        torch.clamp(coefficients - 1.0, min=0.1, max=DECISION_LOSS_WEIGHT_MAX),
-        torch.ones_like(coefficients),
-    )
+def _market_prob_tensor(coefficients: torch.Tensor) -> torch.Tensor:
+    return torch.clamp(1.0 / torch.clamp(coefficients, min=1.01), min=0.01, max=0.99)
+
+
+def _decision_confidence(decision_logits: torch.Tensor) -> torch.Tensor:
+    """Map residual-edge tanh to [0, 1]: 0.5 = edge 0, >0.5 = predicted +EV vs market."""
+    return (torch.tanh(decision_logits) + 1.0) * 0.5
 
 
 class NeuralBetEnsemble:
@@ -278,7 +265,7 @@ class NeuralBetEnsemble:
         # Weight on pytorch_prob and on the raw bookmaker-implied probability (1/coeff)
         # in the blended win probability (LightGBM gets whatever's left:
         # 1 - blend_weight - market_weight), and the cutoff on the decision head's
-        # sigmoid output that separates "will win" from "will lose". All three used to
+        # residual-edge mapped to [0, 1] ((tanh+1)/2): 0.5 = no edge, above = bet.
         # be fixed constants picked once and never revisited; tune_ensemble() re-picks
         # them against held-out validation data periodically (see pipeline.py), so
         # these are just the cold-start defaults before the first tune runs.
@@ -288,7 +275,7 @@ class NeuralBetEnsemble:
         # weight onto this term instead of onto an undertrained model.
         self.blend_weight = float(os.getenv("NEURALBET_BLEND_WEIGHT_INIT", "0.35"))
         self.market_weight = float(os.getenv("NEURALBET_MARKET_WEIGHT_INIT", "0.0"))
-        self.decision_threshold = float(os.getenv("NEURALBET_DECISION_THRESHOLD_INIT", "0.5"))
+        self.decision_threshold = float(os.getenv("NEURALBET_DECISION_THRESHOLD_INIT", "0.52"))
 
         # Per-sport overrides of decision_threshold, keyed by top-level sport (same
         # string calibration.py/backtest.py already group by) — tuned in tune_ensemble()
@@ -335,8 +322,11 @@ class NeuralBetEnsemble:
         instead of reading decision_threshold directly, so the two can never drift out
         of sync on which threshold a given sport actually uses."""
         if sport is None:
-            return self.decision_threshold
-        return self.sport_decision_thresholds.get(sport, self.decision_threshold)
+            return max(VALUE_THRESHOLD_FLOOR, self.decision_threshold)
+        return max(
+            VALUE_THRESHOLD_FLOOR,
+            self.sport_decision_thresholds.get(sport, self.decision_threshold),
+        )
 
     def save_checkpoints(self, extra: Optional[Dict[str, Any]] = None):
         try:
@@ -419,9 +409,12 @@ class NeuralBetEnsemble:
                 if isinstance(blob, dict):
                     self.blend_weight = float(blob.get("blend_weight", self.blend_weight))
                     self.market_weight = float(blob.get("market_weight", self.market_weight))
-                    self.decision_threshold = float(blob.get("decision_threshold", self.decision_threshold))
+                    self.decision_threshold = max(
+                        VALUE_THRESHOLD_FLOOR,
+                        float(blob.get("decision_threshold", self.decision_threshold)),
+                    )
                     self.sport_decision_thresholds = {
-                        str(k): float(v)
+                        str(k): max(VALUE_THRESHOLD_FLOOR, float(v))
                         for k, v in (blob.get("sport_decision_thresholds") or {}).items()
                     }
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
@@ -502,7 +495,7 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             logits = self.pytorch_model(tensor_in, sport_tensor, market_tensor, team1_tensor, team2_tensor)[0]
             pytorch_prob = float(torch.sigmoid(logits[0]).item())
-            decision_prob = float(torch.sigmoid(logits[1]).item())
+            decision_prob = float(_decision_confidence(logits[1]).item())
             stake_logit = float(logits[2].item())
             exposure_logit = float(logits[3].item())
 
@@ -554,8 +547,8 @@ class NeuralBetEnsemble:
         app/neuralbet/context.py).
         Returns results in the same order as `items`: (win_probability, error_rate,
         lgb_score, pytorch_score, decision_prob, stake_logit, exposure_logit).
-        decision_prob is the model's own bet/no-bet verdict confidence (>= 0.5 means
-        "will win" — see OddsTrajectoryGRU's docstring); stake_logit/exposure_logit are
+        decision_prob is the residual-edge mapped to [0, 1] (>= 0.5 means predicted
+        +EV vs 1/coeff — see OddsTrajectoryGRU's docstring); stake_logit/exposure_logit are
         only meaningful for the live-bankroll allocator (bankroll.allocate), not stored in
         ai_predictions.
         """
@@ -576,7 +569,7 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             logits = self.pytorch_model(x_tensor, sport_tensor, market_tensor, team1_tensor, team2_tensor)
             pytorch_probs = torch.sigmoid(logits[:, 0]).tolist()
-            decision_probs = torch.sigmoid(logits[:, 1]).tolist()
+            decision_probs = _decision_confidence(logits[:, 1]).tolist()
             stake_logits = logits[:, 2].tolist()
             exposure_logits = logits[:, 3].tolist()
 
@@ -719,14 +712,11 @@ class NeuralBetEnsemble:
     # stays as cheap as the old 1D one, since a few hundred validation samples can't
     # support a finer 2D search without just fitting noise.
     _BLEND_CANDIDATES = [round(x * 0.2, 2) for x in range(6)]  # 0.0 .. 1.0
-    # Floor raised 0.30 -> 0.40: with the decision head barely above a coin flip on
-    # held-out data (val_guess_rate ~50-53%), thresholds below ~0.45 turn "will win"
-    # into a label for two-thirds of every live board (observed: 10267 of 15000
-    # backtest outcomes marked as bets at threshold 0.436), and the val-ROI sweep kept
-    # drifting there because a near-random verdict plus a lucky val slice looks like
-    # volume-made money. The floor keeps the sweep inside a range where the verdict
-    # still means something; the EV gate (pipeline.MIN_BET_EDGE_PCT) guards the rest.
-    _THRESHOLD_CANDIDATES = [round(0.40 + x * 0.02, 2) for x in range(16)]  # 0.40 .. 0.70
+    # 0.50 = predicted edge 0 after the residual-head mapping (tanh+1)/2. Sweeping
+    # below that would mean betting when the head itself says the market is too high.
+    # 0.50 .. 0.70 → edge 0 .. 0.40. The EV gate (neurobet_filters.MIN_BET_EDGE_PCT) still
+    # guards the live allocator on top of this.
+    _THRESHOLD_CANDIDATES = [round(0.50 + x * 0.02, 2) for x in range(11)]  # 0.50 .. 0.70
     _MIN_TUNE_SAMPLES = 30
     # Raised from 20 — a threshold accepted on 20-40 validation bets is one long-shot
     # coefficient away from looking great by pure luck (observed in production: a single
@@ -806,7 +796,7 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
             pytorch_probs = torch.sigmoid(logits[:, 0]).tolist()
-            decision_probs = torch.sigmoid(logits[:, 1]).tolist()
+            decision_probs = _decision_confidence(logits[:, 1]).tolist()
 
         targets = [p["target"] for p in prepared]
         coeffs = [p["coefficient"] for p in prepared]
@@ -856,7 +846,10 @@ class NeuralBetEnsemble:
         self.blend_weight = old_blend + a * (best_blend - old_blend)
         self.market_weight = old_market + a * (best_market - old_market)
         if best_bets >= self._MIN_THRESHOLD_BETS:
-            self.decision_threshold = old_threshold + a * (best_threshold - old_threshold)
+            self.decision_threshold = max(
+                VALUE_THRESHOLD_FLOOR,
+                old_threshold + a * (best_threshold - old_threshold),
+            )
 
         # Per-sport decision_threshold — same sweep, run again per sport group of the
         # same val samples (see sport_threshold()'s docstring for why: a single global
@@ -879,7 +872,10 @@ class NeuralBetEnsemble:
             )
             if bets < self._MIN_THRESHOLD_BETS_PER_SPORT:
                 continue
-            new_sport_thr = old_sport_thr + a * (thr - old_sport_thr)
+            new_sport_thr = max(
+                VALUE_THRESHOLD_FLOOR,
+                old_sport_thr + a * (thr - old_sport_thr),
+            )
             self.sport_decision_thresholds[sport] = new_sport_thr
             sport_threshold_report[sport] = {
                 "old": round(old_sport_thr, 2), "new": round(new_sport_thr, 2), "target": round(thr, 2),
@@ -931,7 +927,7 @@ class NeuralBetEnsemble:
             returned = 0.0
             n_bets = 0
             for dp, c, t in zip(decision_probs, coeffs, targets):
-                if dp < thr:
+                if dp < thr or not in_bet_band(c):
                     continue
                 n_bets += 1
                 staked += 1.0
@@ -1016,25 +1012,34 @@ class NeuralBetEnsemble:
 
     def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float]:
         """
-        Returns (decision_loss, guess_rate) for a prepared batch in eval mode, no grad.
-        Reads the *decision* head (logits[:, 1]), not the win-probability head — "guessed
-        right" now means the model's own bet/no-bet verdict matched the outcome, which is
-        the number the training loop selects its best epoch on and the number the UI/logs
-        report as accuracy (see train_online).
+        Returns (decision_loss, hit_rate) for a prepared batch in eval mode, no grad.
+        Decision loss is MSE of predicted residual (tanh) vs (is_win - 1/coeff).
+        Hit rate is how often a +EV verdict (predicted edge >= 0) actually won — the
+        number that matters once the head is a bet/no-bet gate, not a 50/50 classifier
+        on complementary markets.
         """
         if not prepared:
             return float("nan"), float("nan")
         seqs = torch.tensor([_build_sequence(p["step_pairs"]) for p in prepared], dtype=torch.float32)
-        targets = torch.tensor([p["target"] for p in prepared], dtype=torch.float32).unsqueeze(1)
-        coeffs = torch.tensor([p["coefficient"] for p in prepared], dtype=torch.float32).unsqueeze(1)
-        weights = _decision_loss_weights(coeffs, targets)
+        targets = torch.tensor([p["target"] for p in prepared], dtype=torch.float32)
+        coeffs = torch.tensor([p["coefficient"] for p in prepared], dtype=torch.float32)
         sport_t, market_t, team1_t, team2_t = self._context_tensors(prepared)
         self.pytorch_model.eval()
         with torch.no_grad():
-            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1:2]
-            loss = nn.functional.binary_cross_entropy_with_logits(logits, targets, weight=weights).item()
-            guess_rate = ((torch.sigmoid(logits) >= 0.5).float() == targets).float().mean().item()
-        return loss, guess_rate
+            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1]
+            pred_edge = torch.tanh(logits)
+            true_edge = targets - _market_prob_tensor(coeffs)
+            verdict_mask = coeffs < MAX_BET_COEFF
+            if int(verdict_mask.sum().item()) == 0:
+                loss = float("nan")
+            else:
+                loss = nn.functional.mse_loss(pred_edge[verdict_mask], true_edge[verdict_mask]).item()
+            would_bet = (pred_edge >= 0) & (coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)
+            if int(would_bet.sum().item()) == 0:
+                hit_rate = 0.0
+            else:
+                hit_rate = (targets[would_bet] >= 0.5).float().mean().item()
+        return loss, hit_rate
 
     def _bankroll_pass(
         self, prepared: List[Dict[str, Any]], account: str, commit: bool,
@@ -1082,8 +1087,10 @@ class NeuralBetEnsemble:
                 # non-differentiable decision (detached), same as allocate()'s own
                 # min-stake/max-positions cuts; gradient into stake_logits still flows
                 # through the softmax weights of whichever candidates the mask keeps.
-                verdict = (torch.sigmoid(logits[:, 1]) >= 0.5).float().detach()
-                fractions = fractions * verdict
+                verdict = (_decision_confidence(logits[:, 1]) >= VALUE_THRESHOLD_FLOOR).float().detach()
+                # Match live: only size a position the bot is allowed to place (1.5–2.0).
+                coeff_ok = ((coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)).float()
+                fractions = fractions * verdict * coeff_ok
 
                 # Never stake more than one position on the same match in one round —
                 # not just strictly mutually-exclusive outcomes, but any two markets on
@@ -1153,6 +1160,9 @@ class NeuralBetEnsemble:
                 rounds_played += 1
 
         loss_tensor = torch.stack(losses).mean() if losses else None
+        turnover_roi = (
+            (total_returned / total_staked - 1.0) * 100.0 if total_staked > 0 else None
+        )
         return {
             "loss": loss_tensor,
             "bank_start": start_bank,
@@ -1163,6 +1173,7 @@ class NeuralBetEnsemble:
             "losses": losses_count,
             "total_staked": total_staked,
             "total_returned": total_returned,
+            "turnover_roi": turnover_roi,
             "ruin_events": ruin_events,
         }
 
@@ -1178,11 +1189,11 @@ class NeuralBetEnsemble:
         three loss terms —
           1. BCE-with-logits on the win/loss label for the win-probability head (still
              feeds the LightGBM/PyTorch ensemble blend used for the displayed percentage),
-          2. a cost-sensitive BCE on the *decision* head — the bet/no-bet verdict — whose
-             per-sample weight is the coefficient-derived cost of getting that particular
-             bet wrong (see _decision_loss_weights). This is what teaches the network to
-             say "will win" / "will lose" instead of copying the win head's fixed 0.5
-             cutoff, and
+          2. MSE on the *decision* head — predicted residual vs the bookmaker
+             (tanh(decision_logit) vs is_win - 1/coeff). This is the bet/no-bet
+             verdict: above 0.5 mapped confidence means "the market underprices this",
+             not "this line will win". Complementary two-way markets are 50/50 by
+             construction, so BCE-on-is_win had no headroom.
           3. a bankroll loss: -log(bank_growth) replayed over rounds of candidates using
              the model's own decision/stake/exposure heads (bankroll.allocate/settle,
              masked by the decision verdict — see _bankroll_pass) — this is what teaches
@@ -1194,10 +1205,10 @@ class NeuralBetEnsemble:
         the hardware budget allows a generous epoch count without every extra epoch
         being pure overfitting. `on_epoch(epoch_index, train_loss, val_loss)` is called
         after every epoch if provided.
-        After picking the winning epoch, its allocations are replayed *once more* and
-        actually committed to the persistent "training" bankroll account (bankroll.
-        apply_round_result), so the logged bank balance reflects real decisions made
-        with the weights that were kept, not a training-time snapshot.
+        After picking the winning epoch, allocations are replayed on the held-out
+        val split (not the train set) and committed to the persistent "training"
+        bankroll account, so the logged balance is a generalization check rather
+        than an in-sample Kelly compound.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
@@ -1250,16 +1261,20 @@ class NeuralBetEnsemble:
                 win_logits = logits[:, 0:1]
                 bce_loss = bce(win_logits, targets)
 
-                # Decision-head loss: cost-weighted so the network learns its own
-                # bet/no-bet boundary instead of inheriting the win-head's 0.5 cutoff —
-                # see _decision_loss_weights. This is also what selection_metric/train_loss
-                # below track, since "guessed right" is judged on this head, not win_logits.
-                decision_logits = logits[:, 1:2]
-                coeffs_t = torch.tensor([b["coefficient"] for b in batch], dtype=torch.float32).unsqueeze(1)
-                decision_weights = _decision_loss_weights(coeffs_t, targets)
-                decision_loss = nn.functional.binary_cross_entropy_with_logits(
-                    decision_logits, targets, weight=decision_weights,
-                )
+                # Decision-head loss: MSE on residual vs the bookmaker (is_win - 1/coeff),
+                # not BCE on is_win — complementary two-way markets are 50/50 by construction.
+                decision_logits = logits[:, 1]
+                coeffs_t = torch.tensor([b["coefficient"] for b in batch], dtype=torch.float32)
+                pred_edge = torch.tanh(decision_logits)
+                true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
+                # Longs (>= MAX_BET_COEFF) are a free "will lose" label that drowns the
+                # residual head — keep them on the win-probability BCE, drop them here.
+                verdict_mask = coeffs_t < MAX_BET_COEFF
+                per = (pred_edge - true_edge) ** 2
+                if int(verdict_mask.sum().item()) == 0:
+                    decision_loss = per.new_zeros(())
+                else:
+                    decision_loss = per[verdict_mask].mean()
 
                 loss = bce_loss + DECISION_LOSS_WEIGHT * decision_loss
 
@@ -1306,8 +1321,18 @@ class NeuralBetEnsemble:
         final_val_loss, final_val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (None, None)
         final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
 
-        # Commit the winning epoch's bankroll behavior for real, once.
-        bank_result = self._bankroll_pass(prepared, account="training", commit=True)
+        # The number that used to land in the TRAINING log as "1000 → 4 000 000 ₽"
+        # was a Kelly compound over the *training* set (10000 / ROUND_SIZE ≈ 500
+        # rounds) after the network had just fitted that same set. A 1–2% in-sample
+        # edge becomes a thousand-fold "profit" and says nothing about whether the
+        # model can bet. Replay on held-out val instead (and still run the in-sample
+        # pass without writing, so the log can show the gap when it explodes).
+        in_sample_bank = self._bankroll_pass(prepared, account="training", commit=False)
+        bank_result = self._bankroll_pass(
+            prepared_val if prepared_val else prepared,
+            account="training",
+            commit=True,
+        )
 
         self.is_trained = True
         self.pytorch_model.train()
@@ -1341,6 +1366,13 @@ class NeuralBetEnsemble:
                 "bets_count": bank_result["bets_count"],
                 "wins": bank_result["wins"],
                 "losses": bank_result["losses"],
+                "turnover_roi": (
+                    round(bank_result["turnover_roi"], 1)
+                    if bank_result.get("turnover_roi") is not None
+                    else None
+                ),
+                "on_val": bool(prepared_val),
+                "in_sample_end": round(in_sample_bank["bank_end"], 2),
                 "ruin_events": bank_result["ruin_events"],
             },
         }
