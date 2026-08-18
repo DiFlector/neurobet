@@ -90,6 +90,15 @@ CORE_FACTOR_MAP: Dict[int, str] = {
     # on 1804 ever looks wrong the way 925/1571 etc. did.
     1804: "Тотал Меньше",
     1805: "Тотал Больше",
+    # 1848/1849 is Fonbet's "Основные ставки | Тотал" table (tennis set games, table-
+    # tennis points, volleyball points, …). The catalog names BOTH sides just "Тотал"
+    # (or the shared breadcrumb "Основные ставки | Тотал"), so without this override a
+    # live bet shows "Тотал (9.5)" with no Больше/Меньше — same class of user confusion
+    # as "Итоговая победа" above. Pairing is [param, Б=1848, М=1849] in factorsCatalog
+    # and FACTORS_TOTAL_OVER/UNDER in database.py; confirmed against a real tennis 2nd-
+    # set line where the 1.80 / ~80% side at 0-2 was the under.
+    1848: "Тотал Больше",
+    1849: "Тотал Меньше",
 
     # Individual Totals
     1809: "Индивидуальный тотал 1 Больше",
@@ -257,7 +266,7 @@ EXCLUDED_MARKET_PREFIXES = {
 
 # Whole events we never parse at all — not shown live, not bet on, not archived, not
 # trained on. Confirmed via history audit: matches under these formats overwhelmingly
-# finish (or transition between periods) faster than our 60s poll interval, so
+# finish (or transition between periods) faster than our poll interval, so
 # period_scores stays permanently empty — 35000+ "не рассчитана" bets traced back to
 # exactly this. Per explicit instruction, these are excluded outright rather than just
 # disabling their period-scoped markets.
@@ -266,15 +275,20 @@ EXCLUDED_MARKET_PREFIXES = {
 # match live (RHL. West. 3x10 — a real shootout, see the resolve_outcome named_scores
 # work) showed a normal ~30-minute game with 3 real periods, OT and a shootout. "Short"
 # just means shorter periods (an amateur/streetball-style league format), not a
-# compressed simulation — same "occasional gap, not a structural failure" shape as
-# IPBL/NBA2K/CS-H2H below, which were checked and also NOT excluded. Removed.
+# compressed simulation. Do NOT match bare "3x10" / "4x5" without "мин": that would
+# swallow this real hockey too. NBA 2K was in the same "occasional gap" bucket until
+# a live Esportsbattle 4Х5 under (event 67306016, 2026-08-18) settled as a win on a
+# frozen 64:53 while Fonbet's coupon was 76:57 — Under 128.5 should have lost. The
+# league name is "4Х5" with no "мин", so the regex below never fired.
 _FAST_FORMAT_SPORT_PATH_SUBSTRINGS = (
     "setka cup", "world tennis", "tt cup", "online live league",
+    "nba 2k", "2k26", "esportsbattle",
 )
-# Esports simulated fixtures (FC 24/26, NHL 26, NBA 2K, H2H CS, ...) advertise their own
+# Esports simulated fixtures (FC 24/26, NHL 26, H2H CS, ...) advertise their own
 # compressed real-time duration right in the league name — "2x4 мин.", "3x4 мин.",
 # "4X5 мин", etc. — a reliable, sport-agnostic tell that the whole match plays out in a
-# couple of real minutes, same root problem as the named leagues above.
+# couple of real minutes, same root problem as the named leagues above. "мин" is
+# required so real amateur formats like RHL 3x10 stay in.
 _FAST_ESPORTS_FORMAT_RE = re.compile(r"\d+\s*[xх]\s*\d+\s*мин", re.IGNORECASE)
 
 
