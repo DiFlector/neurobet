@@ -1486,7 +1486,7 @@ def _refresh_headline_guess_rate_cache() -> None:
 
 def get_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
     """Cached headline guess/miss % — shared by /api/stats and /api/neurobets/headline-accuracy."""
-    global _headline_guess_rate_refreshing
+    global _headline_guess_rate_refreshing, _headline_guess_rate_cache
     now = time.time()
     loaded_at = float(_headline_guess_rate_cache.get("loaded_at") or 0.0)
     guess_rate_pct = _headline_guess_rate_cache.get("guess_rate_pct")

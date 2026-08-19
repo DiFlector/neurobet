@@ -90,6 +90,10 @@ def startup_event():
     )
     scheduler.start()
     logger.info("Scheduler started! Backtest will run automatically at 00:00/06:00/12:00/18:00 Moscow time.")
+    add_ai_log(
+        "SYSTEM",
+        "AI worker ready — inference/training cycles run in background threads.",
+    )
 
 
 @app.on_event("shutdown")

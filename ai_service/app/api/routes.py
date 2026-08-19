@@ -1,5 +1,13 @@
+import logging
+import threading
+
 from fastapi import APIRouter, HTTPException, Body
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger("ai_service_routes")
+
+_cycle_lock = threading.Lock()
+_cycle_in_flight = False
 
 from app.neuralbet import (
     run_neuralbet_inference_and_training,
@@ -33,13 +41,52 @@ def predict_and_train(payload: Dict[str, Any] = Body(default={})):
     # see backend/main.py's trigger_ai_pipeline for why (bets should only ever use the
     # data from the scrape that just finished, not "whatever's freshest when this HTTP
     # request happens to be handled").
+    #
+    # Runs in a background thread so this single Uvicorn worker stays responsive for
+    # GET /health, GET /logs, and admin polls while a cold-start or 10k training pass
+    # is chewing CPU for minutes. A synchronous handler was observed to crash-loop the
+    # whole container when training OOM'd or when health probes couldn't get through.
+    global _cycle_in_flight
     scrape_timestamp = payload.get("scrape_timestamp")
-    try:
-        res = run_neuralbet_inference_and_training(scrape_timestamp=scrape_timestamp)
-        return {"status": "success", "result": res}
-    except Exception as e:
-        add_ai_log("SYSTEM", f"AI Execution Error: {e}", level="WARNING")
-        raise HTTPException(status_code=500, detail=str(e))
+    with _cycle_lock:
+        if _cycle_in_flight:
+            return {
+                "status": "success",
+                "result": {
+                    "status": "skipped",
+                    "reason": "cycle_in_flight",
+                    "predictions_count": 0,
+                    "finished_samples_trained": 0,
+                },
+            }
+        _cycle_in_flight = True
+
+    def _run() -> None:
+        global _cycle_in_flight
+        try:
+            res = run_neuralbet_inference_and_training(scrape_timestamp=scrape_timestamp)
+            logger.info("Background AI cycle finished: %s", res.get("status"))
+        except Exception as e:
+            add_ai_log("SYSTEM", f"AI Execution Error: {e}", level="WARNING")
+            logger.error("Background AI cycle failed: %s", e, exc_info=True)
+        finally:
+            with _cycle_lock:
+                _cycle_in_flight = False
+
+    threading.Thread(
+        target=_run,
+        daemon=True,
+        name="predict-and-train",
+    ).start()
+    return {
+        "status": "success",
+        "result": {
+            "status": "accepted",
+            "message": "cycle started in background",
+            "predictions_count": 0,
+            "finished_samples_trained": 0,
+        },
+    }
 
 @router.get("/settings")
 def read_settings():

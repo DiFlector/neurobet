@@ -406,6 +406,9 @@ def _restore_ai_settings() -> None:
 
 _restore_ai_settings()
 _restore_training_streaks()
+# Survive a failed admin reset without requiring another redeploy — a stuck abort flag
+# otherwise makes every cycle return "skipped" with no INFERENCE/TRAINING lines.
+_abort_cycle.clear()
 
 
 def get_ai_settings() -> dict[str, Any]:
@@ -432,12 +435,17 @@ def reset_neural_network() -> dict[str, Any]:
 
     reset_rows = 0
     try:
+        # Wipe any stale "done/100%" left on disk from a prior run so the admin bar
+        # cannot jump to success before this reset actually starts.
+        set_reset_progress("starting", "Начинаю обнуление…", 1, active=True)
         add_ai_log(
             "SYSTEM",
             "Reset requested — stopping in-flight inference, training and backtest.",
             level="WARNING",
         )
-        set_reset_progress("stopping", "Останавливаю обучение и бэктест…", 8)
+        # A previously failed reset can leave _abort_cycle set and silently block every
+        # future predict-and-train pass ("AI cycle skipped — model reset in progress").
+        _abort_cycle.clear()
         abort_in_flight_cycle()
         _invalidate_archive_coverage()
         set_reset_progress("waiting_lock", "Жду завершения текущего цикла…", 22)
@@ -475,7 +483,6 @@ def reset_neural_network() -> dict[str, Any]:
                 set_reset_progress("cold_start", "Запускаю cold-start на всём архиве…", 94)
                 _begin_cold_start()
             finally:
-                _abort_cycle.clear()
                 _release_tracked_conns()
 
         add_ai_log(
@@ -489,11 +496,14 @@ def reset_neural_network() -> dict[str, Any]:
             f"before online 10k fine-tuning resumes.",
             level="WARNING",
         )
-        set_reset_progress("done", "Готово", 100, active=True)
+        set_reset_progress("done", "Готово", 100, active=False)
         return {"reset_rows": reset_rows}
     except Exception:
         set_reset_progress("error", "Ошибка при обнулении", 0, active=False)
         raise
+    finally:
+        # Always release — a failed reset used to leave this set and freeze the bot.
+        _abort_cycle.clear()
 
 
 def update_ai_settings(
@@ -1489,6 +1499,13 @@ def _run_neuralbet_inference_and_training_locked(
         f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
         f"scrape_ts={scrape_timestamp})"
     )
+    add_ai_log(
+        "INFERENCE",
+        f"Cycle {_cycle_count} started "
+        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
+        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
+        f"scrape_ts={scrape_timestamp or 'latest'}).",
+    )
 
     if not AI_SETTINGS["ai_enabled"]:
         add_ai_log(
@@ -2053,16 +2070,28 @@ def _run_neuralbet_inference_and_training_locked(
                 )
 
         cs_epoch = int(cold_start.get("epoch") or 1) if cold_start_active else 1
-        metrics = ensemble_engine.train_online(
-            training_samples,
-            val_data=val_samples,
-            on_epoch=_log_epoch,
-            skip_checkpoint_gate=cold_start_active,
-            learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
-            rebalance_classes=cold_start_active,
-            epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
-            should_abort=cycle_aborted,
-        )
+        try:
+            metrics = ensemble_engine.train_online(
+                training_samples,
+                val_data=val_samples,
+                on_epoch=_log_epoch,
+                skip_checkpoint_gate=cold_start_active,
+                learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
+                rebalance_classes=cold_start_active,
+                epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
+                should_abort=cycle_aborted,
+            )
+        except MemoryError as e:
+            add_ai_log(
+                "TRAINING",
+                f"Out of memory during GRU pass ({len(training_samples)} samples) — "
+                f"skipping this cycle: {e}. Lower NEURALBET_COLD_START_CHUNK if this repeats.",
+                level="WARNING",
+            )
+            metrics = {"samples_used": 0, "samples_skipped": len(training_samples)}
+        except Exception as e:
+            add_ai_log("TRAINING", f"Training pass crashed: {e}", level="WARNING")
+            raise
 
         if metrics.get("checkpoint_reject_reason") == "aborted" or cycle_aborted():
             add_ai_log("SYSTEM", "Training pass aborted for model reset.", level="WARNING")

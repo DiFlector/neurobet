@@ -116,14 +116,14 @@ export default function AdminPage() {
         setResetSuccessMsg(data.message || "Ставки отменены")
         setTimeout(() => { fetchBankroll(); fetchOpenLiveBetsCount() }, 300)
       } else if (resetType === "reset-model") {
-        setResetProgress({ pct: 4, label: "Отправляю запрос…", step: "request", active: true })
+        setResetProgress({ pct: 1, label: "Начинаю обнуление…", step: "starting", active: true })
         let poll = 0
         try {
           poll = window.setInterval(() => {
             fetchResetProgress().catch(() => {})
           }, 400)
 
-          let postData: { reset_rows?: number } | null = null
+          let postData: { reset_rows?: number; status?: string } | null = null
           try {
             const res = await fetch(`${API_BASE}/api/admin/reset-model`, { method: "POST" })
             if (res.ok) {
@@ -134,32 +134,34 @@ export default function AdminPage() {
           }
 
           let latest: { pct: number; label: string; step: string; active: boolean } | null = null
-          let started = false
+          let sawThisRun = Boolean(postData?.status === "success")
           if (!postData) {
             const deadline = Date.now() + 180_000
             while (Date.now() < deadline) {
               latest = await fetchResetProgress().catch(() => latest)
-              if (latest && !["idle", "done"].includes(latest.step)) {
-                started = true
+              if (latest) {
+                if (["starting", "waiting_lock", "wiping", "charts", "archive", "bankroll", "cold_start"].includes(latest.step)) {
+                  sawThisRun = true
+                }
+                if (sawThisRun && latest.step === "error") {
+                  throw new Error(latest.label || "Ошибка при обнулении нейросети")
+                }
+                if (sawThisRun && latest.step === "done") break
               }
-              if (started && latest?.step === "error") {
-                throw new Error(latest.label || "Ошибка при обнулении нейросети")
-              }
-              if (started && (latest?.step === "done" || (latest?.pct ?? 0) >= 100)) break
               await new Promise((r) => setTimeout(r, 400))
             }
           }
 
-          if (!(postData || (started && (latest?.step === "done" || (latest?.pct ?? 0) >= 100)))) {
+          if (!(postData?.status === "success" || (sawThisRun && latest?.step === "done"))) {
             throw new Error("Ошибка при обнулении нейросети")
           }
 
-          setResetProgress({ pct: 100, label: "Готово", step: "done", active: true })
+          setResetProgress({ pct: 100, label: "Готово", step: "done", active: false })
           const rows = postData?.reset_rows
           setResetSuccessMsg(
             rows != null
-              ? `Нейросеть обнулена. Очищено trained_count у ${rows} завершённых ставок. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве.`
-              : "Нейросеть обнулена. Графики обучения/бэктеста и оба банка сброшены — обучение начнётся заново на существующем архиве."
+              ? `Нейросеть обнулена. Очищено trained_count у ${rows} завершённых ставок. Графики обучения/бэктеста и оба банка сброшены — cold-start по архиву запущен (live-ставки возобновятся после него).`
+              : "Нейросеть обнулена. Cold-start по архиву запущен — live-ставки возобновятся после завершения cold-start."
           )
           await new Promise((r) => setTimeout(r, 700))
           setTimeout(() => {
