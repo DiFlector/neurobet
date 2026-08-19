@@ -9,7 +9,14 @@ from .pipeline import (
     get_reset_progress,
     get_training_health,
 )
-from .backtest import run_backtest, get_backtest_history, get_latest_backtest
+from .backtest import (
+    run_backtest,
+    get_backtest_history,
+    get_latest_backtest,
+    get_backtest_progress,
+    BACKTEST_DEFAULT_LIMIT,
+    BACKTEST_MAX_LIMIT,
+)
 from .training_history import get_training_history
 
 __all__ = [
@@ -25,5 +32,8 @@ __all__ = [
     "run_backtest",
     "get_backtest_history",
     "get_latest_backtest",
+    "get_backtest_progress",
+    "BACKTEST_DEFAULT_LIMIT",
+    "BACKTEST_MAX_LIMIT",
     "get_training_history",
 ]

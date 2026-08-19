@@ -13,6 +13,9 @@ from app.neuralbet import (
     run_backtest,
     get_backtest_history,
     get_latest_backtest,
+    get_backtest_progress,
+    BACKTEST_DEFAULT_LIMIT,
+    BACKTEST_MAX_LIMIT,
     get_training_history,
 )
 from app.neuralbet import bankroll
@@ -115,6 +118,19 @@ def reset_model():
         add_ai_log("SYSTEM", f"Neural network reset error: {e}", level="WARNING")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/backtest/progress")
+def backtest_progress():
+    """Admin poll while POST /backtest holds the worker. Backend prefers the JSON file
+    on the shared volume so this endpoint is only a fallback."""
+    return {"status": "success", "progress": get_backtest_progress()}
+
+
+@router.get("/backtest/latest")
+def backtest_latest():
+    latest = get_latest_backtest()
+    return {"status": "success", "backtest": latest}
+
+
 @router.post("/backtest")
 def backtest(payload: Dict[str, Any] = Body(default={})):
     """
@@ -125,8 +141,8 @@ def backtest(payload: Dict[str, Any] = Body(default={})):
     roughly a minute, which is why the admin panel calls this through a proxy with a
     generous timeout rather than the default request timeout.
     """
-    limit = int(payload.get("limit") or 15000)
-    limit = max(100, min(limit, 50000))
+    limit = int(payload.get("limit") or BACKTEST_DEFAULT_LIMIT)
+    limit = max(100, min(limit, BACKTEST_MAX_LIMIT))
     since = payload.get("since")
     try:
         result = run_backtest(limit=limit, since=since)

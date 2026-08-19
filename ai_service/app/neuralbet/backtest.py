@@ -20,6 +20,7 @@ can't race a concurrent train_online() pass reading torn-mid-update weights.
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -45,6 +46,58 @@ COEFF_BUCKET_LABELS = ["1.0–1.5", "1.5–2.0", "2.0–3.0", "3.0–5.0", "5.0�
 # predict_batch's own forward pass is cheap per-sample, but chunking bounds peak memory
 # for a large --limit run instead of building one giant tensor up front.
 PREDICT_CHUNK = 4000
+
+BACKTEST_DEFAULT_LIMIT = int(os.getenv("NEURALBET_BACKTEST_DEFAULT_LIMIT", "80000"))
+BACKTEST_MAX_LIMIT = int(os.getenv("NEURALBET_BACKTEST_MAX_LIMIT", "100000"))
+
+BACKTEST_PROGRESS_PATH = os.path.join(MODEL_DIR, "backtest_progress.json")
+_backtest_progress_lock = threading.Lock()
+_backtest_progress: dict[str, Any] = {
+    "active": False,
+    "step": "idle",
+    "label": "",
+    "pct": 0,
+    "processed": 0,
+    "total": 0,
+}
+
+
+def _persist_backtest_progress(payload: dict[str, Any]) -> None:
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp_path = BACKTEST_PROGRESS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp_path, BACKTEST_PROGRESS_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting backtest progress: {e}")
+
+
+def set_backtest_progress(
+    step: str,
+    label: str,
+    pct: int,
+    *,
+    active: bool = True,
+    processed: int = 0,
+    total: int = 0,
+) -> None:
+    with _backtest_progress_lock:
+        _backtest_progress.update({
+            "active": active,
+            "step": step,
+            "label": label,
+            "pct": max(0, min(int(pct), 100)),
+            "processed": max(0, int(processed)),
+            "total": max(0, int(total)),
+        })
+        payload = dict(_backtest_progress)
+    _persist_backtest_progress(payload)
+
+
+def get_backtest_progress() -> dict[str, Any]:
+    with _backtest_progress_lock:
+        return dict(_backtest_progress)
 
 # Same fixed +3 offset pipeline.py's now_moscow() uses — "generated_at" (and the
 # filename slug derived from it, see save_and_record) is what the admin panel's
@@ -121,7 +174,7 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     }
 
 
-def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, Any]:
+def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = None) -> Dict[str, Any]:
     """
     Pulls up to `limit` most-recently-resolved bets (optionally only those finished at or
     after `since`, an ISO timestamp), re-scores every one with the *current* live
@@ -154,145 +207,201 @@ def run_backtest(limit: int = 15000, since: Optional[str] = None) -> Dict[str, A
     )
 
     t0 = time.time()
-    with _engine_lock:
-        if cycle_aborted():
-            return {"status": "aborted", "samples_evaluated": 0}
-        market_support = _refresh_market_support()
-        rows = _fetch_backtest_rows(limit=limit, since=since)
-        if not rows:
-            return {"status": "no_data", "samples_evaluated": 0}
-
-        items: List[Dict[str, Any]] = []
-        meta: List[Dict[str, Any]] = []
-        for r in rows:
-            sample = row_to_sample(r)
-            view = build_model_input(sample, mode="backtest")
-            if view is None:
-                continue
-            coeff = float(view["current_coeff"])
-            items.append(view)
-            sport_name = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
-            meta.append({
-                "event_id": r["event_id"],
-                "sport": sport_name,
-                "coeff": coeff,
-                "factor_id": sample["factor_id"],
-                "label": sample["label"],
-                "is_win": int(r["is_win"]),
-                "historical_prob": r["predicted_win_probability"],
-                "historical_pred": r["predicted_win"],
-            })
-
-        if not items:
-            return {"status": "no_data", "samples_evaluated": 0}
-
-        blend_weight = ensemble_engine.blend_weight
-        market_weight = ensemble_engine.market_weight
-        decision_threshold = ensemble_engine.decision_threshold
-        # Snapshot under the same lock as the other weights above — read fresh after
-        # the lock releases, this dict could be caught mid-update by a concurrent
-        # tune_ensemble() call. Apply sport floors first so a football (etc.) minimum
-        # is in the copy even if this process loaded a checkpoint from before the floor.
-        ensemble_engine._apply_sport_threshold_floors()
-        sport_decision_thresholds = dict(ensemble_engine.sport_decision_thresholds)
-        buckets = get_calibration_buckets()
-
-        raw_results: List[tuple] = []
-        for i in range(0, len(items), PREDICT_CHUNK):
+    set_backtest_progress(
+        "starting",
+        f"Запуск бэктеста на {limit:,} ставок…".replace(",", " "),
+        1,
+        total=limit,
+    )
+    try:
+        set_backtest_progress("waiting_lock", "Жду завершения обучения или другого бэктеста…", 3, total=limit)
+        with _engine_lock:
             if cycle_aborted():
+                set_backtest_progress("error", "Прервано", 0, active=False)
                 return {"status": "aborted", "samples_evaluated": 0}
-            raw_results.extend(ensemble_engine.predict_batch(items[i:i + PREDICT_CHUNK]))
+            set_backtest_progress("fetch", "Загружаю архив завершённых ставок…", 8, total=limit)
+            market_support = _refresh_market_support()
+            rows = _fetch_backtest_rows(limit=limit, since=since)
+            if not rows:
+                set_backtest_progress("error", "Нет данных для бэктеста", 0, active=False)
+                return {"status": "no_data", "samples_evaluated": 0}
 
-        records: List[Dict[str, Any]] = []
-        for m, res in zip(meta, raw_results):
-            win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
-            calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
-            expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-            # Verdict threshold is per-sport (see NeuralBetEnsemble.sport_threshold);
-            # coeff / EV / support gates live in neurobet_filters.passes_live_gates so
-            # current_pred matches what live betting would actually stake.
-            support_count = None
-            if market_support:
-                support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
-            current_pred = 1 if (
-                decision_prob >= sport_decision_thresholds.get(m["sport"], decision_threshold)
-                and passes_live_gates(m["coeff"], expected_roi, support_count)
-            ) else 0
-            market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
-            records.append({
-                "event_id": m["event_id"],
-                "sport": m["sport"],
-                "coeff": m["coeff"],
-                "coeff_bucket": coeff_bucket_index(m["coeff"]),
-                "is_win": m["is_win"],
-                "current_prob": calibrated,
-                "current_pred": current_pred,
-                "current_expected_roi": expected_roi,
-                "historical_prob": m["historical_prob"],
-                "historical_pred": m["historical_pred"],
-                "market_prob": market_prob,
-            })
+            items: List[Dict[str, Any]] = []
+            meta: List[Dict[str, Any]] = []
+            row_total = len(rows)
+            for idx, r in enumerate(rows):
+                sample = row_to_sample(r)
+                view = build_model_input(sample, mode="backtest")
+                if view is None:
+                    continue
+                coeff = float(view["current_coeff"])
+                items.append(view)
+                sport_name = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
+                meta.append({
+                    "event_id": r["event_id"],
+                    "sport": sport_name,
+                    "coeff": coeff,
+                    "factor_id": sample["factor_id"],
+                    "label": sample["label"],
+                    "is_win": int(r["is_win"]),
+                    "historical_prob": r["predicted_win_probability"],
+                    "historical_pred": r["predicted_win"],
+                })
+                if idx > 0 and idx % 5000 == 0:
+                    pct = 8 + int(7 * idx / row_total)
+                    set_backtest_progress(
+                        "prepare",
+                        f"Подготовка {idx:,}/{row_total:,}…".replace(",", " "),
+                        pct,
+                        processed=idx,
+                        total=row_total,
+                    )
 
-    # At most one bet per event — mirrors backend/database.py's occupied_events (live
-    # betting refuses a second position on a match that already has one open) and
-    # model.py's _bankroll_pass (training refuses more than one position per event in a
-    # round). Without this, two markets on the same match that both clear the gates
-    # would each count as a separate "bet" here, overstating both the bet count and the
-    # ROI/accuracy this backtest reports relative to what live betting would actually
-    # place — defeating the whole point of a backtest being a preview of live rules.
-    # Keeps the highest-EV candidate per event (the same ordering live candidate
-    # selection sorts by) and downgrades the rest back to a plain "no bet" prediction.
-    by_event: Dict[Any, List[Dict[str, Any]]] = {}
-    for rec in records:
-        if rec["current_pred"] == 1:
-            by_event.setdefault(rec["event_id"], []).append(rec)
-    for event_records in by_event.values():
-        if len(event_records) < 2:
-            continue
-        event_records.sort(key=lambda r: r["current_expected_roi"], reverse=True)
-        for rec in event_records[1:]:
-            rec["current_pred"] = 0
+            if not items:
+                set_backtest_progress("error", "Нет валидных срезов для бэктеста", 0, active=False)
+                return {"status": "no_data", "samples_evaluated": 0}
 
-    by_sport: Dict[str, List[Dict[str, Any]]] = {}
-    by_coeff: Dict[int, List[Dict[str, Any]]] = {}
-    for rec in records:
-        by_sport.setdefault(rec["sport"], []).append(rec)
-        by_coeff.setdefault(rec["coeff_bucket"], []).append(rec)
+            set_backtest_progress(
+                "prepare",
+                f"Готово {len(items):,} срезов — запуск инференса…".replace(",", " "),
+                15,
+                processed=len(items),
+                total=len(items),
+            )
 
-    result = {
-        "status": "success",
-        "generated_at": now_iso(),
-        "duration_seconds": round(time.time() - t0, 1),
-        "samples_requested": limit,
-        "samples_evaluated": len(records),
-        "since": since,
-        "date_range": {"from": str(rows[-1]["finished_at"]), "to": str(rows[0]["finished_at"])},
-        "config": {
-            "blend_weight": round(blend_weight, 3),
-            "market_weight": round(market_weight, 3),
-            "decision_threshold": round(decision_threshold, 3),
-            # Per-sport overrides actually applied to current_pred above (via
-            # sport_threshold()) — only sports with their own tuned value appear here,
-            # everything else used decision_threshold.
-            "sport_decision_thresholds": {
-                s: round(v, 3) for s, v in sport_decision_thresholds.items()
+            blend_weight = ensemble_engine.blend_weight
+            market_weight = ensemble_engine.market_weight
+            decision_threshold = ensemble_engine.decision_threshold
+            # Snapshot under the same lock as the other weights above — read fresh after
+            # the lock releases, this dict could be caught mid-update by a concurrent
+            # tune_ensemble() call. Apply sport floors first so a football (etc.) minimum
+            # is in the copy even if this process loaded a checkpoint from before the floor.
+            ensemble_engine._apply_sport_threshold_floors()
+            sport_decision_thresholds = dict(ensemble_engine.sport_decision_thresholds)
+            buckets = get_calibration_buckets()
+
+            raw_results: List[tuple] = []
+            n_items = len(items)
+            for i in range(0, n_items, PREDICT_CHUNK):
+                if cycle_aborted():
+                    set_backtest_progress("error", "Прервано", 0, active=False)
+                    return {"status": "aborted", "samples_evaluated": 0}
+                chunk_end = min(i + PREDICT_CHUNK, n_items)
+                raw_results.extend(ensemble_engine.predict_batch(items[i:chunk_end]))
+                pct = 15 + int(70 * chunk_end / n_items)
+                set_backtest_progress(
+                    "predict",
+                    f"Инференс {chunk_end:,}/{n_items:,}…".replace(",", " "),
+                    pct,
+                    processed=chunk_end,
+                    total=n_items,
+                )
+
+            records: List[Dict[str, Any]] = []
+            for m, res in zip(meta, raw_results):
+                win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
+                calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
+                expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
+                # Verdict threshold is per-sport (see NeuralBetEnsemble.sport_threshold);
+                # coeff / EV / support gates live in neurobet_filters.passes_live_gates so
+                # current_pred matches what live betting would actually stake.
+                support_count = None
+                if market_support:
+                    support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
+                current_pred = 1 if (
+                    decision_prob >= sport_decision_thresholds.get(m["sport"], decision_threshold)
+                    and passes_live_gates(m["coeff"], expected_roi, support_count)
+                ) else 0
+                market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
+                records.append({
+                    "event_id": m["event_id"],
+                    "sport": m["sport"],
+                    "coeff": m["coeff"],
+                    "coeff_bucket": coeff_bucket_index(m["coeff"]),
+                    "is_win": m["is_win"],
+                    "current_prob": calibrated,
+                    "current_pred": current_pred,
+                    "current_expected_roi": expected_roi,
+                    "historical_prob": m["historical_prob"],
+                    "historical_pred": m["historical_pred"],
+                    "market_prob": market_prob,
+                })
+
+        set_backtest_progress("aggregate", "Агрегация и фильтр по матчам…", 88, processed=len(records), total=len(records))
+
+        # At most one bet per event — mirrors backend/database.py's occupied_events (live
+        # betting refuses a second position on a match that already has one open) and
+        # model.py's _bankroll_pass (training refuses more than one position per event in a
+        # round). Without this, two markets on the same match that both clear the gates
+        # would each count as a separate "bet" here, overstating both the bet count and the
+        # ROI/accuracy this backtest reports relative to what live betting would actually
+        # place — defeating the whole point of a backtest being a preview of live rules.
+        # Keeps the highest-EV candidate per event (the same ordering live candidate
+        # selection sorts by) and downgrades the rest back to a plain "no bet" prediction.
+        by_event: Dict[Any, List[Dict[str, Any]]] = {}
+        for rec in records:
+            if rec["current_pred"] == 1:
+                by_event.setdefault(rec["event_id"], []).append(rec)
+        for event_records in by_event.values():
+            if len(event_records) < 2:
+                continue
+            event_records.sort(key=lambda r: r["current_expected_roi"], reverse=True)
+            for rec in event_records[1:]:
+                rec["current_pred"] = 0
+
+        by_sport: Dict[str, List[Dict[str, Any]]] = {}
+        by_coeff: Dict[int, List[Dict[str, Any]]] = {}
+        for rec in records:
+            by_sport.setdefault(rec["sport"], []).append(rec)
+            by_coeff.setdefault(rec["coeff_bucket"], []).append(rec)
+
+        set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
+
+        result = {
+            "status": "success",
+            "generated_at": now_iso(),
+            "duration_seconds": round(time.time() - t0, 1),
+            "samples_requested": limit,
+            "samples_evaluated": len(records),
+            "since": since,
+            "date_range": {"from": str(rows[-1]["finished_at"]), "to": str(rows[0]["finished_at"])},
+            "config": {
+                "blend_weight": round(blend_weight, 3),
+                "market_weight": round(market_weight, 3),
+                "decision_threshold": round(decision_threshold, 3),
+                # Per-sport overrides actually applied to current_pred above (via
+                # sport_threshold()) — only sports with their own tuned value appear here,
+                # everything else used decision_threshold.
+                "sport_decision_thresholds": {
+                    s: round(v, 3) for s, v in sport_decision_thresholds.items()
+                },
+                "max_bet_coeff": MAX_BET_COEFF,
+                "min_bet_coeff": MIN_BET_COEFF,
             },
-            "max_bet_coeff": MAX_BET_COEFF,
-            "min_bet_coeff": MIN_BET_COEFF,
-        },
-        "overall": _agg_group(records),
-        "by_sport": sorted(
-            [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
-            key=lambda x: -x["evaluated"],
-        ),
-        "by_coefficient": [
-            {"bucket": COEFF_BUCKET_LABELS[b], **_agg_group(rs)}
-            for b, rs in sorted(by_coeff.items())
-        ],
-    }
+            "overall": _agg_group(records),
+            "by_sport": sorted(
+                [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
+                key=lambda x: -x["evaluated"],
+            ),
+            "by_coefficient": [
+                {"bucket": COEFF_BUCKET_LABELS[b], **_agg_group(rs)}
+                for b, rs in sorted(by_coeff.items())
+            ],
+        }
 
-    save_and_record(result)
-    return result
+        save_and_record(result)
+        set_backtest_progress(
+            "done",
+            f"Готово — {len(records):,} ставок за {round(time.time() - t0, 1)}с".replace(",", " "),
+            100,
+            active=False,
+            processed=len(records),
+            total=len(records),
+        )
+        return result
+    except Exception as e:
+        set_backtest_progress("error", f"Ошибка: {e}", 0, active=False)
+        raise
 
 
 def save_and_record(result: Dict[str, Any]) -> None:

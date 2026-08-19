@@ -42,8 +42,8 @@ def _tool(name: str, description: str, properties: Optional[dict] = None) -> dic
 _LIMIT = {
     "type": "integer",
     "minimum": 100,
-    "maximum": 50000,
-    "description": "Resolved bets to score. Default 40000.",
+    "maximum": 100000,
+    "description": "Resolved bets to score. Default 80000.",
 }
 
 _BET_TYPES_LIMIT = {
@@ -407,7 +407,7 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
         ))
 
     if name == "run_eval_pack":
-        limit = _clamp_int(arguments, "limit", 40000, 100, 50000)
+        limit = _clamp_int(arguments, "limit", 80000, 100, 100000)
         return _ok(m.create_eval_pack(m.EvalPackRequest(run_backtest=True, limit=limit)))
 
     if name == "get_overview":
@@ -483,7 +483,7 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
         return _ok({"backtest": snap.get("latest_backtest")})
 
     if name == "run_backtest":
-        limit = _clamp_int(arguments, "limit", 40000, 100, 50000)
+        limit = _clamp_int(arguments, "limit", 80000, 100, 100000)
         return _ok(m.admin_run_backtest({"limit": limit}))
 
     if name == "get_ensemble":

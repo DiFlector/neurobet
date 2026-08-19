@@ -49,6 +49,7 @@ class AISettingsRequest(BaseModel):
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
 _RESET_PROGRESS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "reset_progress.json")
+_BACKTEST_PROGRESS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "backtest_progress.json")
 
 
 def _fallback_ai_settings() -> dict:
@@ -83,6 +84,29 @@ def _read_ai_logs_file() -> Optional[list]:
 
 
 _IDLE_RESET_PROGRESS = {"active": False, "step": "idle", "label": "", "pct": 0}
+_IDLE_BACKTEST_PROGRESS = {"active": False, "step": "idle", "label": "", "pct": 0, "processed": 0, "total": 0}
+
+
+def _read_backtest_progress_file() -> Optional[dict]:
+    """Written by ai_service before each slow backtest step. Read from the shared
+    volume so the admin bar keeps moving while POST /backtest holds the single AI worker."""
+    try:
+        with open(_BACKTEST_PROGRESS_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict):
+            return {
+                "active": bool(saved.get("active")),
+                "step": str(saved.get("step") or "idle"),
+                "label": str(saved.get("label") or ""),
+                "pct": max(0, min(int(saved.get("pct") or 0), 100)),
+                "processed": max(0, int(saved.get("processed") or 0)),
+                "total": max(0, int(saved.get("total") or 0)),
+            }
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.error(f"Error reading backtest progress file: {e}")
+    return None
 
 
 def _read_reset_progress_file() -> Optional[dict]:
@@ -536,14 +560,28 @@ def admin_reset_model():
         logger.error(f"Error resetting neural network via AI Service: {e}")
         raise HTTPException(status_code=502, detail="Failed to reach AI service for model reset")
 
+@app.get("/api/admin/backtest/progress")
+def admin_backtest_progress():
+    progress = _read_backtest_progress_file()
+    if progress is not None:
+        return {"status": "success", "progress": progress}
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/backtest/progress")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching backtest progress from AI Service: {e}")
+    return {"status": "success", "progress": dict(_IDLE_BACKTEST_PROGRESS)}
+
+
 @app.post("/api/admin/backtest")
 def admin_run_backtest(payload: Dict[str, Any] = Body(default={})):
-    # A large --limit backtest (default 15000 resolved bets) can take from several
-    # seconds up to roughly a minute of CPU-bound torch/LightGBM inference on
-    # ai_service's side — well past the 5-10s timeout the other admin proxies use here,
-    # so this one gets its own generous budget.
+    # A large --limit backtest can take several minutes of CPU-bound torch/LightGBM
+    # inference on ai_service's side. The admin UI polls backtest_progress.json on the
+    # shared volume if this proxy times out — the run still finishes server-side.
     try:
-        with httpx.Client(timeout=300.0) as client:
+        with httpx.Client(timeout=600.0) as client:
             res = client.post(f"{AI_SERVICE_URL}/backtest", json=payload)
             if res.status_code == 200:
                 return res.json()
@@ -553,6 +591,18 @@ def admin_run_backtest(payload: Dict[str, Any] = Body(default={})):
     except Exception as e:
         logger.error(f"Error running backtest via AI Service: {e}")
         raise HTTPException(status_code=502, detail="Failed to reach AI service for backtest")
+
+
+@app.get("/api/admin/backtest/latest")
+def admin_backtest_latest():
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/backtest/latest")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching latest backtest: {e}")
+    raise HTTPException(status_code=502, detail="Failed to fetch latest backtest")
 
 @app.get("/api/admin/backtest/history")
 def admin_backtest_history():
@@ -669,7 +719,7 @@ def read_eval_pack(
 
 class EvalPackRequest(BaseModel):
     run_backtest: bool = True
-    limit: int = 40000
+    limit: int = 80000
 
 
 @app.post("/api/ai/eval-pack")
@@ -679,7 +729,7 @@ def create_eval_pack(payload: Optional[EvalPackRequest] = None):
     req = payload or EvalPackRequest()
     fresh = None
     if req.run_backtest:
-        limit = max(100, min(int(req.limit or 40000), 50000))
+        limit = max(100, min(int(req.limit or 80000), 100000))
         fresh = admin_run_backtest({"limit": limit})
     try:
         return build_eval_pack(fresh_backtest=fresh)

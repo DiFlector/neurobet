@@ -67,10 +67,14 @@ export default function AdminPage() {
   const [trainingRuns, setTrainingRuns] = useState<any[]>([])
 
   // Backtest State
+  const BACKTEST_LIMIT = 80000
   const [backtestRunning, setBacktestRunning] = useState(false)
   const [backtestResult, setBacktestResult] = useState<any>(null)
   const [backtestError, setBacktestError] = useState<string | null>(null)
   const [backtestHistory, setBacktestHistory] = useState<any[]>([])
+  const [backtestProgress, setBacktestProgress] = useState<{ pct: number; label: string; step: string; active: boolean; processed: number; total: number }>({
+    pct: 0, label: "", step: "idle", active: false, processed: 0, total: 0,
+  })
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
 
@@ -333,6 +337,23 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchBacktestProgress = async () => {
+    const res = await fetch(`${API_BASE}/api/admin/backtest/progress`, { cache: "no-store" })
+    if (!res.ok) return null
+    const data = await res.json()
+    const p = data.progress || data
+    const next = {
+      pct: Math.max(0, Math.min(100, Number(p.pct) || 0)),
+      label: String(p.label || ""),
+      step: String(p.step || "idle"),
+      active: Boolean(p.active),
+      processed: Math.max(0, Number(p.processed) || 0),
+      total: Math.max(0, Number(p.total) || 0),
+    }
+    setBacktestProgress(next)
+    return next
+  }
+
   const fetchBacktestHistory = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/backtest/history`)
@@ -348,25 +369,72 @@ export default function AdminPage() {
   const handleRunBacktest = async () => {
     setBacktestRunning(true)
     setBacktestError(null)
+    setBacktestProgress({ pct: 2, label: "Отправляю запрос…", step: "request", active: true, processed: 0, total: BACKTEST_LIMIT })
+    let poll = 0
     try {
-      const res = await fetch(`${API_BASE}/api/admin/backtest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // 15000 -> 40000: at current archive growth (~570k resolved bets) 15k samples
-        // span under an hour of matches — one late-night table-tennis-heavy slice, not
-        // a representative view. 40k covers several hours across sports; the run takes
-        // ~10s instead of ~3s, well within the proxy's 300s budget.
-        body: JSON.stringify({ limit: 40000 })
-      })
-      if (!res.ok) throw new Error("Ошибка при запуске бэктеста")
-      const data = await res.json()
-      if (data.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
-      if (data.status !== "success") throw new Error("Бэктест завершился с ошибкой")
-      setBacktestResult(data)
-      fetchBacktestHistory()
+      poll = window.setInterval(() => {
+        fetchBacktestProgress().catch(() => {})
+      }, 400)
+
+      let postData: any = null
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/backtest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: BACKTEST_LIMIT }),
+        })
+        if (res.ok) {
+          postData = await res.json()
+        }
+      } catch {
+        // 504/network: backtest may still be running — keep polling the progress file.
+      }
+
+      if (postData?.status === "success") {
+        setBacktestResult(postData)
+        setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: postData.samples_evaluated || 0, total: postData.samples_requested || BACKTEST_LIMIT })
+        fetchBacktestHistory()
+        return
+      }
+      if (postData?.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
+      if (postData && postData.status !== "success") throw new Error("Бэктест завершился с ошибкой")
+
+      let latest: { pct: number; label: string; step: string; active: boolean; processed: number; total: number } | null = null
+      let started = false
+      const deadline = Date.now() + 600_000
+      while (Date.now() < deadline) {
+        latest = await fetchBacktestProgress().catch(() => latest)
+        if (latest && !["idle", "done"].includes(latest.step)) {
+          started = true
+        }
+        if (latest?.step === "error") {
+          throw new Error(latest.label || "Ошибка при запуске бэктеста")
+        }
+        if (latest?.step === "done" || (started && (latest?.pct ?? 0) >= 100)) {
+          break
+        }
+        await new Promise((r) => setTimeout(r, 400))
+      }
+
+      if (latest?.step === "done" || (started && (latest?.pct ?? 0) >= 100)) {
+        const res = await fetch(`${API_BASE}/api/admin/backtest/latest`, { cache: "no-store" })
+        if (!res.ok) throw new Error("Бэктест завершился, но результат не удалось загрузить")
+        const data = await res.json()
+        const bt = data.backtest
+        if (bt?.status === "success") {
+          setBacktestResult(bt)
+          setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: bt.samples_evaluated || 0, total: bt.samples_requested || BACKTEST_LIMIT })
+          fetchBacktestHistory()
+          return
+        }
+        throw new Error("Бэктест завершился, но результат не найден")
+      }
+
+      throw new Error("Превышено время ожидания бэктеста (10 мин)")
     } catch (err: any) {
       setBacktestError(err.message || "Ошибка при запуске бэктеста")
     } finally {
+      if (poll) window.clearInterval(poll)
       setBacktestRunning(false)
     }
   }
@@ -391,7 +459,7 @@ export default function AdminPage() {
       const res = await fetch(`${API_BASE}/api/ai/eval-pack`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ run_backtest: true, limit: 40000 }),
+        body: JSON.stringify({ run_backtest: true, limit: BACKTEST_LIMIT }),
       })
       if (!res.ok) throw new Error("Не удалось собрать пакет")
       const data = await res.json()
@@ -932,6 +1000,26 @@ export default function AdminPage() {
             <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{backtestError}</span>
+            </div>
+          )}
+
+          {backtestRunning && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 text-[10px] font-mono uppercase tracking-wide text-neutral-400">
+                <span className="truncate text-left">{backtestProgress.label || "Бэктест…"}</span>
+                <span className="shrink-0 text-[#74b9ff]">{backtestProgress.pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#a29bfe] transition-all duration-300"
+                  style={{ width: `${backtestProgress.pct}%` }}
+                />
+              </div>
+              {backtestProgress.total > 0 && (
+                <div className="text-[10px] text-neutral-500 font-mono">
+                  {backtestProgress.processed.toLocaleString()} / {backtestProgress.total.toLocaleString()}
+                </div>
+              )}
             </div>
           )}
 
