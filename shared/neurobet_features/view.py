@@ -409,7 +409,8 @@ def build_model_input(sample: Mapping[str, Any], mode: str = "serve") -> Optiona
     if len(overround_seq) != n:
         overround_seq = [None] * n
 
-    sample_key = sample.get("_key") or (
+    raw_key = sample.get("_key")
+    sample_key = tuple(raw_key) if raw_key else (
         sample.get("event_id"),
         sample.get("factor_id"),
         sample.get("parameter"),

@@ -32,6 +32,7 @@ from neurobet_features import (
     row_to_sample,
     set_team_form_cache,
 )
+from neurobet_features.view import VAL_CUTOFF_SEED
 from neurobet_filters import (
     universe_sql,
     universe_sql_params,
@@ -204,22 +205,20 @@ _last_catch_up: bool | None = None
 # After an admin reset the live weights are random: running the online 10k loop
 # (low LR, 50–200 epochs per slice, chart-gate vs the first lucky val_loss) is
 # fine-tuning a model that does not exist yet. Cold-start instead walks the
-# entire train-universe archive for COLD_START_EPOCHS shuffled passes, up to
-# MAX_EPOCHS inner epochs each (early-stopping still cuts a pass that has
-# converged), at a from-scratch LR, with the checkpoint gate off so a later
-# pass cannot be rolled back just because it did not beat a 10k overfit. Then
-# the online loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
+# entire train-universe archive for COLD_START_EPOCHS sequential passes: each
+# HTTP cycle streams one COLD_START_CHUNK slice through a single shuffled
+# mini-batch sweep (no val, no early stop, no checkpoint). Validation and the
+# checkpoint gate run only after the full archive epoch completes. Then the
+# online loop takes over (chart-gate on, LEARNING_RATE, random win/loss mix).
 COLD_START_EPOCHS = int(os.getenv("NEURALBET_COLD_START_EPOCHS", "2"))
 # One HTTP cycle trains this many archive rows (shuffle in Python). 0 = the entire
 # ~280k pool in one fetch — that OOMs the AI worker during fetchall / exhausts
 # the 10-conn Postgres pool, then Docker restarts and epoch 1/2 begins again.
-# 40000 is large enough for from-scratch GRU + 200 inner epochs; two outer
-# archive epochs still walk the whole pool across cycles via trained_count.
+# 40000 is large enough for from-scratch GRU updates; two outer archive epochs
+# still walk the whole pool across cycles via samples_this_epoch offset.
 COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "40000"))
-# Same ceiling as online (early-stopping still cuts it). Two inner epochs on
-# a cold GRU barely move val_loss; let the first two archive passes actually
-# converge.
-# Streaming cold-start: one inner epoch per chunk; checkpoint gate after full archive pass.
+# Deprecated — kept for env compat. Streaming cold-start always does exactly one
+# pass per chunk; inner multi-epoch convergence belongs to online training only.
 COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", "1"))
 COLD_START_LR = float(os.getenv("NEURALBET_COLD_START_LR", "1e-3"))
 COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
@@ -460,6 +459,7 @@ def reset_neural_network() -> dict[str, Any]:
             try:
                 set_reset_progress("wiping", "Сбрасываю веса модели…", 40)
                 ensemble_engine.reset()
+                _reset_training_caches()
                 set_reset_progress("charts", "Чищу графики обучения и бэктеста…", 52)
                 clear_training_history()
                 clear_backtest_history()
@@ -499,8 +499,8 @@ def reset_neural_network() -> dict[str, Any]:
             f"files removed, training/backtest charts cleared, live+training bankrolls reset "
             f"to start_balance, trained_count cleared on {reset_rows} resolved bet(s) — "
             f"cold-start will walk the archive in {_cold_start_chunk_label()} "
-            f"for {COLD_START_EPOCHS} epoch(s) × up to {COLD_START_INNER_EPOCHS} inner epochs "
-            f"before online 10k fine-tuning resumes.",
+            f"for {COLD_START_EPOCHS} streaming epoch(s) (one pass per chunk, "
+            f"checkpoint after each full archive walk) before online fine-tuning resumes.",
             level="WARNING",
         )
         set_reset_progress("done", "Готово", 100, active=False)
@@ -596,15 +596,21 @@ def _fresh_target() -> int:
 
 def _invalidate_archive_coverage() -> None:
     global _coverage_cache, _coverage_loaded_at, _archive_win_frac, _archive_win_frac_loaded_at
-    global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids, _online_pass_count
     _coverage_cache = None
     _coverage_loaded_at = 0.0
     _archive_win_frac = None
     _archive_win_frac_loaded_at = 0.0
+
+
+def _reset_training_caches() -> None:
+    """Reset only on model reset, never after an ordinary trained_count update."""
+    global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
+    global _online_pass_count
     _pinned_val_samples = None
     _pinned_val_loaded_at = 0.0
     _pinned_val_event_ids = None
     _online_pass_count = 0
+    set_team_form_cache(None)
     for path in (VAL_PIN_PATH, TEAM_FORM_PATH):
         try:
             if os.path.exists(path):
@@ -1188,14 +1194,14 @@ def _fetch_cold_start_batch(
 ) -> tuple[list[dict[str, Any]], list[tuple]]:
     """Sequential streaming slice of the train-universe archive (one epoch = full pass)."""
     uni, where_val, params = _universe_filter(val_event_ids)
-    extra = "AND h.trained_count = 0" if epoch <= 1 else ""
     unlimited = COLD_START_CHUNK <= 0
     if unlimited:
         f_cursor.execute(
             f"""
             {_TRAIN_ROW_SELECT}
-            {uni} {where_val} {extra}
-            ORDER BY h.finished_at ASC, h.event_id, h.factor_id
+            {uni} {where_val}
+            ORDER BY h.finished_at ASC, h.event_id, h.factor_id,
+                     h.parameter, h.market_prefix
             """,
             list(params),
         )
@@ -1203,14 +1209,16 @@ def _fetch_cold_start_batch(
         f_cursor.execute(
             f"""
             {_TRAIN_ROW_SELECT}
-            {uni} {where_val} {extra}
-            ORDER BY h.finished_at ASC, h.event_id, h.factor_id
+            {uni} {where_val}
+            ORDER BY h.finished_at ASC, h.event_id, h.factor_id,
+                     h.parameter, h.market_prefix
             OFFSET %s LIMIT %s
             """,
             list(params) + [offset, COLD_START_CHUNK],
         )
     samples = _rows_to_train_samples(f_cursor.fetchall())
-    random.shuffle(samples)
+    rng = random.Random(VAL_CUTOFF_SEED + epoch * 1_000_003 + offset)
+    rng.shuffle(samples)
     keys = [s["_key"] for s in samples]
     return samples, keys
 
@@ -1343,7 +1351,7 @@ def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -
         }
         tmp = VAL_PIN_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False)
+            json.dump(payload, f, ensure_ascii=False, default=str)
         os.replace(tmp, VAL_PIN_PATH)
         _pinned_val_samples = samples
         _pinned_val_loaded_at = time.time()
@@ -1359,7 +1367,6 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
     ids = val_event_ids or set()
     if (
         _pinned_val_samples
-        and _pinned_val_event_ids == ids
         and now - _pinned_val_loaded_at < VAL_PIN_REFRESH_SECONDS
     ):
         return list(_pinned_val_samples)
@@ -1370,9 +1377,9 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
                 meta = json.load(f)
             disk_ids = set(meta.get("event_ids") or [])
             pinned_at = float(meta.get("pinned_at") or 0)
-            if disk_ids == ids and now - pinned_at < VAL_PIN_REFRESH_SECONDS:
+            if now - pinned_at < VAL_PIN_REFRESH_SECONDS:
                 _pinned_val_samples = disk
-                _pinned_val_event_ids = ids
+                _pinned_val_event_ids = disk_ids
                 _pinned_val_loaded_at = pinned_at
                 return list(disk)
         except Exception:
@@ -1985,6 +1992,22 @@ def _run_neuralbet_inference_and_training_locked(
     coverage = get_archive_training_coverage()
     cold_start = _load_cold_start()
     cold_start_active = bool(cold_start.get("active"))
+    if (
+        cold_start_active
+        and int(cold_start.get("samples_this_epoch") or 0) > 0
+        and not ensemble_engine.checkpoint_window_active
+    ):
+        # The process restarted mid-epoch. Interim chunk weights intentionally are
+        # not an accepted checkpoint, so replay this epoch from offset zero rather
+        # than skipping rows whose in-memory updates were lost.
+        cold_start["samples_this_epoch"] = 0
+        _save_cold_start(cold_start)
+        add_ai_log(
+            "TRAINING",
+            "Cold-start worker restarted mid-epoch — replaying the current "
+            "streaming epoch from offset 0.",
+            level="WARNING",
+        )
     train_every = int(coverage["train_every_cycles"])
     is_train_cycle = (
         True
@@ -2021,7 +2044,17 @@ def _run_neuralbet_inference_and_training_locked(
         f_conn = _track_conn(get_finished_connection())
         f_cursor = f_conn.cursor()
 
-        val_event_ids = _get_val_event_ids(f_cursor)
+        candidate_val_event_ids = _get_val_event_ids(f_cursor)
+        if run_gru_training or is_tune_cycle or is_lgb_cycle:
+            val_samples = _fetch_val_batch(f_cursor, candidate_val_event_ids)
+        # Exclude the same pinned events from training for the whole pin lifetime;
+        # otherwise a sliding candidate window eventually leaks validation rows into
+        # the train pool while metrics still evaluate those pinned rows.
+        val_event_ids = (
+            set(_pinned_val_event_ids)
+            if _pinned_val_event_ids is not None
+            else candidate_val_event_ids
+        )
         # Skipping the fetch on a non-training cycle isn't just "do less work" — it's
         # what makes the accumulation in TRAIN_EVERY_CYCLES's docstring actually happen:
         # matches that finish in between stay trained_count = 0 (see _mark_trained,
@@ -2056,9 +2089,6 @@ def _run_neuralbet_inference_and_training_locked(
                 training_samples, train_keys, class_mix = _fetch_training_batch(
                     f_cursor, val_event_ids
                 )
-        if run_gru_training or is_tune_cycle or is_lgb_cycle:
-            val_samples = _fetch_val_batch(f_cursor, val_event_ids)
-
         if is_lgb_cycle:
             _refresh_team_form_cache(f_cursor)
             f_cursor.execute(
@@ -2151,12 +2181,12 @@ def _run_neuralbet_inference_and_training_locked(
             cs_epoch = int(cold_start.get("epoch") or 1)
             mix_str = (
                 f"natural mix, lr={_cold_start_lr(cs_epoch):.4g}, "
-                f"gate on, {COLD_START_INNER_EPOCHS} inner epoch(s) per chunk"
+                f"streaming pass (no val/checkpoint until epoch end)"
             )
             start_msg = (
-                f"Starting cold-start pass: {len(training_samples)} samples "
+                f"Starting cold-start chunk: {len(training_samples)} samples "
                 f"(epoch {cs_epoch}/{cold_start.get('epochs_total', COLD_START_EPOCHS)}, "
-                f"{mix_str}), {len(val_samples)} held out for validation "
+                f"{mix_str}) "
             )
         else:
             if class_mix:
@@ -2198,26 +2228,61 @@ def _run_neuralbet_inference_and_training_locked(
             and pool > 0
             and seen + len(training_samples) >= pool
         )
+        if cold_start_active and seen == 0:
+            baseline_loss = ensemble_engine.begin_checkpoint_window(val_samples)
+            if baseline_loss is None:
+                raise RuntimeError(
+                    "Cold-start cannot pin epoch checkpoint baseline without validation data"
+                )
+            add_ai_log(
+                "TRAINING",
+                f"Cold-start epoch {cs_epoch} baseline pinned: "
+                f"val_loss {baseline_loss:.4f}.",
+            )
         global _online_pass_count
         use_bankroll = _online_pass_count >= int(
             os.getenv("NEURALBET_BANKROLL_LOSS_DISABLED_PASSES", "0")
         )
         try:
-            metrics = ensemble_engine.train_online(
-                training_samples,
-                val_data=val_samples,
-                on_epoch=_log_epoch,
-                skip_checkpoint_gate=False,
-                save_checkpoint=(not cold_start_active) or epoch_complete,
-                learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
-                rebalance_classes=cold_start_active,
-                epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
-                use_bankroll_loss=use_bankroll,
-                should_abort=cycle_aborted,
-            )
+            if cold_start_active:
+                metrics = ensemble_engine.train_cold_start_chunk(
+                    training_samples,
+                    learning_rate=_cold_start_lr(cs_epoch),
+                    rebalance_classes=True,
+                    should_abort=cycle_aborted,
+                )
+                if epoch_complete:
+                    epoch_gate = ensemble_engine.finish_checkpoint_window(
+                        val_samples,
+                        best_epoch=cs_epoch,
+                    )
+                    metrics.update(epoch_gate)
+                    metrics["best_epoch"] = cs_epoch
+                else:
+                    metrics["checkpoint_accepted"] = True
+                    metrics["checkpoint_saved"] = False
+                    metrics["checkpoint_deferred"] = True
+                    metrics["checkpoint_reject_reason"] = None
+                    metrics["val_loss"] = None
+                    metrics["val_guess_rate"] = None
+            else:
+                metrics = ensemble_engine.train_online(
+                    training_samples,
+                    val_data=val_samples,
+                    on_epoch=_log_epoch,
+                    learning_rate=None,
+                    rebalance_classes=False,
+                    epochs=MAX_EPOCHS,
+                    use_bankroll_loss=use_bankroll,
+                    should_abort=cycle_aborted,
+                )
             if metrics.get("samples_used", 0) > 0:
                 _online_pass_count += 1
         except MemoryError as e:
+            if cold_start_active:
+                ensemble_engine.cancel_checkpoint_window()
+                cold_start["samples_this_epoch"] = 0
+                _save_cold_start(cold_start)
             add_ai_log(
                 "TRAINING",
                 f"Out of memory during GRU pass ({len(training_samples)} samples) — "
@@ -2226,6 +2291,10 @@ def _run_neuralbet_inference_and_training_locked(
             )
             metrics = {"samples_used": 0, "samples_skipped": len(training_samples)}
         except Exception as e:
+            if cold_start_active:
+                ensemble_engine.cancel_checkpoint_window()
+                cold_start["samples_this_epoch"] = 0
+                _save_cold_start(cold_start)
             add_ai_log("TRAINING", f"Training pass crashed: {e}", level="WARNING")
             raise
 
@@ -2239,50 +2308,66 @@ def _run_neuralbet_inference_and_training_locked(
 
         if metrics["samples_used"] > 0:
             accepted = metrics.get("checkpoint_accepted", True)
-            if accepted or not cold_start_active:
-                f_conn2 = get_finished_connection()
-                f_cursor2 = f_conn2.cursor()
-                _mark_trained(f_cursor2, train_keys)
-                f_conn2.commit()
-                release_connection(f_conn2)
-                _invalidate_archive_coverage()
-            if accepted:
-                if cold_start_active:
-                    cold_start = _advance_cold_start(cold_start, metrics["samples_used"])
-            else:
+            # trained_count is archive coverage, not checkpoint acceptance. Every
+            # consumed streaming chunk advances exactly once; an epoch-level rollback
+            # must not make the final chunk repeat forever.
+            f_conn2 = get_finished_connection()
+            f_cursor2 = f_conn2.cursor()
+            _mark_trained(f_cursor2, train_keys)
+            f_conn2.commit()
+            release_connection(f_conn2)
+            _invalidate_archive_coverage()
+            if cold_start_active:
+                cold_start = _advance_cold_start(
+                    cold_start, metrics["samples_used"]
+                )
+            if not accepted:
                 gru_pass_rejected = True
                 add_ai_log(
                     "TRAINING",
-                    "Checkpoint rolled back — weights unchanged, but trained_count bumped "
-                    "so catch-up advances through the archive.",
+                    (
+                        "Cold-start epoch checkpoint rolled back — epoch-start weights "
+                        "restored; archive progress advanced to avoid repeating a chunk."
+                        if cold_start_active
+                        else "Checkpoint rolled back — weights unchanged, but "
+                        "trained_count bumped so catch-up advances through the archive."
+                    ),
                     level="WARNING",
                 )
 
             if not cold_start_active:
-                if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
+                if metrics.get("best_epoch", 0) <= LOW_EPOCH_ALERT_THRESHOLD:
                     _low_epoch_streak += 1
                 else:
                     _low_epoch_streak = 0
 
-            run_entry = record_training_run({
-                "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
-                "samples_used": metrics["samples_used"],
-                "samples_skipped": metrics["samples_skipped"],
-                "positive_count": metrics["positive_count"],
-                "negative_count": metrics["negative_count"],
-                "best_epoch": metrics["best_epoch"],
-                "epochs_run": metrics["epochs_run"],
-                "train_loss": metrics["final_loss"],
-                "train_guess_rate": metrics["train_guess_rate"],
-                "val_loss": metrics.get("val_loss"),
-                "val_guess_rate": metrics.get("val_guess_rate"),
-                "checkpoint_accepted": metrics.get("checkpoint_accepted"),
-                "val_loss_incoming": metrics.get("val_loss_incoming"),
-                "val_loss_attempted": metrics.get("val_loss_attempted"),
-                "checkpoint_reject_reason": metrics.get("checkpoint_reject_reason"),
-                "cold_start": cold_start_active,
-                "class_mix": class_mix,
-            })
+            cold_start_epoch_done = cold_start_active and epoch_complete
+            if not cold_start_active or cold_start_epoch_done:
+                record_training_run({
+                    "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "samples_used": metrics["samples_used"],
+                    "samples_skipped": metrics["samples_skipped"],
+                    "positive_count": metrics["positive_count"],
+                    "negative_count": metrics["negative_count"],
+                    "best_epoch": metrics.get("best_epoch"),
+                    "epochs_run": metrics.get("epochs_run"),
+                    "train_loss": metrics["final_loss"],
+                    "train_guess_rate": metrics["train_guess_rate"],
+                    "val_loss": metrics.get("val_loss"),
+                    "val_guess_rate": metrics.get("val_guess_rate"),
+                    "checkpoint_accepted": (
+                        None
+                        if metrics.get("checkpoint_deferred")
+                        else metrics.get("checkpoint_accepted")
+                    ),
+                    "checkpoint_saved": metrics.get("checkpoint_saved", False),
+                    "checkpoint_deferred": metrics.get("checkpoint_deferred", False),
+                    "val_loss_incoming": metrics.get("val_loss_incoming"),
+                    "val_loss_attempted": metrics.get("val_loss_attempted"),
+                    "checkpoint_reject_reason": metrics.get("checkpoint_reject_reason"),
+                    "cold_start": cold_start_active,
+                    "class_mix": class_mix,
+                })
 
             if not cold_start_active:
                 from app.neuralbet.training_history import get_training_history
@@ -2291,65 +2376,99 @@ def _run_neuralbet_inference_and_training_locked(
                     get_training_history()
                 )
 
-            pass_val = metrics.get("val_loss_attempted")
-            if pass_val is None:
-                pass_val = metrics.get("val_loss")
-            val_str = (
-                f", val_loss {pass_val:.4f} / val_hit_rate {metrics['val_guess_rate']:.1f}%"
-                if pass_val is not None
-                else " (no validation split yet — need more resolved bets)"
-            )
-            bank = metrics.get("bankroll") or {}
-            bank_label = "Val bankroll" if bank.get("on_val") else "Training bankroll"
-            turnover = bank.get("turnover_roi")
-            bank_str = (
-                f". {bank_label}: {bank.get('start', 0):.1f} → {bank.get('end', 0):.1f} ₽"
-                + (f" (turnover ROI {turnover:+.1f}%)" if turnover is not None else "")
-            )
-            in_sample_end = bank.get("in_sample_end")
-            if (
-                bank.get("on_val")
-                and in_sample_end is not None
-                and in_sample_end > max(float(bank.get("end") or 0), 1.0) * 2
-            ):
-                bank_str += (
-                    f"; in-sample compound {bank.get('start', 0):.0f} → {in_sample_end:.0f} ₽ "
-                    "(overfit, not counted)"
+            if cold_start_active and not cold_start_epoch_done:
+                progress = seen + metrics["samples_used"]
+                add_ai_log(
+                    "TRAINING",
+                    f"Cold-start chunk: {metrics['samples_used']} samples "
+                    f"({metrics['positive_count']} win / {metrics['negative_count']} loss) — "
+                    f"pass_loss {metrics.get('pass_loss', metrics['final_loss']):.4f}, "
+                    f"eval_loss {metrics['final_loss']:.4f} "
+                    f"(hit_rate {metrics['train_guess_rate']:.1f}%). "
+                    f"Progress {progress}/{pool}. "
+                    f"Checkpoint deferred to epoch end.",
                 )
-            add_ai_log(
-                "TRAINING",
-                (
-                    "Cold-start step complete: "
-                    if cold_start_active
-                    else "Training step complete: "
-                )
-                + f"{metrics['samples_used']} samples "
-                f"({metrics['positive_count']} win / {metrics['negative_count']} loss"
-                + (
-                    f", {metrics['samples_skipped']} skipped"
-                    if metrics["samples_skipped"]
-                    else ""
-                )
-                + f") — best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
-                f"train_loss {metrics['final_loss']:.4f} (hit_rate {metrics['train_guess_rate']:.1f}%)"
-                + val_str
-                + bank_str
-                + (
-                    f" ({bank['ruin_events']} ruin(s) this pass)"
-                    if bank.get("ruin_events")
-                    else ""
-                )
-                + (
-                    ". Checkpoint saved."
-                    if metrics.get("checkpoint_accepted", True)
+            else:
+                pass_val = metrics.get("val_loss_attempted")
+                if pass_val is None:
+                    pass_val = metrics.get("val_loss")
+                val_str = (
+                    f", val_loss {pass_val:.4f} / val_hit_rate {metrics['val_guess_rate']:.1f}%"
+                    if pass_val is not None and metrics.get("val_guess_rate") is not None
                     else (
-                        f". Checkpoint kept — pass val_loss {metrics.get('val_loss_attempted')} "
-                        f"did not beat incoming {metrics.get('val_loss_incoming')} "
-                        f"on the same val split; recorded val_loss {run_entry.get('val_loss')} "
-                        "(previous checkpoint)."
+                        f", val_loss {pass_val:.4f}"
+                        if pass_val is not None
+                        else ""
                     )
-                ),
-            )
+                )
+                bank = metrics.get("bankroll") or {}
+                bank_label = "Val bankroll" if bank.get("on_val") else "Training bankroll"
+                turnover = bank.get("turnover_roi")
+                bank_str = ""
+                if bank:
+                    bank_str = (
+                        f". {bank_label}: {bank.get('start', 0):.1f} → {bank.get('end', 0):.1f} ₽"
+                        + (f" (turnover ROI {turnover:+.1f}%)" if turnover is not None else "")
+                    )
+                in_sample_end = bank.get("in_sample_end")
+                if (
+                    bank.get("on_val")
+                    and in_sample_end is not None
+                    and in_sample_end > max(float(bank.get("end") or 0), 1.0) * 2
+                ):
+                    bank_str += (
+                        f"; in-sample compound {bank.get('start', 0):.0f} → {in_sample_end:.0f} ₽ "
+                        "(overfit, not counted)"
+                    )
+                if metrics.get("checkpoint_accepted", True):
+                    checkpoint_str = (
+                        ". Checkpoint saved."
+                        if metrics.get("checkpoint_saved")
+                        else (
+                            ". Streaming epoch complete; checkpoint deferred."
+                            if metrics.get("checkpoint_deferred")
+                            else "."
+                        )
+                    )
+                else:
+                    checkpoint_str = (
+                        f". Checkpoint rejected ({metrics.get('checkpoint_reject_reason')}): "
+                        f"attempted val_loss {metrics.get('val_loss_attempted')}, "
+                        f"incoming {metrics.get('val_loss_incoming')}; weights restored."
+                    )
+                epoch_bit = ""
+                if cold_start_active:
+                    epoch_bit = f"epoch {cs_epoch}/{cold_start.get('epochs_total', COLD_START_EPOCHS)}, "
+                elif metrics.get("best_epoch") is not None:
+                    epoch_bit = (
+                        f"best epoch {metrics['best_epoch']}/{metrics['epochs_run']}, "
+                    )
+                add_ai_log(
+                    "TRAINING",
+                    (
+                        "Cold-start epoch complete: "
+                        if cold_start_epoch_done
+                        else "Training step complete: "
+                    )
+                    + f"{metrics['samples_used']} samples "
+                    f"({metrics['positive_count']} win / {metrics['negative_count']} loss"
+                    + (
+                        f", {metrics['samples_skipped']} skipped"
+                        if metrics["samples_skipped"]
+                        else ""
+                    )
+                    + f") — {epoch_bit}"
+                    f"train_loss {metrics['final_loss']:.4f} "
+                    f"(hit_rate {metrics['train_guess_rate']:.1f}%)"
+                    + val_str
+                    + bank_str
+                    + (
+                        f" ({bank['ruin_events']} ruin(s) this pass)"
+                        if bank.get("ruin_events")
+                        else ""
+                    )
+                    + checkpoint_str,
+                )
 
             if _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT:
                 add_ai_log(
