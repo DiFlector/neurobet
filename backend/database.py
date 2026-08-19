@@ -38,24 +38,88 @@ from neurobet_features import (  # noqa: E402
 
 logger = logging.getLogger("database")
 
-_pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, dsn=settings.DATABASE_URL)
+_pg_pool = psycopg2.pool.ThreadedConnectionPool(2, 40, dsn=settings.DATABASE_URL)
+
+import threading
+
+class _SafeConn:
+    """Обёртка, которая автоматически возвращает соединение в пул при сборке мусора,
+    если release_connection не был вызван (защита от утечки при исключениях)."""
+    __slots__ = ("_conn", "_released", "_pool", "_tid")
+
+    def __init__(self, conn, pg_pool):
+        self._conn = conn
+        self._pool = pg_pool
+        self._released = False
+        self._tid = threading.current_thread().ident
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def _release(self):
+        if not self._released:
+            self._released = True
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                pass
+
+    def __del__(self):
+        self._release()
 
 def get_connection():
     conn = _pg_pool.getconn()
     conn.cursor_factory = RealDictCursor
     with conn.cursor() as cur:
         cur.execute("SET search_path TO live, public")
-    return conn
+    return _SafeConn(conn, _pg_pool)
 
 def get_finished_connection():
     conn = _pg_pool.getconn()
     conn.cursor_factory = RealDictCursor
     with conn.cursor() as cur:
         cur.execute("SET search_path TO finished, public")
-    return conn
+    return _SafeConn(conn, _pg_pool)
 
 def release_connection(conn):
-    _pg_pool.putconn(conn)
+    if isinstance(conn, _SafeConn):
+        conn._released = True
+        try:
+            _pg_pool.putconn(conn._conn)
+        except Exception:
+            pass
+    else:
+        _pg_pool.putconn(conn)
+
+from contextlib import contextmanager
+
+@contextmanager
+def db_connection(schema="live"):
+    """Контекстный менеджер для безопасного получения/возврата соединения из пула."""
+    if schema == "finished":
+        conn = get_finished_connection()
+    else:
+        conn = get_connection()
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        release_connection(conn)
 
 def init_db():
     # Schema is owned by Alembic migrations (db/migrations/versions/) now — this is a
