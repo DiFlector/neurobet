@@ -47,6 +47,7 @@ from .view import (
     scale_score_sum,
     scale_set_points,
     scale_total_line,
+    set_team_form_cache,
 )
 from .vocab import (
     MARKET_FAMILIES,
