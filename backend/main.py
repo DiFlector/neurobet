@@ -546,7 +546,7 @@ def update_admin_ai_settings(req: AISettingsRequest):
                 return res.json()
     except Exception as e:
         logger.error(f"Error communicating with AI Service: {e}")
-    return {"status": "error", "message": "Failed to update AI settings"}
+    raise HTTPException(status_code=502, detail="AI service unreachable — settings not saved")
 
 @app.get("/api/admin/ai-logs")
 def read_admin_ai_logs():

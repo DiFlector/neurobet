@@ -532,14 +532,20 @@ export default function AdminPage() {
     if (key === "training_enabled") setTrainingEnabled(newValue)
 
     try {
-      await fetch(`${API_BASE}/api/admin/ai-settings`, {
+      const res = await fetch(`${API_BASE}/api/admin/ai-settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: newValue })
       })
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      if (data.status !== "success") {
+        throw new Error(data.message || "settings save failed")
+      }
       setTimeout(fetchAISettings, 300)
     } catch (err) {
-      // Revert if error
       if (key === "ai_enabled") setAiEnabled(currentValue)
       if (key === "training_enabled") setTrainingEnabled(currentValue)
     }

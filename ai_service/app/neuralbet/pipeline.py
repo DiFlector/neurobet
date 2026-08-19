@@ -405,7 +405,6 @@ def _restore_ai_settings() -> None:
 
 
 _restore_ai_settings()
-_restore_training_streaks()
 # Survive a failed admin reset without requiring another redeploy — a stuck abort flag
 # otherwise makes every cycle return "skipped" with no INFERENCE/TRAINING lines.
 _abort_cycle.clear()
@@ -578,6 +577,9 @@ def _restore_training_streaks() -> None:
         )
     except Exception as e:
         logger.error(f"Error restoring checkpoint reject streak: {e}")
+
+
+_restore_training_streaks()
 
 
 def _fresh_target() -> int:
