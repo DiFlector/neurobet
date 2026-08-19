@@ -47,7 +47,9 @@ MAX_POSITION_FRACTION = float(os.getenv("BANKROLL_MAX_POSITION_FRACTION", "0.05"
 KELLY_FRACTION = float(os.getenv("BANKROLL_KELLY_FRACTION", "0.25"))
 MAX_POSITIONS = int(os.getenv("BANKROLL_MAX_POSITIONS", "6"))
 RUIN_PENALTY = float(os.getenv("BANKROLL_RUIN_PENALTY", "5.0"))
-BANKROLL_LOSS_WEIGHT = float(os.getenv("BANKROLL_LOSS_WEIGHT", "1.0"))
+BANKROLL_LOSS_WEIGHT = float(os.getenv("BANKROLL_LOSS_WEIGHT", "0.35"))
+BANKROLL_LOSS_CLIP = float(os.getenv("BANKROLL_LOSS_CLIP", "3.0"))
+BANKROLL_LOSS_DISABLED_PASSES = int(os.getenv("BANKROLL_LOSS_DISABLED_PASSES", "0"))
 
 # A balance that's technically > 0 but too small to ever clear the 10%-of-bank minimum
 # stake again is functionally ruined — without this floor, float rounding can strand an

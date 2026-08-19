@@ -12,17 +12,21 @@ from .overround import (
     overround_from_grouped,
     overround_group_key,
 )
+from .no_vig import no_vig_probability
 from .parse import (
     TimerParse,
     pack_timer_entry,
     parse_period_ordinal,
     parse_score_diff,
+    parse_score_pair,
+    parse_score_sum,
     parse_timer,
     parse_timer_seconds,
     parse_ts_epoch,
     period_index,
     unpack_timer_entry,
 )
+from .team_form import build_team_form_index, lookup_team_form
 from .view import (
     GRU_INPUT_DIM,
     LGB_CATEGORICAL_FEATURES,
@@ -37,7 +41,10 @@ from .view import (
     lgb_feature_row,
     live_sample,
     row_to_sample,
+    scale_line_remaining,
     scale_match_score,
+    scale_overround,
+    scale_score_sum,
     scale_set_points,
     scale_total_line,
 )
@@ -62,7 +69,16 @@ __all__ = [
     "TimerParse",
     "pack_timer_entry",
     "parse_period_ordinal",
+    "no_vig_probability",
     "parse_score_diff",
+    "parse_score_pair",
+    "parse_score_sum",
+    "build_team_form_index",
+    "lookup_team_form",
+    "set_team_form_cache",
+    "scale_line_remaining",
+    "scale_overround",
+    "scale_score_sum",
     "parse_timer",
     "parse_timer_seconds",
     "parse_ts_epoch",

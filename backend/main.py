@@ -60,10 +60,10 @@ def _fallback_ai_settings() -> dict:
             saved = json.load(f)
         return {
             "ai_enabled": bool(saved["ai_enabled"]) if "ai_enabled" in saved else True,
-            "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else True,
+            "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else False,
         }
     except Exception:
-        return {"ai_enabled": True, "training_enabled": True}
+        return {"ai_enabled": True, "training_enabled": False}
 
 
 def _read_ai_logs_file() -> Optional[list]:

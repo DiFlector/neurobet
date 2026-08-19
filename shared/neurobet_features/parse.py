@@ -44,12 +44,23 @@ def parse_ts_epoch(raw: Any) -> Optional[float]:
         return None
 
 
-def parse_score_diff(score_at_time: Any) -> int:
+def parse_score_pair(score_at_time: Any) -> tuple[int, int]:
+    """Split 'a:b' match/set score into integer parts."""
     try:
         a, b = str(score_at_time or "0:0").split(":", 1)
-        return int(a) - int(b)
+        return int(a), int(b)
     except Exception:
-        return 0
+        return 0, 0
+
+
+def parse_score_diff(score_at_time: Any) -> int:
+    a, b = parse_score_pair(score_at_time)
+    return a - b
+
+
+def parse_score_sum(score_at_time: Any) -> int:
+    a, b = parse_score_pair(score_at_time)
+    return a + b
 
 
 def parse_period_ordinal(prefix: str) -> Optional[int]:

@@ -24,10 +24,13 @@ from app.neuralbet.context import (
 from neurobet_features import (
     accumulate_overround,
     build_model_input,
+    build_team_form_index,
     live_sample,
     parse_score_diff,
+    parse_score_sum,
     parse_ts_epoch,
     row_to_sample,
+    set_team_form_cache,
 )
 from neurobet_filters import (
     universe_sql,
@@ -128,7 +131,7 @@ def _is_query_canceled(exc: BaseException) -> bool:
 # Defaults only apply when no saved file exists yet. After an admin toggle the values
 # live in AI_SETTINGS_PATH on the /app/data volume so a container restart does not
 # flip inference/training back on.
-AI_SETTINGS = {"ai_enabled": True, "training_enabled": True}
+AI_SETTINGS = {"ai_enabled": True, "training_enabled": False}
 AI_SETTINGS_PATH = os.path.join(MODEL_DIR, "ai_settings.json")
 
 # Replay-buffer knobs for the online trainer (see B4 in the plan): a resolved bet is
@@ -216,10 +219,15 @@ COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "40000"))
 # Same ceiling as online (early-stopping still cuts it). Two inner epochs on
 # a cold GRU barely move val_loss; let the first two archive passes actually
 # converge.
-COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", str(MAX_EPOCHS)))
+# Streaming cold-start: one inner epoch per chunk; checkpoint gate after full archive pass.
+COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", "1"))
 COLD_START_LR = float(os.getenv("NEURALBET_COLD_START_LR", "1e-3"))
 COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
 COLD_START_PATH = os.path.join(MODEL_DIR, "cold_start.json")
+VAL_PIN_PATH = os.path.join(MODEL_DIR, "val_pin.json")
+VAL_PIN_REFRESH_SECONDS = float(os.getenv("NEURALBET_VAL_PIN_REFRESH_SECONDS", "86400"))
+TEAM_FORM_PATH = os.path.join(MODEL_DIR, "team_form.json")
+_online_pass_count = 0
 RESET_PROGRESS_PATH = os.path.join(MODEL_DIR, "reset_progress.json")
 _reset_progress_lock = threading.Lock()
 _reset_progress: dict[str, Any] = {
@@ -429,7 +437,7 @@ def reset_neural_network() -> dict[str, Any]:
     cold-start walk of the whole archive (from-scratch LR, checkpoint gate off)
     instead of jumping into the online 10k fine-tune loop.
     """
-    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak
+    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak, _online_pass_count
     from app.neuralbet.backtest import clear_backtest_history
 
     reset_rows = 0
@@ -588,10 +596,21 @@ def _fresh_target() -> int:
 
 def _invalidate_archive_coverage() -> None:
     global _coverage_cache, _coverage_loaded_at, _archive_win_frac, _archive_win_frac_loaded_at
+    global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids, _online_pass_count
     _coverage_cache = None
     _coverage_loaded_at = 0.0
     _archive_win_frac = None
     _archive_win_frac_loaded_at = 0.0
+    _pinned_val_samples = None
+    _pinned_val_loaded_at = 0.0
+    _pinned_val_event_ids = None
+    _online_pass_count = 0
+    for path in (VAL_PIN_PATH, TEAM_FORM_PATH):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
 
 def _default_cold_start() -> dict[str, Any]:
@@ -1015,9 +1034,9 @@ _row_to_sample = row_to_sample
 
 _TRAIN_ROW_SELECT = """
         SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix, h.is_win,
-               h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
-               h.overround_seq_json,
-               h.score_diff_at_bet, h.finished_at, h.overround_close,
+               h.odds_seq_json, h.score_seq_json, h.score_sum_seq_json,
+               h.ts_seq_json, h.timer_seq_json, h.overround_seq_json,
+               h.score_diff_at_bet, h.finished_at, h.overround_close, h.trained_count,
                f.sport_path, f.team_1, f.team_2
         FROM finished_bets h
         JOIN finished_events f ON h.event_id = f.event_id
@@ -1165,12 +1184,9 @@ def _fetch_training_batch(
 
 
 def _fetch_cold_start_batch(
-    f_cursor, val_event_ids: set | None, epoch: int
+    f_cursor, val_event_ids: set | None, epoch: int, offset: int = 0,
 ) -> tuple[list[dict[str, Any]], list[tuple]]:
-    """Shuffled slice of the train-universe archive. Epoch 1 prefers unseen rows
-    so coverage actually advances; later epochs reshuffle the whole pool.
-    COLD_START_CHUNK<=0 takes the entire pool. RANDOM() runs on key columns only
-    so Postgres does not sort 280k JSON trajectories."""
+    """Sequential streaming slice of the train-universe archive (one epoch = full pass)."""
     uni, where_val, params = _universe_filter(val_event_ids)
     extra = "AND h.trained_count = 0" if epoch <= 1 else ""
     unlimited = COLD_START_CHUNK <= 0
@@ -1179,6 +1195,7 @@ def _fetch_cold_start_batch(
             f"""
             {_TRAIN_ROW_SELECT}
             {uni} {where_val} {extra}
+            ORDER BY h.finished_at ASC, h.event_id, h.factor_id
             """,
             list(params),
         )
@@ -1187,17 +1204,10 @@ def _fetch_cold_start_batch(
             f"""
             {_TRAIN_ROW_SELECT}
             {uni} {where_val} {extra}
-            AND (h.event_id, h.factor_id, h.parameter, h.market_prefix) IN (
-                SELECT h.event_id, h.factor_id, h.parameter, h.market_prefix
-                FROM finished_bets h
-                JOIN finished_events f ON h.event_id = f.event_id
-                WHERE h.is_win IS NOT NULL
-                {uni} {where_val} {extra}
-                ORDER BY RANDOM()
-                LIMIT %s
-            )
+            ORDER BY h.finished_at ASC, h.event_id, h.factor_id
+            OFFSET %s LIMIT %s
             """,
-            list(params) + list(params) + [COLD_START_CHUNK],
+            list(params) + [offset, COLD_START_CHUNK],
         )
     samples = _rows_to_train_samples(f_cursor.fetchall())
     random.shuffle(samples)
@@ -1290,7 +1300,7 @@ def _fetch_val_class_rows(
     return out
 
 
-def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
+def _fetch_val_batch_raw(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
     if not val_event_ids:
         return []
     win_frac = _get_archive_win_frac(f_cursor)
@@ -1302,6 +1312,111 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
     samples = wins + losses
     random.shuffle(samples)
     return samples
+
+
+_pinned_val_samples: list[dict[str, Any]] | None = None
+_pinned_val_loaded_at = 0.0
+_pinned_val_event_ids: set | None = None
+
+
+def _load_val_pin_from_disk() -> list[dict[str, Any]] | None:
+    if not os.path.exists(VAL_PIN_PATH):
+        return None
+    try:
+        with open(VAL_PIN_PATH, "r", encoding="utf-8") as f:
+            blob = json.load(f)
+        if isinstance(blob, dict) and isinstance(blob.get("samples"), list):
+            return blob["samples"]
+    except Exception as e:
+        logger.error(f"Error loading val pin: {e}")
+    return None
+
+
+def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -> None:
+    global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        payload = {
+            "pinned_at": time.time(),
+            "event_ids": list(val_event_ids or []),
+            "samples": samples,
+        }
+        tmp = VAL_PIN_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp, VAL_PIN_PATH)
+        _pinned_val_samples = samples
+        _pinned_val_loaded_at = time.time()
+        _pinned_val_event_ids = set(val_event_ids or [])
+    except Exception as e:
+        logger.error(f"Error persisting val pin: {e}")
+
+
+def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
+    """Pinned held-out slice — same rows and deterministic cutoffs between passes."""
+    global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
+    now = time.time()
+    ids = val_event_ids or set()
+    if (
+        _pinned_val_samples
+        and _pinned_val_event_ids == ids
+        and now - _pinned_val_loaded_at < VAL_PIN_REFRESH_SECONDS
+    ):
+        return list(_pinned_val_samples)
+    disk = _load_val_pin_from_disk()
+    if disk:
+        try:
+            with open(VAL_PIN_PATH, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            disk_ids = set(meta.get("event_ids") or [])
+            pinned_at = float(meta.get("pinned_at") or 0)
+            if disk_ids == ids and now - pinned_at < VAL_PIN_REFRESH_SECONDS:
+                _pinned_val_samples = disk
+                _pinned_val_event_ids = ids
+                _pinned_val_loaded_at = pinned_at
+                return list(disk)
+        except Exception:
+            pass
+    samples = _fetch_val_batch_raw(f_cursor, val_event_ids)
+    _persist_val_pin(samples, val_event_ids)
+    return samples
+
+
+def _refresh_team_form_cache(f_cursor) -> None:
+    """Rolling player form — refreshed with LightGBM refit, not every scrape."""
+    try:
+        sports, factors = universe_sql_params()
+        f_cursor.execute(
+            f"""
+            SELECT h.is_win, h.factor_id, f.sport_path, f.team_1, f.team_2
+            FROM finished_bets h
+            JOIN finished_events f ON h.event_id = f.event_id
+            WHERE h.is_win IS NOT NULL {universe_sql("f", "h")}
+            ORDER BY h.finished_at DESC
+            LIMIT 120000
+            """,
+            (sports, factors),
+        )
+        cache = build_team_form_index(list(f_cursor.fetchall()))
+        set_team_form_cache(cache)
+        tmp = TEAM_FORM_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({f"{a}|{b}|{c}": v for (a, b, c), v in cache.items()}, f)
+        os.replace(tmp, TEAM_FORM_PATH)
+    except Exception as e:
+        logger.error(f"Error refreshing team form cache: {e}")
+        if os.path.exists(TEAM_FORM_PATH):
+            try:
+                with open(TEAM_FORM_PATH, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                cache = {}
+                for k, v in raw.items():
+                    parts = k.split("|", 2)
+                    if len(parts) == 3:
+                        cache[(int(parts[0]), parts[1], int(parts[2]))] = float(v)
+                set_team_form_cache(cache)
+            except Exception:
+                pass
 
 
 def _mark_trained(f_cursor, keys: list[tuple]):
@@ -1579,7 +1694,7 @@ def _run_neuralbet_inference_and_training_locked(
     # trained and served on the same kind of "as it looked live" trajectory, or the
     # LightGBM/PyTorch accuracy numbers are measuring a leak, not real skill.
     event_ids = list({row["event_id"] for row in live_odds_rows})
-    trajectory_map: dict[tuple, list[tuple[float, int, float | None, Any]]] = {}
+    trajectory_map: dict[tuple, list[tuple[float, int, int, float | None, Any]]] = {}
     if event_ids:
         cursor.execute(
             """
@@ -1601,6 +1716,7 @@ def _run_neuralbet_inference_and_training_locked(
                 (
                     float(h["coefficient"]),
                     parse_score_diff(h["score_at_time"]),
+                    parse_score_sum(h["score_at_time"]),
                     parse_ts_epoch(h["timestamp"]),
                     h["timer_at_time"],
                 )
@@ -1633,7 +1749,7 @@ def _run_neuralbet_inference_and_training_locked(
         s2 = int(row["score_2"] or 0)
 
         traj = trajectory_map.get((eid, fid, param, prefix)) or [
-            (coeff, s1 - s2, None, row["timer"])
+            (coeff, s1 - s2, s1 + s2, None, row["timer"])
         ]
         ov_key = overround_group_key(fid, param, prefix)
         overround = overround_map.get((eid, ov_key)) if ov_key else None
@@ -1642,8 +1758,9 @@ def _run_neuralbet_inference_and_training_locked(
             live_sample(
                 coeffs=[t[0] for t in traj],
                 score_diffs=[t[1] for t in traj],
-                timestamps=[t[2] for t in traj],
-                timer_raws=[t[3] for t in traj],
+                score_sums=[t[2] for t in traj],
+                timestamps=[t[3] for t in traj],
+                timer_raws=[t[4] for t in traj],
                 factor_id=fid,
                 parameter=param,
                 market_prefix=prefix,
@@ -1927,7 +2044,8 @@ def _run_neuralbet_inference_and_training_locked(
                     f"archive {coverage.get('untrained', '?')} unseen)...",
                 )
                 training_samples, train_keys = _fetch_cold_start_batch(
-                    f_cursor, val_event_ids, cs_epoch
+                    f_cursor, val_event_ids, cs_epoch,
+                    offset=int(cold_start.get("samples_this_epoch") or 0),
                 )
             else:
                 add_ai_log(
@@ -1942,6 +2060,7 @@ def _run_neuralbet_inference_and_training_locked(
             val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
         if is_lgb_cycle:
+            _refresh_team_form_cache(f_cursor)
             f_cursor.execute(
                 f"""
                 {_TRAIN_ROW_SELECT}
@@ -2032,7 +2151,7 @@ def _run_neuralbet_inference_and_training_locked(
             cs_epoch = int(cold_start.get("epoch") or 1)
             mix_str = (
                 f"natural mix, lr={_cold_start_lr(cs_epoch):.4g}, "
-                f"gates off, {COLD_START_INNER_EPOCHS} inner epoch(s)"
+                f"gate on, {COLD_START_INNER_EPOCHS} inner epoch(s) per chunk"
             )
             start_msg = (
                 f"Starting cold-start pass: {len(training_samples)} samples "
@@ -2072,17 +2191,32 @@ def _run_neuralbet_inference_and_training_locked(
                 )
 
         cs_epoch = int(cold_start.get("epoch") or 1) if cold_start_active else 1
+        pool = int(cold_start.get("train_pool_size") or 0) if cold_start_active else 0
+        seen = int(cold_start.get("samples_this_epoch") or 0) if cold_start_active else 0
+        epoch_complete = (
+            cold_start_active
+            and pool > 0
+            and seen + len(training_samples) >= pool
+        )
+        global _online_pass_count
+        use_bankroll = _online_pass_count >= int(
+            os.getenv("NEURALBET_BANKROLL_LOSS_DISABLED_PASSES", "0")
+        )
         try:
             metrics = ensemble_engine.train_online(
                 training_samples,
                 val_data=val_samples,
                 on_epoch=_log_epoch,
-                skip_checkpoint_gate=cold_start_active,
+                skip_checkpoint_gate=False,
+                save_checkpoint=(not cold_start_active) or epoch_complete,
                 learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
                 rebalance_classes=cold_start_active,
                 epochs=COLD_START_INNER_EPOCHS if cold_start_active else MAX_EPOCHS,
+                use_bankroll_loss=use_bankroll,
                 should_abort=cycle_aborted,
             )
+            if metrics.get("samples_used", 0) > 0:
+                _online_pass_count += 1
         except MemoryError as e:
             add_ai_log(
                 "TRAINING",

@@ -77,6 +77,11 @@ GRAD_CLIP_NORM = 1.0
 # 1.0 — same order of magnitude as bce_loss, so early training doesn't let one head starve
 # the other of gradient.
 DECISION_LOSS_WEIGHT = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT", "1.0"))
+# Cost-sensitive verdict BCE: positive weight ≈ c-1 (capped) — optimal 0.5 boundary ↔ p*c>1.
+DECISION_POS_WEIGHT_CAP = float(os.getenv("NEURALBET_DECISION_POS_WEIGHT_CAP", "1.0"))
+PAIRED_MARKET_LOSS_WEIGHT = float(os.getenv("NEURALBET_PAIRED_MARKET_LOSS_WEIGHT", "0.15"))
+# Reject checkpoint if val_loss regresses more than this above last accepted checkpoint.
+CHECKPOINT_VAL_FLOOR_TOLERANCE = float(os.getenv("NEURALBET_CHECKPOINT_VAL_FLOOR_TOLERANCE", "0.02"))
 
 # No GPU here (torch.cuda.is_available() is False in this container) — everything runs
 # on CPU, so thread count is the real lever. Defaults to PyTorch's own heuristic (which
@@ -161,7 +166,17 @@ class OddsTrajectoryGRU(nn.Module):
 def _gru_seq(view_or_pairs, sport_path: Optional[str] = None) -> List[List[float]]:
     """GRU tensor rows from a prepared view dict or a raw step_pairs list."""
     if isinstance(view_or_pairs, dict):
-        return build_gru_sequence(view_or_pairs.get("step_pairs") or [], view_or_pairs.get("sport_path"))
+        line = view_or_pairs.get("total_line")
+        tl = float(line) if line else None
+        if tl is not None and tl <= 0:
+            tl = None
+        return build_gru_sequence(
+            view_or_pairs.get("step_pairs") or [],
+            view_or_pairs.get("sport_path"),
+            total_line=tl,
+            period_index=int(view_or_pairs.get("period_index") or 0),
+            overround=view_or_pairs.get("overround"),
+        )
     return build_gru_sequence(view_or_pairs or [], sport_path)
 
 
@@ -248,6 +263,8 @@ class NeuralBetEnsemble:
         # predict_single() falls back to the odds-implied heuristic.
         self.lgb_model: Any = None
         self.lgb_trained = False
+        # Last val_loss on an *accepted* checkpoint — floor gate compares against this.
+        self.last_accepted_val_loss: Optional[float] = None
 
     def reset(self) -> None:
         """
@@ -323,6 +340,8 @@ class NeuralBetEnsemble:
             }
             if extra:
                 payload.update(extra)
+            if self.last_accepted_val_loss is not None:
+                payload["last_accepted_val_loss"] = self.last_accepted_val_loss
             torch.save(payload, PYTORCH_WEIGHTS_PATH)
             logger.info(f"Saved PyTorch model weights checkpoint to {PYTORCH_WEIGHTS_PATH}")
         except Exception as e:
@@ -460,6 +479,9 @@ class NeuralBetEnsemble:
                     }
                     self._apply_sport_threshold_floors()
                     self._apply_market_weight_floor()
+                    lav = blob.get("last_accepted_val_loss")
+                    if lav is not None:
+                        self.last_accepted_val_loss = float(lav)
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
                 # only blows up later, inside optimizer.step()'s elementwise ops against
@@ -810,7 +832,7 @@ class NeuralBetEnsemble:
         this is evaluating the model the way it actually gets scored elsewhere (val_loss,
         val_guess_rate), not on full-match hindsight.
         """
-        prepared = [p for p in (self._prepare_sample(s) for s in val_data) if p is not None]
+        prepared = [p for p in (self._prepare_sample(s, mode="val") for s in val_data) if p is not None]
         if len(prepared) < self._MIN_TUNE_SAMPLES:
             return {"tuned": False, "reason": "not_enough_val_samples", "samples": len(prepared)}
 
@@ -984,11 +1006,49 @@ class NeuralBetEnsemble:
                 best_bets = n_bets
         return best_threshold, best_roi, best_bets
 
+    def _decision_cost_loss(
+        self,
+        decision_logits: torch.Tensor,
+        targets: torch.Tensor,
+        coeffs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Cost-sensitive BCE on bet/no-bet in the live coefficient band only."""
+        band = (coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)
+        if int(band.sum().item()) == 0:
+            return decision_logits.new_zeros(())
+        pos_w = torch.clamp(coeffs[band] - 1.0, min=1.0, max=1.0 + DECISION_POS_WEIGHT_CAP)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_w)
+        return loss_fn(decision_logits[band], targets[band])
+
+    @staticmethod
+    def _paired_market_loss(
+        batch: List[Dict[str, Any]],
+        pred_probs: torch.Tensor,
+    ) -> Optional[torch.Tensor]:
+        """Soft 2-way normalization penalty for sibling outcomes on the same event."""
+        if PAIRED_MARKET_LOSS_WEIGHT <= 0:
+            return None
+        groups: Dict[Any, List[int]] = {}
+        for idx, item in enumerate(batch):
+            key = (item.get("event_id"), item.get("parameter"), item.get("market_prefix"))
+            groups.setdefault(key, []).append(idx)
+        penalties = []
+        for idxs in groups.values():
+            if len(idxs) < 2:
+                continue
+            sub = pred_probs[idxs]
+            total = sub.sum()
+            penalties.append((total - 1.0) ** 2)
+        if not penalties:
+            return None
+        return torch.stack(penalties).mean()
+
     def _prepare_sample(self, sample: Dict[str, Any], mode: str = "train") -> Optional[Dict[str, Any]]:
-        """Same view builder live/backtest use. Train mode = random cutoff."""
+        """Same view builder live/backtest use. Train=random eligible cutoff; val=deterministic."""
         if sample.get("is_win") is None and mode == "train":
             return None
-        return build_model_input(sample, mode=mode)
+        val_mode = "val" if mode == "val" else mode
+        return build_model_input(sample, mode=val_mode)
 
     @staticmethod
     def _context_tensors(prepared: List[Dict[str, Any]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1029,7 +1089,7 @@ class NeuralBetEnsemble:
                 logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1]
                 pred_edge = torch.tanh(logits)
                 true_edge = targets - _market_prob_tensor(coeffs)
-                verdict_mask = coeffs < MAX_BET_COEFF
+                verdict_mask = (coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)
                 n_verdict = int(verdict_mask.sum().item())
                 if n_verdict:
                     chunk_loss = nn.functional.mse_loss(
@@ -1193,8 +1253,10 @@ class NeuralBetEnsemble:
         epochs: int = MAX_EPOCHS,
         on_epoch: Any = None,
         skip_checkpoint_gate: bool = False,
+        save_checkpoint: bool = True,
         learning_rate: Optional[float] = None,
         rebalance_classes: bool = True,
+        use_bankroll_loss: bool = True,
         should_abort: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
@@ -1255,7 +1317,9 @@ class NeuralBetEnsemble:
         if len(prepared) < 2:
             return {**empty_metrics, "samples_skipped": skipped}
 
-        prepared_val = [p for p in (self._prepare_sample(s) for s in (val_data or [])) if p is not None]
+        prepared_val = [
+            p for p in (self._prepare_sample(s, mode="val") for s in (val_data or [])) if p is not None
+        ]
 
         incoming_state = None
         val_incoming = None
@@ -1322,18 +1386,27 @@ class NeuralBetEnsemble:
                     true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
                     # Longs (>= MAX_BET_COEFF) are a free "will lose" label that drowns the
                     # residual head — keep them on the win-probability BCE, drop them here.
-                    verdict_mask = coeffs_t < MAX_BET_COEFF
-                    per = (pred_edge - true_edge) ** 2
-                    if int(verdict_mask.sum().item()) == 0:
-                        decision_loss = per.new_zeros(())
-                    else:
-                        decision_loss = per[verdict_mask].mean()
+                verdict_mask = (coeffs_t >= MIN_BET_COEFF) & (coeffs_t <= MAX_BET_COEFF)
+                per = (pred_edge - true_edge) ** 2
+                if int(verdict_mask.sum().item()) == 0:
+                    decision_loss = per.new_zeros(())
+                else:
+                    decision_loss = per[verdict_mask].mean()
+                decision_bce = self._decision_cost_loss(
+                    decision_logits, targets.squeeze(1), coeffs_t,
+                )
 
-                    loss = bce_loss + DECISION_LOSS_WEIGHT * decision_loss
+                loss = bce_loss + DECISION_LOSS_WEIGHT * (decision_loss + decision_bce)
+
+                win_probs = torch.sigmoid(win_logits.detach())
+                paired = self._paired_market_loss(batch, win_probs.squeeze(1))
+                if paired is not None:
+                    loss = loss + PAIRED_MARKET_LOSS_WEIGHT * paired
 
                     bank_pass = self._bankroll_pass(batch, account="training", commit=False)
-                    if bank_pass["loss"] is not None:
-                        loss = loss + bankroll.BANKROLL_LOSS_WEIGHT * bank_pass["loss"]
+                    if use_bankroll_loss and bank_pass["loss"] is not None:
+                        br_loss = torch.clamp(bank_pass["loss"], max=bankroll.BANKROLL_LOSS_CLIP)
+                        loss = loss + bankroll.BANKROLL_LOSS_WEIGHT * br_loss
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(self.pytorch_model.parameters(), GRAD_CLIP_NORM)
@@ -1427,6 +1500,7 @@ class NeuralBetEnsemble:
         checkpoint_accepted = True
         checkpoint_reject_reason = None
         val_loss_attempted = final_val_loss
+        floor = self.last_accepted_val_loss
         if (
             not skip_checkpoint_gate
             and incoming_state is not None
@@ -1441,11 +1515,32 @@ class NeuralBetEnsemble:
                     f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
                     f"restored previous weights, checkpoint file unchanged."
                 )
+            elif floor is not None:
+                tol = CHECKPOINT_VAL_FLOOR_TOLERANCE
+                if final_val_loss > floor + tol:
+                    checkpoint_accepted = False
+                    checkpoint_reject_reason = "floor"
+                    logger.info(
+                        f"Online pass regressed vs last accepted val_loss "
+                        f"(attempt {val_loss_attempted:.4f} > floor {floor:.4f}+{tol}); "
+                        f"restored previous weights."
+                    )
+                elif val_incoming > floor + tol:
+                    checkpoint_accepted = False
+                    checkpoint_reject_reason = "floor"
+                    logger.info(
+                        f"Incoming val_loss {val_incoming:.4f} already above last accepted "
+                        f"{floor:.4f}+{tol}; restored previous weights."
+                    )
             if not checkpoint_accepted:
                 self._restore_train_state(*incoming_state)
 
-        if checkpoint_accepted:
+        if checkpoint_accepted and save_checkpoint:
+            if final_val_loss is not None:
+                self.last_accepted_val_loss = float(final_val_loss)
             self.save_checkpoints(extra={"best_epoch": best_epoch})
+        elif not checkpoint_accepted:
+            save_checkpoint = False
 
         return {
             "samples_used": len(prepared),

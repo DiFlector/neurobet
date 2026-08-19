@@ -32,6 +32,7 @@ from neurobet_features import (  # noqa: E402
     pack_timer_entry,
     parse_period_ordinal as _parse_period_ordinal,
     parse_score_diff,
+    parse_score_sum,
     parse_timer,
     parse_ts_epoch as _parse_ts_epoch,
     overround_at_latest,
@@ -680,6 +681,7 @@ def archive_finished_events(
                     ))
                 overround_seq = [overround_by_id[r["id"]] for r in seq_rows]
                 score_diff_seq = [parse_score_diff(r["score_at_time"]) for r in seq_rows]
+                score_sum_seq = [parse_score_sum(r["score_at_time"]) for r in seq_rows]
                 score_diff_at_bet = score_diff_seq[0] if score_diff_seq else 0
                 label = next((r["label"] for r in seq_rows if r["label"]), "") or ""
 
@@ -705,7 +707,7 @@ def archive_finished_events(
                         event_id, factor_id, market_prefix, label, parameter,
                         initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
                         samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
-                        predicted_win_probability, score_seq_json, score_diff_at_bet, trained_count, is_push,
+                        predicted_win_probability, score_seq_json, score_sum_seq_json, score_diff_at_bet, trained_count, is_push,
                         predicted_win, overround_close, ts_seq_json, timer_seq_json, overround_seq_json
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
@@ -721,6 +723,7 @@ def archive_finished_events(
                         predicted_win_probability = COALESCE(excluded.predicted_win_probability, finished_bets.predicted_win_probability),
                         predicted_win = COALESCE(excluded.predicted_win, finished_bets.predicted_win),
                         score_seq_json = excluded.score_seq_json,
+                        score_sum_seq_json = excluded.score_sum_seq_json,
                         score_diff_at_bet = excluded.score_diff_at_bet,
                         overround_close = COALESCE(excluded.overround_close, finished_bets.overround_close),
                         ts_seq_json = excluded.ts_seq_json,
@@ -734,7 +737,8 @@ def archive_finished_events(
                     max(odds_seq) if odds_seq else None,
                     len(seq_rows), json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
                     is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
-                    json.dumps(score_diff_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
+                    json.dumps(score_diff_seq, ensure_ascii=False),
+                    json.dumps(score_sum_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
                     predicted_win, overround_close, json.dumps(ts_seq), json.dumps(timer_seq),
                     json.dumps(overround_seq),
                 ))

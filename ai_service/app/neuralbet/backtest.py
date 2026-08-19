@@ -29,7 +29,7 @@ from app.config import MODEL_DIR
 from app.core.database import get_finished_connection, release_connection
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
 from neurobet_filters import universe_sql, universe_sql_params, passes_live_gates, MIN_BET_COEFF, MAX_BET_COEFF
-from neurobet_features import build_model_input, row_to_sample
+from neurobet_features import build_model_input, no_vig_probability, row_to_sample, set_team_form_cache
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -49,6 +49,9 @@ PREDICT_CHUNK = 4000
 
 BACKTEST_DEFAULT_LIMIT = int(os.getenv("NEURALBET_BACKTEST_DEFAULT_LIMIT", "80000"))
 BACKTEST_MAX_LIMIT = int(os.getenv("NEURALBET_BACKTEST_MAX_LIMIT", "100000"))
+OOS_TEST_EVENT_FRACTION = float(os.getenv("NEURALBET_OOS_TEST_EVENT_FRACTION", "0.15"))
+OOS_MIN_EVENTS = int(os.getenv("NEURALBET_OOS_MIN_EVENTS", "40"))
+BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_BOOTSTRAP_SAMPLES", "500"))
 
 BACKTEST_PROGRESS_PATH = os.path.join(MODEL_DIR, "backtest_progress.json")
 _backtest_progress_lock = threading.Lock()
@@ -120,9 +123,9 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
         sports, factors = universe_sql_params()
         f_cursor.execute(f"""
             SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
-                   h.odds_seq_json, h.score_seq_json, h.ts_seq_json, h.timer_seq_json,
-                   h.overround_seq_json,
-                   h.score_diff_at_bet, h.finished_at, h.overround_close,
+                   h.odds_seq_json, h.score_seq_json, h.score_sum_seq_json,
+                   h.ts_seq_json, h.timer_seq_json, h.overround_seq_json,
+                   h.score_diff_at_bet, h.finished_at, h.overround_close, h.trained_count,
                    h.final_coefficient, h.predicted_win_probability, h.predicted_win,
                    f.sport_path, f.team_1, f.team_2
             FROM finished_bets h
@@ -139,38 +142,125 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
         release_connection(f_conn)
 
 
+def _brier(prob_pct: float, is_win: int) -> float:
+    p = prob_pct / 100.0
+    return (p - is_win) ** 2
+
+
+def _probability_metrics(records: List[Dict[str, Any]], prob_key: str) -> Optional[Dict[str, Any]]:
+    have = [r for r in records if r.get(prob_key) is not None]
+    if not have:
+        return None
+    n = len(have)
+    brier = sum(_brier(r[prob_key], r["is_win"]) for r in have) / n
+    return {"evaluated": n, "brier": round(brier, 4)}
+
+
+def _verdict_metrics(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dict[str, Any]]:
+    have = [r for r in records if r.get(pred_key) is not None]
+    if not have:
+        return None
+    pos = [r for r in have if int(r[pred_key]) == 1]
+    guessed = sum(1 for r in pos if r["is_win"] == 1)
+    return {
+        "evaluated": len(have),
+        "verdict_positive": len(pos),
+        "precision_pct": round(guessed / len(pos) * 100.0, 1) if pos else None,
+        "recall_pct": round(
+            guessed / sum(1 for r in have if r["is_win"] == 1) * 100.0, 1
+        ) if any(r["is_win"] == 1 for r in have) else None,
+    }
+
+
+def _stake_metrics(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dict[str, Any]]:
+    bets = [r for r in records if r.get(pred_key) is not None and int(r[pred_key]) == 1]
+    if not bets:
+        return {"bets": 0, "roi_pct": None, "win_rate_pct": None, "break_even_pct": None}
+    staked = len(bets)
+    wins = sum(1 for r in bets if r["is_win"] == 1)
+    returned = sum(r["coeff"] for r in bets if r["is_win"] == 1)
+    avg_coeff = sum(r["coeff"] for r in bets) / staked
+    return {
+        "bets": staked,
+        "win_rate_pct": round(wins / staked * 100.0, 1),
+        "break_even_pct": round(100.0 / avg_coeff, 1) if avg_coeff > 0 else None,
+        "roi_pct": round((returned - staked) / staked * 100.0, 1),
+    }
+
+
+def _bootstrap_roi_ci(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dict[str, float]]:
+    import random as _random
+
+    by_event: Dict[Any, List[Dict[str, Any]]] = {}
+    for r in records:
+        if r.get(pred_key) == 1:
+            by_event.setdefault(r["event_id"], []).append(r)
+    events = list(by_event.keys())
+    if len(events) < 5:
+        return None
+    rois: List[float] = []
+    for _ in range(BOOTSTRAP_SAMPLES):
+        sample_events = [_random.choice(events) for _ in range(len(events))]
+        staked = 0
+        returned = 0.0
+        for eid in sample_events:
+            for r in by_event[eid]:
+                staked += 1
+                if r["is_win"] == 1:
+                    returned += r["coeff"]
+        if staked:
+            rois.append((returned - staked) / staked * 100.0)
+    if not rois:
+        return None
+    rois.sort()
+    lo = rois[int(0.025 * len(rois))]
+    hi = rois[int(0.975 * len(rois))]
+    return {"roi_pct_lo": round(lo, 1), "roi_pct_hi": round(hi, 1)}
+
+
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     n = len(records)
     if n == 0:
         return None
 
-    def _one(prob_key: str, pred_key: str) -> Optional[Dict[str, Any]]:
-        have_prob = [r for r in records if r.get(prob_key) is not None]
-        evaluated = len(have_prob)
-        if evaluated == 0:
-            return None
-        have_pred = [r for r in have_prob if r.get(pred_key) is not None]
-        guessed = sum(1 for r in have_pred if int(r[pred_key]) == r["is_win"])
-        bets = [r for r in have_pred if int(r[pred_key]) == 1]
-        staked = len(bets)
-        returned = sum(r["coeff"] for r in bets if r["is_win"] == 1)
-        brier = sum((r[prob_key] / 100.0 - r["is_win"]) ** 2 for r in have_prob) / evaluated
-        return {
-            "evaluated": evaluated,
-            "verdict_evaluated": len(have_pred),
-            "accuracy_pct": round(guessed / len(have_pred) * 100.0, 1) if have_pred else None,
-            "bets": staked,
-            "roi_pct": round((returned - staked) / staked * 100.0, 1) if staked else None,
-            "brier": round(brier, 4),
-        }
+    market_brier = round(sum(_brier(r["market_prob"], r["is_win"]) for r in records) / n, 4)
+    no_vig_brier = round(sum(_brier(r["no_vig_prob"], r["is_win"]) for r in records) / n, 4)
 
-    market_brier = round(sum((r["market_prob"] / 100.0 - r["is_win"]) ** 2 for r in records) / n, 4)
+    current_stake = _stake_metrics(records, "current_pred")
+    stake_ci = _bootstrap_roi_ci(records, "current_pred")
 
     return {
         "evaluated": n,
-        "current": _one("current_prob", "current_pred"),
-        "historical": _one("historical_prob", "historical_pred"),
+        "probability": {
+            "current": _probability_metrics(records, "current_prob"),
+            "historical": _probability_metrics(records, "historical_prob"),
+            "market_raw": {"evaluated": n, "brier": market_brier},
+            "market_no_vig": {"evaluated": n, "brier": no_vig_brier},
+        },
+        "verdict": {
+            "current": _verdict_metrics(records, "current_verdict"),
+            "historical": _verdict_metrics(records, "historical_pred"),
+        },
+        "stake_policy": {
+            "current": {**(current_stake or {}), **(stake_ci or {})},
+            "historical": _stake_metrics(records, "historical_pred"),
+        },
+        # Legacy flat fields for history.json / admin trend charts.
         "market_brier": market_brier,
+        "current": {
+            "evaluated": n,
+            "accuracy_pct": None,
+            "bets": (current_stake or {}).get("bets", 0),
+            "roi_pct": (current_stake or {}).get("roi_pct"),
+            "brier": (_probability_metrics(records, "current_prob") or {}).get("brier"),
+        },
+        "historical": {
+            "evaluated": n,
+            "accuracy_pct": None,
+            "bets": (_stake_metrics(records, "historical_pred") or {}).get("bets", 0),
+            "roi_pct": (_stake_metrics(records, "historical_pred") or {}).get("roi_pct"),
+            "brier": (_probability_metrics(records, "historical_prob") or {}).get("brier"),
+        },
     }
 
 
@@ -240,10 +330,13 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 meta.append({
                     "event_id": r["event_id"],
                     "sport": sport_name,
+                    "sport_path": sample["sport_path"],
                     "coeff": coeff,
                     "factor_id": sample["factor_id"],
                     "label": sample["label"],
                     "is_win": int(r["is_win"]),
+                    "trained_count": int(r.get("trained_count") or 0),
+                    "overround_close": r.get("overround_close"),
                     "historical_prob": r["predicted_win_probability"],
                     "historical_pred": r["predicted_win"],
                 })
@@ -302,29 +395,34 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
                 calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
                 expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-                # Verdict threshold is per-sport (see NeuralBetEnsemble.sport_threshold);
-                # coeff / EV / support gates live in neurobet_filters.passes_live_gates so
-                # current_pred matches what live betting would actually stake.
+                thr = sport_decision_thresholds.get(m["sport"], decision_threshold)
+                current_verdict = 1 if decision_prob >= thr else 0
                 support_count = None
                 if market_support:
                     support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
                 current_pred = 1 if (
-                    decision_prob >= sport_decision_thresholds.get(m["sport"], decision_threshold)
-                    and passes_live_gates(m["coeff"], expected_roi, support_count)
+                    current_verdict == 1
+                    and passes_live_gates(
+                        m["coeff"], expected_roi, support_count, sport_path=m["sport_path"],
+                    )
                 ) else 0
                 market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
+                nv = no_vig_probability(m["coeff"], m.get("overround_close")) * 100.0
                 records.append({
                     "event_id": m["event_id"],
                     "sport": m["sport"],
                     "coeff": m["coeff"],
                     "coeff_bucket": coeff_bucket_index(m["coeff"]),
                     "is_win": m["is_win"],
+                    "trained_count": m["trained_count"],
                     "current_prob": calibrated,
+                    "current_verdict": current_verdict,
                     "current_pred": current_pred,
                     "current_expected_roi": expected_roi,
                     "historical_prob": m["historical_prob"],
                     "historical_pred": m["historical_pred"],
                     "market_prob": market_prob,
+                    "no_vig_prob": nv,
                 })
 
         set_backtest_progress("aggregate", "Агрегация и фильтр по матчам…", 88, processed=len(records), total=len(records))
@@ -355,6 +453,23 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             by_sport.setdefault(rec["sport"], []).append(rec)
             by_coeff.setdefault(rec["coeff_bucket"], []).append(rec)
 
+        # Never-train temporal hold-out: latest events by finished_at, untrained rows only.
+        event_ts: Dict[Any, Any] = {}
+        for r in rows:
+            eid = r["event_id"]
+            ts = r["finished_at"]
+            if eid not in event_ts or str(ts) > str(event_ts[eid]):
+                event_ts[eid] = ts
+        event_order = sorted(event_ts.keys(), key=lambda e: str(event_ts[e]))
+        n_hold = max(OOS_MIN_EVENTS, int(len(event_order) * OOS_TEST_EVENT_FRACTION))
+        hold_events = set(event_order[-n_hold:]) if len(event_order) >= OOS_MIN_EVENTS else set()
+        oos_records = [
+            r for r in records
+            if r["event_id"] in hold_events and int(r.get("trained_count") or 0) == 0
+        ]
+        oos_ids = {id(r) for r in oos_records}
+        in_sample_records = [r for r in records if id(r) not in oos_ids]
+
         set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
 
         result = {
@@ -369,16 +484,16 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "blend_weight": round(blend_weight, 3),
                 "market_weight": round(market_weight, 3),
                 "decision_threshold": round(decision_threshold, 3),
-                # Per-sport overrides actually applied to current_pred above (via
-                # sport_threshold()) — only sports with their own tuned value appear here,
-                # everything else used decision_threshold.
                 "sport_decision_thresholds": {
                     s: round(v, 3) for s, v in sport_decision_thresholds.items()
                 },
                 "max_bet_coeff": MAX_BET_COEFF,
                 "min_bet_coeff": MIN_BET_COEFF,
+                "oos_holdout_events": len(hold_events),
             },
             "overall": _agg_group(records),
+            "in_sample": _agg_group(in_sample_records),
+            "oos_never_train": _agg_group(oos_records) if oos_records else None,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
                 key=lambda x: -x["evaluated"],
