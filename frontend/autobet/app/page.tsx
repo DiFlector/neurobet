@@ -724,33 +724,16 @@ export default function NeurobetsPage() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-end gap-3 min-w-0">
-                      <div className="text-3xl font-black font-mono text-white">
-                        {Number(acc.balance).toFixed(1)} ₽
-                      </div>
-                      <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
-                        {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
-                      </div>
+                  <div className="flex items-end gap-3 min-w-0">
+                    <div className="text-3xl font-black font-mono text-white">
+                      {Number(acc.balance).toFixed(1)} ₽
                     </div>
-                    <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-xl px-4 py-3 flex flex-col items-center justify-center gap-1.5 shrink-0 bg-gradient-to-b from-neutral-950 to-[#74b9ff]/5">
-                      <div className="text-[10px] text-neutral-400 font-mono uppercase text-center leading-tight">
-                        Точность ставок
-                      </div>
-                      <AccuracyRing size={72} pct={liveBetHitPct} known={liveBetHitKnown} />
-                      <div className="text-[10px] font-semibold text-center">
-                        {!liveBetHitKnown ? (
-                          <span className="text-neutral-500">нет расчётов</span>
-                        ) : (
-                          <span className="text-[#ff7675]">
-                            промах {(100 - liveBetHitPct).toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
+                    <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                      {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-5 gap-2 text-center">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
                     <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
                       <div className="text-[9px] text-neutral-500 font-mono uppercase">Пик</div>
                       <div className="text-xs font-bold text-white font-mono">{Number(acc.peak_balance).toFixed(0)}</div>
@@ -776,6 +759,10 @@ export default function NeurobetsPage() {
                       <div className={`text-xs font-bold font-mono ${acc.ruin_count > 0 ? "text-[#ff7675]" : "text-neutral-400"}`}>
                         {acc.ruin_count}
                       </div>
+                    </div>
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800 flex flex-col items-center justify-center gap-1 min-h-[52px]">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase leading-none">Точность</div>
+                      <AccuracyRing size={40} pct={liveBetHitPct} known={liveBetHitKnown} />
                     </div>
                   </div>
                 </>
