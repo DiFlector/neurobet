@@ -54,4 +54,66 @@ MIN_MARKET_SUPPORT=150, тюнер сглажен (EMA 0.3, ≥80 val-ставо
 обучение реже (TRAIN_EVERY_CYCLES=20, MIN_TRAIN_SAMPLES=2000, TRAIN_BATCH_TOTAL=10000,
 VAL_BATCH_LIMIT=2000), тюнинг раз в TUNE_EVERY_CYCLES=10, LightGBM 40000 / каждые 20 циклов,
 бэктест в админке (40k) + авто 4 раза в сутки, индикатор переобучения (4 сигнала),
-кнопка «Обнулить нейросеть», per-sport decision_threshold (НТ/баскетбол обычно свои).
+кнопка «Обнулить нейросеть», per-sport decision_threshold (НТ/баскетбол обычно свои),
+NEUROBET_LIVE_STAKE_SPORTS (live-ставки только на разрешённые спорты, см. ниже),
+NEUROBET_MARKET_WEIGHT_FLOOR=0.5, trained_count бампается даже при rollback чекпоинта,
+GRU пропускается после CHECKPOINT_REJECT_STREAK_ALERT=10, class-mix pinned к archive win-frac.
+
+---
+
+## Терминология: что такое «live»
+
+**Live** — это **боевой симulated-банк** (`bankroll.accounts.live`): сюда модель **реально
+предлагает ставки** каждый цикл инференса (~60 с), если `ai_enabled=true`.
+
+Цепочка:
+1. **INFERENCE** — для всех LIVE-исходов в universe считаются прогнозы (PyTorch + LGBM).
+2. **Вердict `predicted_win=1`** — decision-голова говорит «ставить» (не путать с
+   win-probability % в UI — это калиброванная вероятность, verdict отдельный).
+3. **Live gates** — кэф 1.5–2.0, EV ≥ 3%, market support ≥ 150, плюс
+   `NEUROBET_LIVE_STAKE_SPORTS` (см. ниже).
+4. **BANKROLL** — Kelly-sizing, запись в `live_bets`, списание с live-баланса.
+
+Это **не** то же самое, что:
+- **training bankroll** — учебный счёт, крутится внутри `train_online` на val/train;
+- **бэктест** — прогон по архиву `finished_bets`, без реального live-цикла;
+- **страница «Статистика» / roi_stats** — другая вселенная (все judged-исходы с
+  `predicted_win`, не только live-банк); ROI +10% там **не равен** ROI live-банка.
+
+MCP: `get_live_bets`, `get_bankroll`, `get_top_neurobets` (verdict=win) — про live;
+`get_roi_stats` / `get_stats` — про архивную статистику, не про live-кошелёк.
+
+---
+
+## Live-воронка по спорту (NEUROBET_LIVE_STAKE_SPORTS)
+
+**По умолчанию live-деньги ставятся только на «настольный теннис».** Это **не** запрет
+модели смотреть другие спорты: inference, обучение и бэктest по-прежнему на всём
+`ALLOWED_SPORTS`. Режется **только** шаг «открыть ставку на live-банке».
+
+Почему так (ориентир — `by_sport.current` свежего бэктеста, band 1.5–2.0):
+
+| Спорт | Типичный сигнал | Комментарий |
+| :--- | :--- | :--- |
+| **Настольный теннис** | ROI > 0, Brier < market | Единственный карман с объёмом (сотни ставок) |
+| Баскетбол, волейбол, теннис | ROI < 0, Brier ≥ market | На текущих весах edge нет |
+| Футбол | Почти 0 ставок | Пороги 0.62+; редкие плюсы — шум (единицы ставок) |
+
+**Это не «навсегда бессмысленно на остальное»**, а **риск-менеджмент на текущую модель**.
+Если бэктest покажет устойчивый edge на другом спорте — расширить список.
+
+Env (`shared/neurobet_filters/__init__.py`):
+- `NEUROBET_LIVE_STAKE_SPORTS=настольный теннис` — default, только НТ в live.
+- `NEUROBET_LIVE_STAKE_SPORTS=*` (или `all`, пусто) — live на все allowed-спорты.
+- `NEUROBET_LIVE_STAKE_SPORTS=настольный теннис,волейбол` — явный список.
+
+Где применяется один и тот же whitelist:
+- **открытие ставок** — `ai_service` pipeline → `live_gate_skip_reason`;
+- **«Активные LIVE Прогнозы»** — `get_top_neurobets(verdict=win)` в backend;
+- **«Ставки нейросети»** (открытые live_bets) — `get_live_bets`.
+
+Не режется: inference на все sports, обучение, бэктest, history, verdict=loss/all.
+
+При ревью: если current ROI/Brier по спорту в бэктесте улучшился — предложи расширить
+live-лист; если live-банк падает при фильтре только НТ — не предлагай снова открыть все
+спорты без цифр из `by_sport`.

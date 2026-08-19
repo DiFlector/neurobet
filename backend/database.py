@@ -26,6 +26,7 @@ from neurobet_filters import (  # noqa: E402
     bet_band_sql,
     MIN_MARKET_SUPPORT,
     is_fast_format_sport_path,
+    in_live_stake_sport,
 )
 from neurobet_features import (  # noqa: E402
     pack_timer_entry,
@@ -1158,10 +1159,6 @@ def get_db_stats() -> Dict[str, Any]:
     finished_count = 0
     finished_history_count = 0
     unresolved_bets_count = 0
-    # None means "not enough judged bets yet to compute a real guess rate" — the
-    # frontend must show this as "no data", never fall back to a made-up number.
-    miss_rate_pct = None
-    guess_rate_pct = None
     try:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
@@ -1171,64 +1168,16 @@ def get_db_stats() -> Dict[str, Any]:
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets")
         finished_history_count = f_cursor.fetchone()["c"]
 
-        # Real guess rate: how often the model's own bet/no-bet verdict (predicted_win)
-        # matched what actually happened (is_win) — restricted to bets that would also
-        # clear today's live risk-management gates AND the training universe (see
-        # shared/neurobet_filters), and recency-weighted (see GUESS_RATE_HALF_LIFE_HOURS)
-        # rather than a flat all-time average. The "Статистика" page uses the same
-        # universe so old handicaps / out-of-universe sports don't pollute the breakdown;
-        # this headline number additionally applies the live coeff/EV/support gates.
-        recency_cutoff = (_now_moscow_naive() - timedelta(days=GUESS_RATE_LOOKBACK_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
-        band_sql, band_params = bet_band_sql(
-            "h.final_coefficient",
-            "((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0",
-        )
-        sports, factors = universe_sql_params()
-        f_cursor.execute(f"""
-            SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label,
-                   h.predicted_win, h.is_win, h.finished_at
-              FROM finished_bets h
-              JOIN finished_events f ON h.event_id = f.event_id
-             WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
-               AND h.predicted_win_probability IS NOT NULL
-               AND h.final_coefficient IS NOT NULL AND h.final_coefficient > 1.0
-               {universe_sql("f", "h")}
-               {band_sql}
-               AND h.finished_at >= %s
-        """, (sports, factors, *band_params, recency_cutoff))
-        graded_rows = f_cursor.fetchall()
-
-        support = _get_market_support()
-        if support:
-            graded_rows = [
-                r for r in graded_rows
-                if support.get((r["sport"] or "", r["factor_id"], r["label"] or ""), 0) >= MIN_MARKET_SUPPORT
-            ]
-
-        now_naive = _now_moscow_naive()
-        weighted_correct = 0.0
-        weighted_total = 0.0
-        for r in graded_rows:
-            try:
-                finished_dt = datetime.fromisoformat(str(r["finished_at"]))
-            except Exception:
-                continue
-            age_hours = max((now_naive - finished_dt).total_seconds() / 3600.0, 0.0)
-            weight = 0.5 ** (age_hours / GUESS_RATE_HALF_LIFE_HOURS)
-            weighted_total += weight
-            if r["predicted_win"] == r["is_win"]:
-                weighted_correct += weight
-
-        if weighted_total > 0:
-            guess_rate_pct = round(weighted_correct / weighted_total * 100.0, 1)
-            miss_rate_pct = round(100.0 - guess_rate_pct, 1)
-
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NULL")
         unresolved_bets_count = f_cursor.fetchone()["c"] or 0
 
         release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished db stats: {e}")
+
+    # Cached separately — see get_headline_guess_rate() (also exposed at
+    # /api/neurobets/headline-accuracy so ad blockers don't strip URLs containing "stats").
+    guess_rate_pct, miss_rate_pct = get_headline_guess_rate()
 
     return {
         "live_events_count": live_count,
@@ -1279,10 +1228,10 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # second time here used to let this page's numbers drift from what the bot actually acted
 # on (it always bet on the raw score) — this file no longer computes calibration at all.
 
-# Same live gates as ai_service (coeff band, min EV, min market support) — sourced
-# from shared/neurobet_filters so the "Активные LIVE прогнозы" list matches what the
-# bot would actually risk money on. Refresh interval stays local: it's a cache TTL,
-# not a filter.
+# Same live gates as ai_service (coeff band, min EV, min market support,
+# NEUROBET_LIVE_STAKE_SPORTS) — sourced from shared/neurobet_filters so
+# «Активные LIVE Прогнозы» and «Ставки нейросети» match what the bot would
+# actually risk money on. Refresh interval stays local: it's a cache TTL, not a filter.
 NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
 _neurobet_market_support: Dict[Tuple[str, int, str], int] = {}
 _neurobet_market_support_loaded_at = 0.0
@@ -1312,6 +1261,222 @@ def _now_moscow_naive() -> datetime:
     backend/main.py's now_moscow/now_str), so subtracting a parsed finished_at from this
     gives the correct elapsed wall-clock time without any timezone-offset ambiguity."""
     return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+
+
+def _parse_finished_at_naive(raw: Any) -> Optional[datetime]:
+    """Parse finished_at into Moscow-naive datetime for recency weighting."""
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        dt = raw
+    else:
+        s = str(raw).strip()
+        if not s:
+            return None
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(MOSCOW_TZ).replace(tzinfo=None)
+    return dt
+
+
+HEADLINE_GUESS_RATE_CACHE_SECONDS = float(
+    os.getenv("NEUROBET_HEADLINE_GUESS_RATE_CACHE_SECONDS", "300")
+)
+_headline_guess_rate_cache: Dict[str, Any] = {
+    "loaded_at": 0.0,
+    "guess_rate_pct": None,
+    "miss_rate_pct": None,
+}
+_headline_guess_rate_refresh_lock = threading.Lock()
+_headline_guess_rate_refreshing = False
+_HEADLINE_GUESS_RATE_CACHE_PATH = os.path.join(
+    os.getenv("MODEL_DIR", "/app/data/models"), "headline_guess_rate.json"
+)
+
+
+def _load_headline_cache_from_disk() -> None:
+    global _headline_guess_rate_cache
+    try:
+        with open(_HEADLINE_GUESS_RATE_CACHE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data.get("loaded_at"), (int, float)) and data.get("guess_rate_pct") is not None:
+            _headline_guess_rate_cache = data
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning(f"Could not load headline guess-rate cache: {e}")
+
+
+def _save_headline_cache_to_disk() -> None:
+    try:
+        os.makedirs(os.path.dirname(_HEADLINE_GUESS_RATE_CACHE_PATH), exist_ok=True)
+        with open(_HEADLINE_GUESS_RATE_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(_headline_guess_rate_cache, f)
+    except Exception as e:
+        logger.warning(f"Could not persist headline guess-rate cache: {e}")
+
+
+_load_headline_cache_from_disk()
+
+
+def _compute_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
+    """Recency-weighted guess rate for the main-page «Точность модели» ring."""
+    try:
+        now_naive = _now_moscow_naive()
+        now_str = now_naive.strftime("%Y-%m-%d %H:%M:%S")
+        recency_cutoff = (now_naive - timedelta(days=GUESS_RATE_LOOKBACK_DAYS)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        band_sql, band_params = bet_band_sql(
+            "h.final_coefficient",
+            "((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0",
+        )
+        sports, factors = universe_sql_params()
+
+        support = _get_market_support()
+        allowed_sports: List[str] = []
+        allowed_factors: List[int] = []
+        allowed_labels: List[str] = []
+        if support:
+            for (sport, factor_id, label), cnt in support.items():
+                if cnt >= MIN_MARKET_SUPPORT:
+                    allowed_sports.append(sport)
+                    allowed_factors.append(factor_id)
+                    allowed_labels.append(label or "")
+
+        support_join = ""
+        support_params: List[Any] = []
+        if allowed_sports:
+            support_join = """
+              INNER JOIN (
+                SELECT * FROM unnest(%s::text[], %s::int[], %s::text[])
+                  AS sup(sport, factor_id, label)
+              ) sup ON sup.sport = TRIM(SPLIT_PART(f.sport_path, '/', 1))
+                   AND sup.factor_id = h.factor_id
+                   AND sup.label = COALESCE(h.label, '')
+            """
+            support_params = [allowed_sports, allowed_factors, allowed_labels]
+
+        f_conn = get_finished_connection()
+        f_cursor = f_conn.cursor()
+        f_cursor.execute(
+            f"""
+            SELECT
+                COALESCE(SUM(w), 0) AS weighted_total,
+                COALESCE(SUM(CASE WHEN predicted_win = is_win THEN w ELSE 0 END), 0) AS weighted_correct
+              FROM (
+                SELECT h.predicted_win, h.is_win,
+                       POWER(0.5, GREATEST(
+                           EXTRACT(EPOCH FROM (%s::timestamp - h.finished_at::timestamp)) / 3600.0,
+                           0
+                       ) / %s) AS w
+                  FROM finished_bets h
+                  JOIN finished_events f ON h.event_id = f.event_id
+                  {support_join}
+                 WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+                   AND h.predicted_win_probability IS NOT NULL
+                   AND h.final_coefficient IS NOT NULL AND h.final_coefficient > 1.0
+                   {universe_sql("f", "h")}
+                   {band_sql}
+                   AND h.finished_at >= %s
+              ) weighted
+            """,
+            (now_str, GUESS_RATE_HALF_LIFE_HOURS, *support_params, sports, factors, *band_params, recency_cutoff),
+        )
+        row = f_cursor.fetchone()
+        release_connection(f_conn)
+
+        weighted_total = float(row["weighted_total"] or 0.0)
+        weighted_correct = float(row["weighted_correct"] or 0.0)
+        if weighted_total <= 0:
+            return None, None
+
+        guess_rate_pct = round(weighted_correct / weighted_total * 100.0, 1)
+        return guess_rate_pct, round(100.0 - guess_rate_pct, 1)
+    except Exception as e:
+        logger.error(f"Error computing headline guess rate: {e}")
+        return None, None
+
+
+def _refresh_headline_guess_rate_cache() -> None:
+    global _headline_guess_rate_refreshing, _headline_guess_rate_cache
+    try:
+        guess_rate_pct, miss_rate_pct = _compute_headline_guess_rate()
+        _headline_guess_rate_cache = {
+            "loaded_at": time.time(),
+            "guess_rate_pct": guess_rate_pct,
+            "miss_rate_pct": miss_rate_pct,
+        }
+        _save_headline_cache_to_disk()
+    except Exception as e:
+        logger.error(f"Headline guess-rate background refresh failed: {e}")
+    finally:
+        with _headline_guess_rate_refresh_lock:
+            _headline_guess_rate_refreshing = False
+
+
+def get_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
+    """Cached headline guess/miss % — shared by /api/stats and /api/neurobets/headline-accuracy."""
+    global _headline_guess_rate_refreshing
+    now = time.time()
+    loaded_at = float(_headline_guess_rate_cache.get("loaded_at") or 0.0)
+    guess_rate_pct = _headline_guess_rate_cache.get("guess_rate_pct")
+    miss_rate_pct = _headline_guess_rate_cache.get("miss_rate_pct")
+    age = now - loaded_at if loaded_at > 0 else float("inf")
+
+    if age < HEADLINE_GUESS_RATE_CACHE_SECONDS:
+        return guess_rate_pct, miss_rate_pct
+
+    # Stale but usable — return immediately, recompute in the background.
+    if loaded_at > 0 and guess_rate_pct is not None:
+        with _headline_guess_rate_refresh_lock:
+            if not _headline_guess_rate_refreshing:
+                _headline_guess_rate_refreshing = True
+                threading.Thread(
+                    target=_refresh_headline_guess_rate_cache,
+                    daemon=True,
+                    name="headline-guess-rate-refresh",
+                ).start()
+        return guess_rate_pct, miss_rate_pct
+
+    guess_rate_pct, miss_rate_pct = _compute_headline_guess_rate()
+    _headline_guess_rate_cache = {
+        "loaded_at": now,
+        "guess_rate_pct": guess_rate_pct,
+        "miss_rate_pct": miss_rate_pct,
+    }
+    _save_headline_cache_to_disk()
+    return guess_rate_pct, miss_rate_pct
+
+
+def warm_neurobet_caches() -> None:
+    """Pre-warm market-support + headline guess rate so the first dashboard hit is instant."""
+    def _run() -> None:
+        global _headline_guess_rate_cache
+        try:
+            _get_market_support()
+            guess_rate_pct, miss_rate_pct = _compute_headline_guess_rate()
+            _headline_guess_rate_cache = {
+                "loaded_at": time.time(),
+                "guess_rate_pct": guess_rate_pct,
+                "miss_rate_pct": miss_rate_pct,
+            }
+            _save_headline_cache_to_disk()
+        except Exception as e:
+            logger.warning(f"NeuroBet cache pre-warm failed: {e}")
+
+    threading.Thread(target=_run, daemon=True, name="neurobet-cache-warm").start()
+
+
+def warm_headline_guess_rate_cache() -> None:
+    """Backward-compatible alias for startup hook."""
+    warm_neurobet_caches()
 
 
 def _get_market_support() -> Dict[Tuple[str, int, str], int]:
@@ -1469,6 +1634,11 @@ def get_top_neurobets(
                 ((c.get("sport_path") or "").split("/")[0].strip(), c["factor_id"], c.get("label") or ""), 0,
             ) >= MIN_MARKET_SUPPORT
         ]
+
+    # Live-stake sport whitelist — same NEUROBET_LIVE_STAKE_SPORTS as ai_service
+    # placement; only on the bot's real betting pool (verdict=win).
+    if verdict == "win":
+        candidates = [c for c in candidates if in_live_stake_sport(c.get("sport_path"))]
 
     if sort_mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
@@ -2056,7 +2226,8 @@ def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
             b["current_coefficient"] = finished_odds.get(odds_key)
             b["sport_path"] = info["sport_path"] if info else None
 
-    return {"total": total, "items": rows}
+    filtered = [b for b in rows if in_live_stake_sport(b.get("sport_path"))]
+    return {"total": len(filtered), "items": filtered}
 
 
 def cancel_open_live_bets() -> Dict[str, Any]:

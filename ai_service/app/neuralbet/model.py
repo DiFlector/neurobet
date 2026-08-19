@@ -28,6 +28,11 @@ from neurobet_features import (
 
 logger = logging.getLogger("ai_service_model")
 
+# Minimum market_weight after tuning / checkpoint load — the only backtest-positive
+# day in production had market_weight≈0.78; floor keeps the blend from drifting
+# back to pure-model when val slices lie.
+MARKET_WEIGHT_FLOOR = float(os.getenv("NEURALBET_MARKET_WEIGHT_FLOOR", "0.5"))
+
 PYTORCH_WEIGHTS_PATH = os.path.join(MODEL_DIR, "pytorch_gru.pt")
 LIGHTGBM_MODEL_PATH = os.path.join(MODEL_DIR, "lightgbm_model.txt")
 
@@ -46,11 +51,14 @@ GRU_LAYERS = int(os.getenv("NEURALBET_GRU_LAYERS", "2"))
 # just removes an artificial cap for when a bigger batch needs more passes to converge.
 MAX_EPOCHS = int(os.getenv("NEURALBET_MAX_EPOCHS", "200"))
 EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
-# A finished online pass only keeps its weights if they beat BOTH: the incoming
-# model on this pass's val split, AND the last saved checkpoint's recorded val_loss
-# (the number on the admin chart). Same-split stops a failed pass becoming live;
-# the chart cap stops a "barely better than incoming on a hard val" (0.2654 vs
-# 0.2658) from overwriting a 0.20 checkpoint. Same epsilon as the per-epoch check.
+# A finished online pass only keeps its weights if they beat the incoming model on
+# this pass's val split. The incoming weights ARE the last accepted checkpoint, so
+# this is the like-for-like comparison; a second gate against the checkpoint's
+# *recorded* val_loss (the admin-chart number) was removed 2026-08-19 — that number
+# was measured on a different val split with a different win/loss mix, and val_loss
+# is not comparable across splits (observed: a 0.1657 recorded on an 83.7%-hit-rate
+# split rejected 40 consecutive passes whose fresh splits landed 0.20-0.37, freezing
+# the model entirely). Same epsilon as the per-epoch check.
 # 64 -> 128 -> 256: fewer, larger mini-batches per epoch use the CPU's vectorized
 # matmuls more efficiently (more work per Python-level loop iteration) — meaningful as
 # each training pass's sample count (pipeline.TRAIN_BATCH_TOTAL) has grown; 256 keeps
@@ -233,6 +241,7 @@ class NeuralBetEnsemble:
         # tuned value (football, after a hold-out ROI leak at the global threshold).
         self.sport_decision_thresholds: Dict[str, float] = {}
         self._apply_sport_threshold_floors()
+        self._apply_market_weight_floor()
 
         # Real gradient-boosted classifier, fit on actual resolved bets (see
         # train_lightgbm). None until the first successful training pass — until then
@@ -272,6 +281,17 @@ class NeuralBetEnsemble:
             current = self.sport_decision_thresholds.get(sport)
             if current is None or current < floor:
                 self.sport_decision_thresholds[sport] = floor
+
+    def _apply_market_weight_floor(self) -> None:
+        """Raise market_weight to MARKET_WEIGHT_FLOOR, taking the deficit from
+        blend_weight first so lgb_weight = 1 - blend - market stays non-negative."""
+        floor = MARKET_WEIGHT_FLOOR
+        if self.market_weight >= floor:
+            return
+        need = floor - self.market_weight
+        self.market_weight = floor
+        take = min(need, self.blend_weight)
+        self.blend_weight = max(0.0, self.blend_weight - take)
 
     def sport_threshold(self, sport: Optional[str]) -> float:
         """The decision-head cutoff to use for this sport: its own tuned value if
@@ -439,6 +459,7 @@ class NeuralBetEnsemble:
                         for k, v in (blob.get("sport_decision_thresholds") or {}).items()
                     }
                     self._apply_sport_threshold_floors()
+                    self._apply_market_weight_floor()
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
                 # only blows up later, inside optimizer.step()'s elementwise ops against
@@ -735,7 +756,11 @@ class NeuralBetEnsemble:
     # coarser 0.8/1.0 that scores worse on the same val slice).
     _TUNE_BRIER_EPS = 1e-4
 
-    def tune_ensemble(self, val_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def tune_ensemble(
+        self,
+        val_data: List[Dict[str, Any]],
+        blend_market_frozen: bool = False,
+    ) -> Dict[str, Any]:
         """
         Re-picks blend_weight, market_weight and decision_threshold against held-out
         validation data instead of leaving them at whatever they were initialized to
@@ -833,7 +858,11 @@ class NeuralBetEnsemble:
                     best_brier = brier
                     best_blend, best_market = w_py, w_mkt
 
-        blend_accepted = best_brier < incoming_brier - self._TUNE_BRIER_EPS
+        blend_accepted = (
+            not blend_market_frozen
+            and best_brier < incoming_brier - self._TUNE_BRIER_EPS
+            and best_brier < base_brier - self._TUNE_BRIER_EPS
+        )
 
         best_threshold, best_roi, best_bets = self._sweep_threshold(
             decision_probs, coeffs, targets, self.decision_threshold, self._MIN_THRESHOLD_BETS,
@@ -844,6 +873,7 @@ class NeuralBetEnsemble:
         if blend_accepted:
             self.blend_weight = old_blend + a * (best_blend - old_blend)
             self.market_weight = old_market + a * (best_market - old_market)
+        self._apply_market_weight_floor()
         if best_bets >= self._MIN_THRESHOLD_BETS:
             self.decision_threshold = max(
                 VALUE_THRESHOLD_FLOOR,
@@ -891,6 +921,7 @@ class NeuralBetEnsemble:
         return {
             "tuned": True,
             "accepted": blend_accepted,
+            "blend_market_frozen": blend_market_frozen,
             "persisted": persisted,
             "samples": len(prepared),
             "val_brier_base": round(base_brier, 4),
@@ -1161,7 +1192,6 @@ class NeuralBetEnsemble:
         val_data: Optional[List[Dict[str, Any]]] = None,
         epochs: int = MAX_EPOCHS,
         on_epoch: Any = None,
-        chart_val_loss: Optional[float] = None,
         skip_checkpoint_gate: bool = False,
         learning_rate: Optional[float] = None,
         rebalance_classes: bool = True,
@@ -1193,8 +1223,9 @@ class NeuralBetEnsemble:
         bankroll account, so the logged balance is a generalization check rather
         than an in-sample Kelly compound.
         The pass is then compared to the *incoming* weights on that same val split
-        and to `chart_val_loss` (last saved checkpoint). Fail either check → restore,
-        file untouched. Next cycle continues from the restored weights on new data.
+        (the incoming weights are the last accepted checkpoint, so this is the only
+        comparison that is like-for-like). Fail it → restore, file untouched. Next
+        cycle continues from the restored weights on new data.
         `skip_checkpoint_gate` keeps the new weights regardless (cold-start through
         the archive: a later chunk is allowed to raise val_loss without rolling back
         everything learned so far). `learning_rate` temporarily overrides AdamW's
@@ -1408,18 +1439,6 @@ class NeuralBetEnsemble:
                 logger.info(
                     f"Online pass did not beat incoming val_loss "
                     f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
-                    f"restored previous weights, checkpoint file unchanged."
-                )
-            elif (
-                chart_val_loss is not None
-                and final_val_loss >= chart_val_loss - 1e-4
-            ):
-                checkpoint_accepted = False
-                checkpoint_reject_reason = "chart"
-                logger.info(
-                    f"Online pass beat incoming {val_incoming:.4f} but not the "
-                    f"saved checkpoint val_loss {chart_val_loss:.4f} "
-                    f"(attempt {val_loss_attempted:.4f}); "
                     f"restored previous weights, checkpoint file unchanged."
                 )
             if not checkpoint_accepted:

@@ -41,7 +41,7 @@ from neurobet_filters import (
 )
 from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
-from app.neuralbet.training_history import record_training_run, get_training_history, last_saved_run, clear_training_history
+from app.neuralbet.training_history import record_training_run, get_training_history, clear_training_history
 
 logger = logging.getLogger("ai_service_pipeline")
 
@@ -302,7 +302,7 @@ _logs_lock = threading.Lock()
 _cycle_count = 0
 
 # "Is training helping or hurting?" tracking — see get_training_health()'s docstring for
-# the full three-signal playbook this feeds. best_epoch == 1-2 on a single pass is
+# the full five-signal playbook this feeds. best_epoch == 1-2 on a single pass is
 # normal noise; a *streak* of them on batches that already cleared MIN_TRAIN_SAMPLES is
 # the real tell (the network is memorizing each fresh batch in one or two epochs instead
 # of generalizing — early stopping is doing its job by bailing out fast, but that itself
@@ -312,6 +312,14 @@ _cycle_count = 0
 LOW_EPOCH_ALERT_THRESHOLD = int(os.getenv("NEURALBET_LOW_EPOCH_ALERT_THRESHOLD", "2"))
 LOW_EPOCH_STREAK_ALERT = int(os.getenv("NEURALBET_LOW_EPOCH_STREAK_ALERT", "3"))
 _low_epoch_streak = 0
+
+# Consecutive online passes whose weights were rolled back (checkpoint_accepted=False).
+# Catches a frozen model that keeps training but never commits — the 0.1657 chart-gate
+# reject-storm case where signals A–D all stayed green.
+CHECKPOINT_REJECT_STREAK_ALERT = int(
+    os.getenv("NEURALBET_CHECKPOINT_REJECT_STREAK_ALERT", "10")
+)
+_checkpoint_reject_streak = 0
 
 
 def _persist_ai_logs() -> None:
@@ -397,6 +405,7 @@ def _restore_ai_settings() -> None:
 
 
 _restore_ai_settings()
+_restore_training_streaks()
 
 
 def get_ai_settings() -> dict[str, Any]:
@@ -418,7 +427,7 @@ def reset_neural_network() -> dict[str, Any]:
     cold-start walk of the whole archive (from-scratch LR, checkpoint gate off)
     instead of jumping into the online 10k fine-tune loop.
     """
-    global _cycle_count, _low_epoch_streak
+    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak
     from app.neuralbet.backtest import clear_backtest_history
 
     reset_rows = 0
@@ -462,6 +471,7 @@ def reset_neural_network() -> dict[str, Any]:
 
                 _cycle_count = 0
                 _low_epoch_streak = 0
+                _checkpoint_reject_streak = 0
                 set_reset_progress("cold_start", "Запускаю cold-start на всём архиве…", 94)
                 _begin_cold_start()
             finally:
@@ -535,14 +545,41 @@ TRAINING_HEALTH_VAL_LOSS_WINDOW = int(
 )
 
 
+def _checkpoint_reject_streak_from_history(train_history: list) -> int:
+    """Consecutive rejected online passes, newest first (skips cold-start rows)."""
+    streak = 0
+    for row in train_history:
+        if row.get("cold_start"):
+            continue
+        if row.get("checkpoint_accepted") is False:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _restore_training_streaks() -> None:
+    global _checkpoint_reject_streak
+    try:
+        from app.neuralbet.training_history import get_training_history
+
+        _checkpoint_reject_streak = _checkpoint_reject_streak_from_history(
+            get_training_history()
+        )
+    except Exception as e:
+        logger.error(f"Error restoring checkpoint reject streak: {e}")
+
+
 def _fresh_target() -> int:
     return int(TRAIN_BATCH_TOTAL * TRAIN_FRESH_SHARE)
 
 
 def _invalidate_archive_coverage() -> None:
-    global _coverage_cache, _coverage_loaded_at
+    global _coverage_cache, _coverage_loaded_at, _archive_win_frac, _archive_win_frac_loaded_at
     _coverage_cache = None
     _coverage_loaded_at = 0.0
+    _archive_win_frac = None
+    _archive_win_frac_loaded_at = 0.0
 
 
 def _default_cold_start() -> dict[str, Any]:
@@ -730,7 +767,7 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
 def get_training_health() -> dict[str, Any]:
     """
     Traffic-light read on whether online training is currently helping or hurting,
-    combining the three signals from the admin's own diagnostic playbook:
+    combining five signals from the admin's own diagnostic playbook:
       A) low_epoch_streak — LOW_EPOCH_STREAK_ALERT+ consecutive real training passes
          (on batches that already cleared MIN_TRAIN_SAMPLES) where best_epoch was
          <= LOW_EPOCH_ALERT_THRESHOLD: the network memorized each fresh batch in 1-2
@@ -746,20 +783,25 @@ def get_training_health() -> dict[str, Any]:
          over the most recent half of the last TRAINING_HEALTH_VAL_LOSS_WINDOW training
          passes is higher than the average over the older half: a slower, more gradual
          drift than signal A (which only catches a single pass memorizing its batch
-         outright) — this is the earliest available signal of all four, since a
+         outright) — this is the earliest available signal of all five, since a
          training pass fires far more often than a backtest, but also the noisiest
          per-pass, hence the within-window averaging instead of a point-to-point
          comparison. Rejected passes still count: using the frozen chart val_loss
          would hide a reject-storm behind a flat "ok" line.
-    One active signal is "presmotret'sya" (warning); a majority (3 of 4) is "definite
+      E) checkpoint_reject_streak — CHECKPOINT_REJECT_STREAK_ALERT+ consecutive online
+         passes where checkpoint_accepted is False: training runs but weights never
+         commit, so the live model is frozen while CPU spins — e.g. an incoming gate
+         that no fresh pass can beat, or a reject-storm after a lucky early checkpoint.
+    One active signal is "presmotret'sya" (warning); a majority (3 of 5) is "definite
     stop" (danger) — see run_neuralbet_inference_and_training's docstring history / the
     admin panel's status block, which renders this directly. Needs at least
     TRAINING_HEALTH_BACKTEST_WINDOW backtest runs on file for B/C to activate at all,
     and TRAINING_HEALTH_VAL_LOSS_WINDOW training passes with a val_loss for D — with
-    fewer of either, only signal A (which needs neither) can fire.
+    fewer of either, only signal A (which needs neither) can fire. Signal E uses the
+    live in-process streak counter (also derivable from training_history).
 
     Returns status "disabled" (not ok/warning/danger) whenever the admin's own
-    training_enabled toggle is off: with no gradient steps running, none of the three
+    training_enabled toggle is off: with no gradient steps running, none of the five
     signals describe anything currently happening — they'd just be stale readings from
     whenever training last ran, and showing a green/red verdict on that would imply an
     ongoing process that isn't there. Signals are still reported (as their last-known
@@ -768,6 +810,11 @@ def get_training_health() -> dict[str, Any]:
     from app.neuralbet.backtest import get_backtest_history
 
     if not AI_SETTINGS["training_enabled"]:
+        from app.neuralbet.training_history import get_training_history
+
+        disabled_reject_streak = _checkpoint_reject_streak_from_history(
+            get_training_history()
+        )
         return {
             "status": "disabled",
             "archive_coverage": get_archive_training_coverage(),
@@ -791,6 +838,11 @@ def get_training_health() -> dict[str, Any]:
                     "active": False,
                     "runs_checked": 0,
                     "runs_needed": TRAINING_HEALTH_VAL_LOSS_WINDOW,
+                },
+                "checkpoint_reject_streak": {
+                    "active": False,
+                    "streak": disabled_reject_streak,
+                    "threshold": CHECKPOINT_REJECT_STREAK_ALERT,
                 },
             },
         }
@@ -863,7 +915,10 @@ def get_training_health() -> dict[str, Any]:
         older_avg = sum(val_losses[half:]) / (len(val_losses) - half)
         signal_d = newer_avg > older_avg
 
-    active = sum([signal_a, signal_b, signal_c, signal_d])
+    reject_streak = _checkpoint_reject_streak_from_history(train_history)
+    signal_e = reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
+
+    active = sum([signal_a, signal_b, signal_c, signal_d, signal_e])
     status = "danger" if active >= 3 else "warning" if active >= 1 else "ok"
 
     return {
@@ -889,6 +944,11 @@ def get_training_health() -> dict[str, Any]:
                 "active": signal_d,
                 "runs_checked": len(val_losses),
                 "runs_needed": TRAINING_HEALTH_VAL_LOSS_WINDOW,
+            },
+            "checkpoint_reject_streak": {
+                "active": signal_e,
+                "streak": reject_streak,
+                "threshold": CHECKPOINT_REJECT_STREAK_ALERT,
             },
         },
     }
@@ -993,17 +1053,18 @@ def _count_train_pool(f_cursor, val_event_ids: set | None, untrained_only: bool 
 TRAIN_CLASS_QUOTA_MIN_FRAC = float(os.getenv("NEURALBET_TRAIN_CLASS_QUOTA_MIN_FRAC", "0.20"))
 
 
-def _draw_class_quota(total: int) -> tuple[int, int]:
-    """Win/loss counts drawn uniformly from [frac, 1-frac] of `total` so the
-    win-head cannot latch onto a constant 50/50 prior, but never a 0/N or N/0
-    batch. `frac` is TRAIN_CLASS_QUOTA_MIN_FRAC (default 0.20)."""
+def _draw_class_quota(total: int, win_frac: float) -> tuple[int, int]:
+    """Win/loss counts pinned to the archive's empirical win rate (same idea as
+    the val split) but clamped to [TRAIN_CLASS_QUOTA_MIN_FRAC, 1-frac] so the
+    batch never collapses to a single class."""
     if total <= 0:
         return 0, 0
     lo = int(round(total * TRAIN_CLASS_QUOTA_MIN_FRAC))
     hi = total - lo
     if lo > hi:
         lo, hi = hi, lo
-    n_win = lo if lo == hi else random.randint(lo, hi)
+    n_win = int(round(total * max(0.0, min(1.0, win_frac))))
+    n_win = max(lo, min(hi, n_win))
     return n_win, total - n_win
 
 
@@ -1069,13 +1130,13 @@ def _fetch_training_batch(
     Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
     first) + ~30% older ones sampled at random so the model doesn't catastrophically
     forget history it hasn't seen in a while (see plan B4). Win/loss counts are drawn
-    uniformly from 20/80 through 80/20 each pass so the win-head cannot latch onto a
-    constant 50/50 prior without collapsing the batch into a single class. Excludes
-    every bet belonging to a held-out validation event.
+    to the archive's empirical win rate (see _get_archive_win_frac) so val_loss stays
+    comparable pass-to-pass. Excludes every bet belonging to a held-out validation event.
     Returns (rows, key_list, mix) where mix is the drawn quota plus what was actually
     fetched.
     """
-    n_win, n_loss = _draw_class_quota(TRAIN_BATCH_TOTAL)
+    win_frac = _get_archive_win_frac(f_cursor)
+    n_win, n_loss = _draw_class_quota(TRAIN_BATCH_TOTAL, win_frac)
     seen: set = set()
     wins = _fetch_class_rows(f_cursor, val_event_ids, 1, n_win, seen)
     losses = _fetch_class_rows(f_cursor, val_event_ids, 0, n_loss, seen)
@@ -1140,26 +1201,95 @@ def _fetch_cold_start_batch(
 # events) is already far bigger than this cap, so raising it just uses more of what's
 # already held out rather than needing more data.
 VAL_BATCH_LIMIT = int(os.getenv("NEURALBET_VAL_BATCH_LIMIT", "2000"))
+# Val split uses the archive's empirical win rate (cached) instead of whatever mix
+# happens to land in the first LIMIT rows — val_loss is not comparable across passes
+# when hit-rate swings 25%→77% batch-to-batch. Clamped to the same 20–80% band as
+# training quotas so tiny sport skews cannot collapse the split.
+ARCHIVE_WIN_FRAC_REFRESH_SECONDS = float(
+    os.getenv("NEURALBET_ARCHIVE_WIN_FRAC_REFRESH_SECONDS", "300")
+)
+_archive_win_frac: float | None = None
+_archive_win_frac_loaded_at = 0.0
 
 
-def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
-    if not val_event_ids:
+def _get_archive_win_frac(f_cursor) -> float:
+    """Empirical win share over the full train universe (all resolved bets)."""
+    global _archive_win_frac, _archive_win_frac_loaded_at
+    now = time.time()
+    if (
+        _archive_win_frac is not None
+        and now - _archive_win_frac_loaded_at < ARCHIVE_WIN_FRAC_REFRESH_SECONDS
+    ):
+        return _archive_win_frac
+
+    sports, factors = universe_sql_params()
+    f_cursor.execute(
+        f"""
+        SELECT
+            SUM(CASE WHEN h.is_win = 1 THEN 1 ELSE 0 END)::float
+                / NULLIF(COUNT(*), 0) AS frac
+        FROM finished_bets h
+        JOIN finished_events f ON h.event_id = f.event_id
+        WHERE h.is_win IS NOT NULL
+        {universe_sql("f", "h")}
+        """,
+        (sports, factors),
+    )
+    row = f_cursor.fetchone()
+    frac = float(row["frac"]) if row and row.get("frac") is not None else 0.5
+    lo = TRAIN_CLASS_QUOTA_MIN_FRAC
+    frac = max(lo, min(1.0 - lo, frac))
+    _archive_win_frac = frac
+    _archive_win_frac_loaded_at = now
+    return frac
+
+
+def _fetch_val_class_rows(
+    f_cursor,
+    val_event_ids: set,
+    is_win: int,
+    n: int,
+    seen: set,
+) -> list[dict[str, Any]]:
+    """Up to `n` val-pool rows of one class; deterministic oldest-first order."""
+    if n <= 0:
         return []
     sports, factors = universe_sql_params()
     f_cursor.execute(
         f"""
         {_TRAIN_ROW_SELECT}
         AND h.event_id = ANY(%s)
+        AND h.is_win = %s
         {universe_sql("f", "h")}
         ORDER BY h.finished_at ASC
         LIMIT %s
-    """,
-        (list(val_event_ids), sports, factors, VAL_BATCH_LIMIT),
+        """,
+        (list(val_event_ids), is_win, sports, factors, max(n * 2, n + 32)),
     )
-    return [
-        s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
-        if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
-    ]
+    out: list[dict[str, Any]] = []
+    for s in _rows_to_train_samples(f_cursor.fetchall()):
+        key = s["_key"]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
+        if len(out) >= n:
+            break
+    return out
+
+
+def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
+    if not val_event_ids:
+        return []
+    win_frac = _get_archive_win_frac(f_cursor)
+    n_win = int(round(VAL_BATCH_LIMIT * win_frac))
+    n_loss = VAL_BATCH_LIMIT - n_win
+    seen: set = set()
+    wins = _fetch_val_class_rows(f_cursor, val_event_ids, 1, n_win, seen)
+    losses = _fetch_val_class_rows(f_cursor, val_event_ids, 0, n_loss, seen)
+    samples = wins + losses
+    random.shuffle(samples)
+    return samples
 
 
 def _mark_trained(f_cursor, keys: list[tuple]):
@@ -1351,7 +1481,7 @@ def run_neuralbet_inference_and_training(
 def _run_neuralbet_inference_and_training_locked(
     scrape_timestamp: str | None = None,
 ) -> dict[str, Any]:
-    global _cycle_count
+    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak
     _cycle_count += 1
     logger.info(
         f"AI cycle {_cycle_count} start "
@@ -1542,6 +1672,7 @@ def _run_neuralbet_inference_and_training_locked(
     skipped_low_edge = 0
     skipped_low_support = 0
     skipped_coeff = 0
+    skipped_sport = 0
     market_support = _refresh_market_support()
 
     for meta, (
@@ -1595,13 +1726,17 @@ def _run_neuralbet_inference_and_training_locked(
                 support_count = market_support.get(
                     (meta["sport"] or "", fid, meta["label"] or ""), 0
                 )
-            reason = live_gate_skip_reason(coeff, expected_roi, support_count)
+            reason = live_gate_skip_reason(
+                coeff, expected_roi, support_count, meta.get("sport")
+            )
             if reason == "coeff":
                 skipped_coeff += 1
             elif reason == "edge":
                 skipped_low_edge += 1
             elif reason == "support":
                 skipped_low_support += 1
+            elif reason == "sport":
+                skipped_sport += 1
             else:
                 live_candidates.append(
                     {
@@ -1612,13 +1747,19 @@ def _run_neuralbet_inference_and_training_locked(
                     }
                 )
 
-    if skipped_low_edge or skipped_low_support or skipped_coeff:
+    if skipped_low_edge or skipped_low_support or skipped_coeff or skipped_sport:
+        sport_part = (
+            f", {skipped_sport} — спорт вне live-листа (NEUROBET_LIVE_STAKE_SPORTS)"
+            if skipped_sport
+            else ""
+        )
         add_ai_log(
             "BANKROLL",
             f"Кандидаты в ставки отфильтрованы: {skipped_coeff} — кэф вне "
             f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f}, "
             f"{skipped_low_edge} — EV ниже {MIN_BET_EDGE_PCT:.0f}%, "
-            f"{skipped_low_support} — рынок реже {MIN_MARKET_SUPPORT} решённых исходов в архиве. "
+            f"{skipped_low_support} — рынок реже {MIN_MARKET_SUPPORT} решённых исходов в архиве"
+            f"{sport_part}. "
             f"Осталось {len(live_candidates)}.",
         )
 
@@ -1727,6 +1868,13 @@ def _run_neuralbet_inference_and_training_locked(
         else (_cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0)
     )
 
+    gru_frozen = (
+        not cold_start_active
+        and _checkpoint_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
+    )
+    run_gru_training = is_train_cycle and not gru_frozen
+    gru_pass_rejected = False
+
     training_samples: list[dict[str, Any]] = []
     val_samples: list[dict[str, Any]] = []
     train_keys: list[tuple] = []
@@ -1743,7 +1891,7 @@ def _run_neuralbet_inference_and_training_locked(
         # matches that finish in between stay trained_count = 0 (see _mark_trained,
         # only called after a training cycle) until the next training cycle picks them
         # all up together as one larger batch.
-        if is_train_cycle:
+        if run_gru_training:
             if cold_start_active:
                 if not cold_start.get("train_pool_size"):
                     cold_start["train_pool_size"] = _count_train_pool(
@@ -1771,7 +1919,7 @@ def _run_neuralbet_inference_and_training_locked(
                 training_samples, train_keys, class_mix = _fetch_training_batch(
                     f_cursor, val_event_ids
                 )
-        if is_train_cycle or is_tune_cycle or is_lgb_cycle:
+        if run_gru_training or is_tune_cycle or is_lgb_cycle:
             val_samples = _fetch_val_batch(f_cursor, val_event_ids)
 
         if is_lgb_cycle:
@@ -1813,6 +1961,14 @@ def _run_neuralbet_inference_and_training_locked(
     insufficient_for_training = (
         training_samples and fetched_train_count < min_needed
     )
+    if gru_frozen and is_train_cycle:
+        add_ai_log(
+            "TRAINING",
+            f"Online GRU skipped — checkpoint rejected {_checkpoint_reject_streak} pass(es) "
+            f"in a row (threshold {CHECKPOINT_REJECT_STREAK_ALERT}); weights frozen, "
+            "LightGBM/tuner still run this cycle.",
+            level="WARNING",
+        )
     if insufficient_for_training:
         add_ai_log(
             "TRAINING",
@@ -1896,15 +2052,11 @@ def _run_neuralbet_inference_and_training_locked(
                     "TRAINING", f"Epoch {epoch_idx} — train_loss: {train_loss:.4f}"
                 )
 
-        prev_checkpoint = last_saved_run(get_training_history())
         cs_epoch = int(cold_start.get("epoch") or 1) if cold_start_active else 1
         metrics = ensemble_engine.train_online(
             training_samples,
             val_data=val_samples,
             on_epoch=_log_epoch,
-            chart_val_loss=(
-                None if cold_start_active else (prev_checkpoint or {}).get("val_loss")
-            ),
             skip_checkpoint_gate=cold_start_active,
             learning_rate=_cold_start_lr(cs_epoch) if cold_start_active else None,
             rebalance_classes=cold_start_active,
@@ -1922,24 +2074,25 @@ def _run_neuralbet_inference_and_training_locked(
 
         if metrics["samples_used"] > 0:
             accepted = metrics.get("checkpoint_accepted", True)
-            if accepted:
+            if accepted or not cold_start_active:
                 f_conn2 = get_finished_connection()
                 f_cursor2 = f_conn2.cursor()
                 _mark_trained(f_cursor2, train_keys)
                 f_conn2.commit()
                 release_connection(f_conn2)
                 _invalidate_archive_coverage()
+            if accepted:
                 if cold_start_active:
                     cold_start = _advance_cold_start(cold_start, metrics["samples_used"])
             else:
+                gru_pass_rejected = True
                 add_ai_log(
                     "TRAINING",
-                    "trained_count not bumped — weights rolled back, these rows stay "
-                    "unseen so the next pass can retry them.",
+                    "Checkpoint rolled back — weights unchanged, but trained_count bumped "
+                    "so catch-up advances through the archive.",
                     level="WARNING",
                 )
 
-            global _low_epoch_streak
             if not cold_start_active:
                 if metrics["best_epoch"] <= LOW_EPOCH_ALERT_THRESHOLD:
                     _low_epoch_streak += 1
@@ -1965,6 +2118,13 @@ def _run_neuralbet_inference_and_training_locked(
                 "cold_start": cold_start_active,
                 "class_mix": class_mix,
             })
+
+            if not cold_start_active:
+                from app.neuralbet.training_history import get_training_history
+
+                _checkpoint_reject_streak = _checkpoint_reject_streak_from_history(
+                    get_training_history()
+                )
 
             pass_val = metrics.get("val_loss_attempted")
             if pass_val is None:
@@ -2019,14 +2179,9 @@ def _run_neuralbet_inference_and_training_locked(
                     if metrics.get("checkpoint_accepted", True)
                     else (
                         f". Checkpoint kept — pass val_loss {metrics.get('val_loss_attempted')} "
-                        + (
-                            f"did not beat previous checkpoint {run_entry.get('val_loss')}"
-                            if metrics.get("checkpoint_reject_reason") == "chart"
-                            else (
-                                f"did not beat incoming {metrics.get('val_loss_incoming')}"
-                            )
-                        )
-                        + f"; recorded val_loss {run_entry.get('val_loss')} (previous checkpoint)."
+                        f"did not beat incoming {metrics.get('val_loss_incoming')} "
+                        f"on the same val split; recorded val_loss {run_entry.get('val_loss')} "
+                        "(previous checkpoint)."
                     )
                 ),
             )
@@ -2041,6 +2196,16 @@ def _run_neuralbet_inference_and_training_locked(
                     "или временно выключить обучение.",
                     level="WARNING",
                 )
+            if _checkpoint_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT:
+                add_ai_log(
+                    "TRAINING",
+                    f"⚠️ Модель заморожена: checkpoint отклонён уже {_checkpoint_reject_streak} "
+                    f"проход(ов) подряд (порог {CHECKPOINT_REJECT_STREAK_ALERT}) — веса не "
+                    "обновляются; следующие циклы пропускают GRU до streak сбросится. "
+                    "Проверьте val_loss incoming vs attempted в логах; возможен сброс "
+                    "нейросети.",
+                    level="WARNING",
+                )
         else:
             add_ai_log(
                 "TRAINING",
@@ -2050,7 +2215,7 @@ def _run_neuralbet_inference_and_training_locked(
             )
     elif insufficient_for_training:
         pass  # already logged above, with the actual count — don't also claim "no matches"
-    elif is_train_cycle:
+    elif is_train_cycle and not gru_frozen:
         add_ai_log(
             "TRAINING", "No new finished matches in database for retraining step."
         )
@@ -2101,7 +2266,10 @@ def _run_neuralbet_inference_and_training_locked(
             )
 
     if is_tune_cycle and val_samples:
-        tune_metrics = ensemble_engine.tune_ensemble(val_samples)
+        tune_metrics = ensemble_engine.tune_ensemble(
+            val_samples,
+            blend_market_frozen=gru_pass_rejected or gru_frozen,
+        )
         if tune_metrics.get("tuned"):
             bw = tune_metrics["blend_weight"]
             mw = tune_metrics["market_weight"]
@@ -2137,14 +2305,19 @@ def _run_neuralbet_inference_and_training_locked(
             if tune_metrics.get("persisted"):
                 persisted = "saved"
             elif not tune_metrics.get("accepted"):
-                persisted = "unchanged (live Brier not beaten)"
+                persisted = "unchanged (blend did not beat live + market Brier)"
             else:
                 persisted = "not saved (no GRU checkpoint yet)"
-            if not tune_metrics.get("accepted"):
+            if tune_metrics.get("blend_market_frozen"):
+                blend_str = (
+                    f"blend/market frozen (GRU not committed), kept "
+                    f"{bw['old']}/{mw['old']}"
+                )
+            elif not tune_metrics.get("accepted"):
                 blend_str = (
                     f"blend rejected (val Brier {bw['val_brier']} ≥ live "
-                    f"{tune_metrics.get('val_brier_incoming', bw['val_brier'])}, kept "
-                    f"{bw['old']}/{mw['old']})"
+                    f"{tune_metrics.get('val_brier_incoming', bw['val_brier'])} or market "
+                    f"{tune_metrics['val_brier_base']}, kept {bw['old']}/{mw['old']})"
                 )
             else:
                 blend_str = (

@@ -177,6 +177,10 @@ export default function NeurobetsPage() {
   const [sortMode, setSortMode] = useState<"best" | "safe">("best")
   const [selectedSport, setSelectedSport] = useState<string>("all")
   const [stats, setStats] = useState<any>(null)
+  const [headlineAccuracy, setHeadlineAccuracy] = useState<{
+    guess_rate_pct: number | null
+    miss_rate_pct: number | null
+  } | null>(null)
   const [bankroll, setBankroll] = useState<any>(null)
   const [openBetsCount, setOpenBetsCount] = useState(0)
   const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
@@ -239,10 +243,48 @@ export default function NeurobetsPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/stats`)
+      const res = await fetch(`${API_BASE}/api/stats`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         setStats(data.stats)
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  // The ring must not rely on /api/stats alone — ad blockers often silently block
+  // URLs containing "stats" while /api/neurobets/* still works (bankroll, top, etc.).
+  const fetchHeadlineAccuracy = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/headline-accuracy`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setHeadlineAccuracy({
+          guess_rate_pct: data.guess_rate_pct ?? null,
+          miss_rate_pct: data.miss_rate_pct ?? null,
+        })
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
+  // Fast provisional % while headline-accuracy warms its cache (cold SQL aggregate).
+  const fetchHeadlineAccuracyFallback = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/neurobets/stats-by-type`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        const guess = data.overall?.guess_rate_pct
+        if (guess == null) return
+        setHeadlineAccuracy((prev) => {
+          if (prev?.guess_rate_pct != null) return prev
+          return {
+            guess_rate_pct: guess,
+            miss_rate_pct: Math.round((100 - guess) * 10) / 10,
+          }
+        })
       }
     } catch (err) {
       // Ignore
@@ -455,11 +497,15 @@ export default function NeurobetsPage() {
     if (activeTab === "live") {
       fetchOpenBotBets().then(() => fetchNeurobets(0, PAGE_SIZE, "replace"))
       fetchStats()
+      fetchHeadlineAccuracyFallback()
+      fetchHeadlineAccuracy()
       fetchBankroll()
       fetchHistoryTotal()
     } else {
       fetchHistory(0, PAGE_SIZE, "replace")
       fetchStats()
+      fetchHeadlineAccuracyFallback()
+      fetchHeadlineAccuracy()
       fetchBankroll()
       fetchOpenBotBets()
       fetchLiveTotal()
@@ -470,8 +516,13 @@ export default function NeurobetsPage() {
     // count (the number in parentheses) ticking over in the background with a cheap
     // count-only request, so both badges stay live regardless of which tab is open —
     // not just the one the user happens to be looking at.
+    //
+    // History list is intentionally NOT re-fetched on the timer: replace-mode refresh
+    // clears scroll position and flashes the full-page loader — bad for browsing.
+    // Only summary/badge counts tick over; a fresh list loads on tab/filter change.
     const interval = setInterval(() => {
       fetchStats()
+      fetchHeadlineAccuracy()
       fetchBankroll()
       if (activeTab === "live") {
         // Re-fetch from the top on each refresh, but keep however many rows the user
@@ -479,13 +530,13 @@ export default function NeurobetsPage() {
         fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
         fetchHistoryTotal()
       } else {
-        fetchHistory(0, Math.max(historyOffsetRef.current, PAGE_SIZE), "replace")
+        fetchHistoryTotal()
         fetchOpenBotBets()
         fetchLiveTotal()
       }
     }, 10000)
     return () => clearInterval(interval)
-  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchHeadlineAccuracyFallback, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
 
   const sportsList = SPORT_FILTER_OPTIONS
 
@@ -493,6 +544,14 @@ export default function NeurobetsPage() {
     const p = parseFloat(val)
     return isNaN(p) ? 1.0 : p
   }
+
+  const modelGuessRatePct =
+    headlineAccuracy?.guess_rate_pct ?? stats?.guess_rate_pct ?? null
+  const modelMissRatePct =
+    headlineAccuracy?.miss_rate_pct ??
+    stats?.miss_rate_pct ??
+    (modelGuessRatePct != null ? Math.round((100 - modelGuessRatePct) * 10) / 10 : null)
+  const modelAccuracyKnown = modelGuessRatePct != null
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans antialiased flex flex-col">
@@ -608,17 +667,17 @@ export default function NeurobetsPage() {
                 <div className="text-[10px] text-neutral-400 font-mono uppercase">Точность модели</div>
                 <AccuracyRing
                   size={96}
-                  pct={stats?.guess_rate_pct ?? 0}
-                  known={stats != null && stats.miss_rate_pct !== null}
+                  pct={modelGuessRatePct ?? 0}
+                  known={modelAccuracyKnown}
                 />
                 <div className="text-[10px] font-semibold">
-                  {!stats ? (
+                  {!modelAccuracyKnown && headlineAccuracy == null && stats == null ? (
                     <span className="text-neutral-500">загрузка...</span>
-                  ) : stats.miss_rate_pct === null ? (
+                  ) : !modelAccuracyKnown ? (
                     <span className="text-neutral-500">нет данных</span>
                   ) : (
                     <span className="text-[#ff7675]">
-                      промах {stats.miss_rate_pct.toFixed(1)}%
+                      промах {modelMissRatePct!.toFixed(1)}%
                     </span>
                   )}
                 </div>
@@ -641,6 +700,10 @@ export default function NeurobetsPage() {
           // only actually leaves the total once a bet settles and balance/locked update.
           const totalEquity = acc ? Number(acc.balance) + Number(acc.locked || 0) : 0
           const roiPct = acc && acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
+          const settledBets = acc ? Number(acc.wins || 0) + Number(acc.losses || 0) : 0
+          const liveBetHitPct =
+            settledBets > 0 ? (Number(acc!.wins || 0) / settledBets) * 100 : 0
+          const liveBetHitKnown = settledBets > 0
           return (
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
@@ -661,12 +724,29 @@ export default function NeurobetsPage() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-end gap-3">
-                    <div className="text-3xl font-black font-mono text-white">
-                      {Number(acc.balance).toFixed(1)} ₽
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-end gap-3 min-w-0">
+                      <div className="text-3xl font-black font-mono text-white">
+                        {Number(acc.balance).toFixed(1)} ₽
+                      </div>
+                      <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                        {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                      </div>
                     </div>
-                    <div className={`text-sm font-bold font-mono mb-1 ${roiPct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
-                      {roiPct >= 0 ? "+" : ""}{roiPct.toFixed(1)}%
+                    <div className="bg-neutral-950/80 border border-neutral-800/80 rounded-xl px-4 py-3 flex flex-col items-center justify-center gap-1.5 shrink-0 bg-gradient-to-b from-neutral-950 to-[#74b9ff]/5">
+                      <div className="text-[10px] text-neutral-400 font-mono uppercase text-center leading-tight">
+                        Точность ставок
+                      </div>
+                      <AccuracyRing size={72} pct={liveBetHitPct} known={liveBetHitKnown} />
+                      <div className="text-[10px] font-semibold text-center">
+                        {!liveBetHitKnown ? (
+                          <span className="text-neutral-500">нет расчётов</span>
+                        ) : (
+                          <span className="text-[#ff7675]">
+                            промах {(100 - liveBetHitPct).toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

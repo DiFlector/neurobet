@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "neurobet-eval": {
+      "url": "https://necrolich.ru/neurobet/api/mcp",
+      "type": "http"
+    }
+  }
+}

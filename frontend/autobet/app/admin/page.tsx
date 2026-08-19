@@ -715,6 +715,7 @@ export default function AdminPage() {
           const s2 = signals.backtest_brier_not_beating_market
           const s3 = signals.backtest_roi_not_improving
           const s4 = signals.val_loss_trending_up
+          const s5 = signals.checkpoint_reject_streak
 
           return (
             <div className={`rounded-2xl border p-5 backdrop-blur-md shadow-lg transition ${c.bg} ${c.border} ${c.blink ? "animate-pulse" : ""}`}>
@@ -772,6 +773,11 @@ export default function AdminPage() {
                     s4?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
                     val_loss растёт ({s4?.runs_checked ?? 0}/{s4?.runs_needed ?? "—"} проходов) {s4?.active ? "🔴" : "✓"}
+                  </span>
+                  <span className={`px-2.5 py-1.5 rounded-full border ${
+                    s5?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
+                  }`}>
+                    checkpoint отклонён: {s5?.streak ?? 0}/{s5?.threshold ?? "—"} подряд {s5?.active ? "🔴" : "✓"}
                   </span>
                 </div>
                 )}

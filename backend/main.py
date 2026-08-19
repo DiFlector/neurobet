@@ -19,7 +19,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
 from neurobet_filters import (
@@ -289,6 +289,7 @@ def startup_event():
     )
     scheduler.start()
     logger.info(f"Scheduler started! Fonbet LIVE matches will be scraped every {interval} seconds.")
+    warm_headline_guess_rate_cache()
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -390,6 +391,23 @@ def read_bet_type_stats():
         return {"status": "success", **res}
     except Exception as e:
         logger.error(f"Error fetching bet-type stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/neurobets/headline-accuracy")
+def read_headline_accuracy():
+    """Recency-weighted «Точность модели» for the dashboard ring.
+
+    Deliberately avoids the word "stats" in the path — many ad blockers silently
+    drop fetch() to /api/stats while /api/neurobets/* endpoints still work."""
+    try:
+        guess_rate_pct, miss_rate_pct = get_headline_guess_rate()
+        return {
+            "status": "success",
+            "guess_rate_pct": guess_rate_pct,
+            "miss_rate_pct": miss_rate_pct,
+        }
+    except Exception as e:
+        logger.error(f"Error fetching headline accuracy: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/neurobets/roi-stats")

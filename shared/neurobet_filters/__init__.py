@@ -64,6 +64,18 @@ MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
 MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
 
+# Live staking only — training/inference/backtest universe stays ALLOWED_SPORTS.
+# Default: table tennis only (only sport with positive backtest ROI on 19.08).
+# Set to * or all to stake every allowed sport again.
+_LIVE_STAKE_SPORTS_RAW = os.getenv("NEURALBET_LIVE_STAKE_SPORTS", "настольный теннис").strip().lower()
+LIVE_STAKE_SPORTS: frozenset[str] | None = (
+    None
+    if _LIVE_STAKE_SPORTS_RAW in ("", "*", "all")
+    else frozenset(
+        s.strip().lower() for s in _LIVE_STAKE_SPORTS_RAW.split(",") if s.strip()
+    )
+)
+
 
 def sport_top(sport_path: Optional[str]) -> str:
     return (sport_path or "").split("/")[0].strip().lower()
@@ -141,13 +153,23 @@ def in_verdict_train_band(coeff: float) -> bool:
     return coeff < MAX_BET_COEFF
 
 
+def in_live_stake_sport(sport_path: Optional[str]) -> bool:
+    """Whether live staking / «Активные LIVE» lists include this sport."""
+    if LIVE_STAKE_SPORTS is None:
+        return True
+    return sport_top(sport_path) in LIVE_STAKE_SPORTS
+
+
 def live_gate_skip_reason(
     coeff: float,
     expected_roi: float,
     support_count: Optional[int] = None,
+    sport_path: Optional[str] = None,
 ) -> Optional[str]:
     """Why this candidate is not staked, or None if it clears every live gate.
     `support_count is None` means 'don't check' (empty cache fails open)."""
+    if sport_path is not None and not in_live_stake_sport(sport_path):
+        return "sport"
     if not in_bet_band(coeff):
         return "coeff"
     if expected_roi < MIN_BET_EDGE_PCT:
@@ -161,8 +183,9 @@ def passes_live_gates(
     coeff: float,
     expected_roi: float,
     support_count: Optional[int] = None,
+    sport_path: Optional[str] = None,
 ) -> bool:
-    return live_gate_skip_reason(coeff, expected_roi, support_count) is None
+    return live_gate_skip_reason(coeff, expected_roi, support_count, sport_path) is None
 
 
 def universe_sql_params() -> Tuple[list, list]:
