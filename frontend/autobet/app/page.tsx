@@ -760,9 +760,11 @@ export default function NeurobetsPage() {
                         {acc.ruin_count}
                       </div>
                     </div>
-                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800 flex flex-col items-center justify-center gap-1 min-h-[52px]">
-                      <div className="text-[9px] text-neutral-500 font-mono uppercase leading-none">Точность</div>
-                      <AccuracyRing size={40} pct={liveBetHitPct} known={liveBetHitKnown} />
+                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Точность</div>
+                      <div className={`text-xs font-bold font-mono ${liveBetHitKnown ? "text-[#55efc4]" : "text-neutral-400"}`}>
+                        {liveBetHitKnown ? `${liveBetHitPct.toFixed(1)}%` : "—"}
+                      </div>
                     </div>
                   </div>
                 </>
