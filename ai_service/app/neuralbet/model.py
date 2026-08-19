@@ -728,6 +728,12 @@ class NeuralBetEnsemble:
     # Sports that never clear this simply keep using decision_threshold (see
     # sport_threshold()) — there's no path where a sport ends up with no usable cutoff.
     _MIN_THRESHOLD_BETS_PER_SPORT = int(os.getenv("NEURALBET_MIN_THRESHOLD_BETS_PER_SPORT", "50"))
+    # Same 1e-4 the GRU checkpoint gate uses. Brier sits ~0.18, so this is "not
+    # worse" rather than "visibly better" — a grid point has to beat the *live*
+    # mixture, not just the other 0.2-step candidates (live blend_weight is often
+    # off-grid after EMA, e.g. 0.89, and the grid would otherwise walk toward a
+    # coarser 0.8/1.0 that scores worse on the same val slice).
+    _TUNE_BRIER_EPS = 1e-4
 
     def tune_ensemble(self, val_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -764,9 +770,16 @@ class NeuralBetEnsemble:
         - Every parameter is smoothed towards this cycle's grid-search result rather
           than snapping to it (see _TUNE_SMOOTH_ALPHA) — the target values are reported
           alongside the smoothed ones so the log line shows both.
-        - The tuned scalars are written onto the existing GRU checkpoint immediately
+        - Blend/market are gated like GRU weights: the grid's best Brier must beat the
+          *current live mixture* on this val slice (see _TUNE_BRIER_EPS). If it does
+          not, blend_weight/market_weight stay put — the search no longer walks toward
+          an off-grid-worse 0.8/1.0 just because those are the only candidates. The
+          decision-threshold sweep is independent (it does not enter Brier) and still
+          has its own min-bets floor.
+        - Accepted scalars are written onto the existing GRU checkpoint immediately
           (see save_ensemble): they must survive a container restart even when the
-          next train_online pass is rejected and does not rewrite the file.
+          next train_online pass is rejected and does not rewrite the file. A rejected
+          blend does not rewrite the file unless a threshold actually moved.
 
         Uses the same random-cutoff trajectory view as training (_prepare_sample) so
         this is evaluating the model the way it actually gets scored elsewhere (val_loss,
@@ -798,21 +811,29 @@ class NeuralBetEnsemble:
         # The odds-only baseline (no model at all) — logged alongside the tuned blend's
         # Brier so a regression (model doing worse than just trusting the bookmaker) is
         # visible in every training cycle's log line, not just in an offline export.
-        base_brier = sum((mp - t) ** 2 for mp, t in zip(market_probs, targets)) / len(prepared)
+        def _mixture_brier(w_py: float, w_mkt: float) -> float:
+            w_lgb = max(0.0, 1.0 - w_py - w_mkt)
+            return sum(
+                (w_py * gp + w_mkt * mp + w_lgb * lp - t) ** 2
+                for gp, mp, lp, t in zip(pytorch_probs, market_probs, lgb_scores, targets)
+            ) / len(prepared)
 
-        best_blend, best_market, best_brier = self.blend_weight, self.market_weight, float("inf")
+        base_brier = sum((mp - t) ** 2 for mp, t in zip(market_probs, targets)) / len(prepared)
+        incoming_brier = _mixture_brier(self.blend_weight, self.market_weight)
+
+        # Seed the grid with the live mixture so an off-grid blend (0.89 after EMA)
+        # is not abandoned for a coarser 0.8/1.0 that scores worse on this slice.
+        best_blend, best_market, best_brier = self.blend_weight, self.market_weight, incoming_brier
         for w_py in self._BLEND_CANDIDATES:
             for w_mkt in self._BLEND_CANDIDATES:
                 if w_py + w_mkt > 1.0 + 1e-9:
                     continue
-                w_lgb = 1.0 - w_py - w_mkt
-                brier = sum(
-                    (w_py * gp + w_mkt * mp + w_lgb * lp - t) ** 2
-                    for gp, mp, lp, t in zip(pytorch_probs, market_probs, lgb_scores, targets)
-                ) / len(prepared)
-                if brier < best_brier:
+                brier = _mixture_brier(w_py, w_mkt)
+                if brier < best_brier - self._TUNE_BRIER_EPS:
                     best_brier = brier
                     best_blend, best_market = w_py, w_mkt
+
+        blend_accepted = best_brier < incoming_brier - self._TUNE_BRIER_EPS
 
         best_threshold, best_roi, best_bets = self._sweep_threshold(
             decision_probs, coeffs, targets, self.decision_threshold, self._MIN_THRESHOLD_BETS,
@@ -820,8 +841,9 @@ class NeuralBetEnsemble:
 
         old_blend, old_market, old_threshold = self.blend_weight, self.market_weight, self.decision_threshold
         a = self._TUNE_SMOOTH_ALPHA
-        self.blend_weight = old_blend + a * (best_blend - old_blend)
-        self.market_weight = old_market + a * (best_market - old_market)
+        if blend_accepted:
+            self.blend_weight = old_blend + a * (best_blend - old_blend)
+            self.market_weight = old_market + a * (best_market - old_market)
         if best_bets >= self._MIN_THRESHOLD_BETS:
             self.decision_threshold = max(
                 VALUE_THRESHOLD_FLOOR,
@@ -862,13 +884,17 @@ class NeuralBetEnsemble:
         # Sports that didn't clear the val-bets floor this pass still need their
         # SPORT_THRESHOLD_FLOORS minimum in the stored dict (backtest snapshots it).
         self._apply_sport_threshold_floors()
-        persisted = self.save_ensemble()
+        threshold_moved = abs(self.decision_threshold - old_threshold) > 1e-9
+        changed = blend_accepted or threshold_moved or bool(sport_threshold_report)
+        persisted = self.save_ensemble() if changed else False
 
         return {
             "tuned": True,
+            "accepted": blend_accepted,
             "persisted": persisted,
             "samples": len(prepared),
             "val_brier_base": round(base_brier, 4),
+            "val_brier_incoming": round(incoming_brier, 4),
             "blend_weight": {
                 "old": round(old_blend, 2), "new": round(self.blend_weight, 2),
                 "target": round(best_blend, 2), "val_brier": round(best_brier, 4),

@@ -2134,13 +2134,29 @@ def _run_neuralbet_inference_and_training_locked(
                 if sport_thresholds
                 else ""
             )
-            persisted = "saved" if tune_metrics.get("persisted") else "not saved (no GRU checkpoint yet)"
+            if tune_metrics.get("persisted"):
+                persisted = "saved"
+            elif not tune_metrics.get("accepted"):
+                persisted = "unchanged (live Brier not beaten)"
+            else:
+                persisted = "not saved (no GRU checkpoint yet)"
+            if not tune_metrics.get("accepted"):
+                blend_str = (
+                    f"blend rejected (val Brier {bw['val_brier']} ≥ live "
+                    f"{tune_metrics.get('val_brier_incoming', bw['val_brier'])}, kept "
+                    f"{bw['old']}/{mw['old']})"
+                )
+            else:
+                blend_str = (
+                    f"blend_weight {bw['old']} → {bw['new']} (target {bw['target']}), "
+                    f"market_weight {mw['old']} → {mw['new']} (target {mw['target']})"
+                )
             add_ai_log(
                 "TRAINING",
                 f"Ensemble tuned on {tune_metrics['samples']} val samples — "
-                f"blend_weight {bw['old']} → {bw['new']} (target {bw['target']}), "
-                f"market_weight {mw['old']} → {mw['new']} (target {mw['target']}) — "
-                f"val Brier {bw['val_brier']} vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), "
+                f"{blend_str} — "
+                f"val Brier {bw['val_brier']} vs live {tune_metrics.get('val_brier_incoming', '—')} "
+                f"vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), "
                 f"{dt_str}{sport_str}. Ensemble weights {persisted}.",
             )
 
