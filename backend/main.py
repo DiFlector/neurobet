@@ -347,13 +347,22 @@ def read_odds_history(
 @app.get("/api/stats")
 def read_stats():
     try:
-        stats = get_db_stats()
+        stats = get_db_stats(include_guess_rate=True)
         return {
             "status": "success",
             "stats": stats
         }
     except Exception as e:
         logger.error(f"Error fetching stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/db-overview")
+def read_admin_db_overview():
+    """Fast DB counters for the admin panel — no 'stats' in the URL (ad blockers) and no guess-rate SQL."""
+    try:
+        return {"status": "success", "stats": get_db_stats(include_guess_rate=False)}
+    except Exception as e:
+        logger.error(f"Error fetching admin db overview: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/neurobets/top")

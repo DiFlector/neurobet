@@ -1131,7 +1131,33 @@ def format_file_size(size_bytes: int) -> str:
     else:
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
-def get_db_stats() -> Dict[str, Any]:
+
+DB_STATS_CACHE_SECONDS = float(os.getenv("NEUROBET_DB_STATS_CACHE_SECONDS", "30"))
+_db_stats_core_cache: Dict[str, Any] = {"loaded_at": 0.0, "data": None}
+_db_stats_refresh_lock = threading.Lock()
+_db_stats_refreshing = False
+
+
+def _approx_pg_row_count(cursor, schema: str, table: str) -> int:
+    """Fast row estimate from pg_class — exact COUNT(*) on million-row tables is too slow for polling."""
+    cursor.execute(
+        """
+        SELECT COALESCE(GREATEST(c.reltuples, 0), 0)::bigint AS c
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = %s AND c.relname = %s
+        """,
+        (schema, table),
+    )
+    row = cursor.fetchone()
+    est = int(row["c"] or 0) if row else 0
+    if est > 0:
+        return est
+    cursor.execute(f"SELECT COUNT(*) AS c FROM {schema}.{table}")
+    return int(cursor.fetchone()["c"] or 0)
+
+
+def _compute_db_stats_core() -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -1141,8 +1167,7 @@ def get_db_stats() -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(*) AS c FROM events")
     total_events = cursor.fetchone()["c"]
 
-    cursor.execute("SELECT COUNT(*) AS c FROM odds_history")
-    history_count = cursor.fetchone()["c"]
+    history_count = _approx_pg_row_count(cursor, "live", "odds_history")
 
     cursor.execute("SELECT COUNT(*) AS c FROM ai_predictions")
     predictions_count = cursor.fetchone()["c"]
@@ -1155,29 +1180,19 @@ def get_db_stats() -> Dict[str, Any]:
 
     release_connection(conn)
 
-    # Query Dedicated Finished Events DB (autobet_finished.db)
     finished_count = 0
     finished_history_count = 0
     unresolved_bets_count = 0
     try:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
-        f_cursor.execute("SELECT COUNT(*) AS c FROM finished_events")
-        finished_count = f_cursor.fetchone()["c"]
-
-        f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets")
-        finished_history_count = f_cursor.fetchone()["c"]
-
+        finished_count = _approx_pg_row_count(f_cursor, "finished", "finished_events")
+        finished_history_count = _approx_pg_row_count(f_cursor, "finished", "finished_bets")
         f_cursor.execute("SELECT COUNT(*) AS c FROM finished_bets WHERE is_win IS NULL")
         unresolved_bets_count = f_cursor.fetchone()["c"] or 0
-
         release_connection(f_conn)
     except Exception as e:
         logger.error(f"Error querying finished db stats: {e}")
-
-    # Cached separately — see get_headline_guess_rate() (also exposed at
-    # /api/neurobets/headline-accuracy so ad blockers don't strip URLs containing "stats").
-    guess_rate_pct, miss_rate_pct = get_headline_guess_rate()
 
     return {
         "live_events_count": live_count,
@@ -1187,12 +1202,60 @@ def get_db_stats() -> Dict[str, Any]:
         "unresolved_bets_count": unresolved_bets_count,
         "total_odds_history_count": history_count,
         "ai_predictions_count": predictions_count,
-        "miss_rate_pct": miss_rate_pct,
-        "guess_rate_pct": guess_rate_pct,
         "last_updated_at": last_updated,
         "db_size_bytes": total_db_size_bytes,
-        "db_size_formatted": format_file_size(total_db_size_bytes)
+        "db_size_formatted": format_file_size(total_db_size_bytes),
     }
+
+
+def _refresh_db_stats_core_cache() -> None:
+    global _db_stats_refreshing, _db_stats_core_cache
+    try:
+        _db_stats_core_cache = {
+            "loaded_at": time.time(),
+            "data": _compute_db_stats_core(),
+        }
+    except Exception as e:
+        logger.error(f"DB stats background refresh failed: {e}")
+    finally:
+        with _db_stats_refresh_lock:
+            _db_stats_refreshing = False
+
+
+def get_db_stats(*, include_guess_rate: bool = True) -> Dict[str, Any]:
+    global _db_stats_refreshing
+    now = time.time()
+    loaded_at = float(_db_stats_core_cache.get("loaded_at") or 0.0)
+    core = _db_stats_core_cache.get("data")
+    age = now - loaded_at if loaded_at > 0 else float("inf")
+
+    if core is not None and age < DB_STATS_CACHE_SECONDS:
+        result = dict(core)
+    elif core is not None and loaded_at > 0:
+        result = dict(core)
+        with _db_stats_refresh_lock:
+            if not _db_stats_refreshing:
+                _db_stats_refreshing = True
+                threading.Thread(
+                    target=_refresh_db_stats_core_cache,
+                    daemon=True,
+                    name="db-stats-refresh",
+                ).start()
+    else:
+        _db_stats_core_cache["data"] = _compute_db_stats_core()
+        _db_stats_core_cache["loaded_at"] = now
+        result = dict(_db_stats_core_cache["data"])
+
+    if include_guess_rate:
+        guess_rate_pct, miss_rate_pct = get_headline_guess_rate()
+        result["guess_rate_pct"] = guess_rate_pct
+        result["miss_rate_pct"] = miss_rate_pct
+    else:
+        result["guess_rate_pct"] = None
+        result["miss_rate_pct"] = None
+
+    return result
+
 
 def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
     conn = get_connection()
@@ -1456,10 +1519,14 @@ def get_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
 
 
 def warm_neurobet_caches() -> None:
-    """Pre-warm market-support + headline guess rate so the first dashboard hit is instant."""
+    """Pre-warm DB counters, market-support, and headline guess rate for instant first paint."""
     def _run() -> None:
-        global _headline_guess_rate_cache
+        global _headline_guess_rate_cache, _db_stats_core_cache
         try:
+            _db_stats_core_cache = {
+                "loaded_at": time.time(),
+                "data": _compute_db_stats_core(),
+            }
             _get_market_support()
             guess_rate_pct, miss_rate_pct = _compute_headline_guess_rate()
             _headline_guess_rate_cache = {

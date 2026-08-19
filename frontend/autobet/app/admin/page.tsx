@@ -278,7 +278,7 @@ export default function AdminPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/stats`)
+      const res = await fetch(`${API_BASE}/api/admin/db-overview`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         setStats(data.stats)
@@ -497,11 +497,12 @@ export default function AdminPage() {
 
     const interval = setInterval(() => {
       fetchAILogs()
-      fetchStats()
       fetchBankroll()
       fetchOpenLiveBetsCount()
       fetchTrainingHealth()
     }, 3000)
+
+    const statsInterval = setInterval(fetchStats, 15000)
 
     // Backtest history changes far less often than the rest (4x/day via the scheduler,
     // plus occasional manual runs) — a separate, slower interval instead of piling it
@@ -517,6 +518,7 @@ export default function AdminPage() {
 
     return () => {
       clearInterval(interval)
+      clearInterval(statsInterval)
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
     }
