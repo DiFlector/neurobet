@@ -328,10 +328,10 @@ export default function NeurobetsPage() {
 
   const fetchHistoryTotal = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: "1", offset: "0" })
+      const params = new URLSearchParams()
       if (selectedSport !== "all") params.append("sport", selectedSport)
       if (historyOutcomeFilter !== "all") params.append("outcome", historyOutcomeFilter)
-      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`)
+      const res = await fetch(`${API_BASE}/api/neurobets/history-summary?${params.toString()}`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         if (data.summary) setHistorySummary(data.summary)
@@ -388,12 +388,15 @@ export default function NeurobetsPage() {
       if (historyOutcomeFilter !== "all") {
         params.append("outcome", historyOutcomeFilter)
       }
-      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`)
+      if (mode === "append") {
+        params.append("include_summary", "false")
+      }
+      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         const items = data.history || []
         setHistoryItems((prev) => (mode === "append" ? [...prev, ...items] : items))
-        setHistorySummary(data.summary || null)
+        if (data.summary) setHistorySummary(data.summary)
         historyOffsetRef.current = offset + items.length
       }
     } catch (err) {

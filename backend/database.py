@@ -1535,6 +1535,7 @@ def warm_neurobet_caches() -> None:
                 "miss_rate_pct": miss_rate_pct,
             }
             _save_headline_cache_to_disk()
+            get_neurobets_history_summary()
         except Exception as e:
             logger.warning(f"NeuroBet cache pre-warm failed: {e}")
 
@@ -2057,7 +2058,9 @@ def get_neurobets_history(
     search: Optional[str] = None,
     outcome_filter: Optional[str] = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    *,
+    include_summary: bool = True,
 ) -> Dict[str, Any]:
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
@@ -2069,7 +2072,7 @@ def get_neurobets_history(
         {universe_sql("e", "h")}
     """
     uni_sports, uni_factors = universe_sql_params()
-    params = [uni_sports, uni_factors]
+    params: List[Any] = [uni_sports, uni_factors]
 
     if sport_filter and sport_filter.lower() != "all":
         base_query += " AND e.sport_path ILIKE %s"
@@ -2080,18 +2083,123 @@ def get_neurobets_history(
         s = f"%{search.lower()}%"
         params.extend([s, s, s])
 
-    # Summary Statistics — four states, now built around whether the model's own verdict
-    # (predicted_win) was right, not around raw market outcome:
-    #   correct   — the model judged this bet (predicted_win IS NOT NULL) and got it right
-    #   incorrect — the model judged this bet and got it wrong (either direction: said
-    #               "will win" and it lost, or said "will lose" and it won)
-    #   push      — line landed exactly on the bet (legitimate return, is_push=1);
-    #               not a guess/miss question at all, kept as its own bucket
-    #   pending   — no resolved market outcome yet, OR the model never scored this bet
-    #               (predicted_win IS NULL, e.g. pre-dates this feature) — genuinely
-    #               nothing to judge, not a bug
-    # Kept unfiltered by outcome_filter so the counts stay the same totals regardless of
-    # which outcome tab is selected — that's what lets them double as filter buttons.
+    summary = (
+        get_neurobets_history_summary(sport_filter, search, outcome_filter)
+        if include_summary
+        else None
+    )
+
+    filtered_query = base_query
+    if outcome_filter == "correct":
+        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win = h.is_win"
+    elif outcome_filter == "incorrect":
+        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win <> h.is_win"
+    elif outcome_filter == "push":
+        filtered_query += " AND h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1"
+    elif outcome_filter == "pending":
+        filtered_query += " AND (h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL))"
+
+    history_items: List[Dict[str, Any]] = []
+    if limit > 0:
+        data_query = f"""
+            SELECT
+                h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
+                h.initial_coefficient, h.final_coefficient, h.score_at_time, h.is_win, h.is_push,
+                h.predicted_win, h.predicted_win_probability,
+                h.first_seen_at AS timestamp, h.finished_at,
+                e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
+            {filtered_query}
+            ORDER BY h.finished_at DESC, h.id DESC
+            LIMIT %s OFFSET %s
+        """
+        f_cursor.execute(data_query, params + [limit, offset])
+        history_items = [dict(r) for r in f_cursor.fetchall()]
+
+    release_connection(f_conn)
+
+    return {
+        "summary": summary,
+        "history": history_items,
+    }
+
+
+HISTORY_SUMMARY_CACHE_SECONDS = float(os.getenv("NEUROBET_HISTORY_SUMMARY_CACHE_SECONDS", "90"))
+_history_summary_cache: Dict[str, Dict[str, Any]] = {}
+_history_summary_refresh_lock = threading.Lock()
+_history_summary_refreshing: set[str] = set()
+
+
+def _history_summary_cache_key(sport_filter: Optional[str], search: Optional[str]) -> str:
+    return f"{(sport_filter or '').strip().lower()}|{(search or '').strip().lower()}"
+
+
+def _empty_history_summary() -> Dict[str, Any]:
+    return {
+        "total_count": 0,
+        "correct_count": 0,
+        "incorrect_count": 0,
+        "push_count": 0,
+        "pending_count": 0,
+        "judged_count": 0,
+        "guess_rate_pct": 0.0,
+        "miss_rate_pct": 0.0,
+        "filtered_count": 0,
+    }
+
+
+def _history_summary_from_row(summary_row: Any, outcome_filter: Optional[str]) -> Dict[str, Any]:
+    total_count = summary_row["total_count"] or 0
+    correct_count = summary_row["correct_count"] or 0
+    incorrect_count = summary_row["incorrect_count"] or 0
+    push_count = summary_row["push_count"] or 0
+    pending_count = summary_row["pending_count"] or 0
+    judged_count = correct_count + incorrect_count
+    guess_rate_pct = round((correct_count / judged_count * 100.0), 1) if judged_count > 0 else 0.0
+    filtered_count = {
+        "correct": correct_count,
+        "incorrect": incorrect_count,
+        "push": push_count,
+        "pending": pending_count,
+    }.get(outcome_filter or "", total_count)
+    return {
+        "total_count": total_count,
+        "correct_count": correct_count,
+        "incorrect_count": incorrect_count,
+        "push_count": push_count,
+        "pending_count": pending_count,
+        "judged_count": judged_count,
+        "guess_rate_pct": guess_rate_pct,
+        "miss_rate_pct": round(100.0 - guess_rate_pct, 1) if judged_count > 0 else 0.0,
+        "filtered_count": filtered_count,
+    }
+
+
+def _compute_history_summary(
+    sport_filter: Optional[str],
+    search: Optional[str],
+    outcome_filter: Optional[str],
+) -> Dict[str, Any]:
+    f_conn = get_finished_connection()
+    f_cursor = f_conn.cursor()
+
+    base_query = f"""
+        FROM finished_bets h
+        JOIN finished_events e ON h.event_id = e.event_id
+        WHERE 1=1
+        {universe_sql("e", "h")}
+    """
+    uni_sports, uni_factors = universe_sql_params()
+    params: List[Any] = [uni_sports, uni_factors]
+
+    if sport_filter and sport_filter.lower() != "all":
+        base_query += " AND e.sport_path ILIKE %s"
+        params.append(f"%{sport_filter.lower()}%")
+
+    if search:
+        base_query += " AND (e.match_name ILIKE %s OR e.team_1 ILIKE %s OR e.team_2 ILIKE %s)"
+        s = f"%{search.lower()}%"
+        params.extend([s, s, s])
+
     count_query = f"""
         SELECT COUNT(*) AS total_count,
                SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
@@ -2105,64 +2213,63 @@ def get_neurobets_history(
     """
     f_cursor.execute(count_query, params)
     summary_row = f_cursor.fetchone()
-
-    total_count = summary_row["total_count"] or 0
-    correct_count = summary_row["correct_count"] or 0
-    incorrect_count = summary_row["incorrect_count"] or 0
-    push_count = summary_row["push_count"] or 0
-    pending_count = summary_row["pending_count"] or 0
-    judged_count = correct_count + incorrect_count
-    guess_rate_pct = round((correct_count / judged_count * 100.0), 1) if judged_count > 0 else 0.0
-
-    # Fetch History Items — outcome_filter narrows only the list, not the summary above.
-    filtered_query = base_query
-    if outcome_filter == "correct":
-        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win = h.is_win"
-    elif outcome_filter == "incorrect":
-        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win <> h.is_win"
-    elif outcome_filter == "push":
-        filtered_query += " AND h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1"
-    elif outcome_filter == "pending":
-        filtered_query += " AND (h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL))"
-
-    data_query = f"""
-        SELECT
-            h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
-            h.initial_coefficient, h.final_coefficient, h.score_at_time, h.is_win, h.is_push,
-            h.predicted_win, h.predicted_win_probability,
-            h.first_seen_at AS timestamp, h.finished_at,
-            e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
-        {filtered_query}
-        ORDER BY h.finished_at DESC, h.id DESC
-        LIMIT %s OFFSET %s
-    """
-    f_cursor.execute(data_query, params + [limit, offset])
-    rows = f_cursor.fetchall()
     release_connection(f_conn)
+    return _history_summary_from_row(summary_row, outcome_filter)
 
-    history_items = [dict(r) for r in rows]
 
-    filtered_count = {
-        "correct": correct_count, "incorrect": incorrect_count, "push": push_count, "pending": pending_count,
-    }.get(outcome_filter, total_count)
+def _refresh_history_summary_cache(cache_key: str, sport_filter: Optional[str], search: Optional[str]) -> None:
+    try:
+        base_summary = _compute_history_summary(sport_filter, search, outcome_filter=None)
+        _history_summary_cache[cache_key] = {
+            "loaded_at": time.time(),
+            "base": base_summary,
+        }
+    except Exception as e:
+        logger.error(f"History summary background refresh failed ({cache_key}): {e}")
+    finally:
+        with _history_summary_refresh_lock:
+            _history_summary_refreshing.discard(cache_key)
 
-    return {
-        "summary": {
-            "total_count": total_count,
-            "correct_count": correct_count,
-            "incorrect_count": incorrect_count,
-            "push_count": push_count,
-            "pending_count": pending_count,
-            "judged_count": judged_count,
-            "guess_rate_pct": guess_rate_pct,
-            "miss_rate_pct": round(100.0 - guess_rate_pct, 1) if judged_count > 0 else 0.0,
-            # Count matching the active outcome_filter — what infinite-scroll pagination
-            # should compare its offset against, since total_count always stays the
-            # unfiltered grand total (see the comment above count_query).
-            "filtered_count": filtered_count
-        },
-        "history": history_items
-    }
+
+def get_neurobets_history_summary(
+    sport_filter: Optional[str] = None,
+    search: Optional[str] = None,
+    outcome_filter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Cached aggregate counts for history tab badges — no row fetch."""
+    cache_key = _history_summary_cache_key(sport_filter, search)
+    now = time.time()
+    entry = _history_summary_cache.get(cache_key)
+    age = now - float(entry["loaded_at"]) if entry else float("inf")
+
+    if entry is None or age >= HISTORY_SUMMARY_CACHE_SECONDS:
+        if entry is not None and entry.get("base"):
+            with _history_summary_refresh_lock:
+                if cache_key not in _history_summary_refreshing:
+                    _history_summary_refreshing.add(cache_key)
+                    threading.Thread(
+                        target=_refresh_history_summary_cache,
+                        args=(cache_key, sport_filter, search),
+                        daemon=True,
+                        name=f"history-summary-{cache_key[:24]}",
+                    ).start()
+            base = entry["base"]
+        else:
+            base = _compute_history_summary(sport_filter, search, outcome_filter=None)
+            _history_summary_cache[cache_key] = {"loaded_at": now, "base": base}
+    else:
+        base = entry["base"]
+
+    if not outcome_filter or outcome_filter == "all":
+        return dict(base)
+    filtered = dict(base)
+    filtered["filtered_count"] = {
+        "correct": base["correct_count"],
+        "incorrect": base["incorrect_count"],
+        "push": base["push_count"],
+        "pending": base["pending_count"],
+    }.get(outcome_filter, base["total_count"])
+    return filtered
 
 
 def _sanitize_non_finite(value: Any) -> Any:

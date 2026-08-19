@@ -19,7 +19,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_neurobets_history_summary, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
 from parser_service import FonbetParserService
 from settings import settings
 from neurobet_filters import (
@@ -434,7 +434,8 @@ def read_neurobets_history(
     search: Optional[str] = Query(None, description="Search by team or match name"),
     outcome: Optional[str] = Query(None, description="Filter by outcome: correct, incorrect, push, or pending"),
     limit: int = Query(50, description="Items limit"),
-    offset: int = Query(0, description="Items offset")
+    offset: int = Query(0, description="Items offset"),
+    include_summary: bool = Query(True, description="Set false on pagination append to skip the heavy aggregate scan"),
 ):
     try:
         res = get_neurobets_history(
@@ -442,7 +443,8 @@ def read_neurobets_history(
             search=search,
             outcome_filter=outcome,
             limit=limit,
-            offset=offset
+            offset=offset,
+            include_summary=include_summary,
         )
         return {
             "status": "success",
@@ -452,6 +454,25 @@ def read_neurobets_history(
         }
     except Exception as e:
         logger.error(f"Error fetching neurobets history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/neurobets/history-summary")
+def read_neurobets_history_summary(
+    sport: Optional[str] = Query(None, description="Filter by sport path"),
+    search: Optional[str] = Query(None, description="Search by team or match name"),
+    outcome: Optional[str] = Query(None, description="Filter by outcome for filtered_count only"),
+):
+    try:
+        return {
+            "status": "success",
+            "summary": get_neurobets_history_summary(
+                sport_filter=sport,
+                search=search,
+                outcome_filter=outcome,
+            ),
+        }
+    except Exception as e:
+        logger.error(f"Error fetching neurobets history summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/neurobets/bankroll")
