@@ -32,7 +32,15 @@ from app.core.database import get_finished_connection, release_connection
 from app.neuralbet import bankroll
 from app.neuralbet.bankroll import allocate
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
-from neurobet_filters import universe_sql, universe_sql_params, passes_live_gates, MIN_BET_COEFF, MAX_BET_COEFF
+from neurobet_filters import (
+    universe_sql,
+    universe_sql_params,
+    passes_live_gates,
+    in_bet_band,
+    in_live_stake_sport,
+    MIN_BET_COEFF,
+    MAX_BET_COEFF,
+)
 from neurobet_features import (
     MARKET_FAMILIES,
     build_model_input,
@@ -42,6 +50,7 @@ from neurobet_features import (
     row_to_sample,
     set_team_form_cache,
 )
+from neurobet_features.view import LGB_DISABLE_TEAM_FEATURES
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -64,12 +73,17 @@ BACKTEST_MAX_LIMIT = int(os.getenv("NEURALBET_BACKTEST_MAX_LIMIT", "100000"))
 OOS_TEST_EVENT_FRACTION = float(os.getenv("NEURALBET_OOS_TEST_EVENT_FRACTION", "0.15"))
 OOS_MIN_EVENTS = int(os.getenv("NEURALBET_OOS_MIN_EVENTS", "40"))
 BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_BOOTSTRAP_SAMPLES", "500"))
+BOOTSTRAP_SEED = int(os.getenv("NEURALBET_BOOTSTRAP_SEED", "42"))
 WALK_FORWARD_FOLDS = int(os.getenv("NEURALBET_WALK_FORWARD_FOLDS", "4"))
 WALK_FORWARD_REGION_FRACTION = float(os.getenv("NEURALBET_WALK_FORWARD_REGION_FRACTION", "0.40"))
 LIVE_QUALITY_GATE = os.getenv("NEURALBET_LIVE_QUALITY_GATE", "1").strip().lower() not in (
     "0", "false", "no", "off",
 )
 LIVE_QUALITY_MIN_BETS = int(os.getenv("NEURALBET_LIVE_QUALITY_MIN_BETS", "40"))
+QUALITY_GATE_MIN_CONSECUTIVE = int(os.getenv("NEURALBET_QUALITY_GATE_MIN_CONSECUTIVE", "2"))
+QUALITY_GATE_MIN_SAMPLES = int(os.getenv("NEURALBET_QUALITY_GATE_MIN_SAMPLES", str(BACKTEST_DEFAULT_LIMIT)))
+QUALITY_GATE_MAX_AGE_HOURS = float(os.getenv("NEURALBET_QUALITY_GATE_MAX_AGE_HOURS", "12"))
+QUALITY_GATE_SAMPLE_TOLERANCE = float(os.getenv("NEURALBET_QUALITY_GATE_SAMPLE_TOLERANCE", "0.25"))
 
 BACKTEST_PROGRESS_PATH = os.path.join(MODEL_DIR, "backtest_progress.json")
 _backtest_progress_lock = threading.Lock()
@@ -188,24 +202,18 @@ def _guess_accuracy_pct(records: List[Dict[str, Any]], pred_key: str) -> Optiona
     return round(guessed / len(have) * 100.0, 1)
 
 
-def evaluate_quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Same checks pipeline._live_quality_skip_reason uses — embedded in backtest JSON."""
-    if not LIVE_QUALITY_GATE:
-        return {"enabled": False, "pass": True, "eval_slice": None, "reasons": [], "metrics": {}}
-
+def _gate_slice_metrics(result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """Primary gate slice: OOS never-trained holdout (true OOS), not walk-forward."""
+    if result.get("oos_never_train"):
+        return "oos_never_train", result["oos_never_train"]
     if result.get("walk_forward"):
-        eval_slice = "walk_forward"
-        eval_block = result["walk_forward"]
-    elif result.get("oos_never_train"):
-        eval_slice = "oos_never_train"
-        eval_block = result["oos_never_train"]
-    else:
-        eval_slice = "overall"
-        eval_block = result.get("overall") or {}
+        return "walk_forward", result["walk_forward"]
+    return "overall", result.get("overall") or {}
 
-    overall = result.get("overall") or {}
+
+def _gate_core_metrics(eval_block: Dict[str, Any]) -> Dict[str, Any]:
     stake = ((eval_block.get("stake_policy") or {}).get("current")) or {}
-    bets = int(stake.get("bets") or 0)
+    bets = int(stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets") or 0)
     roi = stake.get("roi_pct")
     roi_lo = stake.get("roi_pct_lo")
     win_rate = stake.get("win_rate_pct")
@@ -213,11 +221,29 @@ def evaluate_quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
     brier = ((eval_block.get("probability") or {}).get("current") or {}).get("brier")
     if brier is None:
         brier = (eval_block.get("current") or {}).get("brier")
-    market = ((overall.get("probability") or {}).get("market_raw") or {}).get("brier")
+    market = ((eval_block.get("probability") or {}).get("market_raw") or {}).get("brier")
     if market is None:
-        market = overall.get("market_brier")
+        market = eval_block.get("market_brier")
+    return {
+        "bets": bets,
+        "roi_pct": roi,
+        "roi_pct_lo": roi_lo,
+        "win_rate_pct": win_rate,
+        "break_even_pct": break_even,
+        "brier": brier,
+        "market_brier": market,
+    }
 
+
+def _gate_core_reasons(metrics: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
+    bets = int(metrics.get("bets") or 0)
+    roi = metrics.get("roi_pct")
+    roi_lo = metrics.get("roi_pct_lo")
+    win_rate = metrics.get("win_rate_pct")
+    break_even = metrics.get("break_even_pct")
+    brier = metrics.get("brier")
+    market = metrics.get("market_brier")
     if bets < LIVE_QUALITY_MIN_BETS:
         reasons.append(f"bets {bets}<{LIVE_QUALITY_MIN_BETS}")
     if roi is None or float(roi) <= 0:
@@ -228,6 +254,71 @@ def evaluate_quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
         reasons.append(f"win_rate {win_rate}≤break-even {break_even}")
     if brier is None or market is None or float(brier) >= float(market):
         reasons.append(f"Brier {brier}≥market {market}")
+    return reasons
+
+
+def _backtest_age_hours(result: Dict[str, Any]) -> Optional[float]:
+    raw = result.get("generated_at")
+    if not raw:
+        return None
+    try:
+        generated = datetime.fromisoformat(str(raw))
+        if generated.tzinfo is None:
+            generated = generated.replace(tzinfo=MOSCOW_TZ)
+        now = datetime.now(MOSCOW_TZ)
+        return (now - generated.astimezone(MOSCOW_TZ)).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
+def evaluate_quality_gate(
+    result: Dict[str, Any],
+    history: Optional[List[Dict[str, Any]]] = None,
+    *,
+    check_age: bool = False,
+) -> Dict[str, Any]:
+    """Same checks pipeline._live_quality_skip_reason uses — embedded in backtest JSON."""
+    if not LIVE_QUALITY_GATE:
+        return {"enabled": False, "pass": True, "eval_slice": None, "reasons": [], "metrics": {}}
+
+    eval_slice, eval_block = _gate_slice_metrics(result)
+    metrics = _gate_core_metrics(eval_block)
+    reasons = _gate_core_reasons(metrics)
+
+    samples = result.get("samples_requested") or result.get("samples_evaluated") or 0
+    if samples < QUALITY_GATE_MIN_SAMPLES:
+        reasons.append(f"samples {samples}<{QUALITY_GATE_MIN_SAMPLES}")
+
+    consecutive_required = max(1, QUALITY_GATE_MIN_CONSECUTIVE)
+    consecutive_passes = 1 if not reasons else 0
+    if history and consecutive_required > 1 and consecutive_passes == 1:
+        prior_passes = 0
+        for prior in history:
+            prior_samples = prior.get("samples_evaluated") or prior.get("samples_requested") or 0
+            if not _samples_comparable(samples, prior_samples):
+                continue
+            prior_gate = prior.get("quality_gate")
+            if not prior_gate:
+                prior_slice, prior_block = _gate_slice_metrics(prior)
+                prior_metrics = _gate_core_metrics(prior_block)
+                prior_ok = len(_gate_core_reasons(prior_metrics)) == 0
+            else:
+                prior_ok = bool(prior_gate.get("pass"))
+            if prior_ok:
+                prior_passes += 1
+            else:
+                break
+            if prior_passes >= consecutive_required - 1:
+                break
+        consecutive_passes = 1 + prior_passes
+        if consecutive_passes < consecutive_required:
+            reasons.append(
+                f"consecutive_passes {consecutive_passes}<{consecutive_required} (comparable sample size)"
+            )
+
+    age_h = _backtest_age_hours(result) if check_age else None
+    if check_age and age_h is not None and age_h > QUALITY_GATE_MAX_AGE_HOURS:
+        reasons.append(f"backtest age {age_h:.1f}h>{QUALITY_GATE_MAX_AGE_HOURS}h")
 
     return {
         "enabled": True,
@@ -235,14 +326,13 @@ def evaluate_quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
         "eval_slice": eval_slice,
         "reasons": reasons,
         "metrics": {
-            "bets": bets,
-            "roi_pct": roi,
-            "roi_pct_lo": roi_lo,
-            "win_rate_pct": win_rate,
-            "break_even_pct": break_even,
-            "brier": brier,
-            "market_brier": market,
+            **metrics,
             "min_bets_required": LIVE_QUALITY_MIN_BETS,
+            "samples_evaluated": samples,
+            "min_samples_required": QUALITY_GATE_MIN_SAMPLES,
+            "consecutive_passes": consecutive_passes,
+            "consecutive_required": consecutive_required,
+            "age_hours": round(age_h, 2) if age_h is not None else None,
         },
     }
 
@@ -279,6 +369,14 @@ def _stake_metrics(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dic
     }
 
 
+def _samples_comparable(a: Optional[int], b: Optional[int]) -> bool:
+    if a is None or b is None or a <= 0 or b <= 0:
+        return False
+    lo = min(a, b)
+    hi = max(a, b)
+    return (hi - lo) / hi <= QUALITY_GATE_SAMPLE_TOLERANCE
+
+
 def _bootstrap_roi_ci(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dict[str, float]]:
     import random as _random
 
@@ -289,9 +387,10 @@ def _bootstrap_roi_ci(records: List[Dict[str, Any]], pred_key: str) -> Optional[
     events = list(by_event.keys())
     if len(events) < 5:
         return None
+    rng = _random.Random(BOOTSTRAP_SEED)
     rois: List[float] = []
     for _ in range(BOOTSTRAP_SAMPLES):
-        sample_events = [_random.choice(events) for _ in range(len(events))]
+        sample_events = [rng.choice(events) for _ in range(len(events))]
         staked = 0
         returned = 0.0
         for eid in sample_events:
@@ -412,6 +511,7 @@ def _records_from_scored(
         records.append({
             "event_id": m["event_id"],
             "sport": m["sport"],
+            "sport_path": m.get("sport_path"),
             "coeff": m["coeff"],
             "coeff_bucket": coeff_bucket_index(m["coeff"]),
             "market_family": market_family,
@@ -495,7 +595,59 @@ def _walk_forward_eval(
     if not agg_records:
         return None
     combined = _agg_group(agg_records)
-    return {"folds": fold_rows, "combined": combined} if combined else None
+    return {
+        "folds": fold_rows,
+        "combined": combined,
+        "meta": {
+            "kind": "temporal_calibration_slice",
+            "retrain_per_fold": False,
+            "note": (
+                "Per-fold calibration cutoff on a late temporal region; "
+                "same frozen ensemble weights — not rolling retrain OOS."
+            ),
+        },
+    } if combined else None
+
+
+def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
+    coeff = float(record.get("coeff") or 0)
+    expected_roi = float(record.get("current_expected_roi") or 0)
+    verdict = int(record.get("current_verdict") or 0)
+    sport_path = record.get("sport_path")
+    if policy == "decision_and_ev":
+        return int(record.get("current_pred") or 0) == 1
+    if policy == "ev_only":
+        return passes_live_gates(coeff, expected_roi, sport_path=sport_path)
+    if policy == "decision_only":
+        if verdict != 1:
+            return False
+        if not in_bet_band(coeff):
+            return False
+        if sport_path is not None and not in_live_stake_sport(sport_path):
+            return False
+        return True
+    return False
+
+
+def _apply_policy_preds(records: List[Dict[str, Any]], policy: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for rec in records:
+        clone = dict(rec)
+        clone["_policy_pred"] = 1 if _policy_would_bet(rec, policy) else 0
+        out.append(clone)
+    _dedupe_one_bet_per_event(out, pred_key="_policy_pred")
+    return out
+
+
+def _policy_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    policies = ("decision_and_ev", "ev_only", "decision_only")
+    out: Dict[str, Any] = {}
+    for policy in policies:
+        scoped = _apply_policy_preds(records, policy)
+        stake = _stake_metrics(scoped, "_policy_pred")
+        ci = _bootstrap_roi_ci(scoped, "_policy_pred")
+        out[policy] = {**(stake or {}), **(ci or {})}
+    return out
 
 
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -510,9 +662,18 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     stake_ci = _bootstrap_roi_ci(records, "current_pred")
     bankroll_stake = _bankroll_replay_metrics(records, "current_pred")
 
-    current_stake_out = {**(current_stake or {}), **(stake_ci or {})}
+    flat_bets = (current_stake or {}).get("bets", 0)
+    current_stake_out: Dict[str, Any] = {
+        **(current_stake or {}),
+        **(stake_ci or {}),
+        "flat_bets": flat_bets,
+        "bets": flat_bets,
+    }
     if bankroll_stake:
-        current_stake_out.update(bankroll_stake)
+        current_stake_out["kelly_bets"] = bankroll_stake.get("bets")
+        current_stake_out["bankroll_roi_pct"] = bankroll_stake.get("bankroll_roi_pct")
+        current_stake_out["bank_end"] = bankroll_stake.get("bank_end")
+        current_stake_out["kelly"] = bankroll_stake
 
     return {
         "evaluated": n,
@@ -742,6 +903,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             scored, rows, decision_threshold, sport_decision_thresholds, market_support,
         )
         walk_forward_combined = (walk_forward or {}).get("combined") if walk_forward else None
+        walk_forward_meta = (walk_forward or {}).get("meta") if walk_forward else None
 
         set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
 
@@ -765,12 +927,16 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "oos_holdout_events": len(hold_events),
                 "calibration_cutoff": calibration_cutoff,
                 "walk_forward_folds": WALK_FORWARD_FOLDS,
+                "lgb_disable_team_features": LGB_DISABLE_TEAM_FEATURES,
+                "bootstrap_seed": BOOTSTRAP_SEED,
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),
             "oos_never_train": _agg_group(oos_records) if oos_records else None,
             "walk_forward": walk_forward_combined,
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
+            "walk_forward_meta": walk_forward_meta,
+            "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
                 key=lambda x: -x["evaluated"],
@@ -784,10 +950,10 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 for b, rs in sorted(by_coeff.items())
             ],
         }
-        result["quality_gate"] = evaluate_quality_gate(result)
+        prior_history = get_backtest_history()
+        result["quality_gate"] = evaluate_quality_gate(result, history=prior_history)
         from app.neuralbet.review import build_agent_review
 
-        prior_history = get_backtest_history()
         result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
 
         save_and_record(result)
@@ -831,6 +997,7 @@ def save_and_record(result: Dict[str, Any]) -> None:
         history.insert(0, {
             "generated_at": result["generated_at"],
             "samples_evaluated": result["samples_evaluated"],
+            "samples_requested": result.get("samples_requested"),
             "since": result.get("since"),
             "config": result["config"],
             "overall": result["overall"],

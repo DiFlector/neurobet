@@ -1527,12 +1527,14 @@ def _refresh_market_support() -> dict[tuple, int]:
 
 def _live_quality_skip_reason() -> str | None:
     """Block new virtual live bets until the latest backtest shows an edge on OOS."""
-    from app.neuralbet.backtest import evaluate_quality_gate, get_latest_backtest
+    from app.neuralbet.backtest import evaluate_quality_gate, get_backtest_history, get_latest_backtest
 
     latest = get_latest_backtest()
     if not latest:
         return "no backtest yet"
-    gate = latest.get("quality_gate") or evaluate_quality_gate(latest)
+    gate = latest.get("quality_gate") or evaluate_quality_gate(
+        latest, history=get_backtest_history(), check_age=True,
+    )
     if not gate.get("enabled"):
         return None
     reasons = gate.get("reasons") or []

@@ -43,7 +43,9 @@ def _compact_slice(name: str, block: Optional[Dict[str, Any]]) -> Optional[Dict[
     return {
         "slice": name,
         "evaluated": block.get("evaluated"),
-        "bets": stake.get("bets"),
+        "bets": stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets"),
+        "flat_bets": stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets"),
+        "kelly_bets": stake.get("kelly_bets"),
         "roi_pct": stake.get("roi_pct"),
         "roi_pct_lo": stake.get("roi_pct_lo"),
         "roi_pct_hi": stake.get("roi_pct_hi"),
@@ -183,9 +185,21 @@ def _compact_by_market(result: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _delta_vs_previous(result: Dict[str, Any], history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if len(history) < 2:
+    if not history:
         return None
-    prev = history[1]
+
+    cur_samples = result.get("samples_requested") or result.get("samples_evaluated")
+    prev: Optional[Dict[str, Any]] = None
+    for row in history:
+        if row.get("generated_at") == result.get("generated_at"):
+            continue
+        prev_samples = row.get("samples_evaluated") or row.get("samples_requested")
+        if _samples_comparable(cur_samples, prev_samples):
+            prev = row
+            break
+    if prev is None:
+        prev = history[0]
+
     cur_stake = _stake_current(result.get("overall"))
     prev_stake = _stake_current(prev.get("overall"))
     cur_legacy = (result.get("overall") or {}).get("current") or {}
@@ -198,6 +212,8 @@ def _delta_vs_previous(result: Dict[str, Any], history: List[Dict[str, Any]]) ->
 
     return {
         "previous_at": prev.get("generated_at"),
+        "previous_samples": prev.get("samples_evaluated") or prev.get("samples_requested"),
+        "comparable_sample_size": _samples_comparable(cur_samples, prev.get("samples_evaluated")),
         "roi_pct": _d(cur_stake.get("roi_pct"), prev_stake.get("roi_pct")),
         "roi_pct_lo": _d(cur_stake.get("roi_pct_lo"), prev_stake.get("roi_pct_lo")),
         "bets": _d(cur_stake.get("bets"), prev_stake.get("bets")),
@@ -210,14 +226,25 @@ def _delta_vs_previous(result: Dict[str, Any], history: List[Dict[str, Any]]) ->
     }
 
 
+def _samples_comparable(a: Optional[int], b: Optional[int]) -> bool:
+    from app.neuralbet.backtest import QUALITY_GATE_SAMPLE_TOLERANCE
+
+    if a is None or b is None or a <= 0 or b <= 0:
+        return False
+    lo, hi = min(a, b), max(a, b)
+    return (hi - lo) / hi <= QUALITY_GATE_SAMPLE_TOLERANCE
+
+
 def _edge_verdict(result: Dict[str, Any], gate: Dict[str, Any], wf: Dict[str, Any]) -> str:
-    wf_slice = _compact_slice("walk_forward", result.get("walk_forward"))
     oos_slice = _compact_slice("oos_never_train", result.get("oos_never_train"))
-    ref = wf_slice or oos_slice or _compact_slice("overall", result.get("overall"))
+    wf_slice = _compact_slice("walk_forward", result.get("walk_forward"))
+    ref = oos_slice or wf_slice or _compact_slice("overall", result.get("overall"))
 
     if not ref:
         return "unknown"
     if gate.get("pass"):
+        if wf.get("folds") and wf.get("stable") is False:
+            return "promising"
         return "likely"
     if ref.get("brier_beats_market") and ref.get("roi_pct") is not None and float(ref["roi_pct"]) > 0:
         if ref.get("roi_pct_lo") is not None and float(ref["roi_pct_lo"]) > 0:
@@ -265,6 +292,28 @@ def _build_flags(
             "code": "head_misalignment",
             "message": (
                 f"{alignment['verdict_yes_ev_no_pct']}% rows: decision=yes but EV<{MIN_BET_EDGE_PCT}%"
+            ),
+        })
+
+    lgb_off = (result.get("config") or {}).get("lgb_disable_team_features")
+    if lgb_off:
+        flags.append({
+            "severity": "info",
+            "code": "lgb_team_features_off",
+            "message": "LightGBM team hash features disabled (ablation mode)",
+        })
+
+    if policy_ablation := result.get("policy_ablation_oos"):
+        best = max(
+            policy_ablation.items(),
+            key=lambda kv: float(kv[1].get("roi_pct") or -999),
+        )
+        flags.append({
+            "severity": "info",
+            "code": "policy_ablation_oos",
+            "message": (
+                f"OOS policy ablation best: {best[0]} ROI {best[1].get('roi_pct')}% "
+                f"({best[1].get('bets')} bets, CI lo {best[1].get('roi_pct_lo')})"
             ),
         })
 
@@ -320,8 +369,10 @@ def build_agent_review(
         }.items() if v
     }
 
-    ref = slices.get("walk_forward") or slices.get("oos_never_train") or slices.get("overall")
+    ref = slices.get("oos_never_train") or slices.get("walk_forward") or slices.get("overall")
     edge = _edge_verdict(result, gate, wf)
+
+    policy_ablation = result.get("policy_ablation_oos")
 
     trend = "unknown"
     if delta and delta.get("roi_pct") is not None:
@@ -349,6 +400,8 @@ def build_agent_review(
         "by_sport": _compact_by_sport(result),
         "by_market": _compact_by_market(result),
         "delta_vs_previous": delta,
+        "policy_ablation_oos": policy_ablation,
+        "walk_forward_meta": result.get("walk_forward_meta"),
         "flags": _build_flags(result, gate, wf, alignment, delta),
         "quality_gate": gate,
     }

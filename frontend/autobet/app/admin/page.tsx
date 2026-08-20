@@ -1094,6 +1094,34 @@ export default function AdminPage() {
                       {(backtestResult.quality_gate.reasons as string[]).join("; ")}
                     </div>
                   )}
+                  {backtestResult.quality_gate.metrics?.consecutive_passes != null && (
+                    <div className="mt-1 text-neutral-500">
+                      Consecutive passes: {backtestResult.quality_gate.metrics.consecutive_passes}/
+                      {backtestResult.quality_gate.metrics.consecutive_required ?? "—"}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {backtestResult.overall?.stake_policy?.current && (
+                <div className="text-[11px] text-neutral-500 font-mono">
+                  Flat {backtestResult.overall.stake_policy.current.flat_bets ?? backtestResult.overall.stake_policy.current.bets} ставок · ROI {backtestResult.overall.stake_policy.current.roi_pct ?? "—"}%
+                  {backtestResult.overall.stake_policy.current.kelly_bets != null && (
+                    <> · Kelly {backtestResult.overall.stake_policy.current.kelly_bets} ставок · bankroll ROI {backtestResult.overall.stake_policy.current.bankroll_roi_pct ?? "—"}%</>
+                  )}
+                </div>
+              )}
+
+              {backtestResult.policy_ablation_oos && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-2">
+                  <div className="text-[10px] text-neutral-400 uppercase font-mono mb-1.5">Policy ablation (OOS)</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+                    {Object.entries(backtestResult.policy_ablation_oos as Record<string, any>).map(([name, m]) => (
+                      <div key={name} className="text-neutral-400">
+                        <span className="text-neutral-300">{name}</span>: {m.bets} bets · ROI {m.roi_pct ?? "—"}% · CI lo {m.roi_pct_lo ?? "—"}%
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
