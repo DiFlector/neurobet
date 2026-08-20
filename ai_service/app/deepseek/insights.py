@@ -57,6 +57,7 @@ _ASYNC_LOCK = threading.Lock()
 _async_busy = False
 _auto_veto_cache: tuple[float, bool] = (0.0, False)
 _AUTO_VETO_TTL_SEC = 300.0
+_auto_veto_computing = False
 
 DIGEST_PATH = os.path.join(MODEL_DIR, "llm_digest.json")
 SHADOW_PATH = os.path.join(MODEL_DIR, "llm_shadow.json")
@@ -75,15 +76,24 @@ def shadow_enabled() -> bool:
 
 
 def _auto_veto_eligible_cached() -> bool:
-    global _auto_veto_cache
+    """Read auto-veto eligibility with TTL. Must NOT call veto_enabled()."""
+    global _auto_veto_cache, _auto_veto_computing
     now = time.monotonic()
     cached_at, eligible = _auto_veto_cache
     if now - cached_at < _AUTO_VETO_TTL_SEC:
         return eligible
-    report = get_llm_shadow_report(refresh_outcomes=False)
-    eligible = bool((report.get("veto_auto") or {}).get("eligible"))
-    _auto_veto_cache = (now, eligible)
-    return eligible
+    # Re-entrancy guard: get_llm_shadow_report used to call veto_enabled() and
+    # recurse until RecursionError — never nest while computing.
+    if _auto_veto_computing:
+        return eligible
+    _auto_veto_computing = True
+    try:
+        report = get_llm_shadow_report(refresh_outcomes=False)
+        eligible = bool((report.get("veto_auto") or {}).get("eligible"))
+        _auto_veto_cache = (time.monotonic(), eligible)
+        return eligible
+    finally:
+        _auto_veto_computing = False
 
 
 def veto_enabled() -> bool:
@@ -969,7 +979,9 @@ def get_llm_shadow_report(*, refresh_outcomes: bool = True) -> Dict[str, Any]:
         "match_context_sports": sports_cfg,
         "async_enabled": bool(LLM_ASYNC),
         "veto_manual": bool(LLM_VETO),
-        "veto_active": veto_enabled(),
+        # Never call veto_enabled() here — it reads this report (recursion).
+        "veto_active": bool(LLM_VETO)
+        or (bool(LLM_VETO_AUTO) and match_context_enabled() and eligible),
         "veto_auto": {
             "enabled": bool(LLM_VETO_AUTO),
             "eligible": eligible,
