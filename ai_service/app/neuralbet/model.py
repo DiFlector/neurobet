@@ -82,6 +82,10 @@ DECISION_POS_WEIGHT_CAP = float(os.getenv("NEURALBET_DECISION_POS_WEIGHT_CAP", "
 PAIRED_MARKET_LOSS_WEIGHT = float(os.getenv("NEURALBET_PAIRED_MARKET_LOSS_WEIGHT", "0.15"))
 # Reject checkpoint if val_loss regresses more than this above last accepted checkpoint.
 CHECKPOINT_VAL_FLOOR_TOLERANCE = float(os.getenv("NEURALBET_CHECKPOINT_VAL_FLOOR_TOLERANCE", "0.02"))
+CHECKPOINT_IN_BAND_ONLY = os.getenv("NEURALBET_CHECKPOINT_IN_BAND_ONLY", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+THRESHOLD_BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_THRESHOLD_BOOTSTRAP_SAMPLES", "200"))
 
 # No GPU here (torch.cuda.is_available() is False in this container) — everything runs
 # on CPU, so thread count is the real lever. Defaults to PyTorch's own heuristic (which
@@ -207,6 +211,13 @@ def _market_prob_tensor(coefficients: torch.Tensor) -> torch.Tensor:
 def _decision_confidence(decision_logits: torch.Tensor) -> torch.Tensor:
     """Map residual-edge tanh to [0, 1]: 0.5 = edge 0, >0.5 = predicted +EV vs market."""
     return (torch.tanh(decision_logits) + 1.0) * 0.5
+
+
+def _checkpoint_val_prepared(prepared: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Validation slice for checkpoint gate — live coefficient band only when enabled."""
+    if not CHECKPOINT_IN_BAND_ONLY:
+        return prepared
+    return [p for p in prepared if in_bet_band(float(p.get("coefficient") or 0))]
 
 
 class NeuralBetEnsemble:
@@ -431,6 +442,9 @@ class NeuralBetEnsemble:
         ]
         if not prepared_val:
             return None
+        prepared_val = _checkpoint_val_prepared(prepared_val)
+        if not prepared_val:
+            return None
         self._checkpoint_window_state = self._snapshot_train_state()
         self._checkpoint_window_val_loss, _ = self._forward_metrics(prepared_val)
         self.pytorch_model.train()
@@ -463,6 +477,17 @@ class NeuralBetEnsemble:
             )
             if p is not None
         ]
+        prepared_val = _checkpoint_val_prepared(prepared_val)
+        if not prepared_val:
+            return {
+                "checkpoint_accepted": False,
+                "checkpoint_reject_reason": "no_in_band_val",
+                "val_loss_incoming": val_incoming,
+                "val_loss_attempted": None,
+                "val_loss": None,
+                "val_guess_rate": None,
+                "checkpoint_saved": False,
+            }
         val_attempted, val_guess = self._forward_metrics(prepared_val)
         accepted = True
         reject_reason = None
@@ -1084,29 +1109,37 @@ class NeuralBetEnsemble:
     ) -> Tuple[float, Optional[float], int]:
         """
         Grid search over _THRESHOLD_CANDIDATES for the flat-stake-ROI-maximizing cutoff
-        (sample-size-penalized — see _THRESHOLD_SAMPLE_PENALTY), shared by tune_ensemble's
-        global sweep and each of its per-sport sweeps so the two can never drift onto
-        different selection logic. Returns (threshold, roi, n_bets) for whichever
-        candidate scored best; falls back to (`current`, None, 0) if no candidate
-        cleared `min_bets` — the caller decides what "no qualifying candidate" means
-        (global: keep the old threshold; per-sport: leave that sport untouched this pass).
+        scored by bootstrap ROI lower bound (when enough bets), with sample-size penalty
+        — see _THRESHOLD_SAMPLE_PENALTY. Shared by tune_ensemble's global sweep and
+        each of its per-sport sweeps so the two can never drift onto different selection
+        logic.
         """
+        import random as _random
+
         best_threshold, best_score, best_roi, best_bets = current, float("-inf"), None, 0
         for thr in self._THRESHOLD_CANDIDATES:
-            staked = 0.0
-            returned = 0.0
-            n_bets = 0
+            bet_returns: List[float] = []
             for dp, c, t in zip(decision_probs, coeffs, targets):
                 if dp < thr or not in_bet_band(c):
                     continue
-                n_bets += 1
-                staked += 1.0
-                if t >= 0.5:
-                    returned += c
+                bet_returns.append(c if t >= 0.5 else 0.0)
+            n_bets = len(bet_returns)
             if n_bets < min_bets:
                 continue
+            staked = float(n_bets)
+            returned = sum(bet_returns)
             roi = (returned - staked) / staked
-            score = roi - self._THRESHOLD_SAMPLE_PENALTY / (n_bets ** 0.5)
+            if n_bets >= min_bets + 5 and THRESHOLD_BOOTSTRAP_SAMPLES > 0:
+                rois: List[float] = []
+                for _ in range(THRESHOLD_BOOTSTRAP_SAMPLES):
+                    sample = [_random.choice(bet_returns) for _ in range(n_bets)]
+                    s_ret = sum(sample)
+                    rois.append((s_ret - n_bets) / n_bets)
+                rois.sort()
+                roi_score = rois[int(0.025 * len(rois))]
+            else:
+                roi_score = roi
+            score = roi_score - self._THRESHOLD_SAMPLE_PENALTY / (n_bets ** 0.5)
             if score > best_score:
                 best_score = score
                 best_roi = roi
@@ -1608,13 +1641,14 @@ class NeuralBetEnsemble:
         prepared_val = [
             p for p in (self._prepare_sample(s, mode="val") for s in (val_data or [])) if p is not None
         ]
+        checkpoint_val = _checkpoint_val_prepared(prepared_val)
 
         incoming_state = None
         val_incoming = None
         val_incoming_guess = None
-        if prepared_val:
+        if checkpoint_val:
             incoming_state = self._snapshot_train_state()
-            val_incoming, val_incoming_guess = self._forward_metrics(prepared_val)
+            val_incoming, val_incoming_guess = self._forward_metrics(checkpoint_val)
 
         positive_count = sum(1 for p in prepared if p["target"] == 1.0)
         negative_count = len(prepared) - positive_count
@@ -1659,8 +1693,8 @@ class NeuralBetEnsemble:
 
                 epoch_losses.append(train_loss)
 
-                val_loss, val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (train_loss, None)
-                selection_metric = val_loss if prepared_val else train_loss
+                val_loss, val_guess_rate = self._forward_metrics(checkpoint_val) if checkpoint_val else (train_loss, None)
+                selection_metric = val_loss if checkpoint_val else train_loss
 
                 logger.info(
                     f"PyTorch online training epoch {epoch_idx}/{epochs} — "
@@ -1668,7 +1702,7 @@ class NeuralBetEnsemble:
                 )
                 if on_epoch is not None:
                     try:
-                        on_epoch(epoch_idx, train_loss, val_loss if prepared_val else None)
+                        on_epoch(epoch_idx, train_loss, val_loss if checkpoint_val else None)
                     except Exception:
                         pass
 
@@ -1707,7 +1741,7 @@ class NeuralBetEnsemble:
         if best_state is not None:
             self.pytorch_model.load_state_dict(best_state)
 
-        final_val_loss, final_val_guess_rate = self._forward_metrics(prepared_val) if prepared_val else (None, None)
+        final_val_loss, final_val_guess_rate = self._forward_metrics(checkpoint_val) if checkpoint_val else (None, None)
         final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
 
         # The number that used to land in the TRAINING log as "1000 → 4 000 000 ₽"

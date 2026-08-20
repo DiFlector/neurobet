@@ -23,13 +23,25 @@ import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import torch
 
 from app.config import MODEL_DIR
 from app.core.database import get_finished_connection, release_connection
+from app.neuralbet import bankroll
+from app.neuralbet.bankroll import allocate
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
 from neurobet_filters import universe_sql, universe_sql_params, passes_live_gates, MIN_BET_COEFF, MAX_BET_COEFF
-from neurobet_features import build_model_input, no_vig_probability, row_to_sample, set_team_form_cache
+from neurobet_features import (
+    MARKET_FAMILIES,
+    build_model_input,
+    build_team_form_asof_lookup,
+    market_family_index,
+    no_vig_probability,
+    row_to_sample,
+    set_team_form_cache,
+)
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -52,6 +64,8 @@ BACKTEST_MAX_LIMIT = int(os.getenv("NEURALBET_BACKTEST_MAX_LIMIT", "100000"))
 OOS_TEST_EVENT_FRACTION = float(os.getenv("NEURALBET_OOS_TEST_EVENT_FRACTION", "0.15"))
 OOS_MIN_EVENTS = int(os.getenv("NEURALBET_OOS_MIN_EVENTS", "40"))
 BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_BOOTSTRAP_SAMPLES", "500"))
+WALK_FORWARD_FOLDS = int(os.getenv("NEURALBET_WALK_FORWARD_FOLDS", "4"))
+WALK_FORWARD_REGION_FRACTION = float(os.getenv("NEURALBET_WALK_FORWARD_REGION_FRACTION", "0.40"))
 
 BACKTEST_PROGRESS_PATH = os.path.join(MODEL_DIR, "backtest_progress.json")
 _backtest_progress_lock = threading.Lock()
@@ -218,6 +232,194 @@ def _bootstrap_roi_ci(records: List[Dict[str, Any]], pred_key: str) -> Optional[
     return {"roi_pct_lo": round(lo, 1), "roi_pct_hi": round(hi, 1)}
 
 
+def _bankroll_replay_metrics(
+    records: List[Dict[str, Any]],
+    pred_key: str = "current_pred",
+    start_balance: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Kelly replay with stake head — mirrors live allocate() sizing."""
+    bets = [r for r in records if r.get(pred_key) == 1 and r.get("stake_logit") is not None]
+    if not bets:
+        return {"bets": 0, "bankroll_roi_pct": None, "bank_end": None}
+    start = float(start_balance if start_balance is not None else bankroll.START_BALANCE)
+    bank = start
+    bets.sort(key=lambda r: (str(r.get("finished_at") or ""), r["event_id"]))
+
+    # Group bets that share the same finish timestamp into one allocation round.
+    rounds: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    last_ts = None
+    for bet in bets:
+        ts = str(bet.get("finished_at") or "")
+        if current and ts != last_ts:
+            rounds.append(current)
+            current = []
+        current.append(bet)
+        last_ts = ts
+    if current:
+        rounds.append(current)
+
+    placed = 0
+    for round_bets in rounds:
+        win_probs = torch.tensor(
+            [b["current_prob"] / 100.0 for b in round_bets], dtype=torch.float32
+        )
+        coeffs = torch.tensor([b["coeff"] for b in round_bets], dtype=torch.float32)
+        stake_logits = torch.tensor(
+            [float(b["stake_logit"]) for b in round_bets], dtype=torch.float32
+        )
+        fractions = allocate(win_probs, coeffs, stake_logits)
+        for frac, bet in zip(fractions.tolist(), round_bets):
+            stake = bank * frac
+            if stake < bank * bankroll.MIN_STAKE_FRACTION:
+                continue
+            placed += 1
+            if bet["is_win"] == 1:
+                bank += stake * (bet["coeff"] - 1.0)
+            else:
+                bank -= stake
+
+    if placed == 0:
+        return {"bets": 0, "bankroll_roi_pct": None, "bank_end": round(bank, 2)}
+    return {
+        "bets": placed,
+        "bankroll_roi_pct": round((bank - start) / start * 100.0, 1),
+        "bank_end": round(bank, 2),
+    }
+
+
+def _dedupe_one_bet_per_event(records: List[Dict[str, Any]], pred_key: str = "current_pred") -> None:
+    by_event: Dict[Any, List[Dict[str, Any]]] = {}
+    for rec in records:
+        if rec.get(pred_key) == 1:
+            by_event.setdefault(rec["event_id"], []).append(rec)
+    for event_records in by_event.values():
+        if len(event_records) < 2:
+            continue
+        event_records.sort(key=lambda r: r.get("current_expected_roi", 0), reverse=True)
+        for rec in event_records[1:]:
+            rec[pred_key] = 0
+
+
+def _records_from_scored(
+    scored: List[Dict[str, Any]],
+    buckets: Dict[Any, Tuple[float, float]],
+    decision_threshold: float,
+    sport_decision_thresholds: Dict[str, float],
+    market_support: Optional[dict],
+) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    for m in scored:
+        win_prob = m["raw_win_prob"]
+        decision_prob = m["decision_prob"]
+        calibrated = calibrate_probability(
+            win_prob, buckets, sport=m["sport"], coeff=m["coeff"],
+        )
+        expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
+        thr = sport_decision_thresholds.get(m["sport"], decision_threshold)
+        current_verdict = 1 if decision_prob >= thr else 0
+        support_count = None
+        if market_support:
+            support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
+        current_pred = 1 if (
+            current_verdict == 1
+            and passes_live_gates(
+                m["coeff"], expected_roi, support_count, sport_path=m["sport_path"],
+            )
+        ) else 0
+        market_prob = (
+            (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
+        )
+        nv = no_vig_probability(m["coeff"], m.get("overround_close")) * 100.0
+        market_family = market_family_index(m["factor_id"])
+        records.append({
+            "event_id": m["event_id"],
+            "sport": m["sport"],
+            "coeff": m["coeff"],
+            "coeff_bucket": coeff_bucket_index(m["coeff"]),
+            "market_family": market_family,
+            "market_label": MARKET_FAMILIES[market_family] if market_family < len(MARKET_FAMILIES) else "other",
+            "is_win": m["is_win"],
+            "trained_count": m["trained_count"],
+            "finished_at": m.get("finished_at"),
+            "current_prob": calibrated,
+            "current_verdict": current_verdict,
+            "current_pred": current_pred,
+            "current_expected_roi": expected_roi,
+            "stake_logit": m.get("stake_logit"),
+            "raw_win_prob": win_prob,
+            "decision_prob": decision_prob,
+            "historical_prob": m["historical_prob"],
+            "historical_pred": m["historical_pred"],
+            "market_prob": market_prob,
+            "no_vig_prob": nv,
+        })
+    _dedupe_one_bet_per_event(records)
+    return records
+
+
+def _walk_forward_folds(event_order: List[Any]) -> List[Tuple[int, set]]:
+    n = len(event_order)
+    if WALK_FORWARD_FOLDS < 2 or n < OOS_MIN_EVENTS:
+        return []
+    region_start = max(0, int(n * (1.0 - WALK_FORWARD_REGION_FRACTION)))
+    region = event_order[region_start:]
+    if len(region) < WALK_FORWARD_FOLDS * 5:
+        return []
+    chunk = max(len(region) // WALK_FORWARD_FOLDS, 5)
+    folds: List[Tuple[int, set]] = []
+    for i in range(WALK_FORWARD_FOLDS):
+        start = i * chunk
+        end = start + chunk if i < WALK_FORWARD_FOLDS - 1 else len(region)
+        if end - start < 5:
+            continue
+        folds.append((i + 1, set(region[start:end])))
+    return folds
+
+
+def _event_ts_map(rows: List[Any]) -> Dict[Any, Any]:
+    event_ts: Dict[Any, Any] = {}
+    for r in rows:
+        eid = r["event_id"]
+        ts = r["finished_at"]
+        if eid not in event_ts or str(ts) > str(event_ts[eid]):
+            event_ts[eid] = ts
+    return event_ts
+
+
+def _walk_forward_eval(
+    scored: List[Dict[str, Any]],
+    rows: List[Any],
+    decision_threshold: float,
+    sport_decision_thresholds: Dict[str, float],
+    market_support: Optional[dict],
+) -> Optional[Dict[str, Any]]:
+    event_ts = _event_ts_map(rows)
+    event_order = sorted(event_ts.keys(), key=lambda e: str(event_ts[e]))
+    folds = _walk_forward_folds(event_order)
+    if not folds:
+        return None
+
+    fold_rows: List[Dict[str, Any]] = []
+    agg_records: List[Dict[str, Any]] = []
+    for fold_idx, fold_events in folds:
+        fold_ts = min(str(event_ts[e]) for e in fold_events)
+        buckets = get_calibration_buckets(before=fold_ts)
+        fold_scored = [s for s in scored if s["event_id"] in fold_events]
+        fold_records = _records_from_scored(
+            fold_scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
+        )
+        agg_records.extend(fold_records)
+        fold_agg = _agg_group(fold_records)
+        if fold_agg:
+            fold_rows.append({"fold": fold_idx, "events": len(fold_events), **fold_agg})
+
+    if not agg_records:
+        return None
+    combined = _agg_group(agg_records)
+    return {"folds": fold_rows, "combined": combined} if combined else None
+
+
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     n = len(records)
     if n == 0:
@@ -228,6 +430,11 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
     current_stake = _stake_metrics(records, "current_pred")
     stake_ci = _bootstrap_roi_ci(records, "current_pred")
+    bankroll_stake = _bankroll_replay_metrics(records, "current_pred")
+
+    current_stake_out = {**(current_stake or {}), **(stake_ci or {})}
+    if bankroll_stake:
+        current_stake_out.update(bankroll_stake)
 
     return {
         "evaluated": n,
@@ -242,7 +449,7 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
             "historical": _verdict_metrics(records, "historical_pred"),
         },
         "stake_policy": {
-            "current": {**(current_stake or {}), **(stake_ci or {})},
+            "current": current_stake_out,
             "historical": _stake_metrics(records, "historical_pred"),
         },
         # Legacy flat fields for history.json / admin trend charts.
@@ -319,8 +526,34 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             items: List[Dict[str, Any]] = []
             meta: List[Dict[str, Any]] = []
             row_total = len(rows)
+            form_lookup = build_team_form_asof_lookup([
+                {
+                    "event_id": r["event_id"],
+                    "factor_id": r["factor_id"],
+                    "parameter": r.get("parameter") or "",
+                    "market_prefix": r.get("market_prefix") or "",
+                    "team_1": r.get("team_1"),
+                    "team_2": r.get("team_2"),
+                    "sport_path": r.get("sport_path"),
+                    "is_win": r["is_win"],
+                    "finished_at": r["finished_at"],
+                }
+                for r in rows
+            ])
+            calibration_cutoff = str(rows[-1]["finished_at"])
             for idx, r in enumerate(rows):
                 sample = row_to_sample(r)
+                bet_key = (
+                    r["event_id"],
+                    int(sample["factor_id"] or 0),
+                    sample.get("parameter") or "",
+                    sample.get("market_prefix") or "",
+                )
+                t1_form, t2_form = form_lookup.get(bet_key, (None, None))
+                if t1_form is not None:
+                    sample["team1_form_asof"] = t1_form
+                if t2_form is not None:
+                    sample["team2_form_asof"] = t2_form
                 view = build_model_input(sample, mode="backtest")
                 if view is None:
                     continue
@@ -337,6 +570,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     "is_win": int(r["is_win"]),
                     "trained_count": int(r.get("trained_count") or 0),
                     "overround_close": r.get("overround_close"),
+                    "finished_at": r.get("finished_at"),
                     "historical_prob": r["predicted_win_probability"],
                     "historical_pred": r["predicted_win"],
                 })
@@ -371,7 +605,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             # is in the copy even if this process loaded a checkpoint from before the floor.
             ensemble_engine._apply_sport_threshold_floors()
             sport_decision_thresholds = dict(ensemble_engine.sport_decision_thresholds)
-            buckets = get_calibration_buckets()
+            buckets = get_calibration_buckets(before=calibration_cutoff)
 
             raw_results: List[tuple] = []
             n_items = len(items)
@@ -390,76 +624,31 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     total=n_items,
                 )
 
-            records: List[Dict[str, Any]] = []
+            scored: List[Dict[str, Any]] = []
             for m, res in zip(meta, raw_results):
-                win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, _stake_logit, _exposure_logit = res
-                calibrated = calibrate_probability(win_prob, buckets, sport=m["sport"], coeff=m["coeff"])
-                expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-                thr = sport_decision_thresholds.get(m["sport"], decision_threshold)
-                current_verdict = 1 if decision_prob >= thr else 0
-                support_count = None
-                if market_support:
-                    support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
-                current_pred = 1 if (
-                    current_verdict == 1
-                    and passes_live_gates(
-                        m["coeff"], expected_roi, support_count, sport_path=m["sport_path"],
-                    )
-                ) else 0
-                market_prob = (min(max(1.0 / m["coeff"], 0.01), 0.99) if m["coeff"] > 1.0 else 0.99) * 100.0
-                nv = no_vig_probability(m["coeff"], m.get("overround_close")) * 100.0
-                records.append({
-                    "event_id": m["event_id"],
-                    "sport": m["sport"],
-                    "coeff": m["coeff"],
-                    "coeff_bucket": coeff_bucket_index(m["coeff"]),
-                    "is_win": m["is_win"],
-                    "trained_count": m["trained_count"],
-                    "current_prob": calibrated,
-                    "current_verdict": current_verdict,
-                    "current_pred": current_pred,
-                    "current_expected_roi": expected_roi,
-                    "historical_prob": m["historical_prob"],
-                    "historical_pred": m["historical_pred"],
-                    "market_prob": market_prob,
-                    "no_vig_prob": nv,
+                win_prob, _error_rate, _lgb_score, _torch_score, decision_prob, stake_logit, _exposure_logit = res
+                scored.append({
+                    **m,
+                    "raw_win_prob": win_prob,
+                    "decision_prob": decision_prob,
+                    "stake_logit": stake_logit,
                 })
+
+            records = _records_from_scored(
+                scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
+            )
 
         set_backtest_progress("aggregate", "Агрегация и фильтр по матчам…", 88, processed=len(records), total=len(records))
 
-        # At most one bet per event — mirrors backend/database.py's occupied_events (live
-        # betting refuses a second position on a match that already has one open) and
-        # model.py's _bankroll_pass (training refuses more than one position per event in a
-        # round). Without this, two markets on the same match that both clear the gates
-        # would each count as a separate "bet" here, overstating both the bet count and the
-        # ROI/accuracy this backtest reports relative to what live betting would actually
-        # place — defeating the whole point of a backtest being a preview of live rules.
-        # Keeps the highest-EV candidate per event (the same ordering live candidate
-        # selection sorts by) and downgrades the rest back to a plain "no bet" prediction.
-        by_event: Dict[Any, List[Dict[str, Any]]] = {}
-        for rec in records:
-            if rec["current_pred"] == 1:
-                by_event.setdefault(rec["event_id"], []).append(rec)
-        for event_records in by_event.values():
-            if len(event_records) < 2:
-                continue
-            event_records.sort(key=lambda r: r["current_expected_roi"], reverse=True)
-            for rec in event_records[1:]:
-                rec["current_pred"] = 0
-
         by_sport: Dict[str, List[Dict[str, Any]]] = {}
         by_coeff: Dict[int, List[Dict[str, Any]]] = {}
+        by_market: Dict[str, List[Dict[str, Any]]] = {}
         for rec in records:
             by_sport.setdefault(rec["sport"], []).append(rec)
             by_coeff.setdefault(rec["coeff_bucket"], []).append(rec)
+            by_market.setdefault(rec["market_label"], []).append(rec)
 
-        # Never-train temporal hold-out: latest events by finished_at, untrained rows only.
-        event_ts: Dict[Any, Any] = {}
-        for r in rows:
-            eid = r["event_id"]
-            ts = r["finished_at"]
-            if eid not in event_ts or str(ts) > str(event_ts[eid]):
-                event_ts[eid] = ts
+        event_ts = _event_ts_map(rows)
         event_order = sorted(event_ts.keys(), key=lambda e: str(event_ts[e]))
         n_hold = max(OOS_MIN_EVENTS, int(len(event_order) * OOS_TEST_EVENT_FRACTION))
         hold_events = set(event_order[-n_hold:]) if len(event_order) >= OOS_MIN_EVENTS else set()
@@ -469,6 +658,11 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         ]
         oos_ids = {id(r) for r in oos_records}
         in_sample_records = [r for r in records if id(r) not in oos_ids]
+
+        walk_forward = _walk_forward_eval(
+            scored, rows, decision_threshold, sport_decision_thresholds, market_support,
+        )
+        walk_forward_combined = (walk_forward or {}).get("combined") if walk_forward else None
 
         set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
 
@@ -490,12 +684,20 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "max_bet_coeff": MAX_BET_COEFF,
                 "min_bet_coeff": MIN_BET_COEFF,
                 "oos_holdout_events": len(hold_events),
+                "calibration_cutoff": calibration_cutoff,
+                "walk_forward_folds": WALK_FORWARD_FOLDS,
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),
             "oos_never_train": _agg_group(oos_records) if oos_records else None,
+            "walk_forward": walk_forward_combined,
+            "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
+                key=lambda x: -x["evaluated"],
+            ),
+            "by_market": sorted(
+                [{"market": m, **_agg_group(rs)} for m, rs in by_market.items()],
                 key=lambda x: -x["evaluated"],
             ),
             "by_coefficient": [

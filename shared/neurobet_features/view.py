@@ -44,6 +44,9 @@ MATCH_TIME_NORM_SECONDS = float(os.getenv("NEURALBET_MATCH_TIME_NORM_SECONDS", "
 MATCH_TIME_UNKNOWN = -1.0
 VAL_CUTOFF_SEED = int(os.getenv("NEURALBET_VAL_CUTOFF_SEED", "42"))
 TRAIN_MIN_HISTORY = int(os.getenv("NEURALBET_TRAIN_MIN_HISTORY", "3"))
+LGB_DISABLE_TEAM_FEATURES = os.getenv("NEURALBET_LGB_DISABLE_TEAM_FEATURES", "0").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
 # Clamp sport-raw score_diff into roughly [-1, 1] so 3 football goals and
 # 3 NBA points are not the same number to the GRU.
@@ -469,8 +472,12 @@ def build_model_input(sample: Mapping[str, Any], mode: str = "serve") -> Optiona
 
     team1 = sample.get("team_1") or ""
     team2 = sample.get("team_2") or ""
-    team1_form = lookup_team_form(_TEAM_FORM_CACHE, team1, sport_path, factor_id)
-    team2_form = lookup_team_form(_TEAM_FORM_CACHE, team2, sport_path, factor_id)
+    team1_form = sample.get("team1_form_asof")
+    team2_form = sample.get("team2_form_asof")
+    if team1_form is None:
+        team1_form = lookup_team_form(_TEAM_FORM_CACHE, team1, sport_path, factor_id)
+    if team2_form is None:
+        team2_form = lookup_team_form(_TEAM_FORM_CACHE, team2, sport_path, factor_id)
 
     return {
         "step_pairs": step_pairs,
@@ -614,10 +621,14 @@ def lgb_feature_row(view: Mapping[str, Any]) -> List[float]:
         float(view.get("line_remaining") or 0.0),
         float(view.get("period_point_sum") or 0.0),
         float(view.get("sport_idx") or 0),
-        float(view.get("team1_idx") or 0),
-        float(view.get("team2_idx") or 0),
-        float(view.get("team1_form") if view.get("team1_form") is not None else FORM_UNKNOWN),
-        float(view.get("team2_form") if view.get("team2_form") is not None else FORM_UNKNOWN),
+        0.0 if LGB_DISABLE_TEAM_FEATURES else float(view.get("team1_idx") or 0),
+        0.0 if LGB_DISABLE_TEAM_FEATURES else float(view.get("team2_idx") or 0),
+        FORM_UNKNOWN if LGB_DISABLE_TEAM_FEATURES else float(
+            view.get("team1_form") if view.get("team1_form") is not None else FORM_UNKNOWN
+        ),
+        FORM_UNKNOWN if LGB_DISABLE_TEAM_FEATURES else float(
+            view.get("team2_form") if view.get("team2_form") is not None else FORM_UNKNOWN
+        ),
         float(overround) if overround else OVERROUND_UNKNOWN,
         float(view.get("no_vig_prob") or no_vig_probability(coeff, overround)),
         float(view.get("total_line") or 0.0),

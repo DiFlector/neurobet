@@ -27,7 +27,7 @@ from .parse import (
     period_index,
     unpack_timer_entry,
 )
-from .team_form import build_team_form_index, lookup_team_form
+from .team_form import build_team_form_asof_lookup, build_team_form_index, lookup_team_form
 from .view import (
     GRU_INPUT_DIM,
     LGB_CATEGORICAL_FEATURES,
@@ -76,6 +76,7 @@ __all__ = [
     "parse_score_diff",
     "parse_score_pair",
     "parse_score_sum",
+    "build_team_form_asof_lookup",
     "build_team_form_index",
     "lookup_team_form",
     "set_team_form_cache",

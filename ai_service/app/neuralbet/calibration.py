@@ -60,7 +60,7 @@ def coeff_bucket_index(coeff: Optional[float]) -> int:
     return len(COEFF_BUCKET_EDGES)
 
 
-def get_calibration_buckets() -> Dict[CoeffBucketKey, Tuple[float, float]]:
+def get_calibration_buckets(*, before: Optional[str] = None) -> Dict[CoeffBucketKey, Tuple[float, float]]:
     """
     Returns {(sport, decile, coeff_bucket): (weighted_wins, weighted_total)} — plus
     coarser fallback entries at (None, decile, coeff_bucket), (sport, decile, None) and
@@ -84,15 +84,21 @@ def get_calibration_buckets() -> Dict[CoeffBucketKey, Tuple[float, float]]:
     """
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    f_cursor.execute("""
+    before_clause = "AND h.finished_at < %s" if before else ""
+    params: list[Any] = []
+    if before:
+        params.append(before)
+    params.append(CALIBRATION_RECENCY_WINDOW)
+    f_cursor.execute(f"""
         SELECT TRIM(SPLIT_PART(e.sport_path, '/', 1)) AS sport,
                h.predicted_win_probability, h.is_win, h.final_coefficient
           FROM finished_bets h
           JOIN finished_events e ON h.event_id = e.event_id
          WHERE h.is_win IS NOT NULL AND h.predicted_win_probability IS NOT NULL
+           {before_clause}
          ORDER BY h.finished_at DESC
          LIMIT %s
-    """, (CALIBRATION_RECENCY_WINDOW,))
+    """, tuple(params))
     rows = f_cursor.fetchall()
     release_connection(f_conn)
 
