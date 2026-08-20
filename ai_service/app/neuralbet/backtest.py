@@ -66,6 +66,10 @@ OOS_MIN_EVENTS = int(os.getenv("NEURALBET_OOS_MIN_EVENTS", "40"))
 BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_BOOTSTRAP_SAMPLES", "500"))
 WALK_FORWARD_FOLDS = int(os.getenv("NEURALBET_WALK_FORWARD_FOLDS", "4"))
 WALK_FORWARD_REGION_FRACTION = float(os.getenv("NEURALBET_WALK_FORWARD_REGION_FRACTION", "0.40"))
+LIVE_QUALITY_GATE = os.getenv("NEURALBET_LIVE_QUALITY_GATE", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+LIVE_QUALITY_MIN_BETS = int(os.getenv("NEURALBET_LIVE_QUALITY_MIN_BETS", "40"))
 
 BACKTEST_PROGRESS_PATH = os.path.join(MODEL_DIR, "backtest_progress.json")
 _backtest_progress_lock = threading.Lock()
@@ -168,6 +172,79 @@ def _probability_metrics(records: List[Dict[str, Any]], prob_key: str) -> Option
     n = len(have)
     brier = sum(_brier(r[prob_key], r["is_win"]) for r in have) / n
     return {"evaluated": n, "brier": round(brier, 4)}
+
+
+def _guess_accuracy_pct(records: List[Dict[str, Any]], pred_key: str) -> Optional[float]:
+    """
+    Share of rows where the binary verdict matched the outcome (guessed / угадано).
+
+    Same definition as the pre-refactor backtest and finished_bets history:
+    predicted_win == is_win, including correct «не ставить / проиграет» calls.
+    """
+    have = [r for r in records if r.get(pred_key) is not None]
+    if not have:
+        return None
+    guessed = sum(1 for r in have if int(r[pred_key]) == int(r["is_win"]))
+    return round(guessed / len(have) * 100.0, 1)
+
+
+def evaluate_quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Same checks pipeline._live_quality_skip_reason uses — embedded in backtest JSON."""
+    if not LIVE_QUALITY_GATE:
+        return {"enabled": False, "pass": True, "eval_slice": None, "reasons": [], "metrics": {}}
+
+    if result.get("walk_forward"):
+        eval_slice = "walk_forward"
+        eval_block = result["walk_forward"]
+    elif result.get("oos_never_train"):
+        eval_slice = "oos_never_train"
+        eval_block = result["oos_never_train"]
+    else:
+        eval_slice = "overall"
+        eval_block = result.get("overall") or {}
+
+    overall = result.get("overall") or {}
+    stake = ((eval_block.get("stake_policy") or {}).get("current")) or {}
+    bets = int(stake.get("bets") or 0)
+    roi = stake.get("roi_pct")
+    roi_lo = stake.get("roi_pct_lo")
+    win_rate = stake.get("win_rate_pct")
+    break_even = stake.get("break_even_pct")
+    brier = ((eval_block.get("probability") or {}).get("current") or {}).get("brier")
+    if brier is None:
+        brier = (eval_block.get("current") or {}).get("brier")
+    market = ((overall.get("probability") or {}).get("market_raw") or {}).get("brier")
+    if market is None:
+        market = overall.get("market_brier")
+
+    reasons: List[str] = []
+    if bets < LIVE_QUALITY_MIN_BETS:
+        reasons.append(f"bets {bets}<{LIVE_QUALITY_MIN_BETS}")
+    if roi is None or float(roi) <= 0:
+        reasons.append(f"ROI {roi}")
+    if roi_lo is not None and float(roi_lo) <= 0:
+        reasons.append(f"ROI CI lo {roi_lo}")
+    if win_rate is None or break_even is None or float(win_rate) <= float(break_even):
+        reasons.append(f"win_rate {win_rate}≤break-even {break_even}")
+    if brier is None or market is None or float(brier) >= float(market):
+        reasons.append(f"Brier {brier}≥market {market}")
+
+    return {
+        "enabled": True,
+        "pass": len(reasons) == 0,
+        "eval_slice": eval_slice,
+        "reasons": reasons,
+        "metrics": {
+            "bets": bets,
+            "roi_pct": roi,
+            "roi_pct_lo": roi_lo,
+            "win_rate_pct": win_rate,
+            "break_even_pct": break_even,
+            "brier": brier,
+            "market_brier": market,
+            "min_bets_required": LIVE_QUALITY_MIN_BETS,
+        },
+    }
 
 
 def _verdict_metrics(records: List[Dict[str, Any]], pred_key: str) -> Optional[Dict[str, Any]]:
@@ -456,14 +533,14 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         "market_brier": market_brier,
         "current": {
             "evaluated": n,
-            "accuracy_pct": None,
+            "accuracy_pct": _guess_accuracy_pct(records, "current_pred"),
             "bets": (current_stake or {}).get("bets", 0),
             "roi_pct": (current_stake or {}).get("roi_pct"),
             "brier": (_probability_metrics(records, "current_prob") or {}).get("brier"),
         },
         "historical": {
             "evaluated": n,
-            "accuracy_pct": None,
+            "accuracy_pct": _guess_accuracy_pct(records, "historical_pred"),
             "bets": (_stake_metrics(records, "historical_pred") or {}).get("bets", 0),
             "roi_pct": (_stake_metrics(records, "historical_pred") or {}).get("roi_pct"),
             "brier": (_probability_metrics(records, "historical_prob") or {}).get("brier"),
@@ -705,6 +782,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 for b, rs in sorted(by_coeff.items())
             ],
         }
+        result["quality_gate"] = evaluate_quality_gate(result)
 
         save_and_record(result)
         set_backtest_progress(
@@ -750,6 +828,7 @@ def save_and_record(result: Dict[str, Any]) -> None:
             "since": result.get("since"),
             "config": result["config"],
             "overall": result["overall"],
+            "quality_gate": result.get("quality_gate"),
         })
         history = history[:MAX_HISTORY_RUNS]
 

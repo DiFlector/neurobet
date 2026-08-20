@@ -1046,6 +1046,29 @@ export default function AdminPage() {
                 {" "}blend_weight {backtestResult.config?.blend_weight} · market_weight {backtestResult.config?.market_weight} · порог {backtestResult.config?.decision_threshold} · макс. кэф {backtestResult.config?.max_bet_coeff}
               </div>
 
+              {backtestResult.quality_gate && (
+                <div className={`rounded-xl border px-3.5 py-3 text-xs font-mono ${
+                  backtestResult.quality_gate.pass
+                    ? "bg-[#00b894]/10 border-[#00b894]/40 text-[#55efc4]"
+                    : "bg-[#d63031]/10 border-[#d63031]/40 text-[#ff7675]"
+                }`}>
+                  <div className="font-bold uppercase text-[10px] tracking-wide">
+                    Quality gate — {backtestResult.quality_gate.pass ? "пройден" : "блокирует live-ставки"}
+                  </div>
+                  <div className="mt-1 text-neutral-300">
+                    Срез: {backtestResult.quality_gate.eval_slice ?? "—"}
+                    {backtestResult.quality_gate.metrics?.bets != null && (
+                      <> · {backtestResult.quality_gate.metrics.bets} ставок · ROI {backtestResult.quality_gate.metrics.roi_pct ?? "—"}% · CI lo {backtestResult.quality_gate.metrics.roi_pct_lo ?? "—"}%</>
+                    )}
+                  </div>
+                  {!backtestResult.quality_gate.pass && (backtestResult.quality_gate.reasons?.length ?? 0) > 0 && (
+                    <div className="mt-1.5 text-[#ff7675]">
+                      {(backtestResult.quality_gate.reasons as string[]).join("; ")}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {([
                   { key: "current", label: "Текущая модель (сейчас)" },

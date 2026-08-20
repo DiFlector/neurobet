@@ -1527,45 +1527,16 @@ def _refresh_market_support() -> dict[tuple, int]:
 
 def _live_quality_skip_reason() -> str | None:
     """Block new virtual live bets until the latest backtest shows an edge on OOS."""
-    if not LIVE_QUALITY_GATE:
-        return None
-    from app.neuralbet.backtest import get_latest_backtest
+    from app.neuralbet.backtest import evaluate_quality_gate, get_latest_backtest
 
     latest = get_latest_backtest()
     if not latest:
         return "no backtest yet"
-    # Prefer strict temporal hold-out; fall back to walk-forward aggregate, then overall.
-    eval_block = (
-        latest.get("walk_forward")
-        or latest.get("oos_never_train")
-        or latest.get("overall")
-        or {}
-    )
-    overall = latest.get("overall") or {}
-    stake = ((eval_block.get("stake_policy") or {}).get("current")) or {}
-    bets = int(stake.get("bets") or 0)
-    roi = stake.get("roi_pct")
-    roi_lo = stake.get("roi_pct_lo")
-    win_rate = stake.get("win_rate_pct")
-    break_even = stake.get("break_even_pct")
-    brier = ((eval_block.get("probability") or {}).get("current") or {}).get("brier")
-    if brier is None:
-        brier = (eval_block.get("current") or {}).get("brier")
-    market = ((overall.get("probability") or {}).get("market_raw") or {}).get("brier")
-    if market is None:
-        market = overall.get("market_brier")
-    fails: list[str] = []
-    if bets < LIVE_QUALITY_MIN_BETS:
-        fails.append(f"bets {bets}<{LIVE_QUALITY_MIN_BETS}")
-    if roi is None or float(roi) <= 0:
-        fails.append(f"ROI {roi}")
-    if roi_lo is not None and float(roi_lo) <= 0:
-        fails.append(f"ROI CI lo {roi_lo}")
-    if win_rate is None or break_even is None or float(win_rate) <= float(break_even):
-        fails.append(f"win_rate {win_rate}≤break-even {break_even}")
-    if brier is None or market is None or float(brier) >= float(market):
-        fails.append(f"Brier {brier}≥market {market}")
-    return "; ".join(fails) if fails else None
+    gate = latest.get("quality_gate") or evaluate_quality_gate(latest)
+    if not gate.get("enabled"):
+        return None
+    reasons = gate.get("reasons") or []
+    return "; ".join(reasons) if reasons else None
 
 
 def _place_live_bets(candidates: list[dict[str, Any]]):
