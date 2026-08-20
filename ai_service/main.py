@@ -110,7 +110,7 @@ def startup_event():
         max_instances=1,
         coalesce=True,
     )
-    digest_hours = max(1.0, float(LLM_DIGEST_HOURS) or 6.0)
+    digest_hours = max(1.0, float(LLM_DIGEST_HOURS) or 3.0)
     scheduler.add_job(
         run_scheduled_llm_digest,
         "interval",

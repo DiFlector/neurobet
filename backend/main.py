@@ -706,6 +706,22 @@ def admin_llm_digest_route():
     return admin_llm_digest()
 
 
+@app.post("/api/admin/llm-digest/run")
+def admin_llm_digest_run():
+    """Manual DeepSeek digest refresh — can take up to ~70s on the AI worker."""
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/llm-digest/run")
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text[:500])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running LLM digest: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach AI service for LLM digest")
+
+
 def _filters_snapshot() -> Dict[str, Any]:
     return {
         "allowed_sports": sorted(ALLOWED_SPORTS),

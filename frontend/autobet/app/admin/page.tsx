@@ -78,6 +78,8 @@ export default function AdminPage() {
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
   const [llmDigest, setLlmDigest] = useState<any>(null)
+  const [llmDigestRunning, setLlmDigestRunning] = useState(false)
+  const [llmDigestError, setLlmDigestError] = useState<string | null>(null)
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
@@ -338,6 +340,37 @@ export default function AdminPage() {
       // Ignore — LLM digest is optional
     }
   }, [API_BASE])
+
+  const runLlmDigest = useCallback(async () => {
+    setLlmDigestRunning(true)
+    setLlmDigestError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/llm-digest/run`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.detail || `HTTP ${res.status}`)
+      }
+      if (data.status === "error" || data.status === "skipped") {
+        throw new Error(data.error || data.reason || data.status)
+      }
+      if (data.latest) {
+        setLlmDigest((prev: any) => ({
+          ...(prev || {}),
+          enabled: true,
+          latest: data.latest,
+          history: [data.latest, ...((prev?.history || []).filter(
+            (h: any) => h?.generated_at !== data.latest?.generated_at
+          ))].slice(0, 20),
+        }))
+      } else {
+        await fetchLlmDigest()
+      }
+    } catch (err: any) {
+      setLlmDigestError(err.message || "Не удалось запустить дайджест")
+    } finally {
+      setLlmDigestRunning(false)
+    }
+  }, [API_BASE, fetchLlmDigest])
 
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
@@ -1456,22 +1489,39 @@ export default function AdminPage() {
 
         {/* DeepSeek LLM Digest */}
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#0984e3]/15 border border-[#0984e3]/30 flex items-center justify-center text-[#74b9ff] shrink-0">
-              <BrainCircuit className="w-5 h-5" />
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#0984e3]/15 border border-[#0984e3]/30 flex items-center justify-center text-[#74b9ff] shrink-0">
+                <BrainCircuit className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">DeepSeek — дайджест модели</h3>
+                <p className="text-xs text-neutral-400">
+                  Резюме TRAINING/BANKROLL-логов и training health. Авто каждые 3 ч · не влияет на ставки.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">DeepSeek — дайджест модели</h3>
-              <p className="text-xs text-neutral-400">
-                Периодическое резюме TRAINING/BANKROLL-логов и training health. Не влияет на ставки.
-              </p>
-            </div>
+            <button
+              onClick={runLlmDigest}
+              disabled={llmDigestRunning || llmDigest?.enabled === false}
+              className="flex items-center gap-1.5 bg-[#0984e3] hover:opacity-90 text-white font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md shadow-[#0984e3]/20 disabled:opacity-50 shrink-0"
+              title={llmDigest?.enabled === false ? "Включите NEURALBET_LLM_ENABLED=1" : "Собрать дайджест сейчас (~1 мин)"}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${llmDigestRunning ? "animate-spin" : ""}`} />
+              {llmDigestRunning ? "Генерирую..." : "Обновить дайджест"}
+            </button>
           </div>
+          {llmDigestError && (
+            <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{llmDigestError}</span>
+            </div>
+          )}
           {!llmDigest?.latest ? (
             <div className="text-xs text-neutral-500 font-mono rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3">
               {llmDigest?.enabled === false
                 ? "LLM выключен (NEURALBET_LLM_ENABLED=0) или нет DEEPSEEK_TOKEN."
-                : "Дайджест ещё не сформирован — появится после ближайшего cron-прогона."}
+                : "Дайджест ещё не сформирован — нажмите «Обновить дайджест» или дождитесь cron."}
             </div>
           ) : (
             <div className="rounded-xl border border-[#0984e3]/30 bg-[#0984e3]/10 px-3.5 py-3 space-y-2">
