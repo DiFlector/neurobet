@@ -1892,7 +1892,7 @@ def _run_neuralbet_inference_and_training_locked(
 
     if skipped_low_edge or skipped_low_support or skipped_coeff or skipped_sport:
         sport_part = (
-            f", {skipped_sport} — спорт вне live-листа (NEUROBET_LIVE_STAKE_SPORTS)"
+            f", {skipped_sport} — спорт вне live-листа (NEURALBET_LIVE_STAKE_SPORTS)"
             if skipped_sport
             else ""
         )

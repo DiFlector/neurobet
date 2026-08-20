@@ -628,13 +628,10 @@ export default function NeurobetsPage() {
               transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
             >
               <div className="flex flex-col gap-3 min-w-[170px] flex-1 lg:flex-initial lg:w-[230px]">
-                <motion.div
-                  whileHover={{ borderColor: "rgba(85,239,196,0.4)" }}
-                  className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-colors"
-                >
+                <div className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-[border-color] duration-300 ease-out hover:border-[#55efc4]/40">
                   <div className="relative w-9 h-9 rounded-lg bg-[#55efc4]/10 flex items-center justify-center shrink-0">
                     <motion.span
-                      className="absolute inset-0 rounded-lg bg-[#55efc4]/25"
+                      className="pointer-events-none absolute inset-0 rounded-lg bg-[#55efc4]/25"
                       animate={{ scale: [1, 1.35, 1], opacity: [0, 0.5, 0] }}
                       transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
                     />
@@ -645,14 +642,11 @@ export default function NeurobetsPage() {
                     <div className="text-sm font-bold text-[#55efc4] font-mono mt-1.5 leading-none">Online GRU</div>
                     <div className="text-[10px] text-neutral-500 mt-1 leading-none">окно 10m</div>
                   </div>
-                </motion.div>
-                <motion.div
-                  whileHover={{ borderColor: "rgba(253,203,110,0.4)" }}
-                  className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-colors"
-                >
+                </div>
+                <div className="flex items-center gap-3 bg-neutral-950/80 border border-neutral-800 rounded-xl px-4 py-[18px] backdrop-blur transition-[border-color] duration-300 ease-out hover:border-[#fdcb6e]/40">
                   <div className="relative w-9 h-9 rounded-lg bg-[#fdcb6e]/10 flex items-center justify-center shrink-0">
                     <motion.span
-                      className="absolute inset-0 rounded-lg bg-[#fdcb6e]/25"
+                      className="pointer-events-none absolute inset-0 rounded-lg bg-[#fdcb6e]/25"
                       animate={{ scale: [1, 1.35, 1], opacity: [0, 0.5, 0] }}
                       transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
                     />
@@ -663,7 +657,7 @@ export default function NeurobetsPage() {
                     <div className="text-sm font-bold text-[#fdcb6e] font-mono mt-1.5 leading-none">Leaf Speed</div>
                     <div className="text-[10px] text-neutral-500 mt-1 leading-none">&lt;5ms инференс</div>
                   </div>
-                </motion.div>
+                </div>
               </div>
 
               <div className="relative bg-neutral-950/80 border border-neutral-800/80 rounded-xl px-6 py-4 flex flex-col items-center justify-center gap-2 backdrop-blur bg-gradient-to-b from-neutral-950 to-[#55efc4]/5 shrink-0">

@@ -1296,7 +1296,7 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # on (it always bet on the raw score) — this file no longer computes calibration at all.
 
 # Same live gates as ai_service (coeff band, min EV, min market support,
-# NEUROBET_LIVE_STAKE_SPORTS) — sourced from shared/neurobet_filters so
+# NEURALBET_LIVE_STAKE_SPORTS) — sourced from shared/neurobet_filters so
 # «Активные LIVE Прогнозы» and «Ставки нейросети» match what the bot would
 # actually risk money on. Refresh interval stays local: it's a cache TTL, not a filter.
 NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
@@ -1707,7 +1707,7 @@ def get_top_neurobets(
             ) >= MIN_MARKET_SUPPORT
         ]
 
-    # Live-stake sport whitelist — same NEUROBET_LIVE_STAKE_SPORTS as ai_service
+    # Live-stake sport whitelist — same NEURALBET_LIVE_STAKE_SPORTS as ai_service
     # placement; only on the bot's real betting pool (verdict=win).
     if verdict == "win":
         candidates = [c for c in candidates if in_live_stake_sport(c.get("sport_path"))]
