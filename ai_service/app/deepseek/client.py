@@ -154,7 +154,7 @@ class DeepSeekWebClient:
 
         full_response_text = []
 
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=90.0 if search_enabled else 60.0) as client:
             with client.stream("POST", url, headers=headers, json=payload) as response:
                 if response.status_code != 200:
                     raise RuntimeError(f"DeepSeek Web API error HTTP {response.status_code}: {response.text}")
@@ -175,9 +175,12 @@ class DeepSeekWebClient:
                     piece = _extract_sse_content(chunk_json)
                     if piece:
                         full_response_text.append(piece)
-                    # Status FINISHED ends the assistant message; stop collecting.
+                    # With web-search, DeepSeek often emits FINISHED on an intermediate
+                    # search turn before RESPONSE fragments — only stop early if we
+                    # already have answer text (or search is off).
                     if _is_stream_finished(chunk_json):
-                        break
+                        if full_response_text or not search_enabled:
+                            break
 
         final_text = "".join(full_response_text).strip()
         return _sanitize_stream_text(final_text)
@@ -206,11 +209,16 @@ def _fragment_texts(fragments: Any) -> List[str]:
             continue
         # Skip chain-of-thought / search UI fragments — keep answer content only.
         ftype = str(frag.get("type") or "").upper()
-        if ftype in ("THINK", "THINKING", "SEARCH", "SEARCH_RESULT"):
+        if ftype in ("THINK", "THINKING", "SEARCH", "SEARCH_RESULT", "SEARCHING"):
             continue
         content = frag.get("content")
         if isinstance(content, str) and content:
             out.append(content)
+            continue
+        # Some search-final payloads nest the answer under "text".
+        text = frag.get("text")
+        if isinstance(text, str) and text:
+            out.append(text)
     return out
 
 

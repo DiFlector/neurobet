@@ -386,10 +386,23 @@ def fetch_match_context(
         "supports_bet=true если внешние источники скорее поддерживают ставку модели; "
         "false если противоречат; null если данных мало. confidence от 0 до 1."
     )
-    data, reason = ask_json(prompt, search=True, timeout=35.0)
+    data, reason = ask_json(prompt, search=True, timeout=50.0)
+    # Web-search stream often returns empty (FINISHED before RESPONSE). Fall back
+    # to model-only JSON so shadow still gets supports_bet / confidence.
+    if not data and reason == "empty_response":
+        data, reason = ask_json(
+            prompt
+            + "\n\nВеб-поиск недоступен — ответь по общим знаниям о командах/игроках, "
+            "confidence снизь (обычно ≤0.5).",
+            search=False,
+            timeout=30.0,
+        )
+        if data:
+            reason = None
     if not data:
         null_reason = reason or "empty_response"
-        _cache_set(cache_key, {"_null_reason": null_reason}, ttl_seconds=30 * 60)
+        # Short TTL — don't block retries for half an hour on flaky search.
+        _cache_set(cache_key, {"_null_reason": null_reason}, ttl_seconds=5 * 60)
         return None, null_reason
 
     lean = str(data.get("lean") or "unknown").lower().strip()
@@ -497,7 +510,7 @@ def enrich_candidates_with_llm(
         sport = c.get("sport") or ""
         null_reason: Optional[str] = None
         ctx: Optional[Dict[str, Any]] = None
-        attempted = False
+        did_fresh_fetch = False
 
         if not sport_allows_match_context(sport):
             null_reason = "sport_skipped"
@@ -505,7 +518,6 @@ def enrich_candidates_with_llm(
             cache_key = f"match_ctx:{event_id}"
             cached = _cache_get(cache_key)
             if cached is not None:
-                attempted = True
                 if isinstance(cached, dict) and cached.get("_null_reason"):
                     null_reason = str(cached["_null_reason"])
                     ctx = None
@@ -514,7 +526,7 @@ def enrich_candidates_with_llm(
             elif fresh_searches < max_fresh:
                 ctx, null_reason = fetch_match_context(c)
                 fresh_searches += 1
-                attempted = True
+                did_fresh_fetch = True
             else:
                 null_reason = "budget_exhausted"
 
@@ -522,8 +534,11 @@ def enrich_candidates_with_llm(
             c = {**c, "llm_context": ctx}
 
         key = _candidate_key(c)
-        # Don't flood shadow with NT sport_skipped / budget leftovers every cycle.
-        if shadow_enabled() and (attempted or key in placed_keys):
+        # Record: placed bets, successful context, or a fresh fetch this cycle.
+        # Skip sport_skipped / budget / empty cache-replays so shadow isn't flooded.
+        if shadow_enabled() and (
+            key in placed_keys or ctx is not None or did_fresh_fetch
+        ):
             record_shadow_decision(
                 c,
                 ctx=ctx,
