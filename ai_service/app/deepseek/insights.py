@@ -148,7 +148,9 @@ def _call_send(
         with ThreadPoolExecutor(max_workers=1) as pool:
             fut = pool.submit(_run)
             text = fut.result(timeout=max(5.0, timeout))
-        return (text or "").strip() or None
+        from app.deepseek.client import _sanitize_stream_text
+
+        return _sanitize_stream_text(text or "") or None
     except FuturesTimeout:
         logger.warning("DeepSeek call timed out after %.1fs", timeout)
         try:

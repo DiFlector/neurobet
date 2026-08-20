@@ -8,10 +8,11 @@ import base64
 import httpx
 import json
 import os
+import re
 import struct
 import sys
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from wasmtime import Store, Module, Instance
 
 from app.config import DEEPSEEK_TOKEN
@@ -159,19 +160,135 @@ class DeepSeekWebClient:
                     raise RuntimeError(f"DeepSeek Web API error HTTP {response.status_code}: {response.text}")
 
                 for line in response.iter_lines():
-                    if line and line.startswith("data: "):
-                        raw_chunk = line[6:].strip()
-                        if raw_chunk == "[DONE]":
-                            break
-                        try:
-                            chunk_json = json.loads(raw_chunk)
-                            if "v" in chunk_json and isinstance(chunk_json["v"], str):
-                                full_response_text.append(chunk_json["v"])
-                        except Exception:
-                            pass
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        raw_chunk = line[5:].lstrip()
+                    else:
+                        continue
+                    if raw_chunk == "[DONE]":
+                        break
+                    try:
+                        chunk_json = json.loads(raw_chunk)
+                    except Exception:
+                        continue
+                    piece = _extract_sse_content(chunk_json)
+                    if piece:
+                        full_response_text.append(piece)
+                    # Status FINISHED ends the assistant message; stop collecting.
+                    if _is_stream_finished(chunk_json):
+                        break
 
         final_text = "".join(full_response_text).strip()
-        return final_text
+        return _sanitize_stream_text(final_text)
+
+
+_STATUS_TOKENS = frozenset({
+    "FINISHED", "FINISH", "DONE", "STOP", "FAILED", "ERROR",
+    "SEARCHING", "THINKING", "PENDING",
+})
+
+
+def _is_stream_finished(chunk: Dict[str, Any]) -> bool:
+    path = str(chunk.get("p") or "")
+    val = chunk.get("v")
+    if path.endswith("status") and isinstance(val, str) and val.upper() in _STATUS_TOKENS:
+        return val.upper() in ("FINISHED", "FINISH", "DONE", "STOP")
+    return False
+
+
+def _fragment_texts(fragments: Any) -> List[str]:
+    out: list[str] = []
+    if not isinstance(fragments, list):
+        return out
+    for frag in fragments:
+        if not isinstance(frag, dict):
+            continue
+        # Skip chain-of-thought / search UI fragments — keep answer content only.
+        ftype = str(frag.get("type") or "").upper()
+        if ftype in ("THINK", "THINKING", "SEARCH", "SEARCH_RESULT"):
+            continue
+        content = frag.get("content")
+        if isinstance(content, str) and content:
+            out.append(content)
+    return out
+
+
+def _extract_sse_content(chunk: Dict[str, Any]) -> Optional[str]:
+    """
+    DeepSeek web SSE uses several shapes:
+      1) Initial: {"v": {"response": {"fragments": [{"type":"RESPONSE","content":"..."}]}}}
+      2) Batch replace: {"p":"response/fragments","v":[...]}
+      3) Append token: {"p":"response/fragments/-1/content","o":"APPEND","v":"word"}
+      4) Bare delta: {"v":"word"}
+      5) Status: {"p":"response/status","v":"FINISHED"}  — not content
+    Older parser only took (4), so the first fragment was dropped and FINISHED leaked in.
+    """
+    path = str(chunk.get("p") or "")
+    path_l = path.lower()
+    val = chunk.get("v")
+    op = str(chunk.get("o") or "").upper()
+
+    # Never treat status / progress enums as answer text.
+    if "status" in path_l or path_l.endswith("/state"):
+        return None
+    if isinstance(val, str) and val.strip().upper() in _STATUS_TOKENS and (
+        op in ("", "SET", "REPLACE") or "status" in path_l
+    ):
+        # Bare {"v":"FINISHED"} without a content path — skip.
+        if not path or "status" in path_l or "fragment" not in path_l:
+            return None
+
+    # (1) Nested initial fragments
+    if isinstance(val, dict):
+        response = val.get("response") if isinstance(val.get("response"), dict) else val
+        texts = _fragment_texts(response.get("fragments") if isinstance(response, dict) else None)
+        if texts:
+            return "".join(texts)
+        return None
+
+    # (2) Array of fragments at response/fragments
+    if isinstance(val, list) and ("fragment" in path_l or not path):
+        texts = _fragment_texts(val)
+        if texts:
+            return "".join(texts)
+        return None
+
+    # (3)/(4) String deltas — only when clearly content, not a status token.
+    if isinstance(val, str):
+        if val.strip().upper() in _STATUS_TOKENS and "content" not in path_l:
+            return None
+        # Prefer content paths; allow bare {"v":"..."} deltas (no path).
+        if path and "content" not in path_l and "fragment" not in path_l:
+            return None
+        return val
+
+    return None
+
+
+def _sanitize_stream_text(text: str) -> str:
+    """Strip leaked stream sentinels that still slip through."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    # Trailing/leading status tokens from bad chunk joins (often glued: «...текст.FINISHED»).
+    cleaned = re.sub(
+        r"[\s.]*\b(?:FINISHED|FINISH|DONE|STOP|FAILED|ERROR)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:FINISHED|FINISH|DONE|STOP)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # DeepSeek sometimes echoes citation markers like [citation:6] — keep notes readable.
+    cleaned = re.sub(r"\[citation:\d+\]", "", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
+
 
 def test_deepseek_web(prompt: str = "Привет! Проверка работы через WASM PoW.") -> Dict[str, Any]:
     try:
