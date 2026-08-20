@@ -2904,7 +2904,7 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
         latest_scrape_ts = _latest_live_scrape_ts(cursor)
         cursor.execute(
             """SELECT score_1, score_2, sport_path, period_scores_json, named_scores_json,
-                      is_live, last_updated_at, timer
+                      is_live, last_updated_at, missing_since, timer
                  FROM events WHERE event_id = %s""",
             (event_id,),
         )
@@ -2922,6 +2922,7 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
                 ),
                 "named_scores": named,
                 "is_live": _feed_active(bool(row["is_live"]), row.get("last_updated_at"), latest_scrape_ts),
+                "missing_since": row.get("missing_since"),
                 "last_updated_at": row.get("last_updated_at"),
             }
     finally:
@@ -3053,7 +3054,8 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
             # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
             # After the official-results wait, void rather than grade 10-6 as a final
             # or leave the stake locked forever.
-            if not _stale_past_results_wait(state.get("last_updated_at"), timestamp_str):
+            start_ts = state.get("missing_since") or state.get("last_updated_at")
+            if not _stale_past_results_wait(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
         else:
@@ -3117,7 +3119,7 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
 
         cursor.execute(
             """SELECT score_1, score_2, sport_path, period_scores_json, named_scores_json,
-                      is_live, last_updated_at, timer
+                      is_live, last_updated_at, missing_since, timer
                  FROM events WHERE event_id = %s""",
             (b["event_id"],),
         )
@@ -3141,7 +3143,8 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
         if not _period_ready_for_settlement(
             feed_active, ordinal, period_scores, sport_path,
         ):
-            if feed_active or not _stale_past_results_wait(ev.get("last_updated_at"), timestamp_str):
+            start_ts = ev.get("missing_since") or ev.get("last_updated_at")
+            if feed_active or not _stale_past_results_wait(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
         else:
