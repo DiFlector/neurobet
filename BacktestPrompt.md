@@ -165,26 +165,31 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 
 ## 7. Live по спортам (`NEURALBET_LIVE_STAKE_SPORTS`)
 
-**Live sports:** сейчас `NEURALBET_LIVE_STAKE_SPORTS=*` при **рынках = totals only**.
-Inference/обучение и так на всём `ALLOWED_SPORTS`; `*` влияет только на stake / «win» UI / бэктест «would bet».
+**Live sports:** сейчас `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис,теннис,баскетбол,футбол`
+при **рынках = totals only** (волейбол исключён). Inference/обучение и так на всём
+`ALLOWED_SPORTS`; список влияет только на stake / «win» UI / бэктест «would bet».
 
 | Спорт | Ориентир |
 | :--- | :--- |
-| **Настольный теннис** | historically единственный карман с объёмом; overall CI lo > 0 после totals-only |
-| Баскетбол, волейбол, теннис, футбол | stake-ROI по тоталам **не был виден** при NT-only листе — смотреть свежий `by_sport` после `*` |
+| **Настольный теннис** | единственный карман с CI lo > 0 на totals (ROI ~24%, lo ~+13) |
+| Теннис, баскетбол | ROI > 0, но CI lo ≤ 0 — оставлены в stake, наблюдать |
+| **Волейбол** | исключён: ROI −12.7%, CI lo −40 на totals (прогон 20.08) |
+| Футбол | 0 stake-ставок на totals — в списке без вреда |
 
 Env: `NEURALBET_LIVE_STAKE_SPORTS=*` | `настольный теннис` | список.
 Рынки: `NEURALBET_LIVE_STAKE_MARKETS=totals` (default) | `*` | `total_over,total_under,w1,…`.
 
-Критерий отката: если после `*` walk_forward ROI/CI lo **хуже**, чем на NT-only totals — вернуть `настольный теннис`.
-Не возвращать w1/w2 в live без устойчивого OOS. Gate не снимать, пока WF CI lo ≤ 0.
+Критерий отката: если walk_forward ROI/CI lo **хуже** без волейбола — сузить до
+`настольный теннис`. Не возвращать волейбол / w1/w2 в live без устойчивого OOS.
+Gate не снимать, пока WF CI lo ≤ 0.
 
-### Сделано (2026-08-20) — totals-only, затем sports=`*`
+### Сделано (2026-08-20) — totals-only → sports=`*` → без волейбола
 
 - `NEURALBET_LIVE_STAKE_MARKETS=totals` — w1/w2/draw не ставятся.
 - `NEURALBET_LEARNING_RATE=5e-5`.
-- `NEURALBET_LIVE_STAKE_SPORTS=*` — диагностическое расширение: при тоталах можно увидеть stake по всем спортам; live money всё ещё за gate (CI lo).
-- Откат к НТ, если `by_sport` / walk_forward после прогона хуже.
+- `NEURALBET_LIVE_STAKE_SPORTS=*` — диагностическое расширение; gate тогда ещё fail.
+- После gate pass + `by_sport`: волейбол в минусе →
+  `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис,теннис,баскетбол,футбол`.
 
 ---
 
