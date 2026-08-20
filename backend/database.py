@@ -2774,6 +2774,95 @@ def _cycle_summary_message(won: int, lost: int, void: int, f_cursor) -> Dict[str
     }
 
 
+def _parse_period_scores_json(raw: Any) -> List[Tuple[int, int]]:
+    try:
+        return [tuple(p) for p in json.loads(raw or "[]")]
+    except Exception:
+        return []
+
+
+def _parse_named_scores_json(raw: Any) -> Dict[str, Tuple[int, int]]:
+    try:
+        return {k: tuple(v) for k, v in json.loads(raw or "{}").items()}
+    except Exception:
+        return {}
+
+
+def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
+    """Match scores for grading open bets when finished_bets row is not ready yet."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT score_1, score_2, sport_path, period_scores_json, named_scores_json, is_live
+                 FROM events WHERE event_id = %s""",
+            (event_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "score_1": int(row["score_1"] or 0),
+                "score_2": int(row["score_2"] or 0),
+                "sport_path": row["sport_path"] or "",
+                "period_scores": _parse_period_scores_json(row["period_scores_json"]),
+                "named_scores": _parse_named_scores_json(row["named_scores_json"]),
+                "is_live": bool(row["is_live"]),
+            }
+    finally:
+        release_connection(conn)
+
+    f_conn = get_finished_connection()
+    try:
+        f_cursor = f_conn.cursor()
+        f_cursor.execute(
+            """SELECT score_1, score_2, sport_path, period_scores_json, named_scores_json
+                 FROM finished_events WHERE event_id = %s""",
+            (event_id,),
+        )
+        row = f_cursor.fetchone()
+        if row:
+            return {
+                "score_1": int(row["score_1"] or 0),
+                "score_2": int(row["score_2"] or 0),
+                "sport_path": row["sport_path"] or "",
+                "period_scores": _parse_period_scores_json(row["period_scores_json"]),
+                "named_scores": _parse_named_scores_json(row["named_scores_json"]),
+                "is_live": False,
+            }
+    finally:
+        release_connection(f_conn)
+    return None
+
+
+def _grade_live_bet(b: Dict[str, Any], state: Dict[str, Any]) -> Tuple[Optional[int], bool]:
+    sport_path = state["sport_path"]
+    if is_fast_format_sport_path(sport_path):
+        return None, False
+    return resolve_outcome(
+        b["factor_id"],
+        b["label"] or "",
+        b["parameter"] or "",
+        state["score_1"],
+        state["score_2"],
+        market_prefix=b["market_prefix"] or "",
+        sport_path=sport_path,
+        period_scores=state["period_scores"],
+        named_scores=state["named_scores"],
+    )
+
+
+def _period_ready_for_settlement(
+    is_live: bool, ordinal: int, period_scores: List[Tuple[int, int]],
+) -> bool:
+    """Period N is gradable once period N+1 starts (live), or once the match is finalized."""
+    n = len(period_scores)
+    if n < ordinal:
+        return False
+    if is_live:
+        return n > ordinal
+    return True
+
+
 def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
     """
     Resolves any 'open' live_bets whose underlying event has since been archived (i.e.
@@ -2800,12 +2889,29 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
               AND COALESCE(market_prefix,'') = COALESCE(%s,'')
         """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"]))
         row = f_cursor.fetchone()
-        if row is None:
-            continue  # event hasn't finished (archived) yet
+        if row is not None:
+            outcome, msgs = _apply_bet_settlement(
+                f_cursor, b, row["is_win"], bool(row["is_push"]),
+            )
+            messages.extend(msgs)
+            if outcome == "win":
+                won += 1
+            elif outcome == "loss":
+                lost += 1
+            else:
+                void += 1
+            continue
 
-        outcome, msgs = _apply_bet_settlement(
-            f_cursor, b, row["is_win"], bool(row["is_push"]),
-        )
+        # Event finalized (is_live=0) but not archived yet — grade from live DB scores
+        # instead of waiting for finished_bets (can lag minutes behind results API).
+        state = _load_event_grading_state(b["event_id"])
+        if state is None or state["is_live"]:
+            continue
+
+        is_win, is_push = _grade_live_bet(b, state)
+        if is_win is None and not is_push:
+            continue
+        outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
         messages.extend(msgs)
         if outcome == "win":
             won += 1
@@ -2834,9 +2940,12 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
     entry the instant halftime begins, before a single second-half event has happened).
     "An entry exists for period N" alone doesn't mean period N is finished.
 
-    Deliberately does not handle the *last* period of a match — its end is the match's
-    end, and the existing short grace period already settles that quickly via
-    settle_live_bets() once the event archives.
+    Deliberately does not settle the *last* period while the match is still live — its end
+    is the match's end, and the existing short grace period settles that quickly once
+    is_live=0 (via this function for finalized events, or settle_live_bets after archive).
+
+    Also runs for is_live=0 events still waiting in the live DB for archival — previously
+    skipped, which left period/set bets stuck at «матч завершён» for minutes.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -2861,27 +2970,23 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
             (b["event_id"],),
         )
         ev = cursor.fetchone()
-        if ev is None or not ev["is_live"]:
-            continue  # event already finished/archived — settle_live_bets handles it
+        if ev is None:
+            continue  # archived — settle_live_bets uses finished_bets / finished_events
         if is_fast_format_sport_path(ev["sport_path"] or ""):
             continue  # ungradable compressed sim — full-archive path voids it
 
-        try:
-            period_scores = [tuple(p) for p in json.loads(ev["period_scores_json"] or "[]")]
-        except Exception:
-            period_scores = []
-        if len(period_scores) <= ordinal:
-            continue  # next period hasn't started yet — this one isn't confirmed over
+        period_scores = _parse_period_scores_json(ev["period_scores_json"])
+        if not _period_ready_for_settlement(bool(ev["is_live"]), ordinal, period_scores):
+            continue
 
-        is_win, _is_push = resolve_outcome(
+        is_win, is_push = resolve_outcome(
             b["factor_id"], b["label"] or "", b["parameter"], ev["score_1"], ev["score_2"],
             market_prefix=prefix, sport_path=ev["sport_path"] or "", period_scores=period_scores,
         )
-        if is_win is None:
-            continue  # ungradable or a push (wrong sport type, exact line, etc.) — leave
-            # open, full-match path (and its own is_push bookkeeping) will void it anyway
+        if is_win is None and not is_push:
+            continue
 
-        outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win)
+        outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
         messages.extend(msgs)
         if outcome == "win":
             won += 1
