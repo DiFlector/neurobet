@@ -137,6 +137,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
 | `get_filters` | Live betting gates: allowed sports/factors, live stake sports/markets, coeff band, min EV, min market support |
 | `get_llm_digest` | Latest DeepSeek digest of TRAINING/BANKROLL logs + training health (optional; empty if LLM off) |
+| `get_llm_shadow` | Shadow report: model-only vs model+LLM veto, null_reasons, auto-veto eligibility |
 | `get_bankroll` | Live + training accounts |
 | `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
 

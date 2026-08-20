@@ -134,6 +134,10 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - Consecutive gate: история считается по **core-метрикам** (не по итоговому
   `quality_gate.pass`), иначе серия 1<2 никогда не закрывается; live re-eval
   пропускает тот же `generated_at` в history.
+- DeepSeek shadow (2026-08-20): web-search **после** place (async), не блокирует Kelly;
+  `NEURALBET_LLM_VETO=0`; `NEURALBET_LLM_MATCH_CONTEXT_SPORTS=теннис,футбол`;
+  shadow JSON + MCP `get_llm_shadow`; auto-veto только если shadow докажет edge
+  (≥150 settled, with_veto ROI/WR лучше, CI lo>0, vetoed ROI<0).
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
 
@@ -201,5 +205,6 @@ Gate не снимать, пока WF CI lo ≤ 0.
 | Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `quality_gate.py`, `review.py` |
 | Обучение, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |
+| DeepSeek LLM / shadow | `ai_service/app/deepseek/insights.py`, `.env` (`NEURALBET_LLM_*`) |
 | Фичи | `shared/neurobet_features/` |
 | MCP | `backend/mcp_eval.py` |

@@ -701,9 +701,25 @@ def admin_llm_digest():
     return {"status": "success", "enabled": False, "latest": None, "history": []}
 
 
+def admin_llm_shadow():
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/llm-shadow")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching LLM shadow report: {e}")
+    return {"status": "error", "enabled": False, "error": "unreachable"}
+
+
 @app.get("/api/admin/llm-digest")
 def admin_llm_digest_route():
     return admin_llm_digest()
+
+
+@app.get("/api/admin/llm-shadow")
+def admin_llm_shadow_route():
+    return admin_llm_shadow()
 
 
 @app.post("/api/admin/llm-digest/run")

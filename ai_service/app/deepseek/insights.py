@@ -3,6 +3,10 @@ Optional DeepSeek LLM layer for NeuroBet.
 
 All entry points fail soft: missing token, disabled flags, timeouts, or parse
 errors return None / empty and never raise into the training or betting loop.
+
+Shadow mode (default): web-search decisions are logged and scored against live_bets
+outcomes without blocking stakes. Hard veto stays off until manual NEURALBET_LLM_VETO=1
+or auto-gate (shadow proves model+veto beats model-only).
 """
 
 from __future__ import annotations
@@ -10,23 +14,31 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import (
     DEEPSEEK_TOKEN,
+    LLM_ASYNC,
     LLM_DIGEST_HOURS,
     LLM_DIGEST_MAX_HISTORY,
     LLM_ENABLED,
     LLM_MATCH_CONTEXT,
+    LLM_MATCH_CONTEXT_SPORTS,
     LLM_MAX_CONTEXT_PER_CYCLE,
     LLM_MAX_RATIONALE_PER_CYCLE,
     LLM_MIN_INTERVAL_SECONDS,
+    LLM_SHADOW,
+    LLM_SHADOW_MAX_DECISIONS,
     LLM_VETO,
+    LLM_VETO_AUTO,
+    LLM_VETO_AUTO_MIN_SETTLED,
     LLM_VETO_MIN_CONFIDENCE,
     MODEL_DIR,
 )
@@ -40,8 +52,14 @@ _client = None
 _last_call_at = 0.0
 _cache: Dict[str, tuple[float, Any]] = {}
 _CACHE_LOCK = threading.Lock()
+_SHADOW_LOCK = threading.Lock()
+_ASYNC_LOCK = threading.Lock()
+_async_busy = False
+_auto_veto_cache: tuple[float, bool] = (0.0, False)
+_AUTO_VETO_TTL_SEC = 300.0
 
 DIGEST_PATH = os.path.join(MODEL_DIR, "llm_digest.json")
+SHADOW_PATH = os.path.join(MODEL_DIR, "llm_shadow.json")
 
 
 def llm_is_enabled() -> bool:
@@ -52,12 +70,42 @@ def match_context_enabled() -> bool:
     return llm_is_enabled() and bool(LLM_MATCH_CONTEXT)
 
 
+def shadow_enabled() -> bool:
+    return llm_is_enabled() and bool(LLM_SHADOW)
+
+
+def _auto_veto_eligible_cached() -> bool:
+    global _auto_veto_cache
+    now = time.monotonic()
+    cached_at, eligible = _auto_veto_cache
+    if now - cached_at < _AUTO_VETO_TTL_SEC:
+        return eligible
+    report = get_llm_shadow_report(refresh_outcomes=False)
+    eligible = bool((report.get("veto_auto") or {}).get("eligible"))
+    _auto_veto_cache = (now, eligible)
+    return eligible
+
+
 def veto_enabled() -> bool:
-    return match_context_enabled() and bool(LLM_VETO)
+    """Hard veto in the live place path (manual flag or auto-gate)."""
+    if not match_context_enabled():
+        return False
+    if bool(LLM_VETO):
+        return True
+    if bool(LLM_VETO_AUTO):
+        return _auto_veto_eligible_cached()
+    return False
 
 
 def digest_hours() -> float:
     return float(LLM_DIGEST_HOURS)
+
+
+def sport_allows_match_context(sport: Optional[str]) -> bool:
+    if LLM_MATCH_CONTEXT_SPORTS is None:
+        return True
+    top = (sport or "").split("/")[0].strip().lower()
+    return top in LLM_MATCH_CONTEXT_SPORTS
 
 
 def _get_client():
@@ -106,7 +154,6 @@ def _strip_json_fence(text: str) -> str:
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw, re.IGNORECASE)
     if fence:
         return fence.group(1).strip()
-    # First {...} block if the model added prose around it.
     brace = re.search(r"\{[\s\S]*\}", raw)
     if brace:
         return brace.group(0)
@@ -130,9 +177,10 @@ def _call_send(
     search: bool,
     thinking: bool,
     timeout: float,
-) -> Optional[str]:
+) -> Tuple[Optional[str], Optional[str]]:
+    """Returns (text, null_reason). null_reason set when text is None."""
     if not llm_is_enabled():
-        return None
+        return None, "disabled"
 
     def _run() -> str:
         with _client_lock:
@@ -150,7 +198,10 @@ def _call_send(
             text = fut.result(timeout=max(5.0, timeout))
         from app.deepseek.client import _sanitize_stream_text
 
-        return _sanitize_stream_text(text or "") or None
+        cleaned = _sanitize_stream_text(text or "") or None
+        if not cleaned:
+            return None, "empty_response"
+        return cleaned, None
     except FuturesTimeout:
         logger.warning("DeepSeek call timed out after %.1fs", timeout)
         try:
@@ -163,7 +214,7 @@ def _call_send(
             )
         except Exception:
             pass
-        return None
+        return None, "timeout"
     except Exception as e:
         logger.warning("DeepSeek call failed: %s", e)
         try:
@@ -172,7 +223,7 @@ def _call_send(
             add_ai_log("SYSTEM", f"DeepSeek error: {e}", level="WARNING")
         except Exception:
             pass
-        return None
+        return None, "error"
 
 
 def ask_text(
@@ -182,7 +233,8 @@ def ask_text(
     thinking: bool = False,
     timeout: float = 45.0,
 ) -> Optional[str]:
-    return _call_send(prompt, search=search, thinking=thinking, timeout=timeout)
+    text, _reason = _call_send(prompt, search=search, thinking=thinking, timeout=timeout)
+    return text
 
 
 def ask_json(
@@ -192,21 +244,27 @@ def ask_json(
     thinking: bool = False,
     timeout: float = 45.0,
     retry: bool = True,
-) -> Optional[Dict[str, Any]]:
-    text = ask_text(prompt, search=search, thinking=thinking, timeout=timeout)
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Returns (parsed_dict, null_reason)."""
+    text, reason = _call_send(prompt, search=search, thinking=thinking, timeout=timeout)
     if not text:
-        return None
+        return None, reason or "empty_response"
     parsed = _parse_json(text)
     if parsed is not None:
-        return parsed
+        return parsed, None
     if not retry:
-        return None
+        return None, "parse_error"
     retry_prompt = (
         prompt
         + "\n\nОтвет должен быть ТОЛЬКО валидным JSON-объектом без markdown и без пояснений."
     )
-    text2 = ask_text(retry_prompt, search=search, thinking=thinking, timeout=timeout)
-    return _parse_json(text2 or "") if text2 else None
+    text2, reason2 = _call_send(
+        retry_prompt, search=search, thinking=thinking, timeout=timeout
+    )
+    if not text2:
+        return None, reason2 or "parse_error"
+    parsed2 = _parse_json(text2)
+    return (parsed2, None) if parsed2 is not None else (None, "parse_error")
 
 
 # ---------------------------------------------------------------------------
@@ -259,21 +317,39 @@ def _market_side_hint(label: str, market_prefix: str) -> str:
     return "unknown"
 
 
-def fetch_match_context(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Web-search context for one live stake candidate. Cached by event_id."""
+def _would_veto(ctx: Optional[Dict[str, Any]]) -> bool:
+    if not ctx:
+        return False
+    supports = ctx.get("supports_bet")
+    conf = float(ctx.get("confidence") or 0.0)
+    return supports is False and conf >= float(LLM_VETO_MIN_CONFIDENCE)
+
+
+def fetch_match_context(
+    candidate: Dict[str, Any],
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Web-search context for one live stake candidate. Cached by event_id.
+
+    Returns (ctx, null_reason). null_reason is set when ctx is None.
+    """
     if not match_context_enabled():
-        return None
+        return None, "disabled"
+
+    sport = candidate.get("sport") or ""
+    if not sport_allows_match_context(sport):
+        return None, "sport_skipped"
 
     event_id = candidate.get("event_id")
     cache_key = f"match_ctx:{event_id}"
     cached = _cache_get(cache_key)
     if cached is not None:
-        return cached
+        if isinstance(cached, dict) and cached.get("_null_reason"):
+            return None, str(cached["_null_reason"])
+        return cached, None
 
     team_1 = candidate.get("team_1") or ""
     team_2 = candidate.get("team_2") or ""
     match_name = candidate.get("match_name") or f"{team_1} vs {team_2}"
-    sport = candidate.get("sport") or ""
     score = candidate.get("score") or ""
     label = candidate.get("label") or ""
     market_prefix = candidate.get("market_prefix") or ""
@@ -300,9 +376,11 @@ def fetch_match_context(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "supports_bet=true если внешние источники скорее поддерживают ставку модели; "
         "false если противоречат; null если данных мало. confidence от 0 до 1."
     )
-    data = ask_json(prompt, search=True, timeout=35.0)
+    data, reason = ask_json(prompt, search=True, timeout=35.0)
     if not data:
-        return None
+        null_reason = reason or "empty_response"
+        _cache_set(cache_key, {"_null_reason": null_reason}, ttl_seconds=30 * 60)
+        return None, null_reason
 
     lean = str(data.get("lean") or "unknown").lower().strip()
     try:
@@ -322,18 +400,79 @@ def fetch_match_context(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "notes": notes,
         "fetched_at": datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S"),
         "source": "deepseek_web_search",
+        "null_reason": None,
     }
-    # Live matches rarely last >3h; keep one search per event across scrape cycles.
     _cache_set(cache_key, result, ttl_seconds=3 * 3600)
-    return result
+    return result, None
+
+
+def _candidate_key(c: Dict[str, Any]) -> Tuple[Any, Any, str, str]:
+    return (
+        c.get("event_id"),
+        c.get("factor_id"),
+        str(c.get("parameter", "")),
+        c.get("market_prefix") or "",
+    )
+
+
+def record_shadow_decision(
+    candidate: Dict[str, Any],
+    *,
+    ctx: Optional[Dict[str, Any]],
+    null_reason: Optional[str],
+    placed: bool,
+    live_bet_id: Optional[int] = None,
+) -> None:
+    if not shadow_enabled():
+        return
+    decision = {
+        "id": str(uuid.uuid4()),
+        "recorded_at": datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "event_id": candidate.get("event_id"),
+        "factor_id": candidate.get("factor_id"),
+        "market_prefix": candidate.get("market_prefix") or "",
+        "parameter": str(candidate.get("parameter", "")),
+        "label": candidate.get("label") or "",
+        "match_name": candidate.get("match_name") or "",
+        "sport": candidate.get("sport") or "",
+        "coeff": float(candidate.get("coeff") or candidate.get("coefficient") or 0.0),
+        "win_probability": candidate.get("win_probability"),
+        "expected_roi": candidate.get("expected_roi"),
+        "placed": bool(placed),
+        "live_bet_id": live_bet_id,
+        "llm": {
+            "lean": (ctx or {}).get("lean"),
+            "confidence": (ctx or {}).get("confidence"),
+            "supports_bet": (ctx or {}).get("supports_bet"),
+            "notes": ((ctx or {}).get("notes") or "")[:400] or None,
+            "null_reason": null_reason,
+            "would_veto": _would_veto(ctx),
+        },
+        "outcome": None,
+        "pnl_unit": None,
+    }
+    with _SHADOW_LOCK:
+        store = _load_shadow_store()
+        decisions = list(store.get("decisions") or [])
+        decisions.insert(0, decision)
+        max_n = max(100, int(LLM_SHADOW_MAX_DECISIONS))
+        store["decisions"] = decisions[:max_n]
+        store["updated_at"] = decision["recorded_at"]
+        try:
+            _save_shadow_store(store)
+        except Exception as e:
+            logger.error("Failed to persist llm shadow: %s", e)
 
 
 def enrich_candidates_with_llm(
     candidates: List[Dict[str, Any]],
+    *,
+    apply_veto: bool = False,
+    placed_keys: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """
     Attach llm_context to candidates (max N fresh web-searches per cycle).
-    If veto is on and LLM confidently disagrees, drop the candidate and log.
+    Always shadow-logs when LLM_SHADOW is on. Hard-drops only when apply_veto=True.
     """
     if not candidates or not match_context_enabled():
         return candidates
@@ -341,39 +480,61 @@ def enrich_candidates_with_llm(
     kept: List[Dict[str, Any]] = []
     fresh_searches = 0
     max_fresh = int(LLM_MAX_CONTEXT_PER_CYCLE)
+    placed_keys = placed_keys or set()
 
     for c in candidates:
         event_id = c.get("event_id")
-        cache_key = f"match_ctx:{event_id}"
-        ctx = _cache_get(cache_key)
-        if ctx is None and fresh_searches < max_fresh:
-            ctx = fetch_match_context(c)
-            fresh_searches += 1
-        elif ctx is None:
-            # Budget exhausted this cycle — leave without context; next cycle may fill.
-            kept.append(c)
-            continue
+        sport = c.get("sport") or ""
+        null_reason: Optional[str] = None
+        ctx: Optional[Dict[str, Any]] = None
+        attempted = False
+
+        if not sport_allows_match_context(sport):
+            null_reason = "sport_skipped"
+        else:
+            cache_key = f"match_ctx:{event_id}"
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                attempted = True
+                if isinstance(cached, dict) and cached.get("_null_reason"):
+                    null_reason = str(cached["_null_reason"])
+                    ctx = None
+                else:
+                    ctx = cached
+            elif fresh_searches < max_fresh:
+                ctx, null_reason = fetch_match_context(c)
+                fresh_searches += 1
+                attempted = True
+            else:
+                null_reason = "budget_exhausted"
 
         if ctx:
             c = {**c, "llm_context": ctx}
 
-        if veto_enabled() and ctx:
-            supports = ctx.get("supports_bet")
-            conf = float(ctx.get("confidence") or 0.0)
-            if supports is False and conf >= float(LLM_VETO_MIN_CONFIDENCE):
-                try:
-                    from app.neuralbet.pipeline import add_ai_log
+        key = _candidate_key(c)
+        # Don't flood shadow with NT sport_skipped / budget leftovers every cycle.
+        if shadow_enabled() and (attempted or key in placed_keys):
+            record_shadow_decision(
+                c,
+                ctx=ctx,
+                null_reason=null_reason,
+                placed=key in placed_keys,
+            )
 
-                    add_ai_log(
-                        "BANKROLL",
-                        f"LLM veto: event {event_id} «{c.get('match_name','')}» "
-                        f"{c.get('label','')} — confidence={conf:.2f}, "
-                        f"notes={(ctx.get('notes') or '')[:160]}",
-                        level="WARNING",
-                    )
-                except Exception:
-                    pass
-                continue
+        if apply_veto and _would_veto(ctx):
+            try:
+                from app.neuralbet.pipeline import add_ai_log
+
+                add_ai_log(
+                    "BANKROLL",
+                    f"LLM veto: event {event_id} «{c.get('match_name','')}» "
+                    f"{c.get('label','')} — confidence={float((ctx or {}).get('confidence') or 0):.2f}, "
+                    f"notes={((ctx or {}).get('notes') or '')[:160]}",
+                    level="WARNING",
+                )
+            except Exception:
+                pass
+            continue
         kept.append(c)
 
     return kept
@@ -431,7 +592,6 @@ def attach_rationales(
         for p in predictions
     }
 
-    # Prefer strongest EV candidates; one rationale call each.
     ranked = sorted(candidates, key=lambda c: float(c.get("expected_roi") or 0), reverse=True)
     budget = int(LLM_MAX_RATIONALE_PER_CYCLE)
     used = 0
@@ -450,8 +610,6 @@ def attach_rationales(
         ctx = c.get("llm_context")
         if ctx:
             p["llm_context"] = ctx
-            # Propagate context to other markets of the same event that already
-            # have a prediction row — cheap, no extra LLM call.
             for other in predictions:
                 if other["event_id"] == c["event_id"] and not other.get("llm_context"):
                     other["llm_context"] = ctx
@@ -459,6 +617,375 @@ def attach_rationales(
         if rationale:
             p["llm_rationale"] = rationale
             used += 1
+
+
+def run_llm_post_cycle(
+    candidates: List[Dict[str, Any]],
+    predictions: List[Dict[str, Any]],
+    timestamp_str: str,
+    *,
+    placed_keys: Optional[set] = None,
+    apply_veto: bool = False,
+) -> List[Dict[str, Any]]:
+    """Enrich + rationales + persist prediction LLM fields. Returns kept candidates."""
+    if not candidates or not llm_is_enabled():
+        return candidates
+    kept = candidates
+    try:
+        if match_context_enabled():
+            kept = enrich_candidates_with_llm(
+                candidates,
+                apply_veto=apply_veto,
+                placed_keys=placed_keys,
+            )
+        attach_rationales(predictions, kept if kept else candidates)
+        # Persist only rows that gained LLM fields.
+        to_save = [
+            p
+            for p in predictions
+            if p.get("llm_context") is not None or p.get("llm_rationale")
+        ]
+        if to_save:
+            from app.core.database import save_ai_predictions
+
+            save_ai_predictions(to_save, timestamp_str)
+    except Exception as e:
+        logger.warning("LLM post-cycle failed: %s", e)
+        try:
+            from app.neuralbet.pipeline import add_ai_log
+
+            add_ai_log("SYSTEM", f"LLM enrich skipped: {e}", level="WARNING")
+        except Exception:
+            pass
+    return kept
+
+
+def schedule_llm_post_cycle(
+    candidates: List[Dict[str, Any]],
+    predictions: List[Dict[str, Any]],
+    timestamp_str: str,
+    *,
+    placed_keys: Optional[set] = None,
+) -> None:
+    """Fire-and-forget LLM enrich after bankroll place (does not block staking)."""
+    global _async_busy
+    if not candidates or not llm_is_enabled():
+        return
+    if not bool(LLM_ASYNC):
+        run_llm_post_cycle(
+            candidates, predictions, timestamp_str, placed_keys=placed_keys
+        )
+        return
+
+    with _ASYNC_LOCK:
+        if _async_busy:
+            try:
+                from app.neuralbet.pipeline import add_ai_log
+
+                add_ai_log(
+                    "SYSTEM",
+                    "LLM async enrich skipped — previous cycle still running.",
+                    level="INFO",
+                )
+            except Exception:
+                pass
+            return
+        _async_busy = True
+
+    # Copy so the inference thread can mutate originals safely.
+    cands = [dict(c) for c in candidates]
+    preds = [dict(p) for p in predictions]
+    keys = set(placed_keys or set())
+
+    def _worker() -> None:
+        global _async_busy
+        try:
+            run_llm_post_cycle(cands, preds, timestamp_str, placed_keys=keys)
+        finally:
+            with _ASYNC_LOCK:
+                _async_busy = False
+
+    threading.Thread(target=_worker, name="llm-post-cycle", daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Shadow store + report (model-only vs model+LLM veto)
+# ---------------------------------------------------------------------------
+
+def _load_shadow_store() -> Dict[str, Any]:
+    if not os.path.exists(SHADOW_PATH):
+        return {"decisions": [], "updated_at": None}
+    try:
+        with open(SHADOW_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {"decisions": [], "updated_at": None}
+
+
+def _save_shadow_store(store: Dict[str, Any]) -> None:
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    tmp = SHADOW_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, SHADOW_PATH)
+
+
+def _fetch_live_bet_outcomes(
+    keys: List[Tuple[Any, Any, str, str]],
+) -> Dict[Tuple[Any, Any, str, str], Dict[str, Any]]:
+    if not keys:
+        return {}
+    try:
+        from app.core.database import get_finished_connection, release_connection
+    except Exception:
+        return {}
+
+    out: Dict[Tuple[Any, Any, str, str], Dict[str, Any]] = {}
+    conn = None
+    try:
+        conn = get_finished_connection()
+        cur = conn.cursor()
+        # Bound lookup: recent live bets only.
+        cur.execute(
+            """
+            SELECT id, event_id, factor_id, market_prefix, parameter, status,
+                   stake, payout, coefficient, placed_at
+            FROM live_bets
+            ORDER BY id DESC
+            LIMIT 2000
+            """
+        )
+        for row in cur.fetchall():
+            key = (
+                row["event_id"],
+                row["factor_id"],
+                str(row.get("parameter") or ""),
+                row.get("market_prefix") or "",
+            )
+            if key in out:
+                continue
+            out[key] = dict(row)
+    except Exception as e:
+        logger.warning("Shadow outcome lookup failed: %s", e)
+    finally:
+        if conn is not None:
+            try:
+                release_connection(conn)
+            except Exception:
+                pass
+    return out
+
+
+def _unit_pnl(status: str, coeff: float) -> Optional[float]:
+    s = (status or "").lower()
+    if s == "won":
+        return float(coeff) - 1.0
+    if s == "lost":
+        return -1.0
+    if s in ("void", "cancelled"):
+        return 0.0
+    return None
+
+
+def _portfolio_stats(pnls: List[float], seed: int = 42) -> Dict[str, Any]:
+    n = len(pnls)
+    if n == 0:
+        return {
+            "bets": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_rate_pct": None,
+            "roi_pct": None,
+            "roi_pct_lo": None,
+            "roi_pct_hi": None,
+        }
+    wins = sum(1 for x in pnls if x > 0)
+    losses = sum(1 for x in pnls if x < 0)
+    mean = sum(pnls) / n
+    # Bootstrap CI on mean unit ROI.
+    rng = random.Random(seed)
+    boots: List[float] = []
+    for _ in range(min(500, max(50, n * 5))):
+        sample = [pnls[rng.randrange(n)] for _ in range(n)]
+        boots.append(sum(sample) / n)
+    boots.sort()
+    lo = boots[int(0.025 * (len(boots) - 1))]
+    hi = boots[int(0.975 * (len(boots) - 1))]
+    return {
+        "bets": n,
+        "wins": wins,
+        "losses": losses,
+        "win_rate_pct": round(100.0 * wins / max(1, wins + losses), 1),
+        "roi_pct": round(100.0 * mean, 1),
+        "roi_pct_lo": round(100.0 * lo, 1),
+        "roi_pct_hi": round(100.0 * hi, 1),
+    }
+
+
+def _refresh_shadow_outcomes(store: Dict[str, Any]) -> Dict[str, Any]:
+    decisions = list(store.get("decisions") or [])
+    keys = [
+        (
+            d.get("event_id"),
+            d.get("factor_id"),
+            str(d.get("parameter", "")),
+            d.get("market_prefix") or "",
+        )
+        for d in decisions
+    ]
+    outcomes = _fetch_live_bet_outcomes(keys)
+    changed = False
+    for d in decisions:
+        key = (
+            d.get("event_id"),
+            d.get("factor_id"),
+            str(d.get("parameter", "")),
+            d.get("market_prefix") or "",
+        )
+        row = outcomes.get(key)
+        if not row:
+            continue
+        status = (row.get("status") or "").lower()
+        d["live_bet_id"] = row.get("id")
+        if not d.get("placed") and status:
+            d["placed"] = True
+            changed = True
+        if d.get("outcome") != status:
+            d["outcome"] = status
+            changed = True
+        pnl = _unit_pnl(status, float(row.get("coefficient") or d.get("coeff") or 0.0))
+        if pnl is not None and d.get("pnl_unit") != pnl:
+            d["pnl_unit"] = pnl
+            changed = True
+    if changed:
+        store["decisions"] = decisions
+        store["updated_at"] = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            _save_shadow_store(store)
+        except Exception as e:
+            logger.error("Failed to update shadow outcomes: %s", e)
+    return store
+
+
+def get_llm_shadow_report(*, refresh_outcomes: bool = True) -> Dict[str, Any]:
+    """Compare model-only vs model+LLM-veto on accumulated shadow decisions."""
+    with _SHADOW_LOCK:
+        store = _load_shadow_store()
+        if refresh_outcomes:
+            store = _refresh_shadow_outcomes(store)
+        decisions = list(store.get("decisions") or [])
+
+    null_counts: Dict[str, int] = {}
+    for d in decisions:
+        reason = ((d.get("llm") or {}).get("null_reason")) or (
+            "ok" if (d.get("llm") or {}).get("supports_bet") is not None else "unknown"
+        )
+        null_counts[reason] = null_counts.get(reason, 0) + 1
+
+    settled = [
+        d
+        for d in decisions
+        if d.get("pnl_unit") is not None
+        and (d.get("outcome") or "").lower() in ("won", "lost")
+    ]
+    model_pnls = [float(d["pnl_unit"]) for d in settled]
+    kept_pnls = [
+        float(d["pnl_unit"])
+        for d in settled
+        if not bool((d.get("llm") or {}).get("would_veto"))
+    ]
+    vetoed = [d for d in settled if bool((d.get("llm") or {}).get("would_veto"))]
+    vetoed_pnls = [float(d["pnl_unit"]) for d in vetoed]
+
+    model_only = _portfolio_stats(model_pnls, seed=42)
+    with_veto = _portfolio_stats(kept_pnls, seed=43)
+    vetoed_cf = _portfolio_stats(vetoed_pnls, seed=44)
+
+    min_settled = max(40, int(LLM_VETO_AUTO_MIN_SETTLED))
+    # Eligible when enough settled bets, veto removes net-negative bets, and
+    # filtered book improves ROI + win-rate with CI lo still > 0 when sample allows.
+    eligible = False
+    eligible_reasons: List[str] = []
+    if model_only["bets"] < min_settled:
+        eligible_reasons.append(
+            f"need ≥{min_settled} settled shadow bets (have {model_only['bets']})"
+        )
+    else:
+        roi_ok = (
+            with_veto["roi_pct"] is not None
+            and model_only["roi_pct"] is not None
+            and with_veto["roi_pct"] > model_only["roi_pct"]
+        )
+        wr_ok = (
+            with_veto["win_rate_pct"] is not None
+            and model_only["win_rate_pct"] is not None
+            and with_veto["win_rate_pct"] >= model_only["win_rate_pct"]
+        )
+        ci_ok = with_veto["roi_pct_lo"] is not None and with_veto["roi_pct_lo"] > 0
+        veto_hurt = (
+            vetoed_cf["bets"] >= 10
+            and vetoed_cf["roi_pct"] is not None
+            and vetoed_cf["roi_pct"] < 0
+        )
+        if not roi_ok:
+            eligible_reasons.append("with_veto ROI not better than model-only")
+        if not wr_ok:
+            eligible_reasons.append("with_veto win-rate not ≥ model-only")
+        if not ci_ok:
+            eligible_reasons.append("with_veto roi_pct_lo ≤ 0")
+        if not veto_hurt:
+            eligible_reasons.append(
+                "vetoed counterfactual not clearly negative (need ≥10 vetoed losses)"
+            )
+        eligible = roi_ok and wr_ok and ci_ok and veto_hurt
+
+    if eligible:
+        recommendation = "enable_veto"
+    elif model_only["bets"] < min_settled:
+        recommendation = "keep_shadow"
+    elif (
+        with_veto["roi_pct"] is not None
+        and model_only["roi_pct"] is not None
+        and with_veto["roi_pct"] < model_only["roi_pct"]
+    ):
+        recommendation = "disable_veto_keep_shadow"
+    else:
+        recommendation = "keep_shadow"
+
+    sports_cfg = (
+        "*"
+        if LLM_MATCH_CONTEXT_SPORTS is None
+        else sorted(LLM_MATCH_CONTEXT_SPORTS)
+    )
+
+    return {
+        "status": "success",
+        "enabled": llm_is_enabled(),
+        "shadow_enabled": shadow_enabled(),
+        "match_context_enabled": match_context_enabled(),
+        "match_context_sports": sports_cfg,
+        "async_enabled": bool(LLM_ASYNC),
+        "veto_manual": bool(LLM_VETO),
+        "veto_active": veto_enabled(),
+        "veto_auto": {
+            "enabled": bool(LLM_VETO_AUTO),
+            "eligible": eligible,
+            "min_settled": min_settled,
+            "reasons": eligible_reasons,
+            "min_confidence": float(LLM_VETO_MIN_CONFIDENCE),
+        },
+        "decisions_total": len(decisions),
+        "null_reasons": null_counts,
+        "model_only": model_only,
+        "with_veto": with_veto,
+        "vetoed_counterfactual": vetoed_cf,
+        "recommendation": recommendation,
+        "updated_at": store.get("updated_at"),
+        "recent": decisions[:20],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -525,13 +1052,25 @@ def run_llm_digest() -> Dict[str, Any]:
     except Exception:
         balance = None
 
+    shadow = get_llm_shadow_report(refresh_outcomes=True)
+    shadow_compact = {
+        "recommendation": shadow.get("recommendation"),
+        "veto_active": shadow.get("veto_active"),
+        "veto_auto": shadow.get("veto_auto"),
+        "model_only": shadow.get("model_only"),
+        "with_veto": shadow.get("with_veto"),
+        "null_reasons": shadow.get("null_reasons"),
+    }
+
     prompt = (
         "Ты дежурный аналитик NeuroBet. По логам и health ниже напиши дайджест на русском "
         "(6–12 предложений): что происходило с обучением и bankroll, есть ли тревоги "
-        "(overfitting / quality gate / reject streak), что делать дальше. Без Markdown.\n\n"
+        "(overfitting / quality gate / reject streak / LLM shadow), что делать дальше. "
+        "Без Markdown.\n\n"
         f"training_health: {json.dumps(health, ensure_ascii=False)[:3500]}\n"
         f"live_available_balance: {balance}\n"
-        f"recent_logs: {json.dumps(recent, ensure_ascii=False)[:6000]}"
+        f"llm_shadow: {json.dumps(shadow_compact, ensure_ascii=False)[:2500]}\n"
+        f"recent_logs: {json.dumps(recent, ensure_ascii=False)[:5500]}"
     )
     text = ask_text(prompt, search=False, timeout=70.0)
     if not text:
@@ -542,6 +1081,7 @@ def run_llm_digest() -> Dict[str, Any]:
         "text": text.strip(),
         "health_status": (health or {}).get("status"),
         "live_balance": balance,
+        "llm_shadow_recommendation": shadow.get("recommendation"),
     }
     store = _load_digest_store()
     history = list(store.get("history") or [])

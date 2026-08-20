@@ -265,6 +265,14 @@ TOOLS = [
         ),
     ),
     _tool(
+        "get_llm_shadow",
+        (
+            "DeepSeek shadow report: model-only vs model+LLM-veto on logged decisions, "
+            "null_reason counts, auto-veto eligibility, recommendation. "
+            "Use before enabling NEURALBET_LLM_VETO."
+        ),
+    ),
+    _tool(
         "get_bankroll",
         "Live and training bankroll accounts (balances, stakes, P/L) from the admin wallet block.",
     ),
@@ -452,6 +460,7 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
             "live_bets": {"total": live.get("total"), "open_count": open_count, "items": live.get("items")},
             "recent_ai_logs": (m.read_admin_ai_logs().get("logs") or [])[:logs_limit],
             "llm_digest": m.admin_llm_digest(),
+            "llm_shadow": m.admin_llm_shadow(),
         })
 
     if name == "get_stats":
@@ -516,6 +525,9 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
 
     if name == "get_llm_digest":
         return _ok(m.admin_llm_digest())
+
+    if name == "get_llm_shadow":
+        return _ok(m.admin_llm_shadow())
 
     if name == "get_bankroll":
         return _ok(m.get_bankroll_state())

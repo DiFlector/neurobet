@@ -2066,19 +2066,25 @@ def _run_neuralbet_inference_and_training_locked(
             f"Remaining {len(live_candidates)}.",
         )
 
-    # Optional DeepSeek layer: web-search match context (+ optional veto), then
-    # short rationales. Failures are swallowed inside insights — betting continues.
+    # DeepSeek: hard veto (if active) runs sync *before* place; otherwise place first
+    # and enrich async so web-search never stalls Kelly staking.
+    llm_veto_active = False
     if live_candidates:
         try:
             from app.deepseek.insights import (
-                attach_rationales,
-                enrich_candidates_with_llm,
-                match_context_enabled,
+                run_llm_post_cycle,
+                veto_enabled,
             )
 
-            if match_context_enabled():
+            llm_veto_active = veto_enabled()
+            if llm_veto_active:
                 before = len(live_candidates)
-                live_candidates = enrich_candidates_with_llm(live_candidates)
+                live_candidates = run_llm_post_cycle(
+                    live_candidates,
+                    predictions,
+                    timestamp_str,
+                    apply_veto=True,
+                )
                 vetoed = before - len(live_candidates)
                 if vetoed:
                     add_ai_log(
@@ -2086,7 +2092,6 @@ def _run_neuralbet_inference_and_training_locked(
                         f"LLM veto removed {vetoed} candidate(s); {len(live_candidates)} remain.",
                         level="WARNING",
                     )
-            attach_rationales(predictions, live_candidates)
         except Exception as e:
             add_ai_log("SYSTEM", f"LLM enrich skipped: {e}", level="WARNING")
 
@@ -2121,6 +2126,29 @@ def _run_neuralbet_inference_and_training_locked(
             place_result = {"placed": 0, "reason": "quality_gate"}
         else:
             place_result = _place_live_bets(live_candidates)
+
+    # Shadow / rationales after place when veto is off (default async path).
+    if live_candidates and not llm_veto_active:
+        try:
+            from app.deepseek.insights import schedule_llm_post_cycle
+
+            placed_keys = {
+                (
+                    p.get("event_id"),
+                    p.get("factor_id"),
+                    str(p.get("parameter", "")),
+                    p.get("market_prefix") or "",
+                )
+                for p in (place_result.get("placed") or [])
+            }
+            schedule_llm_post_cycle(
+                live_candidates,
+                predictions,
+                timestamp_str,
+                placed_keys=placed_keys,
+            )
+        except Exception as e:
+            add_ai_log("SYSTEM", f"LLM async schedule skipped: {e}", level="WARNING")
     if place_result.get("placed"):
         skip_reasons = [s.get("reason") for s in place_result.get("skipped", [])]
         skipped_stale = skip_reasons.count("stale_market")

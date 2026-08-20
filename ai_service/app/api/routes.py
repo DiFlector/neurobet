@@ -28,7 +28,7 @@ from app.neuralbet import (
 )
 from app.neuralbet import bankroll
 from app.deepseek import test_deepseek_web
-from app.deepseek.insights import get_llm_digest, run_llm_digest
+from app.deepseek.insights import get_llm_digest, get_llm_shadow_report, run_llm_digest
 
 router = APIRouter()
 
@@ -276,3 +276,9 @@ def llm_digest():
 def llm_digest_run():
     """Manual digest refresh (admin). Same job as the scheduled interval."""
     return run_llm_digest()
+
+
+@router.get("/llm-shadow")
+def llm_shadow():
+    """Shadow report: model-only vs model+LLM veto on logged DeepSeek decisions."""
+    return get_llm_shadow_report(refresh_outcomes=True)
