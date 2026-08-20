@@ -2486,9 +2486,9 @@ def cancel_open_live_bets() -> Dict[str, Any]:
         messages.append({
             "category": "BANKROLL", "level": "WARNING",
             "message": (
-                f"🟠 Ставка отменена администратором: "
+                f"Bet cancelled by admin: "
                 f"{_outcome_desc(b['match_name'], b['market_prefix'], b['label'], b['parameter'])} — "
-                f"{stake:.1f} ₽ возвращено на баланс."
+                f"{stake:.1f} ₽ refunded to balance."
             ),
         })
 
@@ -2690,9 +2690,9 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
             "category": "BANKROLL",
             "level": "INFO",
             "message": (
-                f"💰 Открыта ставка: {_outcome_desc(c.get('match_name',''), market_prefix, c.get('label',''), parameter)} "
-                f"@ {c['coefficient']:.2f} — {stake:.1f} ₽ ({c['stake_fraction']*100.0:.1f}% банка), "
-                f"вероятность {c['win_probability']:.1f}%, потенциальный выигрыш {stake * c['coefficient']:.1f} ₽."
+                f"Bet opened: {_outcome_desc(c.get('match_name',''), market_prefix, c.get('label',''), parameter)} "
+                f"@ {c['coefficient']:.2f} — {stake:.1f} ₽ ({c['stake_fraction']*100.0:.1f}% of bank), "
+                f"win probability {c['win_probability']:.1f}%, potential payout {stake * c['coefficient']:.1f} ₽."
             ),
         })
 
@@ -2720,27 +2720,27 @@ def _apply_bet_settlement(
     if is_win is None:
         status, payout, outcome = "void", stake, "void"
         if is_push:
-            reason = "возврат: линия легла ровно"
+            reason = "push: line landed exactly"
         else:
-            reason = "исход не рассчитан"
+            reason = "outcome not resolved"
         messages.append({
             "category": "BANKROLL", "level": "INFO",
-            "message": f"⚪ Ставка аннулирована ({reason}): {outcome_desc} — {stake:.1f} ₽ возвращено на баланс.",
+            "message": f"Bet voided ({reason}): {outcome_desc} — {stake:.1f} ₽ refunded to balance.",
         })
     elif is_win:
         status, payout, outcome = "won", stake * b["coefficient"], "win"
         messages.append({
             "category": "BANKROLL", "level": "INFO",
             "message": (
-                f"🟢 Ставка ВЫИГРАЛА: {outcome_desc} @ {b['coefficient']:.2f} — "
-                f"поставлено {stake:.1f} ₽ → пришло {payout:.1f} ₽ (прибыль +{payout - stake:.1f} ₽)."
+                f"Bet WON: {outcome_desc} @ {b['coefficient']:.2f} — "
+                f"staked {stake:.1f} ₽ → returned {payout:.1f} ₽ (profit +{payout - stake:.1f} ₽)."
             ),
         })
     else:
         status, payout, outcome = "lost", 0.0, "loss"
         messages.append({
             "category": "BANKROLL", "level": "WARNING",
-            "message": f"🔴 Ставка ПРОИГРАЛА: {outcome_desc} @ {b['coefficient']:.2f} — поставлено {stake:.1f} ₽ → сгорело {stake:.1f} ₽.",
+            "message": f"Bet LOST: {outcome_desc} @ {b['coefficient']:.2f} — staked {stake:.1f} ₽ → lost {stake:.1f} ₽.",
         })
 
     f_cursor.execute(
@@ -2790,8 +2790,8 @@ def _apply_bet_settlement(
         messages.append({
             "category": "BANKROLL", "level": "WARNING",
             "message": (
-                f"🏳️ БОТ ОБАНКРОТИЛСЯ (банкротство №{ruin_count}): баланс дошёл до 0, "
-                f"автоматически сброшен на {acc['start_balance']:.1f} ₽."
+                f"BOT RUINED (ruin #{ruin_count}): balance hit 0, "
+                f"auto-reset to {acc['start_balance']:.1f} ₽."
             ),
         })
 
@@ -2806,8 +2806,8 @@ def _cycle_summary_message(won: int, lost: int, void: int, f_cursor) -> Dict[str
         "category": "BANKROLL",
         "level": "WARNING" if lost > won else "INFO",
         "message": (
-            f"📊 Итог за цикл: {settled} ставок рассчитано ({won} выигрыш / {lost} проигрыш / {void} аннулировано). "
-            f"Баланс: {live_acc['balance']:.1f} ₽ (пик {live_acc['peak_balance']:.1f} ₽, банкротств {live_acc['ruin_count']})."
+            f"Cycle summary: {settled} bets settled ({won} won / {lost} lost / {void} void). "
+            f"Balance: {live_acc['balance']:.1f} ₽ (peak {live_acc['peak_balance']:.1f} ₽, ruins {live_acc['ruin_count']})."
         ),
     }
 

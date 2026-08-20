@@ -2029,18 +2029,18 @@ def _run_neuralbet_inference_and_training_locked(
 
     if skipped_low_edge or skipped_low_support or skipped_coeff or skipped_sport:
         sport_part = (
-            f", {skipped_sport} — спорт вне live-листа (NEURALBET_LIVE_STAKE_SPORTS)"
+            f", {skipped_sport} — sport outside live list (NEURALBET_LIVE_STAKE_SPORTS)"
             if skipped_sport
             else ""
         )
         add_ai_log(
             "BANKROLL",
-            f"Кандидаты в ставки отфильтрованы: {skipped_coeff} — кэф вне "
+            f"Bet candidates filtered: {skipped_coeff} — coeff outside "
             f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f}, "
-            f"{skipped_low_edge} — EV ниже {MIN_BET_EDGE_PCT:.0f}%, "
-            f"{skipped_low_support} — рынок реже {MIN_MARKET_SUPPORT} решённых исходов в архиве"
+            f"{skipped_low_edge} — EV below {MIN_BET_EDGE_PCT:.0f}%, "
+            f"{skipped_low_support} — market has fewer than {MIN_MARKET_SUPPORT} resolved archive outcomes"
             f"{sport_part}. "
-            f"Осталось {len(live_candidates)}.",
+            f"Remaining {len(live_candidates)}.",
         )
 
     if predictions:
@@ -2048,7 +2048,7 @@ def _run_neuralbet_inference_and_training_locked(
         add_ai_log(
             "INFERENCE",
             f"Evaluated predictions for {len(predictions)} active live outcomes — "
-            f"{predicted_win_count} verdict 'ставить' / {predicted_loss_count} verdict 'пропуск'. "
+            f"{predicted_win_count} verdict 'bet' / {predicted_loss_count} verdict 'skip'. "
             "(PyTorch & LightGBM scores saved)",
         )
     _untrack_conn(conn)
@@ -2080,14 +2080,14 @@ def _run_neuralbet_inference_and_training_locked(
         skipped_conflict = skip_reasons.count("event_already_has_open_bet")
         extra_bits = []
         if skipped_stale:
-            extra_bits.append(f"{skipped_stale} устаревших")
+            extra_bits.append(f"{skipped_stale} stale")
         if skipped_conflict:
             # backend refused to open a second position on a match that already has an
             # open bet (see place_live_bet_candidates' occupied_events) — worth calling
             # out specifically since it means the model proposed betting on more than
             # one market of the same live event this cycle.
-            extra_bits.append(f"{skipped_conflict} на уже занятый матч")
-        extra = f" ({', '.join(extra_bits)} пропущено)" if extra_bits else ""
+            extra_bits.append(f"{skipped_conflict} event already has open bet")
+        extra = f" ({', '.join(extra_bits)} skipped)" if extra_bits else ""
         add_ai_log(
             "BANKROLL",
             f"Live bankroll: opened {place_result['placed']} new bet(s) this cycle.{extra}",
@@ -2097,7 +2097,7 @@ def _run_neuralbet_inference_and_training_locked(
         if reason == "no_predicted_win_candidates":
             add_ai_log(
                 "BANKROLL",
-                "Live bankroll: 0 bets — сеть не считает ни один исход выигрышным в этом цикле.",
+                "Live bankroll: 0 bets — model has no predicted-win outcomes this cycle.",
             )
         elif reason == "insufficient_available_balance":
             add_ai_log(
@@ -2411,8 +2411,8 @@ def _run_neuralbet_inference_and_training_locked(
         add_ai_log(
             "TRAINING",
             start_msg
-            + "(universe: футбол/баскетбол/НТ/волейбол/теннис × П1/П2 + футбольная ничья "
-            f"+ матчевые тоталы; ставки 1.5–2.0).{cov_str}",
+            + "(universe: football/basketball/table tennis/volleyball/tennis × W1/W2 "
+            f"+ football draw + match totals; coeffs 1.5–2.0).{cov_str}",
         )
 
         def _log_epoch(epoch_idx: int, train_loss: float, val_loss: float | None):
@@ -2679,22 +2679,22 @@ def _run_neuralbet_inference_and_training_locked(
             if _low_epoch_streak >= LOW_EPOCH_STREAK_ALERT:
                 add_ai_log(
                     "TRAINING",
-                    f"⚠️ Возможное переобучение: best_epoch <= {LOW_EPOCH_ALERT_THRESHOLD} уже "
-                    f"{_low_epoch_streak} проход(ов) подряд на батчах ≥ {MIN_TRAIN_SAMPLES} сэмплов — "
-                    "сеть выучивает каждый свежий батч за 1-2 эпохи вместо обобщения. "
-                    "Проверьте тренд бэктеста; возможно, стоит поднять MIN_TRAIN_SAMPLES ещё выше "
-                    "или временно выключить обучение.",
+                    f"Possible overfitting: best_epoch <= {LOW_EPOCH_ALERT_THRESHOLD} for "
+                    f"{_low_epoch_streak} consecutive pass(es) on batches ≥ {MIN_TRAIN_SAMPLES} "
+                    "samples — the net memorizes each fresh batch in 1–2 epochs instead of "
+                    "generalizing. Check the backtest trend; consider raising "
+                    "MIN_TRAIN_SAMPLES further or temporarily disabling training.",
                     level="WARNING",
                 )
             if _checkpoint_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT:
                 add_ai_log(
                     "TRAINING",
-                    f"⚠️ Модель заморожена: checkpoint отклонён уже {_checkpoint_reject_streak} "
-                    f"проход(ов) подряд (порог {CHECKPOINT_REJECT_STREAK_ALERT}) — веса не "
-                    f"обновляются; GRU на cooldown, probe раз в "
-                    f"{CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} цикл(ов). "
-                    "Проверьте val_loss incoming vs attempted в логах; возможен сброс "
-                    "нейросети.",
+                    f"Model frozen: checkpoint rejected {_checkpoint_reject_streak} "
+                    f"pass(es) in a row (threshold {CHECKPOINT_REJECT_STREAK_ALERT}) — "
+                    f"weights are not updating; GRU on cooldown, probe every "
+                    f"{CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} cycle(s). "
+                    "Check val_loss incoming vs attempted in logs; a neural-net reset "
+                    "may be needed.",
                     level="WARNING",
                 )
         else:
@@ -2817,7 +2817,7 @@ def _run_neuralbet_inference_and_training_locked(
             # rather than listing 12+ "no change" entries every cycle.
             sport_thresholds = tune_metrics.get("sport_decision_threshold") or {}
             sport_str = (
-                "; по спорту — " + ", ".join(
+                "; by sport — " + ", ".join(
                     f"{sport} {v['old']} → {v['new']} ({v['val_bets']} bets)"
                     for sport, v in sport_thresholds.items()
                 )

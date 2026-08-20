@@ -69,20 +69,20 @@ def run_scheduled_backtest():
             current = overall.get("current") or {}
             add_ai_log(
                 "SYSTEM",
-                f"Плановый бэктест: {result['samples_evaluated']} сэмплов за "
-                f"{result['duration_seconds']:.1f}с — точность {current.get('accuracy_pct')}%, "
-                f"{current.get('bets')} ставок, ROI {current.get('roi_pct')}%, "
-                f"Brier {current.get('brier')} (рынок {overall.get('market_brier')}).",
+                f"Scheduled backtest: {result['samples_evaluated']} samples in "
+                f"{result['duration_seconds']:.1f}s — accuracy {current.get('accuracy_pct')}%, "
+                f"{current.get('bets')} bets, ROI {current.get('roi_pct')}%, "
+                f"Brier {current.get('brier')} (market {overall.get('market_brier')}).",
             )
         else:
             add_ai_log(
                 "SYSTEM",
-                f"Плановый бэктест пропущен: {result.get('status')} — недостаточно данных.",
+                f"Scheduled backtest skipped: {result.get('status')} — not enough data.",
                 level="WARNING",
             )
     except Exception as e:
         logger.error(f"Scheduled backtest failed: {e}", exc_info=True)
-        add_ai_log("SYSTEM", f"Плановый бэктест завершился ошибкой: {e}", level="WARNING")
+        add_ai_log("SYSTEM", f"Scheduled backtest failed: {e}", level="WARNING")
 
 
 @app.on_event("startup")
