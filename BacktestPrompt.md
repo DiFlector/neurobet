@@ -127,7 +127,7 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - `NEURALBET_LIVE_QUALITY_GATE` + walk-forward OOS в бэктest.
 - Team form: as-of + правильная атрибуция P1/P2; overround/no-vig fix.
 - Per-sport `decision_threshold`; `NEURALBET_LIVE_STAKE_SPORTS` (default: НТ).
-- `trained_count` при rollback; GRU skip после `CHECKPOINT_REJECT_STREAK_ALERT=10`.
+- `trained_count` при rollback; GRU cooldown после `CHECKPOINT_REJECT_STREAK_ALERT=10` с probe раз в `CHECKPOINT_REJECT_PROBE_EVERY_CYCLES` (default 20).
 - `agent_review` + `quality_gate` в JSON бэктestа; `get_backtest_review` MCP.
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.

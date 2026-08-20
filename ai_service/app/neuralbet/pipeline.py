@@ -336,6 +336,13 @@ _low_epoch_streak = 0
 CHECKPOINT_REJECT_STREAK_ALERT = int(
     os.getenv("NEURALBET_CHECKPOINT_REJECT_STREAK_ALERT", "10")
 )
+# After the reject streak trips, GRU stays off — but the streak is only recomputed after
+# a GRU pass, so a hard freeze is a deadlock (catch-up logs "chewing" while untrained
+# never shrinks). Probe once every N cycles: accept resets the streak via history;
+# reject re-enters the cooldown.
+CHECKPOINT_REJECT_PROBE_EVERY_CYCLES = int(
+    os.getenv("NEURALBET_CHECKPOINT_REJECT_PROBE_EVERY_CYCLES", "20")
+)
 _checkpoint_reject_streak = 0
 
 
@@ -863,9 +870,10 @@ def get_training_health() -> dict[str, Any]:
          comparison. Rejected passes still count: using the frozen chart val_loss
          would hide a reject-storm behind a flat "ok" line.
       E) checkpoint_reject_streak — CHECKPOINT_REJECT_STREAK_ALERT+ consecutive online
-         passes where checkpoint_accepted is False: training runs but weights never
-         commit, so the live model is frozen while CPU spins — e.g. an incoming gate
-         that no fresh pass can beat, or a reject-storm after a lucky early checkpoint.
+         passes where checkpoint_accepted is False: GRU is paused (with a periodic
+         probe every CHECKPOINT_REJECT_PROBE_EVERY_CYCLES) so a reject-storm does not
+         burn CPU every catch-up cycle, and catch-up is flagged blocked until a probe
+         commits — e.g. an incoming gate that no fresh pass can beat.
     One active signal is "presmotret'sya" (warning); a majority (3 of 5) is "definite
     stop" (danger) — see run_neuralbet_inference_and_training's docstring history / the
     admin panel's status block, which renders this directly. Needs at least
@@ -886,12 +894,17 @@ def get_training_health() -> dict[str, Any]:
     if not AI_SETTINGS["training_enabled"]:
         from app.neuralbet.training_history import get_training_history
 
+        disabled_coverage = get_archive_training_coverage()
         disabled_reject_streak = _checkpoint_reject_streak_from_history(
             get_training_history()
         )
         return {
             "status": "disabled",
-            "archive_coverage": get_archive_training_coverage(),
+            "archive_coverage": disabled_coverage,
+            "catch_up_blocked_by_checkpoint_streak": bool(
+                disabled_coverage.get("catch_up")
+                and disabled_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
+            ),
             "signals": {
                 "low_epoch_streak": {
                     "active": False,
@@ -917,6 +930,7 @@ def get_training_health() -> dict[str, Any]:
                     "active": False,
                     "streak": disabled_reject_streak,
                     "threshold": CHECKPOINT_REJECT_STREAK_ALERT,
+                    "probe_every_cycles": CHECKPOINT_REJECT_PROBE_EVERY_CYCLES,
                 },
             },
         }
@@ -991,13 +1005,17 @@ def get_training_health() -> dict[str, Any]:
 
     reject_streak = _checkpoint_reject_streak_from_history(train_history)
     signal_e = reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
+    coverage = get_archive_training_coverage()
 
     active = sum([signal_a, signal_b, signal_c, signal_d, signal_e])
     status = "danger" if active >= 3 else "warning" if active >= 1 else "ok"
 
     return {
         "status": status,
-        "archive_coverage": get_archive_training_coverage(),
+        "archive_coverage": coverage,
+        "catch_up_blocked_by_checkpoint_streak": bool(
+            coverage.get("catch_up") and signal_e
+        ),
         "signals": {
             "low_epoch_streak": {
                 "active": signal_a,
@@ -1023,6 +1041,7 @@ def get_training_health() -> dict[str, Any]:
                 "active": signal_e,
                 "streak": reject_streak,
                 "threshold": CHECKPOINT_REJECT_STREAK_ALERT,
+                "probe_every_cycles": CHECKPOINT_REJECT_PROBE_EVERY_CYCLES,
             },
         },
     }
@@ -2141,11 +2160,19 @@ def _run_neuralbet_inference_and_training_locked(
         )
     )
 
-    gru_frozen = (
+    gru_at_reject_limit = (
         not cold_start_active
         and _checkpoint_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
     )
-    run_gru_training = is_train_cycle and not gru_frozen
+    # Hard freeze would deadlock catch-up: streak only refreshes after a GRU pass.
+    # Probe periodically so an accept can clear the streak; a reject re-enters cooldown.
+    gru_probe_due = (
+        gru_at_reject_limit
+        and CHECKPOINT_REJECT_PROBE_EVERY_CYCLES > 0
+        and _cycle_count % CHECKPOINT_REJECT_PROBE_EVERY_CYCLES == 0
+    )
+    gru_frozen = gru_at_reject_limit and not gru_probe_due
+    run_gru_training = (is_train_cycle or gru_probe_due) and not gru_frozen
     if (
         run_gru_training
         and not cold_start_active
@@ -2259,11 +2286,21 @@ def _run_neuralbet_inference_and_training_locked(
     insufficient_for_training = (
         training_samples and fetched_train_count < min_needed
     )
-    if gru_frozen and is_train_cycle:
+    if gru_probe_due and run_gru_training:
+        add_ai_log(
+            "TRAINING",
+            f"Online GRU probe — checkpoint rejected {_checkpoint_reject_streak} pass(es) "
+            f"in a row (threshold {CHECKPOINT_REJECT_STREAK_ALERT}); attempting one pass "
+            f"(probe every {CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} cycles). "
+            "Accept clears the freeze; reject re-enters cooldown.",
+            level="WARNING",
+        )
+    elif gru_frozen and is_train_cycle:
         add_ai_log(
             "TRAINING",
             f"Online GRU skipped — checkpoint rejected {_checkpoint_reject_streak} pass(es) "
             f"in a row (threshold {CHECKPOINT_REJECT_STREAK_ALERT}); weights frozen, "
+            f"probe every {CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} cycles. "
             "LightGBM/tuner still run this cycle.",
             level="WARNING",
         )
@@ -2636,7 +2673,8 @@ def _run_neuralbet_inference_and_training_locked(
                     "TRAINING",
                     f"⚠️ Модель заморожена: checkpoint отклонён уже {_checkpoint_reject_streak} "
                     f"проход(ов) подряд (порог {CHECKPOINT_REJECT_STREAK_ALERT}) — веса не "
-                    "обновляются; следующие циклы пропускают GRU до streak сбросится. "
+                    f"обновляются; GRU на cooldown, probe раз в "
+                    f"{CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} цикл(ов). "
                     "Проверьте val_loss incoming vs attempted в логах; возможен сброс "
                     "нейросети.",
                     level="WARNING",
@@ -2654,6 +2692,19 @@ def _run_neuralbet_inference_and_training_locked(
         add_ai_log(
             "TRAINING", "No new finished matches in database for retraining step."
         )
+    elif gru_frozen:
+        # Freeze warning already logged on train cycles; avoid the false
+        # "chewing the untrained backlog" message while GRU cannot advance coverage.
+        if coverage.get("catch_up") and not is_train_cycle:
+            add_ai_log(
+                "TRAINING",
+                f"Catch-up blocked by checkpoint reject streak "
+                f"({_checkpoint_reject_streak}/{CHECKPOINT_REJECT_STREAK_ALERT}) — "
+                f"{coverage['untrained']} unseen remain; GRU probe every "
+                f"{CHECKPOINT_REJECT_PROBE_EVERY_CYCLES} cycles "
+                f"(archive {coverage['trained_ratio']:.0%} trained).",
+                level="WARNING",
+            )
     else:
         if coverage.get("catch_up"):
             add_ai_log(
