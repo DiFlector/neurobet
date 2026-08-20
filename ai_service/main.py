@@ -41,21 +41,26 @@ MOSCOW_TZ = timezone(timedelta(hours=3))
 # frontend/autobet/app/admin/page.tsx) — the automatic runs and manual ones should
 # cover a comparably representative slice of the archive unless deliberately overridden.
 SCHEDULED_BACKTEST_LIMIT = int(os.getenv("NEURALBET_SCHEDULED_BACKTEST_LIMIT", "80000"))
+# Cron minute field (Moscow). Default every half hour on the clock (:00 and :30).
+SCHEDULED_BACKTEST_CRON_MINUTES = os.getenv(
+    "NEURALBET_SCHEDULED_BACKTEST_CRON_MINUTES", "0,30"
+).strip() or "0,30"
 
 scheduler = BackgroundScheduler(timezone=MOSCOW_TZ)
 
 
 def run_scheduled_backtest():
     """
-    Fires every hour on the hour (09:00, 10:00, … Moscow) via the cron job below.
-    Calls run_backtest() directly in-process rather than over HTTP — the admin panel's
-    manual button has to go through backend's proxy (browser -> backend -> ai_service),
-    which is a real request with a timeout on both hops; a scheduled job running inside
-    the same process as the model it's evaluating has no such round trip and therefore
-    no such timeout to spuriously hit while it legitimately waits its turn for
-    pipeline._engine_lock behind a training cycle (see run_backtest's docstring — the
-    lock now covers the backtest's entire scoring pass, not just the forward pass, so
-    training and backtest can never interleave, only queue behind each other).
+    Fires on the cron minutes below (default :00 and :30 Moscow) via the job in
+    startup_event. Calls run_backtest() directly in-process rather than over HTTP —
+    the admin panel's manual button has to go through backend's proxy
+    (browser -> backend -> ai_service), which is a real request with a timeout on both
+    hops; a scheduled job running inside the same process as the model it's evaluating
+    has no such round trip and therefore no such timeout to spuriously hit while it
+    legitimately waits its turn for pipeline._engine_lock behind a training cycle
+    (see run_backtest's docstring — the lock now covers the backtest's entire scoring
+    pass, not just the forward pass, so training and backtest can never interleave,
+    only queue behind each other).
     """
     try:
         result = run_backtest(limit=SCHEDULED_BACKTEST_LIMIT)
@@ -84,14 +89,17 @@ def run_scheduled_backtest():
 def startup_event():
     scheduler.add_job(
         run_scheduled_backtest,
-        CronTrigger(minute=0, timezone=MOSCOW_TZ),
+        CronTrigger(minute=SCHEDULED_BACKTEST_CRON_MINUTES, timezone=MOSCOW_TZ),
         id="scheduled_backtest",
-        misfire_grace_time=3600,
+        misfire_grace_time=1800,
         max_instances=1,
         coalesce=True,
     )
     scheduler.start()
-    logger.info("Scheduler started! Backtest will run automatically every hour at :00 Moscow time.")
+    logger.info(
+        "Scheduler started! Backtest will run automatically every 30 min "
+        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time)."
+    )
     add_ai_log(
         "SYSTEM",
         "AI worker ready — inference/training cycles run in background threads.",

@@ -845,6 +845,29 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
     return payload
 
 
+def get_live_quality_gate() -> dict[str, Any]:
+    """Re-evaluate the live-bet quality gate from the latest backtest on disk.
+
+    Same policy `_live_quality_skip_reason` uses (walk-forward preferred, age check
+    on). Exposed via training-health so the admin panel can show the gate without
+    waiting for an in-page backtest run.
+    """
+    from app.neuralbet.backtest import evaluate_quality_gate, get_backtest_history, get_latest_backtest
+
+    latest = get_latest_backtest()
+    if not latest:
+        return {
+            "enabled": True,
+            "pass": False,
+            "eval_slice": None,
+            "reasons": ["no backtest yet"],
+            "metrics": {},
+        }
+    return evaluate_quality_gate(
+        latest, history=get_backtest_history(), check_age=True,
+    )
+
+
 def get_training_health() -> dict[str, Any]:
     """
     Traffic-light read on whether online training is currently helping or hurting,
@@ -905,6 +928,7 @@ def get_training_health() -> dict[str, Any]:
                 disabled_coverage.get("catch_up")
                 and disabled_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
             ),
+            "quality_gate": get_live_quality_gate(),
             "signals": {
                 "low_epoch_streak": {
                     "active": False,
@@ -1016,6 +1040,7 @@ def get_training_health() -> dict[str, Any]:
         "catch_up_blocked_by_checkpoint_streak": bool(
             coverage.get("catch_up") and signal_e
         ),
+        "quality_gate": get_live_quality_gate(),
         "signals": {
             "low_epoch_streak": {
                 "active": signal_a,
@@ -1594,14 +1619,7 @@ def _refresh_market_support() -> dict[tuple, int]:
 
 def _live_quality_skip_reason() -> str | None:
     """Block new virtual live bets until the latest backtest shows an edge on OOS."""
-    from app.neuralbet.backtest import evaluate_quality_gate, get_backtest_history, get_latest_backtest
-
-    latest = get_latest_backtest()
-    if not latest:
-        return "no backtest yet"
-    gate = latest.get("quality_gate") or evaluate_quality_gate(
-        latest, history=get_backtest_history(), check_age=True,
-    )
+    gate = get_live_quality_gate()
     if not gate.get("enabled"):
         return None
     reasons = gate.get("reasons") or []

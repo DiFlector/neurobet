@@ -506,12 +506,9 @@ export default function AdminPage() {
 
     const statsInterval = setInterval(fetchStats, 15000)
 
-    // Backtest history changes far less often than the rest (hourly via the scheduler,
-    // plus occasional manual runs) — a separate, slower interval instead of piling it
-    // into the 3s one above avoids re-fetching an unchanged 180-entry JSON file on
-    // every tick for no reason. Still automatic: without this, a scheduled backtest
-    // (or one run from another admin tab) would never show up here short of a manual
-    // page reload.
+    // Backtest history changes less often than logs (scheduled every 30 min, plus
+    // occasional manual runs) — a separate, slower interval instead of piling it
+    // into the 3s one above avoids re-fetching an unchanged JSON file on every tick.
     const backtestInterval = setInterval(fetchBacktestHistory, 30000)
 
     // Training passes fire more often than backtests (every couple of minutes when
@@ -799,6 +796,95 @@ export default function AdminPage() {
                     Тренд обучения по проходам (val_loss / val_guess_rate)
                   </div>
                   <TrainingTrendChart history={trainingRuns} />
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Live quality gate — always visible, not only after an in-page backtest */}
+        {(() => {
+          const gate = trainingHealth?.quality_gate
+          if (!gate) {
+            return (
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 text-sm text-neutral-500">
+                Quality gate — ждём данные с ai_service…
+              </div>
+            )
+          }
+          if (gate.enabled === false) {
+            return (
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl border border-neutral-700 bg-neutral-950 flex items-center justify-center">
+                    <FlaskConical className="w-5 h-5 text-neutral-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-neutral-400">Quality gate выключен</h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      NEURALBET_LIVE_QUALITY_GATE=0 — live-ставки не блокируются по бэктесту.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+          const passed = Boolean(gate.pass)
+          const metrics = gate.metrics || {}
+          const fmt = (v: unknown, digits = 1) =>
+            v == null || Number.isNaN(Number(v)) ? "—" : Number(v).toFixed(digits)
+          return (
+            <div className={`rounded-2xl border p-5 backdrop-blur-md shadow-lg ${
+              passed
+                ? "bg-[#00b894]/10 border-[#00b894]/50"
+                : "bg-[#d63031]/10 border-[#d63031]/50"
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
+                    passed ? "border-[#00b894]/50 bg-[#00b894]/10" : "border-[#d63031]/50 bg-[#d63031]/10"
+                  }`}>
+                    {passed
+                      ? <ShieldCheck className="w-6 h-6 text-[#55efc4]" />
+                      : <Ban className="w-6 h-6 text-[#ff7675]" />}
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-black ${passed ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
+                      Quality gate — {passed ? "пройден, live разрешены" : "блокирует live-ставки"}
+                    </h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Тот же OOS-чек, что решает, открывать ли virtual live. Обновляется вместе со статусом обучения.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                  <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                    срез: {gate.eval_slice ?? "—"}
+                  </span>
+                  <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                    {metrics.bets ?? "—"} ставок
+                  </span>
+                  <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                    ROI {fmt(metrics.roi_pct)}% · CI lo {fmt(metrics.roi_pct_lo)}%
+                  </span>
+                  <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                    Brier {fmt(metrics.brier, 4)} / рынок {fmt(metrics.market_brier, 4)}
+                  </span>
+                  {metrics.consecutive_passes != null && (
+                    <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                      pass {metrics.consecutive_passes}/{metrics.consecutive_required ?? "—"}
+                    </span>
+                  )}
+                  {metrics.age_hours != null && (
+                    <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
+                      возраст {fmt(metrics.age_hours)}ч
+                    </span>
+                  )}
+                </div>
+              </div>
+              {!passed && (gate.reasons?.length ?? 0) > 0 && (
+                <div className="mt-3 pt-3 border-t border-neutral-800/60 text-xs font-mono text-[#ff7675]">
+                  {(gate.reasons as string[]).join("; ")}
                 </div>
               )}
             </div>

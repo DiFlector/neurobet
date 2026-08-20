@@ -128,7 +128,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | :--- | :--- |
 | `get_ai_settings` | `ai_enabled` / `training_enabled` toggles |
 | `get_ai_logs` | TRAINING / INFERENCE / BANKROLL / SYSTEM feed. Optional `category`, `limit` |
-| `get_training_health` | Overfitting traffic light (`ok` / `warning` / `danger` / `unknown`) + signals |
+| `get_training_health` | Overfitting traffic light (`ok` / `warning` / `danger` / `unknown`) + signals + live `quality_gate` |
 | `get_training_runs` | Per-pass metrics for TrainingTrendChart (`val_loss`, `val_guess_rate`, `best_epoch`, …) |
 | `get_backtest_history` | Condensed run trend for QualityTrendChart (not the full per-run JSON) |
 | `get_backtest_review` | **Start here for model review**: edge verdict, quality_gate, walk-forward stability, funnel, head-alignment flags, delta vs previous run |

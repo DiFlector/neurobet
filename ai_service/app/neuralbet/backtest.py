@@ -201,13 +201,35 @@ def _guess_accuracy_pct(records: List[Dict[str, Any]], pred_key: str) -> Optiona
     return round(guessed / len(have) * 100.0, 1)
 
 
+def _gate_slice_flat_bets(block: Dict[str, Any]) -> int:
+    stake = ((block.get("stake_policy") or {}).get("current")) or {}
+    return int(
+        stake.get("flat_bets")
+        if stake.get("flat_bets") is not None
+        else stake.get("bets")
+        or 0
+    )
+
+
 def _gate_slice_metrics(result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    """Primary gate slice: OOS never-trained holdout (true OOS), not walk-forward."""
-    if result.get("oos_never_train"):
-        return "oos_never_train", result["oos_never_train"]
-    if result.get("walk_forward"):
-        return "walk_forward", result["walk_forward"]
-    return "overall", result.get("overall") or {}
+    """Primary gate slice: walk-forward OOS; never-train / overall as fallbacks.
+
+    Prefer a later candidate when the preferred slice has fewer than
+    LIVE_QUALITY_MIN_BETS and a fallback already clears that floor — otherwise
+    catch-up can drain never-train to a handful of rows and falsely block live.
+    """
+    candidates: List[Tuple[str, Dict[str, Any]]] = []
+    for name in ("walk_forward", "oos_never_train", "overall"):
+        block = result.get(name)
+        if block:
+            candidates.append((name, block))
+    if not candidates:
+        return "overall", {}
+
+    for name, block in candidates:
+        if _gate_slice_flat_bets(block) >= LIVE_QUALITY_MIN_BETS:
+            return name, block
+    return candidates[0]
 
 
 def _gate_core_metrics(eval_block: Dict[str, Any]) -> Dict[str, Any]:

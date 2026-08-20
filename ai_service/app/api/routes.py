@@ -141,7 +141,8 @@ def reset_bankroll(payload: Dict[str, Any] = Body(...)):
 @router.get("/training-health")
 def training_health():
     """Traffic-light read on whether online training is helping or hurting right now —
-    see get_training_health's docstring for the three-signal playbook. Polled by the
+    see get_training_health's docstring for the five-signal playbook. Also embeds the
+    live quality_gate (same check that can block virtual live bets). Polled by the
     admin panel's status block. Nested under "health" (not spread into the top level)
     so its own "status" field (ok/warning/danger) can't collide with this response
     envelope's "status": "success"."""

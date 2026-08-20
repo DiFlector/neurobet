@@ -238,7 +238,15 @@ def _samples_comparable(a: Optional[int], b: Optional[int]) -> bool:
 def _edge_verdict(result: Dict[str, Any], gate: Dict[str, Any], wf: Dict[str, Any]) -> str:
     oos_slice = _compact_slice("oos_never_train", result.get("oos_never_train"))
     wf_slice = _compact_slice("walk_forward", result.get("walk_forward"))
-    ref = oos_slice or wf_slice or _compact_slice("overall", result.get("overall"))
+    gate_slice = gate.get("eval_slice")
+    ref = None
+    if gate_slice == "walk_forward":
+        ref = wf_slice
+    elif gate_slice == "oos_never_train":
+        ref = oos_slice
+    elif gate_slice == "overall":
+        ref = _compact_slice("overall", result.get("overall"))
+    ref = ref or wf_slice or oos_slice or _compact_slice("overall", result.get("overall"))
 
     if not ref:
         return "unknown"
@@ -380,7 +388,13 @@ def build_agent_review(
         }.items() if v
     }
 
-    ref = slices.get("oos_never_train") or slices.get("walk_forward") or slices.get("overall")
+    ref_name = gate.get("eval_slice")
+    ref = (
+        (slices.get(ref_name) if ref_name else None)
+        or slices.get("walk_forward")
+        or slices.get("oos_never_train")
+        or slices.get("overall")
+    )
     edge = _edge_verdict(result, gate, wf)
 
     policy_ablation = result.get("policy_ablation_oos")

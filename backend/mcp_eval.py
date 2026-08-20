@@ -198,7 +198,8 @@ TOOLS = [
         (
             "Overfitting traffic light from the admin status block: ok / warning / danger "
             "/ unknown, plus the individual signals (best_epoch streak, backtest Brier, "
-            "ROI trend, val_loss trend)."
+            "ROI trend, val_loss trend) and the live quality_gate that can block virtual "
+            "live bets."
         ),
     ),
     _tool(
