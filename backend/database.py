@@ -2871,6 +2871,18 @@ def _stale_past_results_wait(last_updated: Any, as_of: Any) -> bool:
     return age is None or age >= wait
 
 
+def _stale_past_grace_only(start_raw: Any, as_of: Any) -> bool:
+    """Shorter staleness check for “frozen last set” voiding.
+
+    When the match is already off-feed, waiting full EVENT_RESULTS_WAIT_MINUTES
+    can keep period/set bets stuck for hours if the event is intermittently
+    re-seen. For these “incomplete last set” cases we prefer resolving quickly.
+    """
+    wait = float(settings.EVENT_MISS_GRACE_MINUTES)
+    age = _minutes_since(start_raw, as_of)
+    return age is None or age >= wait
+
+
 def _parse_period_scores_json(raw: Any) -> List[Tuple[int, int]]:
     try:
         return [tuple(p) for p in json.loads(raw or "[]")]
@@ -3055,7 +3067,7 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
             # After the official-results wait, void rather than grade 10-6 as a final
             # or leave the stake locked forever.
             start_ts = state.get("missing_since") or state.get("last_updated_at")
-            if not _stale_past_results_wait(start_ts, timestamp_str):
+            if not _stale_past_grace_only(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
         else:
@@ -3144,7 +3156,7 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
             feed_active, ordinal, period_scores, sport_path,
         ):
             start_ts = ev.get("missing_since") or ev.get("last_updated_at")
-            if feed_active or not _stale_past_results_wait(start_ts, timestamp_str):
+            if feed_active or not _stale_past_grace_only(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
         else:
