@@ -713,9 +713,17 @@ def archive_finished_events(
                         event_id, factor_id, market_prefix, label, parameter,
                         initial_coefficient, final_coefficient, min_coefficient, max_coefficient,
                         samples_count, odds_seq_json, score_at_time, is_win, first_seen_at, finished_at,
-                        predicted_win_probability, score_seq_json, score_sum_seq_json, score_diff_at_bet, trained_count, is_push,
+                        predicted_win_probability, score_seq_json, score_sum_seq_json, score_diff_at_bet,
+                        trained_count, is_push,
                         predicted_win, overround_close, ts_seq_json, timer_seq_json, overround_seq_json
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s,
+                        %s, %s, %s, %s, %s
+                    )
                     ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                         final_coefficient = excluded.final_coefficient,
                         min_coefficient = LEAST(finished_bets.min_coefficient, excluded.min_coefficient),
@@ -744,7 +752,8 @@ def archive_finished_events(
                     len(seq_rows), json.dumps(odds_seq, ensure_ascii=False), last_row["score_at_time"],
                     is_win, first_row["timestamp"], timestamp_str, predicted_win_probability,
                     json.dumps(score_diff_seq, ensure_ascii=False),
-                    json.dumps(score_sum_seq, ensure_ascii=False), score_diff_at_bet, int(is_push),
+                    json.dumps(score_sum_seq, ensure_ascii=False), score_diff_at_bet,
+                    0, int(is_push),
                     predicted_win, overround_close, json.dumps(ts_seq), json.dumps(timer_seq),
                     json.dumps(overround_seq),
                 ))
@@ -1011,7 +1020,9 @@ def archive_and_settle(
             conn.rollback()
         except Exception:
             pass
-        raise
+        # Archive bugs used to abort the whole function, so open live_bets never
+        # settled even when the live row was already is_live=0 and gradable.
+        logger.exception("Error archiving finished events (will retry next cycle)")
     finally:
         release_connection(conn)
 
