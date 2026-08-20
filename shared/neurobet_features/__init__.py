@@ -6,6 +6,7 @@ overround grouping live here so backend and ai_service cannot drift.
 """
 from .overround import (
     OVERROUND_EXPECTED_SIZE,
+    OVERROUND_SANE_MAX,
     OVERROUND_UNKNOWN,
     accumulate_overround,
     overround_at_latest,
@@ -62,6 +63,7 @@ from .vocab import (
 
 __all__ = [
     "OVERROUND_EXPECTED_SIZE",
+    "OVERROUND_SANE_MAX",
     "OVERROUND_UNKNOWN",
     "accumulate_overround",
     "overround_at_latest",

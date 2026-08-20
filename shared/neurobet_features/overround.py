@@ -18,10 +18,13 @@ _OVERROUND_TOTAL = TOTAL_OVER_IDS | TOTAL_UNDER_IDS
 OVERROUND_EXPECTED_SIZE = {"match_result": 3, "double_chance": 3, "total": 2}
 # Sentinel for LightGBM: real overrounds are always > 1.0.
 OVERROUND_UNKNOWN = 0.0
+# A complete sibling set at a book is ~1.03–1.15. Values above this almost
+# always mean mixed periods (match 1X2 + 1st-half 1X2) were summed together.
+OVERROUND_SANE_MAX = 1.25
 
-# (group, parameter, prefix). Prefix is ignored for 1X2 / DC (main-match
-# siblings) and kept for totals so "4-й сет ТМ 19" does not mix with
-# match-total 19.
+# (group, parameter, prefix). Prefix keeps period 1X2 / DC from mixing with
+# the main-match siblings; totals also key on the line so "4-й сет ТМ 19"
+# does not mix with match-total 19.
 OverroundKey = Tuple[str, str, str]
 
 
@@ -36,9 +39,9 @@ def overround_group_key(
     param = str(parameter or "")
     prefix = str(market_prefix or "")
     if fid in _OVERROUND_MATCH_RESULT:
-        return ("match_result", "", "")
+        return ("match_result", "", prefix)
     if fid in _OVERROUND_DOUBLE_CHANCE:
-        return ("double_chance", "", "")
+        return ("double_chance", "", prefix)
     if fid in _OVERROUND_TOTAL:
         return ("total", param, prefix)
     return None

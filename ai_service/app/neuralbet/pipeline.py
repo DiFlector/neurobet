@@ -283,6 +283,14 @@ def get_reset_progress() -> dict[str, Any]:
 # grew from 5000 to 10000 — 20% is a safer floor so a "too small" pass doesn't still slip
 # through at a size barely above the old memorization-prone range.
 MIN_TRAIN_SAMPLES = int(os.getenv("NEURALBET_MIN_TRAIN_SAMPLES", "2000"))
+# Online pass needs this many never-trained rows. After cold-start the remaining
+# trained_count=0 rows are the pinned val holdout — fetching them is impossible,
+# so the class-quota filler used to pad with the same replay 10k forever.
+MIN_FRESH_SAMPLES = int(os.getenv("NEURALBET_MIN_FRESH_SAMPLES", "500"))
+LIVE_QUALITY_GATE = os.getenv("NEURALBET_LIVE_QUALITY_GATE", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+LIVE_QUALITY_MIN_BETS = int(os.getenv("NEURALBET_LIVE_QUALITY_MIN_BETS", "40"))
 
 # Live coefficient band / EV / support live in shared/neurobet_filters (MIN_BET_COEFF,
 # MAX_BET_COEFF, MIN_BET_EDGE_PCT, MIN_MARKET_SUPPORT) so training, inference, backtest
@@ -707,12 +715,27 @@ def _advance_cold_start(state: dict[str, Any], samples_used: int) -> dict[str, A
     return state
 
 
-def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
-    """Share of the training-universe archive that has trained_count > 0.
+def _holdout_event_ids() -> set | None:
+    """Pinned validation events — excluded from train-pool coverage and catch-up."""
+    if _pinned_val_event_ids:
+        return _pinned_val_event_ids
+    if not os.path.exists(VAL_PIN_PATH):
+        return None
+    try:
+        with open(VAL_PIN_PATH, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        ids = set(meta.get("event_ids") or [])
+        return ids or None
+    except Exception:
+        return None
 
-    Cached for _COVERAGE_REFRESH_SECONDS: the COUNT over the joined universe is
-    cheap with idx_finished_bets_trained, but the admin panel polls health every
-    few seconds and does not need a live recount that often.
+
+def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
+    """Share of the *train-pool* archive that has trained_count > 0.
+
+    Pinned validation events are excluded: they are never marked trained, so
+    counting them as "unseen" kept catch-up on forever after cold-start.
+    Cached for _COVERAGE_REFRESH_SECONDS.
     """
     global _coverage_cache, _coverage_loaded_at, _last_catch_up
     now = time.monotonic()
@@ -724,11 +747,17 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
         return _coverage_cache
 
     untrained = trained = total = 0
+    holdout: set | None = None
     f_conn = None
     try:
         f_conn = get_finished_connection()
         f_cursor = f_conn.cursor()
         sports, factors = universe_sql_params()
+        holdout = _holdout_event_ids()
+        holdout_sql = "AND h.event_id != ALL(%s)" if holdout else ""
+        params: list[Any] = [sports, factors]
+        if holdout:
+            params.append(list(holdout))
         f_cursor.execute(
             f"""
             SELECT
@@ -739,8 +768,9 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
             JOIN finished_events f ON h.event_id = f.event_id
             WHERE h.is_win IS NOT NULL
             {universe_sql("f", "h")}
+            {holdout_sql}
             """,
-            [sports, factors],
+            params,
         )
         row = f_cursor.fetchone()
         if row:
@@ -758,9 +788,6 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
     trained_ratio = (trained / total) if total else 0.0
     fresh_n = _fresh_target()
     cold_start = _load_cold_start()
-    # Still chewing the archive, or enough unseen rows to fill a fresh slice without
-    # waiting for new finishes: train faster. Only sit at TRAIN_EVERY_CYCLES once both
-    # the 80% mark is cleared AND the untrained leftover is smaller than one batch.
     catch_up = total > 0 and (
         trained_ratio < TRAIN_CATCHUP_UNTIL_RATIO or untrained >= fresh_n
     )
@@ -777,6 +804,7 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
         "catch_up": catch_up,
         "train_every_cycles": every,
         "fresh_target": fresh_n,
+        "val_holdout_events": len(holdout) if holdout else 0,
         "cold_start": {
             "active": bool(cold_start.get("active")),
             "epoch": int(cold_start.get("epoch") or 1),
@@ -790,9 +818,14 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
         add_ai_log(
             "TRAINING",
             (
-                f"Catch-up training {'ON' if catch_up else 'OFF'} — archive "
-                f"{trained_ratio:.0%} trained ({trained}/{total}), {untrained} unseen, "
-                f"cadence every {every} cycles."
+                f"Catch-up training {'ON' if catch_up else 'OFF'} — train pool "
+                f"{trained_ratio:.0%} trained ({trained}/{total}), {untrained} unseen"
+                + (
+                    f", {payload['val_holdout_events']} val events held out"
+                    if payload["val_holdout_events"]
+                    else ""
+                )
+                + f", cadence every {every} cycles."
             ),
         )
     _last_catch_up = catch_up
@@ -1185,6 +1218,8 @@ def _fetch_training_batch(
         "target_loss": n_loss,
         "got_win": len(wins),
         "got_loss": len(losses),
+        "got_fresh": sum(1 for s in samples if int(s.get("trained_count") or 0) == 0),
+        "got_replay": sum(1 for s in samples if int(s.get("trained_count") or 0) > 0),
     }
     return samples, keys, mix
 
@@ -1356,6 +1391,7 @@ def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -
         _pinned_val_samples = samples
         _pinned_val_loaded_at = time.time()
         _pinned_val_event_ids = set(val_event_ids or [])
+        _invalidate_archive_coverage()
     except Exception as e:
         logger.error(f"Error persisting val pin: {e}")
 
@@ -1487,6 +1523,39 @@ def _refresh_market_support() -> dict[tuple, int]:
             except Exception:
                 pass
     return _market_support
+
+
+def _live_quality_skip_reason() -> str | None:
+    """Block new virtual live bets until the latest backtest shows an edge."""
+    if not LIVE_QUALITY_GATE:
+        return None
+    from app.neuralbet.backtest import get_latest_backtest
+
+    latest = get_latest_backtest()
+    if not latest:
+        return "no backtest yet"
+    overall = latest.get("overall") or {}
+    stake = ((overall.get("stake_policy") or {}).get("current")) or {}
+    bets = int(stake.get("bets") or 0)
+    roi = stake.get("roi_pct")
+    win_rate = stake.get("win_rate_pct")
+    break_even = stake.get("break_even_pct")
+    brier = ((overall.get("probability") or {}).get("current") or {}).get("brier")
+    if brier is None:
+        brier = (overall.get("current") or {}).get("brier")
+    market = ((overall.get("probability") or {}).get("market_raw") or {}).get("brier")
+    if market is None:
+        market = overall.get("market_brier")
+    fails: list[str] = []
+    if bets < LIVE_QUALITY_MIN_BETS:
+        fails.append(f"bets {bets}<{LIVE_QUALITY_MIN_BETS}")
+    if roi is None or float(roi) <= 0:
+        fails.append(f"ROI {roi}")
+    if win_rate is None or break_even is None or float(win_rate) <= float(break_even):
+        fails.append(f"win_rate {win_rate}≤break-even {break_even}")
+    if brier is None or market is None or float(brier) >= float(market):
+        fails.append(f"Brier {brier}≥market {market}")
+    return "; ".join(fails) if fails else None
 
 
 def _place_live_bets(candidates: list[dict[str, Any]]):
@@ -1927,7 +1996,16 @@ def _run_neuralbet_inference_and_training_locked(
         )
         place_result = {}
     else:
-        place_result = _place_live_bets(live_candidates)
+        quality_fail = _live_quality_skip_reason()
+        if quality_fail:
+            add_ai_log(
+                "BANKROLL",
+                "Live bets skipped — quality gate: " + quality_fail + ".",
+                level="WARNING",
+            )
+            place_result = {"placed": 0, "reason": "quality_gate"}
+        else:
+            place_result = _place_live_bets(live_candidates)
     if place_result.get("placed"):
         skip_reasons = [s.get("reason") for s in place_result.get("skipped", [])]
         skipped_stale = skip_reasons.count("stale_market")
@@ -1968,6 +2046,8 @@ def _run_neuralbet_inference_and_training_locked(
                 "Stake head hasn't concentrated exposure on a favorite yet — expected while undertrained.",
                 level="WARNING",
             )
+        elif reason == "quality_gate":
+            pass
 
     if cycle_aborted():
         add_ai_log("SYSTEM", "AI cycle aborted after inference — skipping training.")
@@ -2032,6 +2112,17 @@ def _run_neuralbet_inference_and_training_locked(
         and _checkpoint_reject_streak >= CHECKPOINT_REJECT_STREAK_ALERT
     )
     run_gru_training = is_train_cycle and not gru_frozen
+    if (
+        run_gru_training
+        and not cold_start_active
+        and int(coverage.get("untrained") or 0) < MIN_FRESH_SAMPLES
+    ):
+        add_ai_log(
+            "TRAINING",
+            f"Online GRU skipped — only {coverage.get('untrained', 0)} unseen train-pool "
+            f"rows (need {MIN_FRESH_SAMPLES}+ fresh). Replay-only passes are disabled.",
+        )
+        run_gru_training = False
     gru_pass_rejected = False
 
     training_samples: list[dict[str, Any]] = []
@@ -2148,6 +2239,23 @@ def _run_neuralbet_inference_and_training_locked(
         )
         training_samples = []
 
+    replay_only = (
+        not cold_start_active
+        and bool(training_samples)
+        and class_mix is not None
+        and int(class_mix.get("got_fresh") or 0) < MIN_FRESH_SAMPLES
+    )
+    if replay_only:
+        add_ai_log(
+            "TRAINING",
+            f"Skipping training step — batch is replay-only "
+            f"({class_mix.get('got_fresh', 0)} fresh / {class_mix.get('got_replay', 0)} replay, "
+            f"need {MIN_FRESH_SAMPLES}+ fresh). Rows stay unmarked.",
+            level="WARNING",
+        )
+        training_samples = []
+        train_keys = []
+
     if (
         cold_start_active
         and is_train_cycle
@@ -2198,6 +2306,10 @@ def _run_neuralbet_inference_and_training_locked(
                 mix_str = (
                     f"{int(len(training_samples) * TRAIN_FRESH_SHARE)} fresh target / rest replay"
                 )
+            fresh_n = (class_mix or {}).get("got_fresh")
+            replay_n = (class_mix or {}).get("got_replay")
+            if fresh_n is not None:
+                mix_str += f", {fresh_n} fresh / {replay_n} replay"
             start_msg = (
                 f"Starting online training pass: {len(training_samples)} samples "
                 f"({mix_str}), {len(val_samples)} held out for validation "

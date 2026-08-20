@@ -26,7 +26,7 @@ from neurobet_filters import (
 )
 
 from .no_vig import no_vig_probability
-from .overround import OVERROUND_UNKNOWN
+from .overround import OVERROUND_SANE_MAX, OVERROUND_UNKNOWN
 from .parse import (
     pack_timer_entry,
     parse_score_sum,
@@ -189,7 +189,7 @@ def scale_line_remaining(remaining: Optional[float], sport_path: Optional[str]) 
 
 
 def scale_overround(overround: Optional[float]) -> float:
-    if overround is None or overround <= 1.0:
+    if overround is None or overround <= 1.0 or overround > OVERROUND_SANE_MAX:
         return 0.0
     return max(0.0, min(1.0, (float(overround) - 1.0) / 0.15))
 
