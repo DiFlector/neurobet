@@ -693,7 +693,7 @@ def _finish_cold_start(state: dict[str, Any]) -> dict[str, Any]:
     add_ai_log(
         "TRAINING",
         "Cold-start finished — switching to online 10k passes (chart-gate on, "
-        f"lr={os.getenv('NEURALBET_LEARNING_RATE', '1e-4')}, random win/loss mix).",
+        f"lr={os.getenv('NEURALBET_LEARNING_RATE', '5e-5')}, random win/loss mix).",
     )
     return state
 
@@ -1953,6 +1953,7 @@ def _run_neuralbet_inference_and_training_locked(
     skipped_low_support = 0
     skipped_coeff = 0
     skipped_sport = 0
+    skipped_market = 0
     market_support = _refresh_market_support()
 
     for meta, (
@@ -2007,7 +2008,11 @@ def _run_neuralbet_inference_and_training_locked(
                     (meta["sport"] or "", fid, meta["label"] or ""), 0
                 )
             reason = live_gate_skip_reason(
-                coeff, expected_roi, support_count, meta.get("sport")
+                coeff,
+                expected_roi,
+                support_count,
+                meta.get("sport"),
+                factor_id=fid,
             )
             if reason == "coeff":
                 skipped_coeff += 1
@@ -2017,6 +2022,8 @@ def _run_neuralbet_inference_and_training_locked(
                 skipped_low_support += 1
             elif reason == "sport":
                 skipped_sport += 1
+            elif reason == "market":
+                skipped_market += 1
             else:
                 live_candidates.append(
                     {
@@ -2027,10 +2034,21 @@ def _run_neuralbet_inference_and_training_locked(
                     }
                 )
 
-    if skipped_low_edge or skipped_low_support or skipped_coeff or skipped_sport:
+    if (
+        skipped_low_edge
+        or skipped_low_support
+        or skipped_coeff
+        or skipped_sport
+        or skipped_market
+    ):
         sport_part = (
             f", {skipped_sport} — sport outside live list (NEURALBET_LIVE_STAKE_SPORTS)"
             if skipped_sport
+            else ""
+        )
+        market_part = (
+            f", {skipped_market} — market outside live list (NEURALBET_LIVE_STAKE_MARKETS)"
+            if skipped_market
             else ""
         )
         add_ai_log(
@@ -2039,7 +2057,7 @@ def _run_neuralbet_inference_and_training_locked(
             f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f}, "
             f"{skipped_low_edge} — EV below {MIN_BET_EDGE_PCT:.0f}%, "
             f"{skipped_low_support} — market has fewer than {MIN_MARKET_SUPPORT} resolved archive outcomes"
-            f"{sport_part}. "
+            f"{sport_part}{market_part}. "
             f"Remaining {len(live_candidates)}.",
         )
 

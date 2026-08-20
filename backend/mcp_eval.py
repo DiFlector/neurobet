@@ -252,8 +252,8 @@ TOOLS = [
     _tool(
         "get_filters",
         (
-            "Live betting gates: allowed sports / factor IDs, total-line ranges, "
-            "min/max coefficient, min EV, min market support."
+            "Live betting gates: allowed sports / factor IDs, live stake sports/markets, "
+            "total-line ranges, min/max coefficient, min EV, min market support."
         ),
     ),
     _tool(

@@ -70,12 +70,10 @@ EARLY_STOP_PATIENCE = int(os.getenv("NEURALBET_EARLY_STOP_PATIENCE", "10"))
 # minibatch count per epoch reasonable (~40 at a 10000-sample pass) without the batch
 # getting so large a single gradient step stops responding to individual examples.
 BATCH_SIZE = int(os.getenv("NEURALBET_BATCH_SIZE", "256"))
-# 1e-3 -> 1e-4: 1e-3 is a from-scratch rate; for online fine-tuning of an
-# already-converged network it was large enough that every epoch after the first
-# dragged the weights toward the current batch and away from the general solution —
-# observed as "best epoch 1/11, val_loss rising monotonically from epoch 1" even on
-# 5000-sample batches, where batch size clearly wasn't the cause anymore.
-LEARNING_RATE = float(os.getenv("NEURALBET_LEARNING_RATE", "1e-4"))
+# 1e-3 → 1e-4 → 5e-5: from-scratch rates overfit each online batch (best_epoch=1,
+# val_loss rising from epoch 1, checkpoint reject streak). Online fine-tuning of an
+# already-converged GRU needs a smaller step so later epochs can still improve val.
+LEARNING_RATE = float(os.getenv("NEURALBET_LEARNING_RATE", "5e-5"))
 GRAD_CLIP_NORM = 1.0
 
 # Weight on the decision-head loss (the bet/no-bet verdict) relative to the win-head BCE.

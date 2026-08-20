@@ -5,12 +5,14 @@ Two layers, on purpose:
 
 - Universe (sport / factor_id / total line) — training, live inference, backtest
   fetch, UI, and stats. Win-head still sees every row inside this universe.
-- Live gates (coefficient band, min EV, min market support) — staking real money,
-  the "win" LIVE list, backtest "would bet", training bankroll/tuner. Thin markets
-  and 1.0–1.5 shorts stay in the gradient; they just never get a stake.
+- Live gates (coefficient band, min EV, min market support, live sports / markets) —
+  staking real money, the "win" LIVE list, backtest "would bet", training
+  bankroll/tuner. Thin markets and 1.0–1.5 shorts stay in the gradient; they just
+  never get a stake.
 
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
+Env: `NEURALBET_LIVE_STAKE_SPORTS`, `NEURALBET_LIVE_STAKE_MARKETS`.
 """
 import os
 import re
@@ -75,6 +77,39 @@ LIVE_STAKE_SPORTS: frozenset[str] | None = (
         s.strip().lower() for s in _LIVE_STAKE_SPORTS_RAW.split(",") if s.strip()
     )
 )
+
+# Live staking markets — training/inference still see П1/П2/draw + totals.
+# Default: totals only (backtest 20.08: total_under/over ~+11% ROI, w1/w2 negative).
+# Aliases: totals → total_over+total_under; * / all → every allowed family.
+# Or comma list of families: total_over,total_under,w1,w2,draw
+_LIVE_STAKE_MARKET_ALIASES = {
+    "totals": frozenset({"total_over", "total_under"}),
+    "total": frozenset({"total_over", "total_under"}),
+    "moneyline": frozenset({"w1", "w2", "draw"}),
+    "1x2": frozenset({"w1", "w2", "draw"}),
+}
+_LIVE_STAKE_MARKETS_RAW = os.getenv("NEURALBET_LIVE_STAKE_MARKETS", "totals").strip().lower()
+if _LIVE_STAKE_MARKETS_RAW in ("", "*", "all"):
+    LIVE_STAKE_MARKETS: frozenset[str] | None = None
+else:
+    _market_parts: set[str] = set()
+    for part in _LIVE_STAKE_MARKETS_RAW.split(","):
+        token = part.strip().lower()
+        if not token:
+            continue
+        if token in _LIVE_STAKE_MARKET_ALIASES:
+            _market_parts.update(_LIVE_STAKE_MARKET_ALIASES[token])
+        else:
+            _market_parts.add(token)
+    LIVE_STAKE_MARKETS = frozenset(_market_parts) if _market_parts else None
+
+_FACTOR_TO_LIVE_MARKET = {
+    921: "w1",
+    DRAW_FACTOR_ID: "draw",
+    923: "w2",
+    **{fid: "total_over" for fid in TOTAL_OVER_IDS},
+    **{fid: "total_under" for fid in TOTAL_UNDER_IDS},
+}
 
 
 def sport_top(sport_path: Optional[str]) -> str:
@@ -160,16 +195,50 @@ def in_live_stake_sport(sport_path: Optional[str]) -> bool:
     return sport_top(sport_path) in LIVE_STAKE_SPORTS
 
 
+def live_market_family(
+    factor_id: Optional[int] = None,
+    market_label: Optional[str] = None,
+) -> Optional[str]:
+    """Canonical live-market family name, or None if unknown."""
+    if market_label:
+        label = str(market_label).strip().lower()
+        if label:
+            return label
+    if factor_id is None:
+        return None
+    return _FACTOR_TO_LIVE_MARKET.get(int(factor_id))
+
+
+def in_live_stake_market(
+    factor_id: Optional[int] = None,
+    market_label: Optional[str] = None,
+) -> bool:
+    """Whether live staking includes this market family. Unknown factor fails open
+    when no label is given (same spirit as empty market-support cache)."""
+    if LIVE_STAKE_MARKETS is None:
+        return True
+    family = live_market_family(factor_id=factor_id, market_label=market_label)
+    if family is None:
+        return True
+    return family in LIVE_STAKE_MARKETS
+
+
 def live_gate_skip_reason(
     coeff: float,
     expected_roi: float,
     support_count: Optional[int] = None,
     sport_path: Optional[str] = None,
+    factor_id: Optional[int] = None,
+    market_label: Optional[str] = None,
 ) -> Optional[str]:
     """Why this candidate is not staked, or None if it clears every live gate.
     `support_count is None` means 'don't check' (empty cache fails open)."""
     if sport_path is not None and not in_live_stake_sport(sport_path):
         return "sport"
+    if (factor_id is not None or market_label is not None) and not in_live_stake_market(
+        factor_id=factor_id, market_label=market_label,
+    ):
+        return "market"
     if not in_bet_band(coeff):
         return "coeff"
     if expected_roi < MIN_BET_EDGE_PCT:
@@ -184,8 +253,17 @@ def passes_live_gates(
     expected_roi: float,
     support_count: Optional[int] = None,
     sport_path: Optional[str] = None,
+    factor_id: Optional[int] = None,
+    market_label: Optional[str] = None,
 ) -> bool:
-    return live_gate_skip_reason(coeff, expected_roi, support_count, sport_path) is None
+    return live_gate_skip_reason(
+        coeff,
+        expected_roi,
+        support_count,
+        sport_path,
+        factor_id=factor_id,
+        market_label=market_label,
+    ) is None
 
 
 def universe_sql_params() -> Tuple[list, list]:

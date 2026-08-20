@@ -27,6 +27,7 @@ from neurobet_filters import (  # noqa: E402
     MIN_MARKET_SUPPORT,
     is_fast_format_sport_path,
     in_live_stake_sport,
+    in_live_stake_market,
 )
 from neurobet_features import (  # noqa: E402
     pack_timer_entry,
@@ -1334,9 +1335,10 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 # on (it always bet on the raw score) — this file no longer computes calibration at all.
 
 # Same live gates as ai_service (coeff band, min EV, min market support,
-# NEURALBET_LIVE_STAKE_SPORTS) — sourced from shared/neurobet_filters so
-# «Активные LIVE Прогнозы» and «Ставки нейросети» match what the bot would
-# actually risk money on. Refresh interval stays local: it's a cache TTL, not a filter.
+# NEURALBET_LIVE_STAKE_SPORTS / NEURALBET_LIVE_STAKE_MARKETS) — sourced from
+# shared/neurobet_filters so «Активные LIVE Прогнозы» and «Ставки нейросети»
+# match what the bot would actually risk money on. Refresh interval stays local:
+# it's a cache TTL, not a filter.
 NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
 _neurobet_market_support: Dict[Tuple[str, int, str], int] = {}
 _neurobet_market_support_loaded_at = 0.0
@@ -1745,10 +1747,14 @@ def get_top_neurobets(
             ) >= MIN_MARKET_SUPPORT
         ]
 
-    # Live-stake sport whitelist — same NEURALBET_LIVE_STAKE_SPORTS as ai_service
+    # Live-stake sport / market whitelist — same NEURALBET_LIVE_STAKE_* as ai_service
     # placement; only on the bot's real betting pool (verdict=win).
     if verdict == "win":
         candidates = [c for c in candidates if in_live_stake_sport(c.get("sport_path"))]
+        candidates = [
+            c for c in candidates
+            if in_live_stake_market(factor_id=c.get("factor_id"))
+        ]
 
     if sort_mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
@@ -2642,6 +2648,12 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
         event_id, factor_id = c["event_id"], c["factor_id"]
         parameter = c.get("parameter") or ""
         market_prefix = c.get("market_prefix") or ""
+
+        # Defense in depth: ai_service already filters via live_gate_skip_reason, but
+        # refuse moneyline (etc.) here too if NEURALBET_LIVE_STAKE_MARKETS is totals-only.
+        if not in_live_stake_market(factor_id=factor_id):
+            skipped.append({"candidate": c, "reason": "market_outside_live_list"})
+            continue
 
         if slots_left <= 0:
             skipped.append({"candidate": c, "reason": "max_positions_reached"})

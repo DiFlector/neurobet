@@ -135,7 +135,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_latest_backtest` | Full latest backtest JSON on disk (`overall`, `by_sport`, `by_market`, `walk_forward`, `agent_review`). No new run |
 | `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
-| `get_filters` | Live betting gates: allowed sports/factors, coeff band, min EV, min market support |
+| `get_filters` | Live betting gates: allowed sports/factors, live stake sports/markets, coeff band, min EV, min market support |
 | `get_bankroll` | Live + training accounts |
 | `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
 

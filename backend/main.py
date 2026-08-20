@@ -31,6 +31,8 @@ from neurobet_filters import (
     MAX_BET_COEFF,
     MIN_BET_EDGE_PCT,
     MIN_MARKET_SUPPORT,
+    LIVE_STAKE_SPORTS,
+    LIVE_STAKE_MARKETS,
 )
 
 MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
@@ -698,6 +700,12 @@ def _filters_snapshot() -> Dict[str, Any]:
         "max_bet_coeff": MAX_BET_COEFF,
         "min_bet_edge_pct": MIN_BET_EDGE_PCT,
         "min_market_support": MIN_MARKET_SUPPORT,
+        "live_stake_sports": (
+            None if LIVE_STAKE_SPORTS is None else sorted(LIVE_STAKE_SPORTS)
+        ),
+        "live_stake_markets": (
+            None if LIVE_STAKE_MARKETS is None else sorted(LIVE_STAKE_MARKETS)
+        ),
     }
 
 

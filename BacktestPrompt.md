@@ -121,6 +121,8 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.5`.
 - Калибровка с учётом кэфа; **no-leakage calib** в бэктest (`calibration_cutoff`).
 - Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=3%`, `MIN_MARKET_SUPPORT=150`.
+- Live stake markets: `NEURALBET_LIVE_STAKE_MARKETS=totals` (w1/w2 excluded from staking; still in training universe).
+- Online GRU LR: `NEURALBET_LEARNING_RATE=5e-5` (was 1e-4; reduces best_epoch=1 / checkpoint reject).
 - Тюнер: EMA 0.3, min val bets, sample-size penalty; threshold sweep по **ROI CI lo**.
 - Обучение: `TRAIN_EVERY_CYCLES=20`, `MIN_TRAIN_SAMPLES=2000`, batch 10k, val 2k, `MIN_FRESH_SAMPLES=500`.
 - Cold-start streaming (chunk pass, val/checkpoint после полного epoch).
@@ -142,7 +144,8 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 
 1. **INFERENCE** — прогнозы на universe (GRU + LGBM + blend + calib).
 2. **Decision `predicted_win=1`** — decision head (≠ win-probability % в UI).
-3. **Live gates** — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`.
+3. Live gates — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
+   `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
 4. **Quality gate** — последний бэктest `walk_forward` (см. §2); иначе ставки не открываются.
 5. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
 
@@ -168,8 +171,9 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 | Футбол | мало ставок (высокий per-sport threshold) |
 
 Env: `shared/neurobet_filters/__init__.py` — `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис` | `*` | список.
+Рынки: `NEURALBET_LIVE_STAKE_MARKETS=totals` (default) | `*` | `total_over,total_under,w1,…`.
 
-При ревью: расширять live-лист только при **устойчивых** цифрах `by_sport` + walk-forward; не открывать все спорты «наугад».
+При ревью: расширять live-лист только при **устойчивых** цифрах `by_sport` + walk-forward; не открывать все спорты «наугад». То же для рынков: возвращать w1/w2 в live только при устойчивом OOS ROI + CI lo > 0.
 
 ### Отложено (2026-08-20) — не расширять live-спорты пока
 
@@ -185,13 +189,20 @@ Env: `shared/neurobet_filters/__init__.py` — `NEURALBET_LIVE_STAKE_SPORTS=на
 2. Диагностический прогон (без постоянного открытия live): временно `NEURALBET_LIVE_STAKE_SPORTS=*` или один кандидат → бэктест → смотреть `by_sport` + walk-forward.
 3. Открывать спорт только при устойчивом ROI + CI lo > 0 на OOS; иначе вернуть env к НТ.
 
+### Сделано (2026-08-20) — live только тоталы + ниже LR
+
+- `NEURALBET_LIVE_STAKE_MARKETS=totals` — w1/w2/draw не ставятся (обучение/inference без изменений).
+  Причина: overall by_market — тоталы ~+11% ROI, w1/w2 отрицательные.
+- `NEURALBET_LEARNING_RATE=5e-5` — меньше best_epoch=1 / checkpoint reject на онлайн-проходах.
+- Не снимать gate и не расширять спорты, пока walk_forward CI lo ≤ 0.
+
 ---
 
 ## 8. Файлы для правок (шпаргалка)
 
 | Область | Путь |
 | :--- | :--- |
-| Live gates, sports | `shared/neurobet_filters/__init__.py`, `.env` |
+| Live gates, sports, markets | `shared/neurobet_filters/__init__.py`, `.env` |
 | Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
 | Обучение, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |

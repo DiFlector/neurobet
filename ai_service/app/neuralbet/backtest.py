@@ -38,6 +38,7 @@ from neurobet_filters import (
     passes_live_gates,
     in_bet_band,
     in_live_stake_sport,
+    in_live_stake_market,
     MIN_BET_COEFF,
     MAX_BET_COEFF,
 )
@@ -521,7 +522,11 @@ def _records_from_scored(
         current_pred = 1 if (
             current_verdict == 1
             and passes_live_gates(
-                m["coeff"], expected_roi, support_count, sport_path=m["sport_path"],
+                m["coeff"],
+                expected_roi,
+                support_count,
+                sport_path=m["sport_path"],
+                factor_id=m["factor_id"],
             )
         ) else 0
         market_prob = (
@@ -635,16 +640,21 @@ def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
     expected_roi = float(record.get("current_expected_roi") or 0)
     verdict = int(record.get("current_verdict") or 0)
     sport_path = record.get("sport_path")
+    market_label = record.get("market_label")
     if policy == "decision_and_ev":
         return int(record.get("current_pred") or 0) == 1
     if policy == "ev_only":
-        return passes_live_gates(coeff, expected_roi, sport_path=sport_path)
+        return passes_live_gates(
+            coeff, expected_roi, sport_path=sport_path, market_label=market_label,
+        )
     if policy == "decision_only":
         if verdict != 1:
             return False
         if not in_bet_band(coeff):
             return False
         if sport_path is not None and not in_live_stake_sport(sport_path):
+            return False
+        if market_label is not None and not in_live_stake_market(market_label=market_label):
             return False
         return True
     return False
