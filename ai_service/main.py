@@ -40,7 +40,7 @@ MOSCOW_TZ = timezone(timedelta(hours=3))
 # Same default the admin panel's manual "Запустить бэктест" button uses (see
 # frontend/autobet/app/admin/page.tsx) — the automatic runs and manual ones should
 # cover a comparably representative slice of the archive unless deliberately overridden.
-SCHEDULED_BACKTEST_LIMIT = int(os.getenv("NEURALBET_SCHEDULED_BACKTEST_LIMIT", "40000"))
+SCHEDULED_BACKTEST_LIMIT = int(os.getenv("NEURALBET_SCHEDULED_BACKTEST_LIMIT", "80000"))
 
 scheduler = BackgroundScheduler(timezone=MOSCOW_TZ)
 
