@@ -47,7 +47,7 @@ scheduler = BackgroundScheduler(timezone=MOSCOW_TZ)
 
 def run_scheduled_backtest():
     """
-    Fires 4x/day (00:00/06:00/12:00/18:00 Moscow) via the cron job registered below.
+    Fires every hour on the hour (09:00, 10:00, … Moscow) via the cron job below.
     Calls run_backtest() directly in-process rather than over HTTP — the admin panel's
     manual button has to go through backend's proxy (browser -> backend -> ai_service),
     which is a real request with a timeout on both hops; a scheduled job running inside
@@ -84,12 +84,14 @@ def run_scheduled_backtest():
 def startup_event():
     scheduler.add_job(
         run_scheduled_backtest,
-        CronTrigger(hour="0,6,12,18", minute=0, timezone=MOSCOW_TZ),
+        CronTrigger(minute=0, timezone=MOSCOW_TZ),
         id="scheduled_backtest",
         misfire_grace_time=3600,
+        max_instances=1,
+        coalesce=True,
     )
     scheduler.start()
-    logger.info("Scheduler started! Backtest will run automatically at 00:00/06:00/12:00/18:00 Moscow time.")
+    logger.info("Scheduler started! Backtest will run automatically every hour at :00 Moscow time.")
     add_ai_log(
         "SYSTEM",
         "AI worker ready — inference/training cycles run in background threads.",

@@ -56,10 +56,9 @@ logger = logging.getLogger("ai_service_backtest")
 
 BACKTEST_DIR = os.path.join(MODEL_DIR, "backtests")
 HISTORY_PATH = os.path.join(BACKTEST_DIR, "history.json")
-# 50 -> 180: now that a backtest also fires automatically 4x/day (00:00/06:00/12:00/
-# 18:00 Moscow — see main.py's scheduler) on top of manual admin-panel runs, 50 entries
-# would scroll off in under 2 weeks. 180 covers roughly a month and a half of
-# quarter-daily runs plus headroom for manual ones, cheap either way (this is just JSON).
+# 50 -> 180: backtest fires automatically every hour on the hour (Moscow — see
+# ai_service/main.py) plus manual admin-panel runs. 180 ≈ 7.5 days of hourly auto-runs
+# plus headroom for manual ones, cheap either way (this is just JSON).
 MAX_HISTORY_RUNS = 180
 
 COEFF_BUCKET_LABELS = ["1.0–1.5", "1.5–2.0", "2.0–3.0", "3.0–5.0", "5.0–10.0", "10.0+"]

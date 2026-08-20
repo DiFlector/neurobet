@@ -506,7 +506,7 @@ export default function AdminPage() {
 
     const statsInterval = setInterval(fetchStats, 15000)
 
-    // Backtest history changes far less often than the rest (4x/day via the scheduler,
+    // Backtest history changes far less often than the rest (hourly via the scheduler,
     // plus occasional manual runs) — a separate, slower interval instead of piling it
     // into the 3s one above avoids re-fetching an unchanged 180-entry JSON file on
     // every tick for no reason. Still automatic: without this, a scheduled backtest
@@ -1208,7 +1208,7 @@ export default function AdminPage() {
           {backtestHistory.length > 0 && (
             <div className="pt-2 border-t border-neutral-800/80">
               <div className="text-[10px] text-neutral-500 uppercase font-mono mb-2">
-                Динамика качества модели по прогонам бэктеста (авто в 00:00 / 06:00 / 12:00 / 18:00 МСК + ручные запуски)
+                Динамика качества модели по прогонам бэктеста (авто каждый час в :00 МСК + ручные запуски)
               </div>
               <QualityTrendChart history={backtestHistory} />
             </div>
