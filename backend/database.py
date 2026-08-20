@@ -568,14 +568,20 @@ def archive_finished_events(
 
         # Timed out (or results never listed this event as finished). Don't grade
         # a frozen last set — drop it so period markets void instead of settling
-        # on 8:10 when the set was actually 8:11.
+        # on 8:10 when the set was actually 8:11. Timer often has the real set
+        # list when period_scores_json is empty ("за 3 место" Liga Pro).
         try:
             periods = [tuple(p) for p in json.loads(ev["period_scores_json"] or "[]")]
         except Exception:
             periods = []
+        try:
+            named = {k: tuple(v) for k, v in json.loads(ev.get("named_scores_json") or "{}").items()}
+        except Exception:
+            named = {}
+        periods = _best_period_scores(periods, ev.get("timer"), named, sport_path)
         stripped = _drop_incomplete_last_period(sport_path, periods)
+        ev["period_scores_json"] = json.dumps([list(p) for p in stripped], ensure_ascii=False)
         if stripped != periods:
-            ev["period_scores_json"] = json.dumps([list(p) for p in stripped], ensure_ascii=False)
             logger.warning(
                 f"Archiving {eid} without a finished official result; "
                 f"dropped incomplete last period {periods[-1]} → {stripped}"
@@ -840,6 +846,23 @@ def save_parsed_events(
         )
         if cursor.rowcount:
             logger.info(f"Finalized {cursor.rowcount} events after grace period.")
+
+        # Catalog-present matches with no markets never enter parsed_events, so the
+        # miss_count path above should catch them. Liga Pro "за 3 место" still sat
+        # is_live=1 for hours with a stale last_updated_at (UI «матч завершён»,
+        # live_bets open). Treat "not touched in this scrape for the grace window"
+        # as finished even if miss_count was reset.
+        cursor.execute(
+            """UPDATE events
+                  SET is_live = 0,
+                      missing_since = COALESCE(missing_since, last_updated_at)
+                WHERE is_live = 1
+                  AND last_updated_at IS DISTINCT FROM %s
+                  AND EXTRACT(EPOCH FROM (%s::timestamptz - last_updated_at::timestamptz)) / 60.0 >= %s""",
+            (timestamp_str, timestamp_str, settings.EVENT_MISS_GRACE_MINUTES),
+        )
+        if cursor.rowcount:
+            logger.info(f"Finalized {cursor.rowcount} events with stale last_updated_at.")
 
     # Live snapshot is committed first. Archiving finished events (copying odds
     # trajectories into finished_bets) can take minutes on a large batch and used
@@ -2779,6 +2802,10 @@ def _cycle_summary_message(won: int, lost: int, void: int, f_cursor) -> Dict[str
 
 
 _TIMER_SET_RE = re.compile(r"(\d+)\s*\*?\s*[-:]\s*(\d+)\s*\*?")
+_NAMED_PERIOD_SCORE_RE = re.compile(
+    r"^(\d+)-[а-яё]+\s+(сет|тайм|период|четверть|половина)$",
+    re.IGNORECASE,
+)
 
 
 def _period_scores_from_timer(timer: Optional[str]) -> List[Tuple[int, int]]:
@@ -2788,11 +2815,60 @@ def _period_scores_from_timer(timer: Optional[str]) -> List[Tuple[int, int]]:
     return [(int(a), int(b)) for a, b in _TIMER_SET_RE.findall(str(timer))]
 
 
-def _merge_period_scores(
-    stored: List[Tuple[int, int]], timer: Optional[str],
+def _period_scores_from_named(
+    named: Optional[Dict[str, Tuple[int, int]]],
 ) -> List[Tuple[int, int]]:
-    from_timer = _period_scores_from_timer(timer)
-    return from_timer if len(from_timer) > len(stored) else stored
+    by_ord: Dict[int, Tuple[int, int]] = {}
+    for key, val in (named or {}).items():
+        m = _NAMED_PERIOD_SCORE_RE.match(str(key).strip())
+        if not m:
+            continue
+        try:
+            by_ord[int(m.group(1))] = (int(val[0]), int(val[1]))
+        except Exception:
+            continue
+    if not by_ord:
+        return []
+    max_o = max(by_ord)
+    if any(i not in by_ord for i in range(1, max_o + 1)):
+        return []
+    return [by_ord[i] for i in range(1, max_o + 1)]
+
+
+def _period_scores_quality(sport_path: str, periods: List[Tuple[int, int]]) -> Tuple[int, int]:
+    finished = sum(1 for a, b in periods if _period_looks_finished(sport_path, a, b))
+    return (finished, len(periods))
+
+
+def _best_period_scores(
+    stored: List[Tuple[int, int]],
+    timer: Optional[str],
+    named: Optional[Dict[str, Tuple[int, int]]] = None,
+    sport_path: str = "",
+) -> List[Tuple[int, int]]:
+    """Prefer the source with the most completed sets, not merely the longest list."""
+    candidates = [
+        stored or [],
+        _period_scores_from_timer(timer),
+        _period_scores_from_named(named),
+    ]
+    return max(candidates, key=lambda ps: _period_scores_quality(sport_path, ps))
+
+
+def _merge_period_scores(
+    stored: List[Tuple[int, int]],
+    timer: Optional[str],
+    named: Optional[Dict[str, Tuple[int, int]]] = None,
+    sport_path: str = "",
+) -> List[Tuple[int, int]]:
+    return _best_period_scores(stored, timer, named, sport_path)
+
+
+def _stale_past_results_wait(last_updated: Any, as_of: Any) -> bool:
+    """True once the live snapshot has been frozen longer than the official-results wait."""
+    wait = float(settings.EVENT_MISS_GRACE_MINUTES + settings.EVENT_RESULTS_WAIT_MINUTES)
+    age = _minutes_since(last_updated, as_of)
+    return age is None or age >= wait
 
 
 def _parse_period_scores_json(raw: Any) -> List[Tuple[int, int]]:
@@ -2835,13 +2911,18 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
         if row:
             stored = _parse_period_scores_json(row["period_scores_json"])
+            named = _parse_named_scores_json(row["named_scores_json"])
+            sport_path = row["sport_path"] or ""
             return {
                 "score_1": int(row["score_1"] or 0),
                 "score_2": int(row["score_2"] or 0),
-                "sport_path": row["sport_path"] or "",
-                "period_scores": _merge_period_scores(stored, row.get("timer")),
-                "named_scores": _parse_named_scores_json(row["named_scores_json"]),
+                "sport_path": sport_path,
+                "period_scores": _best_period_scores(
+                    stored, row.get("timer"), named, sport_path,
+                ),
+                "named_scores": named,
                 "is_live": _feed_active(bool(row["is_live"]), row.get("last_updated_at"), latest_scrape_ts),
+                "last_updated_at": row.get("last_updated_at"),
             }
     finally:
         release_connection(conn)
@@ -2856,13 +2937,21 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
         )
         row = f_cursor.fetchone()
         if row:
+            sport_path = row["sport_path"] or ""
+            named = _parse_named_scores_json(row["named_scores_json"])
             return {
                 "score_1": int(row["score_1"] or 0),
                 "score_2": int(row["score_2"] or 0),
-                "sport_path": row["sport_path"] or "",
-                "period_scores": _parse_period_scores_json(row["period_scores_json"]),
-                "named_scores": _parse_named_scores_json(row["named_scores_json"]),
+                "sport_path": sport_path,
+                "period_scores": _best_period_scores(
+                    _parse_period_scores_json(row["period_scores_json"]),
+                    None,
+                    named,
+                    sport_path,
+                ),
+                "named_scores": named,
                 "is_live": False,
+                "last_updated_at": None,
             }
     finally:
         release_connection(f_conn)
@@ -2953,16 +3042,24 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         if state is None or state["is_live"]:
             continue
 
-        is_win, is_push = _grade_live_bet(b, state)
         prefix = (b["market_prefix"] or "").strip()
         ordinal = _parse_period_ordinal(prefix) if prefix and prefix != MAIN_MARKET_PREFIX else None
+        period_ready = True
         if ordinal is not None:
-            if not _period_ready_for_settlement(
+            period_ready = _period_ready_for_settlement(
                 False, ordinal, state["period_scores"], state["sport_path"],
-            ):
+            )
+        if not period_ready:
+            # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
+            # After the official-results wait, void rather than grade 10-6 as a final
+            # or leave the stake locked forever.
+            if not _stale_past_results_wait(state.get("last_updated_at"), timestamp_str):
                 continue
-        if is_win is None and not is_push:
-            continue
+            is_win, is_push = None, False
+        else:
+            is_win, is_push = _grade_live_bet(b, state)
+            if is_win is None and not is_push:
+                continue
         outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
         messages.extend(msgs)
         if outcome == "win":
@@ -3019,34 +3116,42 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
             continue
 
         cursor.execute(
-            """SELECT score_1, score_2, sport_path, period_scores_json, is_live,
-                      last_updated_at, timer
+            """SELECT score_1, score_2, sport_path, period_scores_json, named_scores_json,
+                      is_live, last_updated_at, timer
                  FROM events WHERE event_id = %s""",
             (b["event_id"],),
         )
         ev = cursor.fetchone()
         if ev is None:
             continue  # archived — settle_live_bets uses finished_bets / finished_events
-        if is_fast_format_sport_path(ev["sport_path"] or ""):
+        sport_path = ev["sport_path"] or ""
+        if is_fast_format_sport_path(sport_path):
             continue  # ungradable compressed sim — full-archive path voids it
 
         if latest_scrape_ts is None:
             latest_scrape_ts = _latest_live_scrape_ts(cursor)
         feed_active = _feed_active(bool(ev["is_live"]), ev.get("last_updated_at"), latest_scrape_ts)
-        period_scores = _merge_period_scores(
-            _parse_period_scores_json(ev["period_scores_json"]), ev.get("timer"),
+        named = _parse_named_scores_json(ev.get("named_scores_json"))
+        period_scores = _best_period_scores(
+            _parse_period_scores_json(ev["period_scores_json"]),
+            ev.get("timer"),
+            named,
+            sport_path,
         )
         if not _period_ready_for_settlement(
-            feed_active, ordinal, period_scores, ev["sport_path"] or "",
+            feed_active, ordinal, period_scores, sport_path,
         ):
-            continue
-
-        is_win, is_push = resolve_outcome(
-            b["factor_id"], b["label"] or "", b["parameter"], ev["score_1"], ev["score_2"],
-            market_prefix=prefix, sport_path=ev["sport_path"] or "", period_scores=period_scores,
-        )
-        if is_win is None and not is_push:
-            continue
+            if feed_active or not _stale_past_results_wait(ev.get("last_updated_at"), timestamp_str):
+                continue
+            is_win, is_push = None, False
+        else:
+            is_win, is_push = resolve_outcome(
+                b["factor_id"], b["label"] or "", b["parameter"], ev["score_1"], ev["score_2"],
+                market_prefix=prefix, sport_path=sport_path, period_scores=period_scores,
+                named_scores=named,
+            )
+            if is_win is None and not is_push:
+                continue
 
         outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
         messages.extend(msgs)

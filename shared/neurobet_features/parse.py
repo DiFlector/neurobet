@@ -13,8 +13,8 @@ from typing import Any, NamedTuple, Optional
 _TIMER_MMSS_RE = re.compile(r"^(\d{1,3}):([0-5]\d)$")
 _TIMER_PLUS_RE = re.compile(r"^(\d{1,3})\+(\d{1,2})'?$")
 _TIMER_MIN_RE = re.compile(r"^(\d{1,3})'$")
-# "12-10", "7:9", "7-9*" — pairs inside a free-text timer.
-_SCORE_PAIR_RE = re.compile(r"(\d+)\s*[-:]\s*(\d+)\*?")
+# "12-10", "7:9", "7-9*", "11*-10" — pairs inside a free-text timer.
+_SCORE_PAIR_RE = re.compile(r"(\d+)\s*\*?\s*[-:]\s*(\d+)\s*\*?")
 # "1-й сет" / "2-й период" / "3-я четверть". Trailing unit required so
 # "1-я карта" does not parse as a period (see backend resolve_outcome).
 _PERIOD_ORDINAL_RE = re.compile(
