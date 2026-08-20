@@ -1,7 +1,9 @@
 import copy
+import json
 import random
 import os
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 import torch
@@ -35,6 +37,9 @@ MARKET_WEIGHT_FLOOR = float(os.getenv("NEURALBET_MARKET_WEIGHT_FLOOR", "0.5"))
 
 PYTORCH_WEIGHTS_PATH = os.path.join(MODEL_DIR, "pytorch_gru.pt")
 LIGHTGBM_MODEL_PATH = os.path.join(MODEL_DIR, "lightgbm_model.txt")
+LIGHTGBM_META_PATH = os.path.join(MODEL_DIR, "lightgbm_meta.json")
+LGB_SEED = int(os.getenv("NEURALBET_LGB_SEED", "42"))
+LGB_BRIER_TOLERANCE = float(os.getenv("NEURALBET_LGB_BRIER_TOLERANCE", "0.001"))
 
 # Hardware has headroom, so the sequence encoder is sized generously: two GRU layers,
 # 64 hidden units. (Was 1 layer / 32 units when the only signal it saw was the odds
@@ -274,6 +279,9 @@ class NeuralBetEnsemble:
         # predict_single() falls back to the odds-implied heuristic.
         self.lgb_model: Any = None
         self.lgb_trained = False
+        self.lgb_last_val_brier: Optional[float] = None
+        self.lgb_last_accepted_at: Optional[str] = None
+        self.lgb_newest_finished_at: Optional[str] = None
         # Last val_loss on an *accepted* checkpoint — floor gate compares against this.
         self.last_accepted_val_loss: Optional[float] = None
         # Cold-start streams many chunks as one global epoch. This snapshot is the
@@ -300,7 +308,7 @@ class NeuralBetEnsemble:
         instead of jumping straight into the online 10k fine-tune loop.
         """
         self._reset_state()
-        for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH):
+        for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH, LIGHTGBM_META_PATH):
             try:
                 if os.path.exists(path):
                     os.remove(path)
@@ -658,6 +666,7 @@ class NeuralBetEnsemble:
                 else:
                     self.lgb_model = booster
                     self.lgb_trained = True
+                    self._load_lgb_meta()
                     logger.info(f"Successfully loaded LightGBM model from {LIGHTGBM_MODEL_PATH}")
         except Exception as e:
             logger.error(f"Error loading LightGBM model: {e}")
@@ -769,7 +778,53 @@ class NeuralBetEnsemble:
             ))
         return results
 
-    def train_lightgbm(self, rows: List[Dict[str, Any]], val_rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def _load_lgb_meta(self) -> None:
+        meta: Dict[str, Any] = {}
+        if os.path.exists(LIGHTGBM_META_PATH):
+            try:
+                with open(LIGHTGBM_META_PATH, "r", encoding="utf-8") as f:
+                    meta = json.load(f) or {}
+            except Exception as e:
+                logger.warning(f"Could not read LightGBM meta {LIGHTGBM_META_PATH}: {e}")
+        brier = meta.get("val_brier")
+        self.lgb_last_val_brier = float(brier) if brier is not None else None
+        self.lgb_last_accepted_at = meta.get("accepted_at")
+        self.lgb_newest_finished_at = meta.get("newest_finished_at")
+        if self.lgb_trained and not self.lgb_last_accepted_at and os.path.exists(LIGHTGBM_MODEL_PATH):
+            ts = datetime.fromtimestamp(os.path.getmtime(LIGHTGBM_MODEL_PATH), tz=timezone.utc)
+            self.lgb_last_accepted_at = ts.isoformat()
+            if not self.lgb_newest_finished_at:
+                self.lgb_newest_finished_at = self.lgb_last_accepted_at
+            self._save_lgb_meta()
+
+    def _save_lgb_meta(self) -> None:
+        try:
+            os.makedirs(MODEL_DIR, exist_ok=True)
+            payload = {
+                "val_brier": self.lgb_last_val_brier,
+                "accepted_at": self.lgb_last_accepted_at,
+                "newest_finished_at": self.lgb_newest_finished_at,
+                "seed": LGB_SEED,
+            }
+            tmp = LIGHTGBM_META_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            os.replace(tmp, LIGHTGBM_META_PATH)
+        except Exception as e:
+            logger.error(f"Error saving LightGBM meta: {e}")
+
+    @staticmethod
+    def _binary_brier(probs: np.ndarray, labels: np.ndarray) -> float:
+        p = np.clip(probs.astype(np.float64), 0.0, 1.0)
+        y = labels.astype(np.float64)
+        return float(np.mean((p - y) ** 2))
+
+    def train_lightgbm(
+        self,
+        rows: List[Dict[str, Any]],
+        val_rows: Optional[List[Dict[str, Any]]] = None,
+        newest_finished_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Fits a real binary GBDT classifier on resolved bets: given the odds trajectory
         shape (drop ratio, volatility), sample count, market type and score state at the
@@ -777,10 +832,14 @@ class NeuralBetEnsemble:
         must already be leak-free (score_diff + coefficient as they stood at the cutoff,
         not the final match state — see pipeline.py) and time-split (val_rows strictly
         later than rows) so the reported accuracy means something.
+
+        Cutoffs are deterministic (mode=val) so the same 40k archive rows rebuild the
+        same booster. A candidate is kept only if val Brier is not worse than the
+        live booster (plus a small tolerance).
         """
         usable = []
         for r in rows:
-            view = r if r.get("step_pairs") else build_model_input(r, mode="train")
+            view = r if r.get("step_pairs") else build_model_input(r, mode="val")
             if view is None or view.get("is_win") is None:
                 continue
             usable.append(view)
@@ -805,7 +864,7 @@ class NeuralBetEnsemble:
         valid_names = ["train"]
         usable_val = []
         for r in (val_rows or []):
-            view = r if r.get("step_pairs") else build_model_input(r, mode="train")
+            view = r if r.get("step_pairs") else build_model_input(r, mode="val")
             if view is None or view.get("is_win") is None:
                 continue
             usable_val.append(view)
@@ -819,6 +878,8 @@ class NeuralBetEnsemble:
             )
             valid_sets.append(val_data)
             valid_names.append("val")
+        else:
+            X_val, y_val = X_arr, y_arr
 
         params = {
             "objective": "binary",
@@ -827,6 +888,12 @@ class NeuralBetEnsemble:
             "num_leaves": 15,
             "learning_rate": 0.05,
             "min_data_in_leaf": 10,
+            "seed": LGB_SEED,
+            "feature_fraction_seed": LGB_SEED,
+            "bagging_seed": LGB_SEED,
+            "data_random_seed": LGB_SEED,
+            "deterministic": True,
+            "force_row_wise": True,
         }
         callbacks = [lgb.log_evaluation(period=0)]
         if len(valid_sets) > 1:
@@ -836,16 +903,53 @@ class NeuralBetEnsemble:
             valid_sets=valid_sets, valid_names=valid_names, callbacks=callbacks,
         )
 
-        # Report accuracy on the held-out split when we have one — a train-set accuracy
-        # number is not a meaningful "is this model any good" metric.
-        eval_X, eval_y = (X_val, y_val) if len(valid_sets) > 1 else (X_arr, y_arr)
-        preds = booster.predict(eval_X, num_iteration=booster.best_iteration or None)
-        pred_labels = [1.0 if p >= 0.5 else 0.0 for p in preds]
-        accuracy = sum(1 for p, t in zip(pred_labels, eval_y) if p == t) / len(eval_y)
-        eval_split = "val" if len(valid_sets) > 1 else "train"
+        eval_split = "val" if len(usable_val) >= 20 else "train"
+        new_probs = booster.predict(X_val, num_iteration=booster.best_iteration or None)
+        new_brier = self._binary_brier(np.asarray(new_probs), y_val)
+        pred_labels = [1.0 if p >= 0.5 else 0.0 for p in new_probs]
+        accuracy = sum(1 for p, t in zip(pred_labels, y_val) if p == t) / len(y_val)
+
+        previous_brier = None
+        if self.lgb_trained and self.lgb_model is not None and len(X_val) >= 20:
+            try:
+                old_probs = self.lgb_model.predict(X_val, num_iteration=self.lgb_model.best_iteration or None)
+                previous_brier = self._binary_brier(np.asarray(old_probs), y_val)
+            except Exception as e:
+                logger.warning(f"Could not score live LightGBM booster on val: {e}")
+                previous_brier = self.lgb_last_val_brier
+        elif self.lgb_last_val_brier is not None:
+            previous_brier = self.lgb_last_val_brier
+
+        accepted = True
+        reject_reason = None
+        if previous_brier is not None and new_brier > previous_brier + LGB_BRIER_TOLERANCE:
+            accepted = False
+            reject_reason = (
+                f"val Brier {new_brier:.4f} > live {previous_brier:.4f}+{LGB_BRIER_TOLERANCE}"
+            )
+
+        importance = dict(zip(LGB_FEATURE_NAMES, [int(v) for v in booster.feature_importance()]))
+        result = {
+            "trained": True,
+            "accepted": accepted,
+            "reject_reason": reject_reason,
+            "samples": len(usable),
+            "val_samples": len(usable_val),
+            "eval_split": eval_split,
+            "train_accuracy": round(accuracy * 100.0, 1),
+            "val_brier": round(new_brier, 4),
+            "previous_val_brier": round(previous_brier, 4) if previous_brier is not None else None,
+            "feature_importance": importance,
+        }
+        if not accepted:
+            return result
 
         self.lgb_model = booster
         self.lgb_trained = True
+        self.lgb_last_val_brier = new_brier
+        self.lgb_last_accepted_at = datetime.now(timezone.utc).isoformat()
+        if newest_finished_at:
+            self.lgb_newest_finished_at = str(newest_finished_at)
 
         try:
             os.makedirs(MODEL_DIR, exist_ok=True)
@@ -853,17 +957,8 @@ class NeuralBetEnsemble:
             logger.info(f"Saved LightGBM model checkpoint to {LIGHTGBM_MODEL_PATH}")
         except Exception as e:
             logger.error(f"Error saving LightGBM model: {e}")
-
-        importance = dict(zip(LGB_FEATURE_NAMES, [int(v) for v in booster.feature_importance()]))
-
-        return {
-            "trained": True,
-            "samples": len(usable),
-            "val_samples": len(usable_val),
-            "eval_split": eval_split,
-            "train_accuracy": round(accuracy * 100.0, 1),
-            "feature_importance": importance,
-        }
+        self._save_lgb_meta()
+        return result
 
     # Grid-search candidates for tune_ensemble(). blend_weight/market_weight now search
     # a 2D grid together (w_py + w_market <= 1, LightGBM gets the remainder) — coarser

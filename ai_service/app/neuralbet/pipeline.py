@@ -165,6 +165,8 @@ VAL_FRACTION = 0.2
 # over.
 LGB_REFIT_EVERY_CYCLES = int(os.getenv("NEURALBET_LGB_REFIT_EVERY_CYCLES", "20"))
 LGB_TRAIN_LIMIT = int(os.getenv("NEURALBET_LGB_TRAIN_LIMIT", "40000"))
+LGB_MIN_FRESH_SAMPLES = int(os.getenv("NEURALBET_LGB_MIN_FRESH_SAMPLES", "500"))
+LGB_MAX_AGE_HOURS = float(os.getenv("NEURALBET_LGB_MAX_AGE_HOURS", "1"))
 
 # Online-training and ensemble-tuning cadence, in scrape cycles (~15s apart). Both used
 # to run every single cycle — for training that meant a gradient step on whatever
@@ -440,7 +442,9 @@ def reset_neural_network() -> dict[str, Any]:
     the val_loss chart and the 1800 ₽ live bank would still describe the discarded
     model. The archive of resolved matches stays: that's the expensive, slow-to-rebuild
     part. Runs under _engine_lock; _cycle_count goes to 0 so the next inference cycle
-    is treated as cycle 1 (immediate LightGBM refit + training + tune). Starts a
+    is treated as cycle 1 (training + tune). LightGBM refits only when there is a new
+    booster gap, ≥NEURALBET_LGB_MIN_FRESH_SAMPLES new resolved rows, or the last
+    accepted booster is older than NEURALBET_LGB_MAX_AGE_HOURS. Starts a
     cold-start walk of the whole archive (from-scratch LR, checkpoint gate off)
     instead of jumping into the online 10k fine-tune loop.
     """
@@ -1425,6 +1429,50 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
     return samples
 
 
+def _parse_lgb_ts(raw: Any) -> datetime | None:
+    if raw is None:
+        return None
+    try:
+        text = str(raw).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _lgb_should_refit(f_cursor) -> tuple[bool, str]:
+    """Skip a full 40k refit unless the archive moved or the booster is stale."""
+    if not ensemble_engine.lgb_trained:
+        return True, "no booster on disk"
+    accepted = _parse_lgb_ts(ensemble_engine.lgb_last_accepted_at)
+    now = datetime.now(timezone.utc)
+    age_h = ((now - accepted.astimezone(timezone.utc)).total_seconds() / 3600.0) if accepted else 999.0
+    last_ts = ensemble_engine.lgb_newest_finished_at
+    new_count = 0
+    if last_ts:
+        sports, factors = universe_sql_params()
+        f_cursor.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM finished_bets h
+            JOIN finished_events f ON h.event_id = f.event_id
+            WHERE h.is_win IS NOT NULL
+              AND h.finished_at > %s
+              {universe_sql("f", "h")}
+            """,
+            [last_ts, sports, factors],
+        )
+        row = f_cursor.fetchone()
+        new_count = int((row["c"] if row else 0) or 0)
+    if new_count >= LGB_MIN_FRESH_SAMPLES:
+        return True, f"{new_count} new resolved since last accept (need {LGB_MIN_FRESH_SAMPLES})"
+    if age_h >= LGB_MAX_AGE_HOURS:
+        return True, f"booster age {age_h:.1f}h ≥ {LGB_MAX_AGE_HOURS}h"
+    return False, f"{new_count} new resolved, booster age {age_h:.1f}h"
+
+
 def _refresh_team_form_cache(f_cursor) -> None:
     """Rolling player form — refreshed with LightGBM refit, not every scrape."""
     try:
@@ -2087,7 +2135,10 @@ def _run_neuralbet_inference_and_training_locked(
     is_lgb_cycle = (
         False
         if cold_start_active
-        else (_cycle_count == 1 or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0)
+        else (
+            ((not ensemble_engine.lgb_trained) and _cycle_count == 1)
+            or _cycle_count % LGB_REFIT_EVERY_CYCLES == 0
+        )
     )
 
     gru_frozen = (
@@ -2164,27 +2215,32 @@ def _run_neuralbet_inference_and_training_locked(
                     f_cursor, val_event_ids
                 )
         if is_lgb_cycle:
-            _refresh_team_form_cache(f_cursor)
-            f_cursor.execute(
-                f"""
-                {_TRAIN_ROW_SELECT}
-                  AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
-                {universe_sql("f", "h")}
-                ORDER BY h.finished_at DESC
-                LIMIT %s
-            """,
-                (
-                    list(val_event_ids) if val_event_ids else None,
-                    list(val_event_ids) if val_event_ids else [],
-                    *universe_sql_params(),
-                    LGB_TRAIN_LIMIT,
-                ),
-            )
-            lgb_rows = [
-                s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
-                if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
-            ]
-            lgb_val_rows = val_samples
+            should_lgb, lgb_reason = _lgb_should_refit(f_cursor)
+            if not should_lgb:
+                add_ai_log("TRAINING", f"LightGBM refit skipped — {lgb_reason}.")
+            else:
+                add_ai_log("TRAINING", f"LightGBM refit starting — {lgb_reason}.")
+                _refresh_team_form_cache(f_cursor)
+                f_cursor.execute(
+                    f"""
+                    {_TRAIN_ROW_SELECT}
+                      AND (%s::bigint[] IS NULL OR h.event_id != ALL(%s))
+                    {universe_sql("f", "h")}
+                    ORDER BY h.finished_at DESC
+                    LIMIT %s
+                """,
+                    (
+                        list(val_event_ids) if val_event_ids else None,
+                        list(val_event_ids) if val_event_ids else [],
+                        *universe_sql_params(),
+                        LGB_TRAIN_LIMIT,
+                    ),
+                )
+                lgb_rows = [
+                    s for s in (_row_to_sample(r) for r in f_cursor.fetchall())
+                    if in_train_universe(s["sport_path"], s["factor_id"], s.get("parameter"))
+                ]
+                lgb_val_rows = val_samples
 
         _untrack_conn(f_conn)
         release_connection(f_conn)
@@ -2622,8 +2678,17 @@ def _run_neuralbet_inference_and_training_locked(
         }
 
     if lgb_rows:
-        lgb_metrics = ensemble_engine.train_lightgbm(lgb_rows, val_rows=lgb_val_rows)
-        if lgb_metrics.get("trained"):
+        newest_finished = None
+        for sample in lgb_rows:
+            ts = sample.get("finished_at")
+            if ts is None:
+                continue
+            if newest_finished is None or str(ts) > str(newest_finished):
+                newest_finished = ts
+        lgb_metrics = ensemble_engine.train_lightgbm(
+            lgb_rows, val_rows=lgb_val_rows, newest_finished_at=str(newest_finished) if newest_finished else None,
+        )
+        if lgb_metrics.get("trained") and lgb_metrics.get("accepted"):
             top_features = sorted(
                 lgb_metrics["feature_importance"].items(),
                 key=lambda kv: kv[1],
@@ -2634,8 +2699,17 @@ def _run_neuralbet_inference_and_training_locked(
             )
             add_ai_log(
                 "TRAINING",
-                f"LightGBM refit on {lgb_metrics['samples']} resolved bets — "
-                f"{lgb_metrics['eval_split']}_accuracy {lgb_metrics['train_accuracy']:.1f}%. Top features: {top_features_str}.",
+                f"LightGBM refit accepted on {lgb_metrics['samples']} resolved bets — "
+                f"{lgb_metrics['eval_split']}_accuracy {lgb_metrics['train_accuracy']:.1f}%, "
+                f"val Brier {lgb_metrics.get('val_brier')} "
+                f"(was {lgb_metrics.get('previous_val_brier')}). Top features: {top_features_str}.",
+            )
+        elif lgb_metrics.get("trained"):
+            add_ai_log(
+                "TRAINING",
+                "LightGBM candidate rejected — live booster kept. "
+                + str(lgb_metrics.get("reject_reason") or "val Brier worse"),
+                level="WARNING",
             )
         else:
             add_ai_log(

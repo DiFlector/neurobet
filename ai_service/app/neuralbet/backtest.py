@@ -895,6 +895,9 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             r for r in records
             if r["event_id"] in hold_events and int(r.get("trained_count") or 0) == 0
         ]
+        oos_by_market_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for rec in oos_records:
+            oos_by_market_groups.setdefault(rec["market_label"], []).append(rec)
         oos_ids = {id(r) for r in oos_records}
         in_sample_records = [r for r in records if id(r) not in oos_ids]
 
@@ -936,6 +939,10 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
             "walk_forward_meta": walk_forward_meta,
             "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
+            "oos_by_market": sorted(
+                [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
+                key=lambda x: -x["evaluated"],
+            ) if oos_by_market_groups else None,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
                 key=lambda x: -x["evaluated"],

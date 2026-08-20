@@ -303,6 +303,17 @@ def _build_flags(
             "message": "LightGBM team hash features disabled (ablation mode)",
         })
 
+    for row in result.get("oos_by_market") or []:
+        stake = ((row.get("stake_policy") or {}).get("current")) or {}
+        bets = int(stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets") or 0)
+        roi = stake.get("roi_pct")
+        if row.get("market") == "total_under" and bets >= 10 and roi is not None and float(roi) < 0:
+            flags.append({
+                "severity": "warning",
+                "code": "oos_total_under_negative",
+                "message": f"OOS total_under: ROI {roi}% on {bets} bets (CI lo {stake.get('roi_pct_lo')})",
+            })
+
     if policy_ablation := result.get("policy_ablation_oos"):
         best = max(
             policy_ablation.items(),
@@ -399,6 +410,19 @@ def build_agent_review(
         "head_alignment": alignment,
         "by_sport": _compact_by_sport(result),
         "by_market": _compact_by_market(result),
+        "oos_by_market": [
+            {
+                "market": row.get("market"),
+                "evaluated": row.get("evaluated"),
+                "bets": (_stake_current(row).get("flat_bets")
+                         if _stake_current(row).get("flat_bets") is not None
+                         else _stake_current(row).get("bets")),
+                "roi_pct": _stake_current(row).get("roi_pct"),
+                "roi_pct_lo": _stake_current(row).get("roi_pct_lo"),
+                "brier": _prob_current(row).get("brier"),
+            }
+            for row in (result.get("oos_by_market") or [])
+        ],
         "delta_vs_previous": delta,
         "policy_ablation_oos": policy_ablation,
         "walk_forward_meta": result.get("walk_forward_meta"),
