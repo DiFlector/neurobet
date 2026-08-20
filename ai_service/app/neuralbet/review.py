@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from neurobet_filters import MIN_BET_COEFF, MIN_BET_EDGE_PCT, MAX_BET_COEFF
 
-from app.neuralbet.backtest import evaluate_quality_gate
+from app.neuralbet.quality_gate import evaluate_quality_gate
 
 
 def _quality_gate(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,7 +227,7 @@ def _delta_vs_previous(result: Dict[str, Any], history: List[Dict[str, Any]]) ->
 
 
 def _samples_comparable(a: Optional[int], b: Optional[int]) -> bool:
-    from app.neuralbet.backtest import QUALITY_GATE_SAMPLE_TOLERANCE
+    from app.neuralbet.quality_gate import QUALITY_GATE_SAMPLE_TOLERANCE
 
     if a is None or b is None or a <= 0 or b <= 0:
         return False

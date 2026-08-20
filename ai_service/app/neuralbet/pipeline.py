@@ -852,7 +852,8 @@ def get_live_quality_gate() -> dict[str, Any]:
     on). Exposed via training-health so the admin panel can show the gate without
     waiting for an in-page backtest run.
     """
-    from app.neuralbet.backtest import evaluate_quality_gate, get_backtest_history, get_latest_backtest
+    from app.neuralbet.backtest import get_backtest_history, get_latest_backtest
+    from app.neuralbet.quality_gate import evaluate_quality_gate
 
     latest = get_latest_backtest()
     if not latest:

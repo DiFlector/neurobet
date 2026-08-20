@@ -131,6 +131,9 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - Per-sport `decision_threshold`; `NEURALBET_LIVE_STAKE_SPORTS` (default: НТ).
 - `trained_count` при rollback; GRU cooldown после `CHECKPOINT_REJECT_STREAK_ALERT=10` с probe раз в `CHECKPOINT_REJECT_PROBE_EVERY_CYCLES` (default 20).
 - `agent_review` + `quality_gate` в JSON бэктestа; `get_backtest_review` MCP.
+- Consecutive gate: история считается по **core-метрикам** (не по итоговому
+  `quality_gate.pass`), иначе серия 1<2 никогда не закрывается; live re-eval
+  пропускает тот же `generated_at` в history.
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
 
@@ -190,7 +193,7 @@ Env: `NEURALBET_LIVE_STAKE_SPORTS=*` | `настольный теннис` | с�
 | Область | Путь |
 | :--- | :--- |
 | Live gates, sports, markets | `shared/neurobet_filters/__init__.py`, `.env` |
-| Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
+| Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `quality_gate.py`, `review.py` |
 | Обучение, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |
 | Фичи | `shared/neurobet_features/` |
