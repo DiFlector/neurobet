@@ -77,6 +77,7 @@ export default function AdminPage() {
   })
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
+  const [llmDigest, setLlmDigest] = useState<any>(null)
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
@@ -326,6 +327,18 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchLlmDigest = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/llm-digest`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setLlmDigest(data)
+      }
+    } catch (err) {
+      // Ignore — LLM digest is optional
+    }
+  }, [API_BASE])
+
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
@@ -496,6 +509,7 @@ export default function AdminPage() {
     fetchBacktestHistory()
     fetchTrainingHealth()
     fetchTrainingRuns()
+    fetchLlmDigest()
 
     const interval = setInterval(() => {
       fetchAILogs()
@@ -514,14 +528,16 @@ export default function AdminPage() {
     // Training passes fire more often than backtests (every couple of minutes when
     // data allows) but far less often than logs/stats — a middle-ground interval.
     const trainingRunsInterval = setInterval(fetchTrainingRuns, 15000)
+    const digestInterval = setInterval(fetchLlmDigest, 60000)
 
     return () => {
       clearInterval(interval)
       clearInterval(statsInterval)
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
+      clearInterval(digestInterval)
     }
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns, fetchLlmDigest])
 
   const toggleAISetting = async (key: "ai_enabled" | "training_enabled", currentValue: boolean) => {
     const newValue = !currentValue
@@ -1157,6 +1173,16 @@ export default function AdminPage() {
                       ))}
                     </ul>
                   )}
+                  {backtestResult.agent_review.llm_narrative && (
+                    <div className="mt-2 rounded-lg border border-[#0984e3]/30 bg-[#0984e3]/10 px-3 py-2.5">
+                      <div className="text-[10px] text-[#74b9ff] uppercase font-mono mb-1">
+                        DeepSeek — резюме бэктеста
+                      </div>
+                      <p className="text-xs text-neutral-200 leading-relaxed whitespace-pre-wrap">
+                        {backtestResult.agent_review.llm_narrative}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1426,6 +1452,41 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* DeepSeek LLM Digest */}
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0984e3]/15 border border-[#0984e3]/30 flex items-center justify-center text-[#74b9ff] shrink-0">
+              <BrainCircuit className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">DeepSeek — дайджест модели</h3>
+              <p className="text-xs text-neutral-400">
+                Периодическое резюме TRAINING/BANKROLL-логов и training health. Не влияет на ставки.
+              </p>
+            </div>
+          </div>
+          {!llmDigest?.latest ? (
+            <div className="text-xs text-neutral-500 font-mono rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3">
+              {llmDigest?.enabled === false
+                ? "LLM выключен (NEURALBET_LLM_ENABLED=0) или нет DEEPSEEK_TOKEN."
+                : "Дайджест ещё не сформирован — появится после ближайшего cron-прогона."}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-[#0984e3]/30 bg-[#0984e3]/10 px-3.5 py-3 space-y-2">
+              <div className="text-[10px] text-[#74b9ff] uppercase font-mono">
+                {llmDigest.latest.generated_at}
+                {llmDigest.latest.health_status ? ` · health=${llmDigest.latest.health_status}` : ""}
+                {llmDigest.latest.live_balance != null
+                  ? ` · live balance ${Number(llmDigest.latest.live_balance).toFixed(1)}`
+                  : ""}
+              </div>
+              <p className="text-xs text-neutral-200 leading-relaxed whitespace-pre-wrap">
+                {llmDigest.latest.text}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Live AI Logs Console */}

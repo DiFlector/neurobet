@@ -993,6 +993,15 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         from app.neuralbet.review import build_agent_review
 
         result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
+        try:
+            from app.deepseek.insights import build_backtest_narrative, llm_is_enabled
+
+            if llm_is_enabled():
+                narrative = build_backtest_narrative(result["agent_review"])
+                if narrative:
+                    result["agent_review"]["llm_narrative"] = narrative
+        except Exception as e:
+            logger.warning("Backtest LLM narrative skipped: %s", e)
 
         save_and_record(result)
         set_backtest_progress(

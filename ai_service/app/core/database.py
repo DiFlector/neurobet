@@ -43,16 +43,25 @@ def release_connection(conn):
 
 
 def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
+    import json
+
     conn = get_connection()
     cursor = conn.cursor()
 
     for p in predictions:
+        llm_context = p.get("llm_context")
+        if llm_context is not None and not isinstance(llm_context, str):
+            try:
+                llm_context = json.dumps(llm_context, ensure_ascii=False)
+            except Exception:
+                llm_context = None
         cursor.execute("""
             INSERT INTO ai_predictions (
                 event_id, factor_id, market_prefix, parameter,
                 win_probability, error_rate, expected_roi,
-                lightgbm_score, pytorch_score, predicted_win, decision_confidence, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                lightgbm_score, pytorch_score, predicted_win, decision_confidence,
+                llm_rationale, llm_context, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO UPDATE SET
                 win_probability = excluded.win_probability,
                 error_rate = excluded.error_rate,
@@ -61,12 +70,15 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
                 pytorch_score = excluded.pytorch_score,
                 predicted_win = excluded.predicted_win,
                 decision_confidence = excluded.decision_confidence,
+                llm_rationale = COALESCE(excluded.llm_rationale, ai_predictions.llm_rationale),
+                llm_context = COALESCE(excluded.llm_context, ai_predictions.llm_context),
                 updated_at = excluded.updated_at;
         """, (
             p["event_id"], p["factor_id"], p.get("market_prefix", ""), str(p.get("parameter", "")),
             p["win_probability"], p["error_rate"], p["expected_roi"],
             p.get("lightgbm_score", 0.0), p.get("pytorch_score", 0.0),
-            p.get("predicted_win"), p.get("decision_confidence"), timestamp_str
+            p.get("predicted_win"), p.get("decision_confidence"),
+            p.get("llm_rationale"), llm_context, timestamp_str
         ))
 
     conn.commit()

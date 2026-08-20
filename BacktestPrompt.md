@@ -162,39 +162,26 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 
 ## 7. Live по спортам (`NEURALBET_LIVE_STAKE_SPORTS`)
 
-**Default: только «настольный теннис»** в live. Inference/обучение/бэктest — на всех `ALLOWED_SPORTS`.
+**Live sports:** сейчас `NEURALBET_LIVE_STAKE_SPORTS=*` при **рынках = totals only**.
+Inference/обучение и так на всём `ALLOWED_SPORTS`; `*` влияет только на stake / «win» UI / бэктест «would bet».
 
-| Спорт | Ориентир (band 1.5–2.0) |
+| Спорт | Ориентир |
 | :--- | :--- |
-| **Настольный теннис** | единственный карман с объёмом ставок |
-| Баскетбол, волейбол, теннис | обычно ROI < 0 или Brier ≥ market |
-| Футбол | мало ставок (высокий per-sport threshold) |
+| **Настольный теннис** | historically единственный карман с объёмом; overall CI lo > 0 после totals-only |
+| Баскетбол, волейбол, теннис, футбол | stake-ROI по тоталам **не был виден** при NT-only листе — смотреть свежий `by_sport` после `*` |
 
-Env: `shared/neurobet_filters/__init__.py` — `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис` | `*` | список.
+Env: `NEURALBET_LIVE_STAKE_SPORTS=*` | `настольный теннис` | список.
 Рынки: `NEURALBET_LIVE_STAKE_MARKETS=totals` (default) | `*` | `total_over,total_under,w1,…`.
 
-При ревью: расширять live-лист только при **устойчивых** цифрах `by_sport` + walk-forward; не открывать все спорты «наугад». То же для рынков: возвращать w1/w2 в live только при устойчивом OOS ROI + CI lo > 0.
+Критерий отката: если после `*` walk_forward ROI/CI lo **хуже**, чем на NT-only totals — вернуть `настольный теннис`.
+Не возвращать w1/w2 в live без устойчивого OOS. Gate не снимать, пока WF CI lo ≤ 0.
 
-### Отложено (2026-08-20) — не расширять live-спорты пока
+### Сделано (2026-08-20) — totals-only, затем sports=`*`
 
-Решение: **оставить** `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис`. Не открывать баскетбол/футбол/волейбол/теннис «потому что учимся на всём universe».
-
-Почему (бэктест ~12:06 МСК):
-- В stake-политике ставки только у НТ (остальные спорты `bets=0` из‑за live-листа — их ROI как stake не виден).
-- Brier лучше рынка у всех спортов = калибровка, **не** ставочный edge.
-- Даже НТ: quality gate fail (`walk_forward` CI lo ≤ 0). Расширение live при блокирующем gate бессмысленно.
-
-Вернуться, когда:
-1. Gate pass на НТ: `walk_forward` ROI > 0, **`roi_pct_lo` > 0**, ≥2 consecutive passes.
-2. Диагностический прогон (без постоянного открытия live): временно `NEURALBET_LIVE_STAKE_SPORTS=*` или один кандидат → бэктест → смотреть `by_sport` + walk-forward.
-3. Открывать спорт только при устойчивом ROI + CI lo > 0 на OOS; иначе вернуть env к НТ.
-
-### Сделано (2026-08-20) — live только тоталы + ниже LR
-
-- `NEURALBET_LIVE_STAKE_MARKETS=totals` — w1/w2/draw не ставятся (обучение/inference без изменений).
-  Причина: overall by_market — тоталы ~+11% ROI, w1/w2 отрицательные.
-- `NEURALBET_LEARNING_RATE=5e-5` — меньше best_epoch=1 / checkpoint reject на онлайн-проходах.
-- Не снимать gate и не расширять спорты, пока walk_forward CI lo ≤ 0.
+- `NEURALBET_LIVE_STAKE_MARKETS=totals` — w1/w2/draw не ставятся.
+- `NEURALBET_LEARNING_RATE=5e-5`.
+- `NEURALBET_LIVE_STAKE_SPORTS=*` — диагностическое расширение: при тоталах можно увидеть stake по всем спортам; live money всё ещё за gate (CI lo).
+- Откат к НТ, если `by_sport` / walk_forward после прогона хуже.
 
 ---
 

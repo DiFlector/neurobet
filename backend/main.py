@@ -690,6 +690,22 @@ def admin_training_runs():
     return {"status": "success", "runs": []}
 
 
+def admin_llm_digest():
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/llm-digest")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching LLM digest: {e}")
+    return {"status": "success", "enabled": False, "latest": None, "history": []}
+
+
+@app.get("/api/admin/llm-digest")
+def admin_llm_digest_route():
+    return admin_llm_digest()
+
+
 def _filters_snapshot() -> Dict[str, Any]:
     return {
         "allowed_sports": sorted(ALLOWED_SPORTS),

@@ -1682,7 +1682,9 @@ def get_top_neurobets(
             p.lightgbm_score AS lightgbm_score,
             p.pytorch_score AS pytorch_score,
             p.predicted_win AS predicted_win,
-            p.decision_confidence AS decision_confidence
+            p.decision_confidence AS decision_confidence,
+            p.llm_rationale AS llm_rationale,
+            p.llm_context AS llm_context
         FROM latest_odds l
         JOIN events e ON l.event_id = e.event_id
         JOIN ai_predictions p ON l.event_id = p.event_id

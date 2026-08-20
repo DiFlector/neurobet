@@ -67,8 +67,8 @@ MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
 
 # Live staking only — training/inference/backtest universe stays ALLOWED_SPORTS.
-# Default: table tennis only (only sport with positive backtest ROI on 19.08).
-# Set to * or all to stake every allowed sport again.
+# Default in code: table tennis (safe if env unset). Prod .env may set * while
+# NEURALBET_LIVE_STAKE_MARKETS=totals — see BacktestPrompt §7.
 _LIVE_STAKE_SPORTS_RAW = os.getenv("NEURALBET_LIVE_STAKE_SPORTS", "настольный теннис").strip().lower()
 LIVE_STAKE_SPORTS: frozenset[str] | None = (
     None

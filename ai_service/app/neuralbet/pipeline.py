@@ -1931,6 +1931,9 @@ def _run_neuralbet_inference_and_training_locked(
                 "label": row["label"] or "",
                 "match_name": row["match_name"] or "",
                 "sport": (row["sport_path"] or "").split("/")[0].strip() or None,
+                "team_1": row["team_1"] or "",
+                "team_2": row["team_2"] or "",
+                "score": f"{s1}:{s2}",
             }
         )
 
@@ -2031,6 +2034,7 @@ def _run_neuralbet_inference_and_training_locked(
                         "win_probability": round(calibrated_prob, 1),
                         "expected_roi": expected_roi,
                         "stake_logit": stake_logit,
+                        "decision_confidence": round(decision_prob, 3),
                     }
                 )
 
@@ -2060,6 +2064,30 @@ def _run_neuralbet_inference_and_training_locked(
             f"{sport_part}{market_part}. "
             f"Remaining {len(live_candidates)}.",
         )
+
+    # Optional DeepSeek layer: web-search match context (+ optional veto), then
+    # short rationales. Failures are swallowed inside insights — betting continues.
+    if live_candidates:
+        try:
+            from app.deepseek.insights import (
+                attach_rationales,
+                enrich_candidates_with_llm,
+                match_context_enabled,
+            )
+
+            if match_context_enabled():
+                before = len(live_candidates)
+                live_candidates = enrich_candidates_with_llm(live_candidates)
+                vetoed = before - len(live_candidates)
+                if vetoed:
+                    add_ai_log(
+                        "BANKROLL",
+                        f"LLM veto removed {vetoed} candidate(s); {len(live_candidates)} remain.",
+                        level="WARNING",
+                    )
+            attach_rationales(predictions, live_candidates)
+        except Exception as e:
+            add_ai_log("SYSTEM", f"LLM enrich skipped: {e}", level="WARNING")
 
     if predictions:
         save_ai_predictions(predictions, timestamp_str)

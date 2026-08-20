@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.neuralbet import add_ai_log, run_backtest
+from app.config import LLM_DIGEST_HOURS, LLM_ENABLED
+from app.deepseek.insights import run_llm_digest
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("ai_service_main")
@@ -85,6 +87,19 @@ def run_scheduled_backtest():
         add_ai_log("SYSTEM", f"Scheduled backtest failed: {e}", level="WARNING")
 
 
+def run_scheduled_llm_digest():
+    """Periodic DeepSeek digest of TRAINING/BANKROLL logs + training health."""
+    if not LLM_ENABLED:
+        return
+    try:
+        result = run_llm_digest()
+        if result.get("status") not in ("success", "skipped"):
+            logger.warning("LLM digest returned: %s", result)
+    except Exception as e:
+        logger.error(f"Scheduled LLM digest failed: {e}", exc_info=True)
+        add_ai_log("SYSTEM", f"Scheduled LLM digest failed: {e}", level="WARNING")
+
+
 @app.on_event("startup")
 def startup_event():
     scheduler.add_job(
@@ -95,10 +110,21 @@ def startup_event():
         max_instances=1,
         coalesce=True,
     )
+    digest_hours = max(1.0, float(LLM_DIGEST_HOURS) or 6.0)
+    scheduler.add_job(
+        run_scheduled_llm_digest,
+        "interval",
+        hours=digest_hours,
+        id="scheduled_llm_digest",
+        misfire_grace_time=3600,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     logger.info(
         "Scheduler started! Backtest will run automatically every 30 min "
-        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time)."
+        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time); "
+        f"LLM digest every {digest_hours:g}h (enabled={bool(LLM_ENABLED)})."
     )
     add_ai_log(
         "SYSTEM",

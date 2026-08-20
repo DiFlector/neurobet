@@ -28,6 +28,7 @@ from app.neuralbet import (
 )
 from app.neuralbet import bankroll
 from app.deepseek import test_deepseek_web
+from app.deepseek.insights import get_llm_digest, run_llm_digest
 
 router = APIRouter()
 
@@ -264,3 +265,14 @@ def ask_deepseek(payload: Dict[str, Any] = Body(...)):
     if res.get("status") == "error":
         raise HTTPException(status_code=500, detail=res.get("error"))
     return res
+
+
+@router.get("/llm-digest")
+def llm_digest():
+    return get_llm_digest()
+
+
+@router.post("/llm-digest/run")
+def llm_digest_run():
+    """Manual digest refresh (admin). Same job as the scheduled interval."""
+    return run_llm_digest()

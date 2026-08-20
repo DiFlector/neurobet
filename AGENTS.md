@@ -111,7 +111,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_eval_pack` | Full agent pack: filters, ensemble, latest full backtest JSON, ROI/stats, training health, training runs, bankroll, logs. No new backtest. | Model review / attaching one JSON |
 | `run_eval_pack` | Fresh backtest (default 40000 samples) then the same pack | Judging **current** weights |
 | `get_overview` | Lighter all-in-one: db/ROI/bet-type stats, bankroll, settings, health, backtest history, logs. No ensemble, no full backtest JSON | Quick health check |
-| `get_admin` | Everything the admin panel polls: settings, health, training-run trend, backtest history, DB stats, bankroll, live bets, logs | Admin-page snapshot |
+| `get_admin` | Everything the admin panel polls: settings, health, training-run trend, backtest history, DB stats, bankroll, live bets, logs, LLM digest | Admin-page snapshot |
 | `get_stats` | Everything on «Статистика»: `db_stats`, `bet_type_stats`, `roi_stats` | Stats-page snapshot |
 
 ### Страница «Статистика»
@@ -136,6 +136,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
 | `get_filters` | Live betting gates: allowed sports/factors, live stake sports/markets, coeff band, min EV, min market support |
+| `get_llm_digest` | Latest DeepSeek digest of TRAINING/BANKROLL logs + training health (optional; empty if LLM off) |
 | `get_bankroll` | Live + training accounts |
 | `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
 
@@ -216,6 +217,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | Бэктest, agent_review, quality_gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
 | Обучение, checkpoint, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |
+| DeepSeek LLM (нарратив / дайджест / web-search контекст) | `ai_service/app/deepseek/insights.py`, `.env` (`NEURALBET_LLM_*`) |
 | Фичи | `shared/neurobet_features/` |
 | MCP tools | `backend/mcp_eval.py` |
 | Промпт ревью | `BacktestPrompt.md` |
