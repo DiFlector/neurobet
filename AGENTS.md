@@ -131,7 +131,8 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_training_health` | Overfitting traffic light (`ok` / `warning` / `danger` / `unknown`) + signals |
 | `get_training_runs` | Per-pass metrics for TrainingTrendChart (`val_loss`, `val_guess_rate`, `best_epoch`, …) |
 | `get_backtest_history` | Condensed run trend for QualityTrendChart (not the full per-run JSON) |
-| `get_latest_backtest` | Full latest backtest JSON on disk (`overall`, `by_sport`, `by_coefficient`). No new run |
+| `get_backtest_review` | **Start here for model review**: edge verdict, quality_gate, walk-forward stability, funnel, head-alignment flags, delta vs previous run |
+| `get_latest_backtest` | Full latest backtest JSON on disk (`overall`, `by_sport`, `by_market`, `walk_forward`, `agent_review`). No new run |
 | `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
 | `get_filters` | Live betting gates: allowed sports/factors, coeff band, min EV, min market support |
@@ -144,6 +145,86 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | :--- | :--- |
 | `get_top_neurobets` | Active LIVE predictions (`verdict=win` by default — only what the bot would stake) |
 | `get_neurobets_history` | Judged history (guessed / not guessed / push / pending) + summary |
+
+---
+
+## 🤖 Ревью модели: как пользоваться (обязательно для агента)
+
+Когда пользователь просит **оценить / улучшить / ревью / backtestprompt** (или похожее —
+«посмотри нейросеть», «есть ли edge», «что улучшить в модели», «прогони бэктest»), агент
+**не отвечает из памяти** — сначала собирает данные по протоколу ниже.
+
+**Источник правды по формату ответа и чеклисту:** [`BacktestPrompt.md`](BacktestPrompt.md) —
+прочитать файл целиком в начале такой задачи.
+
+**Cursor rule (дублирует триггеры):** `.cursor/rules/neurobet-model-review.mdc`
+
+### Триггеры (любой из списка → включить протокол)
+
+- Явно: `BacktestPrompt.md`, «backtest prompt», «по backtestprompt»
+- Ревью: «оцени», «посмотри», «улучши модель», «есть ли edge», «как модель», «ревью нейросети»
+- Бэктest: «проверь бэктest», «свежий бэктest», «run eval pack»
+- Здоровье: «training health», «почему gate блокирует», «ROI упал»
+
+### Порядок MCP (NeuroBet eval server)
+
+1. **`get_backtest_review`** — **всегда первым** (сжатый `agent_review`: edge, gate, flags, funnel).
+   Если `review` пустой или нет `agent_review` в JSON — бэктest старый или не запускался;
+   перейти к шагу 2 или попросить пользователя прогнать бэктest.
+2. **`get_training_health`** + **`get_ai_logs`** (`TRAINING`, `BANKROLL`, limit 30–50) —
+   пункты 1–5 из BacktestPrompt (best_epoch, тюнер, val Brier, skipping training, quality gate).
+3. **`get_ensemble`** + **`get_filters`** — текущие веса и live gates.
+4. При необходимости деталей:
+   - **`get_latest_backtest`** — полный JSON (`by_sport`, `by_market`, `walk_forward_folds`, …)
+   - **`get_backtest_history`** — тренд последних прогонов
+   - **`get_eval_pack`** — всё в одном JSON (без нового бэктestа)
+5. **Свежие веса обязательны** → **`run_eval_pack`** или **`run_backtest`** (15–60 с, CPU).
+   Не вызывать без запроса пользователя, если `get_backtest_review` моложе ~6 ч и веса не менялись.
+
+### На что смотреть в `agent_review` (приоритет)
+
+| Поле | Вопрос |
+| :--- | :--- |
+| `summary.edge_verdict` | `likely` / `promising` / `unproven` / `calibration_only` / `none` |
+| `summary.quality_gate_pass` | Можно ли снимать блок live-ставок |
+| `slices.walk_forward` | **OOS-главное**: ROI, `roi_pct_lo`, Brier vs market |
+| `walk_forward_stability` | Сколько фолдов с ROI ≤ 0 |
+| `funnel` | verdict → candidate → final bets |
+| `head_alignment` | decision head vs EV (пункт 9 улучшений) |
+| `flags` | Готовые сигналы — не дублировать вручную |
+| `delta_vs_previous` | Улучшение vs прошлый прогон |
+
+**Не путать:** `overall` ROI может быть оптимистичнее `walk_forward` — для вердикта edge
+ориентир на **walk_forward** (так же настроен `quality_gate` в pipeline).
+
+### Формат ответа пользователю
+
+Как в [`BacktestPrompt.md`](BacktestPrompt.md):
+
+1. Вердикт одним абзацем (улучшается / стоит / деградирует; edge есть / нет).
+2. Конкретика только по находкам (логи + бэктest slices + flags).
+3. Приорitized правки с файлами/env; мелкие — можно сразу; спорные — предложить.
+4. Честно: нет edge — не предлагать бесконечный тюнинг и cold-start без причины.
+
+Отвечать **на русском**, если пользователь пишет по-русски.
+
+### Ключевые файлы для правок
+
+| Область | Файлы |
+| :--- | :--- |
+| Live gates, sports whitelist | `shared/neurobet_filters/__init__.py`, `.env` |
+| Бэктest, agent_review, quality_gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
+| Обучение, checkpoint, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
+| Калибровка | `ai_service/app/neuralbet/calibration.py` |
+| Фичи | `shared/neurobet_features/` |
+| MCP tools | `backend/mcp_eval.py` |
+| Промпт ревью | `BacktestPrompt.md` |
+
+### Чего не предлагать без данных
+
+- Cold-start / reset модели — только если архитектура/loss изменились или пользователь явно просит.
+- Снять `quality_gate` — только если `walk_forward` стабильно pass + `roi_pct_lo` > 0 в нескольких прогонах.
+- Пункты из «Контекст прошлых решений» в BacktestPrompt — уже сделаны.
 
 ---
 

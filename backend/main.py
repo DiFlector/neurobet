@@ -652,6 +652,19 @@ def admin_backtest_latest():
         logger.error(f"Error fetching latest backtest: {e}")
     raise HTTPException(status_code=502, detail="Failed to fetch latest backtest")
 
+
+@app.get("/api/admin/backtest/review")
+def admin_backtest_review():
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/backtest/review")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching backtest review: {e}")
+    raise HTTPException(status_code=502, detail="Failed to fetch backtest review")
+
+
 @app.get("/api/admin/backtest/history")
 def admin_backtest_history():
     try:
@@ -725,9 +738,18 @@ def build_eval_pack(
         sport["bet_types"] = sport["bet_types"][:bet_types_limit]
     snap = _ai_eval_snapshot(training_runs_limit, logs_limit, backtest_runs)
     latest = fresh_backtest if fresh_backtest and fresh_backtest.get("status") == "success" else snap.get("latest_backtest")
+    agent_review = (latest or {}).get("agent_review")
+    if not agent_review and latest:
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                rev = client.get(f"{AI_SERVICE_URL}/backtest/review")
+                if rev.status_code == 200:
+                    agent_review = (rev.json() or {}).get("review")
+        except Exception:
+            pass
     return {
         "kind": "neurobet_eval_pack",
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
         "backtest_ran": bool(fresh_backtest and fresh_backtest.get("status") == "success"),
         "filters": _filters_snapshot(),
@@ -736,6 +758,7 @@ def build_eval_pack(
         "training_health": snap.get("training_health"),
         "training_runs": snap.get("training_runs") or [],
         "latest_backtest": latest,
+        "agent_review": agent_review,
         "backtest_history": snap.get("backtest_history") or [],
         "db_stats": get_db_stats(),
         "bet_type_stats": bt_stats,

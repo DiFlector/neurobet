@@ -1046,6 +1046,34 @@ export default function AdminPage() {
                 {" "}blend_weight {backtestResult.config?.blend_weight} · market_weight {backtestResult.config?.market_weight} · порог {backtestResult.config?.decision_threshold} · макс. кэф {backtestResult.config?.max_bet_coeff}
               </div>
 
+              {backtestResult.agent_review && (
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3 space-y-2">
+                  <div className="text-[10px] text-neutral-400 uppercase font-mono">Agent review</div>
+                  <div className="text-sm text-neutral-200 font-mono">
+                    {backtestResult.agent_review.summary?.one_liner ?? "—"}
+                  </div>
+                  {backtestResult.agent_review.funnel && (
+                    <div className="text-[11px] text-neutral-500 font-mono">
+                      Воронка: {backtestResult.agent_review.funnel.verdict_positive?.toLocaleString()} verdict →{" "}
+                      {backtestResult.agent_review.funnel.stake_candidates} candidate →{" "}
+                      {backtestResult.agent_review.funnel.final_bets} ставок
+                    </div>
+                  )}
+                  {(backtestResult.agent_review.flags?.length ?? 0) > 0 && (
+                    <ul className="text-[11px] font-mono space-y-1">
+                      {backtestResult.agent_review.flags.map((f: any, i: number) => (
+                        <li key={i} className={
+                          f.severity === "block" ? "text-[#ff7675]" :
+                          f.severity === "warning" ? "text-[#fdcb6e]" : "text-neutral-400"
+                        }>
+                          [{f.severity}] {f.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               {backtestResult.quality_gate && (
                 <div className={`rounded-xl border px-3.5 py-3 text-xs font-mono ${
                   backtestResult.quality_gate.pass

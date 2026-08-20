@@ -421,6 +421,7 @@ def _records_from_scored(
             "finished_at": m.get("finished_at"),
             "current_prob": calibrated,
             "current_verdict": current_verdict,
+            "stake_candidate": current_pred,
             "current_pred": current_pred,
             "current_expected_roi": expected_roi,
             "stake_logit": m.get("stake_logit"),
@@ -534,6 +535,7 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         "current": {
             "evaluated": n,
             "accuracy_pct": _guess_accuracy_pct(records, "current_pred"),
+            "verdict_accuracy_pct": _guess_accuracy_pct(records, "current_verdict"),
             "bets": (current_stake or {}).get("bets", 0),
             "roi_pct": (current_stake or {}).get("roi_pct"),
             "brier": (_probability_metrics(records, "current_prob") or {}).get("brier"),
@@ -783,6 +785,10 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             ],
         }
         result["quality_gate"] = evaluate_quality_gate(result)
+        from app.neuralbet.review import build_agent_review
+
+        prior_history = get_backtest_history()
+        result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
 
         save_and_record(result)
         set_backtest_progress(
@@ -829,6 +835,7 @@ def save_and_record(result: Dict[str, Any]) -> None:
             "config": result["config"],
             "overall": result["overall"],
             "quality_gate": result.get("quality_gate"),
+            "agent_review": result.get("agent_review"),
         })
         history = history[:MAX_HISTORY_RUNS]
 

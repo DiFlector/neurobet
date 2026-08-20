@@ -18,6 +18,7 @@ EXPECTED = {
     "get_training_health",
     "get_training_runs",
     "get_backtest_history",
+    "get_backtest_review",
     "get_latest_backtest",
     "run_backtest",
     "get_ensemble",

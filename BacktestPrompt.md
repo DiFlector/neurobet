@@ -1,107 +1,185 @@
-Проект Neurobet, сервис ставок с нейросетью в ai_service/app/neuralbet/
-(GRU + LightGBM + рыночная вероятность в смеси, калибровка по спорту,
-decision-порог, quarter-Kelly, кап кэфа для ставок).
+# BacktestPrompt — ревью NeuroBet (для AI-агента)
 
-Прикладываю свежие выгрузки. Проведи ревью работы нейросети и скажи, что улучшить/изменить.
+NeuroBet: GRU + LightGBM + market blend, калибровка по спорту/кэфу, decision-порог,
+quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 
-Что прикладываю:
-- Смотри через MCP всё статистику.
-
-Что проверить по логам:
-1. best_epoch в проходах обучения — систематически ли ≤2 на батчах, прошедших
-   MIN_TRAIN_SAMPLES (признак заучивания батча). Предложи новое значение порога, если нужно.
-2. Стабильность тюнера: как ходят blend_weight / market_weight / decision_threshold между
-   строками «Ensemble tuned» — сгладились ли скачки, куда сходятся веса. Если market_weight
-   уехал к 1.0 — модель не добавляет сигнала, скажи об этом прямо.
-3. Строка «val Brier ... vs market-only ... (model beats market / market beats model)» —
-   какая доля циклов за выгрузку в пользу модели.
-4. Число вердиктов «выиграет» между соседними циклами — перестало ли скакать в разы.
-5. Частота «Skipping training step — only N samples» — не простаивает ли обучение.
-
-Что проверить по бэктесту (главное):
-6. overall.current vs overall.market_brier — бьёт ли модель рынок по Brier. Это ключевой
-   вопрос «есть ли edge вообще».
-7. ROI по диапазонам кэфа (by_coefficient) — сравни с прошлыми запусками; особенно 1.0–2.0
-   и работает ли кап MAX_BET_COEFF.
-8. current vs historical — стала ли текущая версия модели лучше прежней.
-9. Тренд по history: ROI/точность/Brier от запуска к запуску — растёт, стоит, падает.
-
-Формат ответа:
-- Сначала вердикт одним абзацем: модель улучшается / стоит / деградирует, есть ли edge.
-- Потом конкретика по пунктам — только там, где есть находка, без воды.
-- В конце — приоритизированный список правок с файлами/константами; мелкие вноси сразу,
-  спорные — сначала предложи.
-- Будь честным: если данные говорят, что edge нет и не появляется, скажи прямо, а не
-  предлагай бесконечный тюнинг.
-
-Контекст прошлых решений (не предлагать заново): пол вероятности 12% убран (1/99),
-cost-вес decision-лосса капнут (max 3.0), рыночная вероятность в смеси (market_weight,
-тюнится по Brier), калибровка учитывает кэф, ставки капнуты MAX_BET_COEFF=2.0
-(диапазон 2.0–3.0 давал отрицательный ROI), MIN_BET_COEFF=1.5, MIN_BET_EDGE_PCT=3%,
-MIN_MARKET_SUPPORT=150, тюнер сглажен (EMA 0.3, ≥80 val-ставок, штраф за малую выборку),
-обучение реже (TRAIN_EVERY_CYCLES=20, MIN_TRAIN_SAMPLES=2000, TRAIN_BATCH_TOTAL=10000,
-VAL_BATCH_LIMIT=2000), тюнинг раз в TUNE_EVERY_CYCLES=10, LightGBM 40000 / каждые 20 циклов,
-бэктест в админке (40k) + авто 4 раза в сутки, индикатор переобучения (4 сигнала),
-кнопка «Обнулить нейросеть», per-sport decision_threshold (НТ/баскетбол обычно свои),
-NEUROBET_LIVE_STAKE_SPORTS (live-ставки только на разрешённые спорты, см. ниже),
-NEUROBET_MARKET_WEIGHT_FLOOR=0.5, trained_count бампается даже при rollback чекпоинта,
-GRU пропускается после CHECKPOINT_REJECT_STREAK_ALERT=10, class-mix pinned к archive win-frac.
+> **Агент:** триггеры и порядок MCP — [`AGENTS.md`](AGENTS.md) (§ «🤖 Ревью модели»),
+> `.cursor/rules/neurobet-model-review.mdc`. **Первый вызов:** MCP `get_backtest_review`.
+> Данные пользователь не прикладывает — собирай через MCP сам.
 
 ---
 
-## Терминология: что такое «live»
+## 1. Порядок сбора данных (MCP)
 
-**Live** — это **боевой симulated-банк** (`bankroll.accounts.live`): сюда модель **реально
-предлагает ставки** каждый цикл инференса (~60 с), если `ai_enabled=true`.
+| Шаг | Tool | Зачем |
+| :--- | :--- | :--- |
+| 1 | **`get_backtest_review`** | `agent_review`, `quality_gate`, flags, funnel |
+| 2 | **`get_training_health`** | overfitting traffic light |
+| 3 | **`get_ai_logs`** | `TRAINING`, `BANKROLL`, `INFERENCE` (limit 30–50) |
+| 4 | **`get_ensemble`** + **`get_filters`** | blend/market/threshold, live gates |
+| 5 | **`get_latest_backtest`** | детали: `by_sport`, `by_market`, `walk_forward_folds` |
+| 6 | **`get_backtest_history`** | тренд ROI/Brier/accuracy |
+| 7 | **`run_eval_pack`** / **`run_backtest`** | только если веса менялись, бэктest пустой/устарел (>6 ч), или пользователь просит свежий прогон |
+
+Если `get_backtest_review` вернул `no_data` или нет `agent_review` — нужен rebuild + новый бэктest.
+
+---
+
+## 2. Чеклист: бэктest / `agent_review`
+
+**Главный срез для edge — `walk_forward`**, не `overall`. Quality gate смотрит туда же.
+
+| # | Что проверить | Где |
+| :- | :--- | :--- |
+| B1 | `edge_verdict`, `quality_gate_pass`, `one_liner` | `agent_review.summary` |
+| B2 | ROI, **`roi_pct_lo`**, Brier vs market | `agent_review.slices.walk_forward` → fallback `oos_never_train` |
+| B3 | Сколько фолдов с ROI ≤ 0 | `agent_review.walk_forward_stability` |
+| B4 | Воронка: verdict → candidate → final bets | `agent_review.funnel` |
+| B5 | Decision head vs EV (`head_alignment`) | `agent_review.head_alignment` |
+| B6 | Готовые сигналы — **не дублировать** | `agent_review.flags` |
+| B7 | Δ vs прошлый прогон | `agent_review.delta_vs_previous` |
+| B8 | Brier current vs `market_brier` | `overall` / slices |
+| B9 | ROI по кэфу 1.5–2.0, кап `MAX_BET_COEFF` | `by_coefficient` |
+| B10 | `total_under` vs `total_over` | `by_market` |
+| B11 | По спортам (live-лист) | `by_sport` или `agent_review.by_sport` |
+| B12 | Тренд нескольких прогонов | `get_backtest_history` |
+
+### `edge_verdict` (расшифровка)
+
+| Значение | Смысл |
+| :--- | :--- |
+| `likely` | quality gate pass + устойчивый сигнал |
+| `promising` | Brier < market, ROI > 0, но CI lo ≤ 0 или gate fail |
+| `unproven` | смешанные сигналы |
+| `calibration_only` | калибровка лучше рынка, ставочный edge не доказан |
+| `none` | нет оснований для edge |
+
+### Quality gate (live-ставки)
+
+Проверяется на **`walk_forward`** (fallback: `oos_never_train` → `overall`). Pass, если **все**:
+
+- ставок ≥ `NEURALBET_LIVE_QUALITY_MIN_BETS` (40)
+- flat ROI > 0
+- **`roi_pct_lo` > 0**
+- win_rate > break-even
+- Brier < market (market_brier из overall)
+
+В логах: `Live bets skipped — quality gate: …` (`get_ai_logs` BANKROLL).
+
+### Метрики — не путать
+
+| Метрика | Смысл |
+| :--- | :--- |
+| `accuracy_pct` | угадано/не угадано по `current_pred` (включая «не ставить») |
+| `verdict_accuracy_pct` | то же по decision head без live gates |
+| `verdict.precision_pct` | доля win среди verdict=1 |
+| `stake_policy.win_rate_pct` | только по реальным ставкам бэктestа |
+| `bankroll_roi_pct` | Kelly-replay (compound), не flat ROI |
+| **`roi_pct_lo` / `hi`** | bootstrap CI flat ROI — **главный критерий устойчивости** |
+
+### Срезы бэктestа
+
+| Срез | Назначение |
+| :--- | :--- |
+| `overall` | полная выборка, может быть оптимистичнее |
+| `walk_forward` | **честный OOS**, temporal folds + no-leakage calib |
+| `oos_never_train` | holdout events с `trained_count=0` |
+| `in_sample` | обучаемая часть архива |
+
+---
+
+## 3. Чеклист: логи обучения / inference
+
+| # | Что искать | Сигнал проблемы |
+| :- | :--- | :--- |
+| L1 | `best_epoch` ≤ 2 на проходах ≥ `MIN_TRAIN_SAMPLES` | заучивание батча |
+| L2 | `blend_weight` / `market_weight` / `decision_threshold` в «Ensemble tuned» | скачки; `market_weight` → 1.0 = модель не даёт сигнала |
+| L3 | `val Brier … vs market-only` | доля циклов «market beats model» |
+| L4 | Число verdict «ставить» между циклами | скачки в разы |
+| L5 | `Skipping training` / `MIN_FRESH_SAMPLES` / replay-only | обучение простаивает или крутит replay |
+| L6 | `checkpoint rejected` / «Модель заморожена» | GRU frozen после 10 reject |
+| L7 | `Cold-start` / streaming epoch | val/checkpoint только в конце epoch |
+| L8 | `Live bets skipped — quality gate` | см. §2 |
+
+---
+
+## 4. Формат ответа пользователю
+
+1. **Вердикт одним абзацем:** улучшается / стоит / деградирует; edge есть / нет; gate pass/fail.
+2. **Конкретика** — только по находкам (B1–B12, L1–L8, flags).
+3. **Приорitized правки** с файлами/env; мелкие — можно сразу; спорные — предложить.
+4. **Честно:** нет edge — не предлагать бесконечный тюнинг и cold-start без причины.
+
+Язык: **русский**, если пользователь пишет по-русски.
+
+---
+
+## 5. Уже сделано (не предлагать заново)
+
+- Пол вероятности 1–99% (не 12% floor).
+- `NEURALBET_DECISION_POS_WEIGHT_CAP=1.0` (cost-sensitive decision в live band).
+- `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.5`.
+- Калибровка с учётом кэфа; **no-leakage calib** в бэктest (`calibration_cutoff`).
+- Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=3%`, `MIN_MARKET_SUPPORT=150`.
+- Тюнер: EMA 0.3, min val bets, sample-size penalty; threshold sweep по **ROI CI lo**.
+- Обучение: `TRAIN_EVERY_CYCLES=20`, `MIN_TRAIN_SAMPLES=2000`, batch 10k, val 2k, `MIN_FRESH_SAMPLES=500`.
+- Cold-start streaming (chunk pass, val/checkpoint после полного epoch).
+- `NEURALBET_LIVE_QUALITY_GATE` + walk-forward OOS в бэктest.
+- Team form: as-of + правильная атрибуция P1/P2; overround/no-vig fix.
+- Per-sport `decision_threshold`; `NEURALBET_LIVE_STAKE_SPORTS` (default: НТ).
+- `trained_count` при rollback; GRU skip после `CHECKPOINT_REJECT_STREAK_ALERT=10`.
+- `agent_review` + `quality_gate` в JSON бэктestа; `get_backtest_review` MCP.
+
+**Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
+
+---
+
+## 6. Терминология: «live»
+
+**Live** — simulated-банк (`bankroll.accounts.live`): реальные **virtual** ставки каждый цикл inference (~60 с).
 
 Цепочка:
-1. **INFERENCE** — для всех LIVE-исходов в universe считаются прогнозы (PyTorch + LGBM).
-2. **Вердict `predicted_win=1`** — decision-голова говорит «ставить» (не путать с
-   win-probability % в UI — это калиброванная вероятность, verdict отдельный).
-3. **Live gates** — кэф 1.5–2.0, EV ≥ 3%, market support ≥ 150, плюс
-   `NEUROBET_LIVE_STAKE_SPORTS` (см. ниже).
-4. **BANKROLL** — Kelly-sizing, запись в `live_bets`, списание с live-баланса.
 
-Это **не** то же самое, что:
-- **training bankroll** — учебный счёт, крутится внутри `train_online` на val/train;
-- **бэктест** — прогон по архиву `finished_bets`, без реального live-цикла;
-- **страница «Статистика» / roi_stats** — другая вселенная (все judged-исходы с
-  `predicted_win`, не только live-банк); ROI +10% там **не равен** ROI live-банка.
+1. **INFERENCE** — прогнозы на universe (GRU + LGBM + blend + calib).
+2. **Decision `predicted_win=1`** — decision head (≠ win-probability % в UI).
+3. **Live gates** — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`.
+4. **Quality gate** — последний бэктest `walk_forward` (см. §2); иначе ставки не открываются.
+5. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
 
-MCP: `get_live_bets`, `get_bankroll`, `get_top_neurobets` (verdict=win) — про live;
-`get_roi_stats` / `get_stats` — про архивную статистику, не про live-кошелёк.
+**Не путать с:**
+
+- training bankroll — только для loss в `train_online`;
+- бэктest — replay архива с текущими весами;
+- `get_roi_stats` / «Статистика» — archived judged outcomes, **≠** live ROI.
+
+MCP live: `get_live_bets`, `get_bankroll`, `get_top_neurobets`.  
+MCP archive stats: `get_stats`, `get_roi_stats`.
 
 ---
 
-## Live-воронка по спорту (NEUROBET_LIVE_STAKE_SPORTS)
+## 7. Live по спортам (`NEURALBET_LIVE_STAKE_SPORTS`)
 
-**По умолчанию live-деньги ставятся только на «настольный теннис».** Это **не** запрет
-модели смотреть другие спорты: inference, обучение и бэктest по-прежнему на всём
-`ALLOWED_SPORTS`. Режется **только** шаг «открыть ставку на live-банке».
+**Default: только «настольный теннис»** в live. Inference/обучение/бэктest — на всех `ALLOWED_SPORTS`.
 
-Почему так (ориентир — `by_sport.current` свежего бэктеста, band 1.5–2.0):
+| Спорт | Ориентир (band 1.5–2.0) |
+| :--- | :--- |
+| **Настольный теннис** | единственный карман с объёмом ставок |
+| Баскетбол, волейбол, теннис | обычно ROI < 0 или Brier ≥ market |
+| Футбол | мало ставок (высокий per-sport threshold) |
 
-| Спорт | Типичный сигнал | Комментарий |
-| :--- | :--- | :--- |
-| **Настольный теннис** | ROI > 0, Brier < market | Единственный карман с объёмом (сотни ставок) |
-| Баскетбол, волейбол, теннис | ROI < 0, Brier ≥ market | На текущих весах edge нет |
-| Футбол | Почти 0 ставок | Пороги 0.62+; редкие плюсы — шум (единицы ставок) |
+Env: `shared/neurobet_filters/__init__.py` — `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис` | `*` | список.
 
-**Это не «навсегда бессмысленно на остальное»**, а **риск-менеджмент на текущую модель**.
-Если бэктest покажет устойчивый edge на другом спорте — расширить список.
+При ревью: расширять live-лист только при **устойчивых** цифрах `by_sport` + walk-forward; не открывать все спорты «наугад».
 
-Env (`shared/neurobet_filters/__init__.py`):
-- `NEUROBET_LIVE_STAKE_SPORTS=настольный теннис` — default, только НТ в live.
-- `NEUROBET_LIVE_STAKE_SPORTS=*` (или `all`, пусто) — live на все allowed-спорты.
-- `NEUROBET_LIVE_STAKE_SPORTS=настольный теннис,волейбол` — явный список.
+---
 
-Где применяется один и тот же whitelist:
-- **открытие ставок** — `ai_service` pipeline → `live_gate_skip_reason`;
-- **«Активные LIVE Прогнозы»** — `get_top_neurobets(verdict=win)` в backend;
-- **«Ставки нейросети»** (открытые live_bets) — `get_live_bets`.
+## 8. Файлы для правок (шпаргалка)
 
-Не режется: inference на все sports, обучение, бэктest, history, verdict=loss/all.
-
-При ревью: если current ROI/Brier по спорту в бэктесте улучшился — предложи расширить
-live-лист; если live-банк падает при фильтре только НТ — не предлагай снова открыть все
-спорты без цифр из `by_sport`.
+| Область | Путь |
+| :--- | :--- |
+| Live gates, sports | `shared/neurobet_filters/__init__.py`, `.env` |
+| Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
+| Обучение, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
+| Калибровка | `ai_service/app/neuralbet/calibration.py` |
+| Фичи | `shared/neurobet_features/` |
+| MCP | `backend/mcp_eval.py` |

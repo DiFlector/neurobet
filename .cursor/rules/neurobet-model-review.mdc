@@ -1,0 +1,29 @@
+---
+description: NeuroBet model review — read BacktestPrompt.md and call MCP get_backtest_review when user asks to evaluate or improve the neural model
+alwaysApply: true
+---
+
+# NeuroBet — ревью и улучшение модели
+
+## Когда применять
+
+Пользователь просит оценить/улучшить нейросеть, edge, бэктest, training — или упоминает
+`BacktestPrompt.md`, «backtest prompt», «посмотри модель», «что улучшить», «run eval».
+
+## Обязательные первые шаги
+
+1. **Прочитать** [`BacktestPrompt.md`](../BacktestPrompt.md) (формат ответа + чеклист + контекст решений).
+2. **MCP `get_backtest_review`** (neurobet-eval) — первым; не отвечать по памяти.
+3. **`get_training_health`** + **`get_ai_logs`** (TRAINING, BANKROLL).
+4. Детали: `get_latest_backtest`, `get_backtest_history`, `get_ensemble`, `get_filters`.
+5. Свежий прогон: `run_eval_pack` / `run_backtest` — только если веса менялись или бэктest устарел/пуст.
+
+Полный протокол: раздел **«🤖 Ревью модели»** в [`AGENTS.md`](../AGENTS.md).
+
+## Вердикт edge
+
+Ориентир **walk_forward**, не только overall. Смотреть `agent_review.summary`, `flags`, `quality_gate`.
+
+## Ответ
+
+Русский язык; вердикт → находки → приорitized правки; без бесконечного тюнинга если edge нет.

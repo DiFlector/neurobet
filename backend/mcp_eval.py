@@ -218,6 +218,14 @@ TOOLS = [
         {"limit": _BACKTEST_RUNS},
     ),
     _tool(
+        "get_backtest_review",
+        (
+            "Agent review of the latest backtest: edge verdict, quality_gate, walk-forward "
+            "stability, live funnel, head-alignment, flags, delta vs previous run. "
+            "Prefer this over parsing the full backtest JSON manually."
+        ),
+    ),
+    _tool(
         "get_latest_backtest",
         (
             "Full latest backtest JSON on disk (overall, by_sport, by_coefficient, "
@@ -477,6 +485,9 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
         runs = m.admin_backtest_history().get("runs") or []
         limit = _opt_int(arguments, "limit")
         return _ok({"runs": runs if limit is None else runs[: max(0, min(limit, 50))]})
+
+    if name == "get_backtest_review":
+        return _ok(m.admin_backtest_review())
 
     if name == "get_latest_backtest":
         snap = m._ai_eval_snapshot(training_runs_limit=0, logs_limit=0, backtest_runs=0)

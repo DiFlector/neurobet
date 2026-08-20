@@ -198,6 +198,21 @@ def backtest(payload: Dict[str, Any] = Body(default={})):
         add_ai_log("SYSTEM", f"Backtest error: {e}", level="WARNING")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/backtest/review")
+def backtest_review():
+    """Agent-oriented condensed review of the latest backtest on disk."""
+    from app.neuralbet.review import build_review_from_latest
+
+    latest = get_latest_backtest()
+    history = get_backtest_history()
+    review = build_review_from_latest(latest, history)
+    return {
+        "status": "success" if review else "no_data",
+        "review": review,
+        "latest_generated_at": latest.get("generated_at") if latest else None,
+    }
+
+
 @router.get("/backtest/history")
 def backtest_history():
     return {"status": "success", "runs": get_backtest_history()}
