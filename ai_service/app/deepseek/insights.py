@@ -31,9 +31,13 @@ from app.config import (
     LLM_ENABLED,
     LLM_MATCH_CONTEXT,
     LLM_MATCH_CONTEXT_SPORTS,
+    LLM_MATCH_CTX_NULL_TTL_SEC,
+    LLM_MATCH_CTX_TTL_SEC,
     LLM_MAX_CONTEXT_PER_CYCLE,
     LLM_MAX_RATIONALE_PER_CYCLE,
     LLM_MIN_INTERVAL_SECONDS,
+    LLM_REANALYZE_COEFF_DELTA,
+    LLM_REANALYZE_PROB_DELTA,
     LLM_SHADOW,
     LLM_SHADOW_MAX_DECISIONS,
     LLM_VETO,
@@ -335,10 +339,81 @@ def _would_veto(ctx: Optional[Dict[str, Any]]) -> bool:
     return supports is False and conf >= float(LLM_VETO_MIN_CONFIDENCE)
 
 
+def _candidate_key(c: Dict[str, Any]) -> Tuple[Any, Any, str, str]:
+    return (
+        c.get("event_id"),
+        c.get("factor_id"),
+        str(c.get("parameter", "")),
+        c.get("market_prefix") or "",
+    )
+
+
+def _match_ctx_cache_key(candidate: Dict[str, Any]) -> str:
+    event_id, factor_id, parameter, market_prefix = _candidate_key(candidate)
+    return f"match_ctx:{event_id}:{factor_id}:{parameter}:{market_prefix}"
+
+
+def _candidate_coeff(candidate: Dict[str, Any]) -> float:
+    try:
+        return float(candidate.get("coeff") or candidate.get("coefficient") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _candidate_win_prob(candidate: Dict[str, Any]) -> float:
+    try:
+        return float(candidate.get("win_probability") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _match_ctx_needs_reanalyze(cached: Dict[str, Any], candidate: Dict[str, Any]) -> bool:
+    """True when coeff / model probability moved enough to warrant a fresh search."""
+    if cached.get("_null_reason"):
+        return False
+    try:
+        old_c = float(cached.get("_cache_coeff") or 0.0)
+        old_p = float(cached.get("_cache_win_probability") or 0.0)
+    except (TypeError, ValueError):
+        return True
+    new_c = _candidate_coeff(candidate)
+    new_p = _candidate_win_prob(candidate)
+    if abs(new_c - old_c) >= float(LLM_REANALYZE_COEFF_DELTA):
+        return True
+    if abs(new_p - old_p) >= float(LLM_REANALYZE_PROB_DELTA):
+        return True
+    return False
+
+
+def _lookup_match_ctx_cache(
+    candidate: Dict[str, Any],
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """Returns (hit, ctx, null_reason). hit=False means caller should fetch fresh."""
+    cache_key = _match_ctx_cache_key(candidate)
+    cached = _cache_get(cache_key)
+    if cached is None or not isinstance(cached, dict):
+        return False, None, None
+    if _match_ctx_needs_reanalyze(cached, candidate):
+        with _CACHE_LOCK:
+            _cache.pop(cache_key, None)
+        return False, None, None
+    if cached.get("_null_reason"):
+        return True, None, str(cached["_null_reason"])
+    # Strip internal fingerprint fields before attaching to candidates.
+    public = {
+        k: v for k, v in cached.items()
+        if not str(k).startswith("_cache_")
+    }
+    return True, public, None
+
+
 def fetch_match_context(
     candidate: Dict[str, Any],
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """Web-search context for one live stake candidate. Cached by event_id.
+    """Web-search context for one live stake candidate.
+
+    Cached by event/factor/parameter/market_prefix. Re-fetches when coeff or
+    model win_probability moves past configured deltas.
 
     Returns (ctx, null_reason). null_reason is set when ctx is None.
     """
@@ -349,14 +424,11 @@ def fetch_match_context(
     if not sport_allows_match_context(sport):
         return None, "sport_skipped"
 
-    event_id = candidate.get("event_id")
-    cache_key = f"match_ctx:{event_id}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        if isinstance(cached, dict) and cached.get("_null_reason"):
-            return None, str(cached["_null_reason"])
-        return cached, None
+    hit, cached_ctx, cached_null = _lookup_match_ctx_cache(candidate)
+    if hit:
+        return cached_ctx, cached_null
 
+    cache_key = _match_ctx_cache_key(candidate)
     team_1 = candidate.get("team_1") or ""
     team_2 = candidate.get("team_2") or ""
     match_name = candidate.get("match_name") or f"{team_1} vs {team_2}"
@@ -402,7 +474,15 @@ def fetch_match_context(
     if not data:
         null_reason = reason or "empty_response"
         # Short TTL — don't block retries for half an hour on flaky search.
-        _cache_set(cache_key, {"_null_reason": null_reason}, ttl_seconds=5 * 60)
+        _cache_set(
+            cache_key,
+            {
+                "_null_reason": null_reason,
+                "_cache_coeff": _candidate_coeff(candidate),
+                "_cache_win_probability": _candidate_win_prob(candidate),
+            },
+            ttl_seconds=float(LLM_MATCH_CTX_NULL_TTL_SEC),
+        )
         return None, null_reason
 
     lean = str(data.get("lean") or "unknown").lower().strip()
@@ -424,18 +504,12 @@ def fetch_match_context(
         "fetched_at": datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S"),
         "source": "deepseek_web_search",
         "null_reason": None,
+        "_cache_coeff": _candidate_coeff(candidate),
+        "_cache_win_probability": _candidate_win_prob(candidate),
     }
-    _cache_set(cache_key, result, ttl_seconds=3 * 3600)
-    return result, None
-
-
-def _candidate_key(c: Dict[str, Any]) -> Tuple[Any, Any, str, str]:
-    return (
-        c.get("event_id"),
-        c.get("factor_id"),
-        str(c.get("parameter", "")),
-        c.get("market_prefix") or "",
-    )
+    _cache_set(cache_key, result, ttl_seconds=float(LLM_MATCH_CTX_TTL_SEC))
+    public = {k: v for k, v in result.items() if not str(k).startswith("_cache_")}
+    return public, None
 
 
 def record_shadow_decision(
@@ -506,7 +580,6 @@ def enrich_candidates_with_llm(
     placed_keys = placed_keys or set()
 
     for c in candidates:
-        event_id = c.get("event_id")
         sport = c.get("sport") or ""
         null_reason: Optional[str] = None
         ctx: Optional[Dict[str, Any]] = None
@@ -515,14 +588,10 @@ def enrich_candidates_with_llm(
         if not sport_allows_match_context(sport):
             null_reason = "sport_skipped"
         else:
-            cache_key = f"match_ctx:{event_id}"
-            cached = _cache_get(cache_key)
-            if cached is not None:
-                if isinstance(cached, dict) and cached.get("_null_reason"):
-                    null_reason = str(cached["_null_reason"])
-                    ctx = None
-                else:
-                    ctx = cached
+            hit, cached_ctx, cached_null = _lookup_match_ctx_cache(c)
+            if hit:
+                ctx = cached_ctx
+                null_reason = cached_null
             elif fresh_searches < max_fresh:
                 ctx, null_reason = fetch_match_context(c)
                 fresh_searches += 1
@@ -1080,24 +1149,84 @@ def run_llm_digest() -> Dict[str, Any]:
         balance = None
 
     shadow = get_llm_shadow_report(refresh_outcomes=True)
+    model_only = shadow.get("model_only") or {}
+    with_veto = shadow.get("with_veto") or {}
     shadow_compact = {
         "recommendation": shadow.get("recommendation"),
         "veto_active": shadow.get("veto_active"),
         "veto_auto": shadow.get("veto_auto"),
-        "model_only": shadow.get("model_only"),
-        "with_veto": shadow.get("with_veto"),
+        "model_only": model_only,
+        "with_veto": with_veto,
         "null_reasons": shadow.get("null_reasons"),
+        "llm_effect_note": (
+            "with_veto идентичен model_only — LLM veto ещё не менял исход ставок"
+            if (
+                model_only.get("bets") == with_veto.get("bets")
+                and model_only.get("roi_pct") == with_veto.get("roi_pct")
+                and model_only.get("win_rate_pct") == with_veto.get("win_rate_pct")
+            )
+            else "сравни model_only и with_veto отдельно; не смешивай в один вердикт"
+        ),
+    }
+
+    gate = (health or {}).get("quality_gate") or {}
+    gate_metrics = gate.get("metrics") or {}
+    snapshot_age_hours = gate_metrics.get("age_hours")
+    backtest_generated_at = None
+    try:
+        from app.neuralbet.backtest import get_latest_backtest
+
+        latest_bt = get_latest_backtest() or {}
+        backtest_generated_at = latest_bt.get("generated_at")
+        if snapshot_age_hours is None and backtest_generated_at:
+            try:
+                raw = str(backtest_generated_at).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=MOSCOW_TZ)
+                snapshot_age_hours = round(
+                    (datetime.now(MOSCOW_TZ) - dt.astimezone(MOSCOW_TZ)).total_seconds() / 3600.0,
+                    2,
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    snapshot_meta = {
+        "backtest_generated_at": backtest_generated_at,
+        "quality_gate_age_hours": snapshot_age_hours,
+        "quality_gate_pass": gate.get("pass"),
+        "quality_gate_eval_slice": gate.get("eval_slice"),
+        "quality_gate_reasons": gate.get("reasons"),
+        "walk_forward_roi_pct": gate_metrics.get("roi_pct"),
+        "walk_forward_roi_pct_lo": gate_metrics.get("roi_pct_lo"),
+        "walk_forward_bets": gate_metrics.get("bets"),
+        "consecutive_passes": gate_metrics.get("consecutive_passes"),
+        "consecutive_required": gate_metrics.get("consecutive_required"),
     }
 
     prompt = (
-        "Ты дежурный аналитик NeuroBet. По логам и health ниже напиши дайджест на русском "
-        "(6–12 предложений): что происходило с обучением и bankroll, есть ли тревоги "
-        "(overfitting / quality gate / reject streak / LLM shadow), что делать дальше. "
-        "Без Markdown.\n\n"
-        f"training_health: {json.dumps(health, ensure_ascii=False)[:3500]}\n"
+        "Ты дежурный аналитик NeuroBet. Напиши дайджест на русском (6–12 предложений) "
+        "без Markdown. Структура обязательна:\n"
+        "1) Модель / обучение / bankroll (без LLM).\n"
+        "2) DeepSeek shadow: отдельно model-only vs with_veto / эффект LLM "
+        "(если они совпадают — явно скажи, что LLM ещё не менял исходы).\n"
+        "3) Что делать дальше.\n\n"
+        "Жёсткие правила:\n"
+        "- НЕ советуй ослаблять, снимать или обходить quality gate / EV / CI-пороги, "
+        "пока walk-forward не стабилен: ROI>0, roi_pct_lo>0, Brier лучше рынка, "
+        "и consecutive_passes достигает required.\n"
+        "- НЕ предлагай cold-start / reset модели без явной смены архитектуры или "
+        "явного запроса оператора.\n"
+        "- Укажи возраст снимка бэктеста (snapshot_meta.quality_gate_age_hours / "
+        "backtest_generated_at) и что gate смотрит на walk_forward, не на overall.\n"
+        "- Fixed-val tuner ROI в логах — не доказательство live-edge.\n\n"
+        f"snapshot_meta: {json.dumps(snapshot_meta, ensure_ascii=False)[:1200]}\n"
+        f"training_health: {json.dumps(health, ensure_ascii=False)[:3200]}\n"
         f"live_available_balance: {balance}\n"
         f"llm_shadow: {json.dumps(shadow_compact, ensure_ascii=False)[:2500]}\n"
-        f"recent_logs: {json.dumps(recent, ensure_ascii=False)[:5500]}"
+        f"recent_logs: {json.dumps(recent, ensure_ascii=False)[:5000]}"
     )
     text = ask_text(prompt, search=False, timeout=70.0)
     if not text:
@@ -1109,6 +1238,9 @@ def run_llm_digest() -> Dict[str, Any]:
         "health_status": (health or {}).get("status"),
         "live_balance": balance,
         "llm_shadow_recommendation": shadow.get("recommendation"),
+        "snapshot_meta": snapshot_meta,
+        "llm_shadow_model_only": model_only,
+        "llm_shadow_with_veto": with_veto,
     }
     store = _load_digest_store()
     history = list(store.get("history") or [])

@@ -138,6 +138,15 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
   `NEURALBET_LLM_VETO=0`; `NEURALBET_LLM_MATCH_CONTEXT_SPORTS=теннис,футбол`;
   shadow JSON + MCP `get_llm_shadow`; auto-veto только если shadow докажет edge
   (≥150 settled, with_veto ROI/WR лучше, CI lo>0, vetoed ROI<0).
+- DeepSeek match-context cache (2026-08-21): ключ event/factor/parameter/prefix;
+  re-fetch при Δcoeff ≥ `NEURALBET_LLM_REANALYZE_COEFF_DELTA` (0.05) или
+  Δprob ≥ `NEURALBET_LLM_REANALYZE_PROB_DELTA` (3 п.п.).
+- Digest prompt: запрет советовать ослаблять gate без устойчивого walk-forward;
+  возраст снимка + раздельно model-only vs with_veto.
+- Training diagnostics: `val_pin` age в логах/history; `last_tune.json`;
+  `train_*_attempted` при reject; flag `fixed_val_tuner_vs_walk_forward`.
+- OOS ablation в бэктest/`agent_review`: `oos_ablation.table_tennis_x_total_over`
+  + `total_over` (не путать с overall by_sport).
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
 

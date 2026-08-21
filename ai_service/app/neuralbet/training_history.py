@@ -30,6 +30,9 @@ def now_iso() -> str:
     return datetime.now(MOSCOW_TZ).isoformat()
 
 
+# Chart fields: on reject, copy from last accepted so the admin trend chart
+# tracks the live weights, not the rejected attempt. Attempted values are kept
+# separately (val_loss_attempted already from model; train_*_attempted below).
 _CARRY_FIELDS = ("val_loss", "train_loss", "val_guess_rate", "train_guess_rate")
 
 
@@ -48,9 +51,10 @@ def last_saved_run(history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 def record_training_run(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Appends one training pass's summary metrics (see pipeline.py's call site for the
     exact fields) to the front of the history file, capped at MAX_TRAINING_HISTORY.
-    A rejected pass still gets a new timestamped point, but val/train loss are copied
-    from the last saved checkpoint — 0.18 stayed 0.18, not the 0.19 attempt and not
-    a fresh eval of the same weights on a different val split."""
+    A rejected pass still gets a new timestamped point, but chart val/train loss are
+    copied from the last saved checkpoint — 0.18 stayed 0.18, not the 0.19 attempt
+    and not a fresh eval of the same weights on a different val split. Attempted
+    train metrics are preserved as *_attempted before the carry."""
     try:
         os.makedirs(MODEL_DIR, exist_ok=True)
         history: List[Dict[str, Any]] = []
@@ -61,6 +65,12 @@ def record_training_run(entry: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 history = []
         if entry.get("checkpoint_accepted") is False:
+            if entry.get("train_loss_attempted") is None and entry.get("train_loss") is not None:
+                entry["train_loss_attempted"] = entry["train_loss"]
+            if entry.get("train_guess_rate_attempted") is None and entry.get("train_guess_rate") is not None:
+                entry["train_guess_rate_attempted"] = entry["train_guess_rate"]
+            if entry.get("val_guess_rate_attempted") is None and entry.get("val_guess_rate") is not None:
+                entry["val_guess_rate_attempted"] = entry["val_guess_rate"]
             prev = last_saved_run(history)
             if prev is not None:
                 for field in _CARRY_FIELDS:

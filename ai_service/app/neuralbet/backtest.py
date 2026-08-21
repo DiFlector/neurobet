@@ -767,6 +767,22 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         oos_by_market_groups: Dict[str, List[Dict[str, Any]]] = {}
         for rec in oos_records:
             oos_by_market_groups.setdefault(rec["market_label"], []).append(rec)
+
+        # Targeted OOS ablations (diagnostics before any model reset): sport×market
+        # pockets that look strong in-sample must clear the same never-train holdout.
+        oos_total_over = [r for r in oos_records if r["market_label"] == "total_over"]
+        oos_tt_total_over = [
+            r for r in oos_records
+            if r["market_label"] == "total_over"
+            and str(r.get("sport") or "").strip().lower() == "настольный теннис"
+        ]
+        oos_ablation = {
+            "table_tennis_x_total_over": (
+                _agg_group(oos_tt_total_over) if oos_tt_total_over else None
+            ),
+            "total_over": _agg_group(oos_total_over) if oos_total_over else None,
+        }
+
         oos_ids = {id(r) for r in oos_records}
         in_sample_records = [r for r in records if id(r) not in oos_ids]
 
@@ -812,6 +828,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
                 key=lambda x: -x["evaluated"],
             ) if oos_by_market_groups else None,
+            "oos_ablation": oos_ablation,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
                 key=lambda x: -x["evaluated"],

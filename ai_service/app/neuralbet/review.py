@@ -7,10 +7,13 @@ head-alignment diagnostics, delta vs previous run, and actionable flags.
 """
 from __future__ import annotations
 
+import json
+import os
 from typing import Any, Dict, List, Optional
 
 from neurobet_filters import MIN_BET_COEFF, MIN_BET_EDGE_PCT, MAX_BET_COEFF
 
+from app.config import MODEL_DIR
 from app.neuralbet.quality_gate import evaluate_quality_gate
 
 
@@ -184,6 +187,35 @@ def _compact_by_market(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     return sorted(rows, key=lambda x: -(x.get("bets") or 0))
 
 
+def _compact_oos_ablation_slice(block: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not block:
+        return None
+    stake = _stake_current(block)
+    prob = _prob_current(block)
+    bets = stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets")
+    return {
+        "evaluated": block.get("evaluated"),
+        "bets": bets,
+        "roi_pct": stake.get("roi_pct"),
+        "roi_pct_lo": stake.get("roi_pct_lo"),
+        "win_rate_pct": stake.get("win_rate_pct"),
+        "brier": prob.get("brier"),
+        "market_brier": block.get("market_brier"),
+    }
+
+
+def _compact_oos_ablation(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    raw = result.get("oos_ablation")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: Dict[str, Any] = {}
+    for key, block in raw.items():
+        compact = _compact_oos_ablation_slice(block)
+        if compact is not None:
+            out[key] = compact
+    return out or None
+
+
 def _delta_vs_previous(result: Dict[str, Any], history: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not history:
         return None
@@ -322,6 +354,59 @@ def _build_flags(
                 "message": f"OOS total_under: ROI {roi}% on {bets} bets (CI lo {stake.get('roi_pct_lo')})",
             })
 
+    oos_ablation = result.get("oos_ablation") or {}
+    tt_over = oos_ablation.get("table_tennis_x_total_over") if isinstance(oos_ablation, dict) else None
+    if tt_over:
+        stake = _stake_current(tt_over)
+        bets = int(stake.get("flat_bets") if stake.get("flat_bets") is not None else stake.get("bets") or 0)
+        roi = stake.get("roi_pct")
+        roi_lo = stake.get("roi_pct_lo")
+        if bets >= 10 and roi is not None:
+            if float(roi) > 0 and roi_lo is not None and float(roi_lo) > 0:
+                flags.append({
+                    "severity": "info",
+                    "code": "oos_tt_total_over_edge",
+                    "message": (
+                        f"OOS настольный теннис × total_over: ROI {roi}% "
+                        f"(CI lo {roi_lo}) on {bets} bets"
+                    ),
+                })
+            elif float(roi) <= 0:
+                flags.append({
+                    "severity": "warning",
+                    "code": "oos_tt_total_over_negative",
+                    "message": (
+                        f"OOS настольный теннис × total_over: ROI {roi}% "
+                        f"(CI lo {roi_lo}) on {bets} bets — in-sample pocket not confirmed OOS"
+                    ),
+                })
+
+    try:
+        tune_path = os.path.join(MODEL_DIR, "last_tune.json")
+        last_tune = None
+        if os.path.exists(tune_path):
+            with open(tune_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            last_tune = loaded if isinstance(loaded, dict) else None
+    except Exception:
+        last_tune = None
+    wf_slice = _compact_slice("walk_forward", result.get("walk_forward"))
+    if last_tune and wf_slice and last_tune.get("val_roi_pct") is not None and wf_slice.get("roi_pct") is not None:
+        tuner_roi = float(last_tune["val_roi_pct"])
+        wf_roi = float(wf_slice["roi_pct"])
+        tuner_bets = int(last_tune.get("val_bets") or 0)
+        delta_pp = abs(tuner_roi - wf_roi)
+        if delta_pp >= 10 and tuner_bets > 0:
+            flags.append({
+                "severity": "warning",
+                "code": "fixed_val_tuner_vs_walk_forward",
+                "message": (
+                    f"Fixed-val tuner ROI {tuner_roi}% on {tuner_bets} bets vs "
+                    f"walk_forward ROI {wf_roi}% (Δ {delta_pp:.1f} pp) — "
+                    f"do not trust tuner ROI for live gate"
+                ),
+            })
+
     if policy_ablation := result.get("policy_ablation_oos"):
         best = max(
             policy_ablation.items(),
@@ -437,6 +522,7 @@ def build_agent_review(
             }
             for row in (result.get("oos_by_market") or [])
         ],
+        "oos_ablation": _compact_oos_ablation(result),
         "delta_vs_previous": delta,
         "policy_ablation_oos": policy_ablation,
         "walk_forward_meta": result.get("walk_forward_meta"),

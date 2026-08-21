@@ -227,6 +227,7 @@ COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
 COLD_START_PATH = os.path.join(MODEL_DIR, "cold_start.json")
 VAL_PIN_PATH = os.path.join(MODEL_DIR, "val_pin.json")
 VAL_PIN_REFRESH_SECONDS = float(os.getenv("NEURALBET_VAL_PIN_REFRESH_SECONDS", "86400"))
+LAST_TUNE_PATH = os.path.join(MODEL_DIR, "last_tune.json")
 TEAM_FORM_PATH = os.path.join(MODEL_DIR, "team_form.json")
 _online_pass_count = 0
 RESET_PROGRESS_PATH = os.path.join(MODEL_DIR, "reset_progress.json")
@@ -630,7 +631,7 @@ def _reset_training_caches() -> None:
     _pinned_val_event_ids = None
     _online_pass_count = 0
     set_team_form_cache(None)
-    for path in (VAL_PIN_PATH, TEAM_FORM_PATH):
+    for path in (VAL_PIN_PATH, TEAM_FORM_PATH, LAST_TUNE_PATH):
         try:
             if os.path.exists(path):
                 os.remove(path)
@@ -1445,6 +1446,12 @@ def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -
         logger.error(f"Error persisting val pin: {e}")
 
 
+def _val_pin_age_seconds() -> float | None:
+    if _pinned_val_loaded_at and _pinned_val_loaded_at > 0:
+        return max(0.0, time.time() - _pinned_val_loaded_at)
+    return None
+
+
 def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
     """Pinned held-out slice — same rows and deterministic cutoffs between passes."""
     global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
@@ -1454,6 +1461,13 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
         _pinned_val_samples
         and now - _pinned_val_loaded_at < VAL_PIN_REFRESH_SECONDS
     ):
+        age_h = (now - _pinned_val_loaded_at) / 3600.0
+        add_ai_log(
+            "TRAINING",
+            f"Val pin hit (memory) — {len(_pinned_val_samples)} samples / "
+            f"{len(_pinned_val_event_ids or ())} events, age {age_h:.1f}h "
+            f"(refresh every {VAL_PIN_REFRESH_SECONDS / 3600.0:.0f}h).",
+        )
         return list(_pinned_val_samples)
     disk = _load_val_pin_from_disk()
     if disk:
@@ -1466,12 +1480,62 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
                 _pinned_val_samples = disk
                 _pinned_val_event_ids = disk_ids
                 _pinned_val_loaded_at = pinned_at
+                age_h = (now - pinned_at) / 3600.0
+                add_ai_log(
+                    "TRAINING",
+                    f"Val pin hit (disk) — {len(disk)} samples / {len(disk_ids)} events, "
+                    f"age {age_h:.1f}h (refresh every {VAL_PIN_REFRESH_SECONDS / 3600.0:.0f}h).",
+                )
                 return list(disk)
         except Exception:
             pass
     samples = _fetch_val_batch_raw(f_cursor, val_event_ids)
     _persist_val_pin(samples, val_event_ids)
+    add_ai_log(
+        "TRAINING",
+        f"Val pin refreshed — {len(samples)} samples / {len(ids)} events "
+        f"(hold for {VAL_PIN_REFRESH_SECONDS / 3600.0:.0f}h). "
+        f"Fixed-val tuner ROI on this slice is not walk-forward OOS.",
+    )
     return samples
+
+
+def _persist_last_tune(tune_metrics: dict[str, Any]) -> None:
+    """Snapshot for agent_review: fixed-val tuner ROI vs walk-forward."""
+    try:
+        dt = tune_metrics.get("decision_threshold") or {}
+        bw = tune_metrics.get("blend_weight") or {}
+        payload = {
+            "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
+            "samples": tune_metrics.get("samples"),
+            "val_pin_age_s": _val_pin_age_seconds(),
+            "val_event_count": len(_pinned_val_event_ids or ()),
+            "val_roi_pct": dt.get("val_roi_pct"),
+            "val_bets": dt.get("val_bets"),
+            "decision_threshold": dt.get("new") if dt.get("new") is not None else dt.get("old"),
+            "val_brier": bw.get("val_brier"),
+            "val_brier_base": tune_metrics.get("val_brier_base"),
+            "blend_market_frozen": bool(tune_metrics.get("blend_market_frozen")),
+        }
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp = LAST_TUNE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, LAST_TUNE_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting last_tune.json: {e}")
+
+
+def get_last_tune() -> dict[str, Any] | None:
+    if not os.path.exists(LAST_TUNE_PATH):
+        return None
+    try:
+        with open(LAST_TUNE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.error(f"Error reading last_tune.json: {e}")
+        return None
 
 
 def _parse_lgb_ts(raw: Any) -> datetime | None:
@@ -2624,6 +2688,7 @@ def _run_neuralbet_inference_and_training_locked(
 
             cold_start_epoch_done = cold_start_active and epoch_complete
             if not cold_start_active or cold_start_epoch_done:
+                pin_age = _val_pin_age_seconds()
                 record_training_run({
                     "generated_at": now_moscow().strftime("%Y-%m-%d %H:%M:%S"),
                     "samples_used": metrics["samples_used"],
@@ -2648,6 +2713,9 @@ def _run_neuralbet_inference_and_training_locked(
                     "checkpoint_reject_reason": metrics.get("checkpoint_reject_reason"),
                     "cold_start": cold_start_active,
                     "class_mix": class_mix,
+                    "val_samples": len(val_samples) if val_samples else 0,
+                    "val_event_count": len(_pinned_val_event_ids or ()),
+                    "val_pin_age_s": round(pin_age, 1) if pin_age is not None else None,
                 })
 
             if not cold_start_active:
@@ -2929,6 +2997,7 @@ def _run_neuralbet_inference_and_training_locked(
                 f"vs market-only {tune_metrics['val_brier_base']} ({brier_vs_base}), "
                 f"{dt_str}{sport_str}. Ensemble weights {persisted}.",
             )
+            _persist_last_tune(tune_metrics)
 
     return {
         "predictions_count": len(predictions),

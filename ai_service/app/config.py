@@ -38,3 +38,9 @@ LLM_MIN_INTERVAL_SECONDS = float(os.getenv("NEURALBET_LLM_MIN_INTERVAL_SECONDS",
 LLM_MAX_CONTEXT_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_CONTEXT_PER_CYCLE", "2"))
 LLM_MAX_RATIONALE_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE", "3"))
 LLM_SHADOW_MAX_DECISIONS = int(os.getenv("NEURALBET_LLM_SHADOW_MAX_DECISIONS", "2000"))
+# Match-context cache: key is event/factor/parameter/prefix. Re-fetch when coeff
+# or model win_probability moves by at least these deltas (probability in %-points).
+LLM_MATCH_CTX_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_TTL_SEC", str(3 * 3600)))
+LLM_MATCH_CTX_NULL_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_NULL_TTL_SEC", str(5 * 60)))
+LLM_REANALYZE_COEFF_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_COEFF_DELTA", "0.05"))
+LLM_REANALYZE_PROB_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_PROB_DELTA", "3.0"))
