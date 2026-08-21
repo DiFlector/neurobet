@@ -27,6 +27,7 @@ from app.config import (
     DEEPSEEK_TOKEN,
     LLM_ASYNC,
     LLM_BACKTEST,
+    LLM_BACKTEST_EXCLUSIVE,
     LLM_BACKTEST_MAX_CALLS,
     LLM_BATCH_DECIDE,
     LLM_BATCH_MAX,
@@ -43,6 +44,8 @@ from app.config import (
     LLM_MAX_RATIONALE_PER_CYCLE,
     LLM_MIN_INTERVAL_SECONDS,
     LLM_RATE_LIMIT_COOLDOWN_SEC,
+    LLM_RATE_LIMIT_MAX_WAIT_SEC,
+    LLM_RATE_LIMIT_WAIT,
     LLM_REANALYZE_COEFF_DELTA,
     LLM_REANALYZE_PROB_DELTA,
     LLM_SHADOW,
@@ -70,6 +73,8 @@ _async_busy = False
 _async_started_at = 0.0
 _async_skip_log_at = 0.0
 _ASYNC_STALE_SEC = 90.0
+# When set, live batch decide fail-opens so backtest owns DeepSeek quota.
+_backtest_llm_hold = threading.Event()
 _auto_veto_cache: tuple[float, bool] = (0.0, False)
 _AUTO_VETO_TTL_SEC = 300.0
 _auto_veto_computing = False
@@ -206,6 +211,48 @@ def _rate_limit_blocked() -> bool:
     return time.monotonic() < _rate_limited_until
 
 
+def _rate_limit_remaining() -> float:
+    return max(0.0, _rate_limited_until - time.monotonic())
+
+
+def _await_rate_limit_clear(
+    *,
+    max_wait: Optional[float] = None,
+    label: str = "deepseek",
+) -> bool:
+    """
+    Block until DeepSeek cooldown ends (or max_wait elapses).
+    Returns True if clear, False if still blocked after waiting.
+    """
+    remaining = _rate_limit_remaining()
+    if remaining <= 0:
+        return True
+    cap = float(max_wait if max_wait is not None else LLM_RATE_LIMIT_MAX_WAIT_SEC)
+    sleep_for = min(remaining + 1.0, max(1.0, cap))
+    logger.info(
+        "DeepSeek waiting %.0fs for rate-limit clear (%s, remaining≈%.0fs)",
+        sleep_for,
+        label,
+        remaining,
+    )
+    try:
+        from app.neuralbet.pipeline import add_ai_log
+
+        add_ai_log(
+            "SYSTEM",
+            f"DeepSeek rate limit — waiting {sleep_for:.0f}s ({label}).",
+            level="INFO",
+        )
+    except Exception:
+        pass
+    time.sleep(sleep_for)
+    return not _rate_limit_blocked()
+
+
+def _backtest_holds_llm() -> bool:
+    return bool(LLM_BACKTEST_EXCLUSIVE) and _backtest_llm_hold.is_set()
+
+
 def _strip_json_fence(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
@@ -236,74 +283,98 @@ def _call_send(
     search: bool,
     thinking: bool,
     timeout: float,
+    wait_rate_limit: Optional[bool] = None,
+    max_rate_wait: Optional[float] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Returns (text, null_reason). null_reason set when text is None."""
     if not llm_is_enabled():
         return None, "disabled"
-    if _rate_limit_blocked():
-        return None, "rate_limited"
 
-    def _run() -> str:
-        with _client_lock:
-            _rate_limit_wait()
-            if _rate_limit_blocked():
-                raise RuntimeError("rate_limited_cooldown")
-            client = _get_client()
-            return client.send_message(
-                prompt,
-                thinking_enabled=thinking,
-                search_enabled=search,
-            )
+    do_wait = bool(LLM_RATE_LIMIT_WAIT) if wait_rate_limit is None else bool(wait_rate_limit)
+    max_w = float(max_rate_wait if max_rate_wait is not None else LLM_RATE_LIMIT_MAX_WAIT_SEC)
+    attempts = 2 if do_wait else 1
+    last_reason: Optional[str] = None
 
-    try:
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            fut = pool.submit(_run)
-            text = fut.result(timeout=max(5.0, timeout))
-        from app.deepseek.client import _sanitize_stream_text
+    for attempt in range(attempts):
+        if _rate_limit_blocked():
+            if not do_wait:
+                return None, "rate_limited"
+            if not _await_rate_limit_clear(max_wait=max_w, label=f"pre-call#{attempt+1}"):
+                return None, "rate_limited"
 
-        cleaned = _sanitize_stream_text(text or "") or None
-        if not cleaned:
-            return None, "empty_response"
-        return cleaned, None
-    except FuturesTimeout:
-        logger.warning("DeepSeek call timed out after %.1fs", timeout)
+        def _run() -> str:
+            with _client_lock:
+                _rate_limit_wait()
+                if _rate_limit_blocked():
+                    raise RuntimeError("rate_limited_cooldown")
+                client = _get_client()
+                return client.send_message(
+                    prompt,
+                    thinking_enabled=thinking,
+                    search_enabled=search,
+                )
+
+        # Allow room for a short pre-wait already done; keep future timeout on the HTTP call.
+        future_timeout = max(5.0, timeout)
         try:
-            from app.neuralbet.pipeline import add_ai_log
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(_run)
+                text = fut.result(timeout=future_timeout)
+            from app.deepseek.client import _sanitize_stream_text
 
-            add_ai_log(
-                "SYSTEM",
-                f"DeepSeek timeout after {timeout:.0f}s — LLM layer skipped this call.",
-                level="WARNING",
-            )
-        except Exception:
-            pass
-        return None, "timeout"
-    except Exception as e:
-        from app.deepseek.client import DeepSeekStreamError
-
-        if isinstance(e, DeepSeekStreamError) and e.is_rate_limited:
-            _mark_rate_limited()
+            cleaned = _sanitize_stream_text(text or "") or None
+            if not cleaned:
+                return None, "empty_response"
+            return cleaned, None
+        except FuturesTimeout:
+            logger.warning("DeepSeek call timed out after %.1fs", timeout)
             try:
                 from app.neuralbet.pipeline import add_ai_log
 
                 add_ai_log(
                     "SYSTEM",
-                    f"DeepSeek rate limit: {e} — cooldown {LLM_RATE_LIMIT_COOLDOWN_SEC:.0f}s.",
+                    f"DeepSeek timeout after {timeout:.0f}s — LLM layer skipped this call.",
                     level="WARNING",
                 )
             except Exception:
                 pass
-            return None, "rate_limited"
-        if "rate_limited_cooldown" in str(e):
-            return None, "rate_limited"
-        logger.warning("DeepSeek call failed: %s", e)
-        try:
-            from app.neuralbet.pipeline import add_ai_log
+            return None, "timeout"
+        except Exception as e:
+            from app.deepseek.client import DeepSeekStreamError
 
-            add_ai_log("SYSTEM", f"DeepSeek error: {e}", level="WARNING")
-        except Exception:
-            pass
-        return None, "error"
+            if isinstance(e, DeepSeekStreamError) and e.is_rate_limited:
+                _mark_rate_limited()
+                last_reason = "rate_limited"
+                try:
+                    from app.neuralbet.pipeline import add_ai_log
+
+                    add_ai_log(
+                        "SYSTEM",
+                        f"DeepSeek rate limit: {e} — cooldown {LLM_RATE_LIMIT_COOLDOWN_SEC:.0f}s.",
+                        level="WARNING",
+                    )
+                except Exception:
+                    pass
+                if do_wait and attempt + 1 < attempts:
+                    _await_rate_limit_clear(max_wait=max_w, label=f"retry#{attempt+1}")
+                    continue
+                return None, "rate_limited"
+            if "rate_limited_cooldown" in str(e):
+                last_reason = "rate_limited"
+                if do_wait and attempt + 1 < attempts:
+                    _await_rate_limit_clear(max_wait=max_w, label=f"retry#{attempt+1}")
+                    continue
+                return None, "rate_limited"
+            logger.warning("DeepSeek call failed: %s", e)
+            try:
+                from app.neuralbet.pipeline import add_ai_log
+
+                add_ai_log("SYSTEM", f"DeepSeek error: {e}", level="WARNING")
+            except Exception:
+                pass
+            return None, "error"
+
+    return None, last_reason or "rate_limited"
 
 
 def ask_text(
@@ -312,8 +383,15 @@ def ask_text(
     search: bool = False,
     thinking: bool = False,
     timeout: float = 45.0,
+    wait_rate_limit: Optional[bool] = None,
 ) -> Optional[str]:
-    text, _reason = _call_send(prompt, search=search, thinking=thinking, timeout=timeout)
+    text, _reason = _call_send(
+        prompt,
+        search=search,
+        thinking=thinking,
+        timeout=timeout,
+        wait_rate_limit=wait_rate_limit,
+    )
     return text
 
 
@@ -324,9 +402,18 @@ def ask_json(
     thinking: bool = False,
     timeout: float = 45.0,
     retry: bool = True,
+    wait_rate_limit: Optional[bool] = None,
+    max_rate_wait: Optional[float] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Returns (parsed_dict, null_reason)."""
-    text, reason = _call_send(prompt, search=search, thinking=thinking, timeout=timeout)
+    text, reason = _call_send(
+        prompt,
+        search=search,
+        thinking=thinking,
+        timeout=timeout,
+        wait_rate_limit=wait_rate_limit,
+        max_rate_wait=max_rate_wait,
+    )
     if not text:
         return None, reason or "empty_response"
     parsed = _parse_json(text)
@@ -339,7 +426,12 @@ def ask_json(
         + "\n\nОтвет должен быть ТОЛЬКО валидным JSON-объектом без markdown и без пояснений."
     )
     text2, reason2 = _call_send(
-        retry_prompt, search=search, thinking=thinking, timeout=timeout
+        retry_prompt,
+        search=search,
+        thinking=thinking,
+        timeout=timeout,
+        wait_rate_limit=wait_rate_limit,
+        max_rate_wait=max_rate_wait,
     )
     if not text2:
         return None, reason2 or "parse_error"
@@ -633,6 +725,12 @@ def decide_bets_batch(
         meta["reason"] = "disabled"
         return list(candidates), meta
 
+    # Live path yields while backtest owns DeepSeek (exclusive quota).
+    if not archive_mode and _backtest_holds_llm():
+        meta["reason"] = "backtest_hold"
+        meta["decisions"] = {str(i): 0 for i in range(min(len(candidates), max(1, int(LLM_BATCH_MAX))))}
+        return list(candidates), meta
+
     ranked = sorted(
         candidates,
         key=lambda c: float(c.get("expected_roi") or 0.0),
@@ -655,17 +753,25 @@ def decide_bets_batch(
         meta["reason"] = "cache_hit"
         meta["decisions"] = decisions
     else:
+        need_api = True
         if _rate_limit_blocked():
             stale = _cache_get_expired(cache_key)
             if isinstance(stale, dict) and stale.get("decisions") is not None:
                 decisions = _parse_batch_decisions(stale.get("decisions"), len(batch))
                 meta["reason"] = "rate_limited_stale_cache"
                 meta["decisions"] = decisions
+                need_api = False
+            elif bool(LLM_RATE_LIMIT_WAIT):
+                _await_rate_limit_clear(
+                    max_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
+                    label="batch_decide",
+                )
             else:
                 meta["reason"] = "rate_limited"
                 meta["decisions"] = {str(i): 0 for i in range(len(batch))}
                 return list(candidates), meta
-        else:
+
+        if need_api:
             lines = []
             for i, c in enumerate(batch):
                 lines.append(
@@ -697,7 +803,13 @@ def decide_bets_batch(
                     "Никаких других ключей, markdown или пояснений.\n\n"
                     + "\n".join(lines)
                 )
-            data, reason = ask_json(prompt, search=True, timeout=90.0)
+            data, reason = ask_json(
+                prompt,
+                search=True,
+                timeout=90.0,
+                wait_rate_limit=True,
+                max_rate_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
+            )
             if not data and reason == "empty_response":
                 data, reason = ask_json(
                     prompt
@@ -705,6 +817,8 @@ def decide_bets_batch(
                     "при сомнении ставь 0.",
                     search=False,
                     timeout=45.0,
+                    wait_rate_limit=True,
+                    max_rate_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
                 )
             if not data:
                 if reason == "rate_limited":
@@ -765,8 +879,8 @@ def decide_backtest_batches(
     """
     Run up to ``max_calls`` web-search batch decides over archive stake candidates.
 
-    Returns summary with per-candidate decisions keyed by
-    ``event_id:factor_id:parameter:market_prefix``.
+    Holds exclusive DeepSeek access (live batch fail-opens) and waits out
+    rate-limit cooldowns between calls instead of aborting.
     """
     out: Dict[str, Any] = {
         "status": "ok",
@@ -804,39 +918,93 @@ def decide_backtest_batches(
         return out
 
     decisions_by_key: Dict[str, int] = {}
-    for call_i, offset in enumerate(range(0, len(pool), batch_size)):
-        if call_i >= calls_budget:
-            break
-        chunk = pool[offset : offset + batch_size]
-        if progress_cb:
+    held = False
+    if bool(LLM_BACKTEST_EXCLUSIVE):
+        _backtest_llm_hold.set()
+        held = True
+        try:
+            from app.neuralbet.pipeline import add_ai_log
+
+            add_ai_log(
+                "SYSTEM",
+                "DeepSeek: backtest exclusive hold ON — live batch will fail-open.",
+                level="INFO",
+            )
+        except Exception:
+            pass
+
+    try:
+        # Clear any leftover cooldown before first archive call when possible.
+        if _rate_limit_blocked() and bool(LLM_RATE_LIMIT_WAIT):
+            _await_rate_limit_clear(
+                max_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
+                label="backtest_start",
+            )
+
+        for call_i, offset in enumerate(range(0, len(pool), batch_size)):
+            if call_i >= calls_budget:
+                break
+            chunk = pool[offset : offset + batch_size]
+            if progress_cb:
+                try:
+                    progress_cb(call_i + 1, calls_budget, len(chunk))
+                except Exception:
+                    pass
+
+            # Between batches: respect min interval + any cooldown.
+            if call_i > 0 and _rate_limit_blocked() and bool(LLM_RATE_LIMIT_WAIT):
+                _await_rate_limit_clear(
+                    max_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
+                    label=f"backtest_batch_{call_i+1}",
+                )
+
+            _kept, meta = decide_bets_batch(
+                chunk,
+                required=False,
+                archive_mode=True,
+                max_n=len(chunk),
+            )
+            # One more wait+retry if this batch still came back rate_limited.
+            if meta.get("reason") == "rate_limited" and bool(LLM_RATE_LIMIT_WAIT):
+                if _await_rate_limit_clear(
+                    max_wait=float(LLM_RATE_LIMIT_MAX_WAIT_SEC),
+                    label=f"backtest_retry_{call_i+1}",
+                ):
+                    _kept, meta = decide_bets_batch(
+                        chunk,
+                        required=False,
+                        archive_mode=True,
+                        max_n=len(chunk),
+                    )
+
+            out["calls"] += 1
+            out["call_reasons"].append(meta.get("reason") or "unknown")
+            for j, c in enumerate(chunk):
+                key = (
+                    f"{c.get('event_id')}:{c.get('factor_id')}:"
+                    f"{c.get('parameter')}:{(c.get('market_prefix') or '').strip()}"
+                )
+                flag = int((meta.get("decisions") or {}).get(str(j), 0))
+                decisions_by_key[key] = flag
+
+            if meta.get("reason") == "rate_limited":
+                out["status"] = "rate_limited"
+                # Do not abort remaining budget after wait+retry failed — stop to
+                # avoid burning further attempts while still hard-limited.
+                break
+    finally:
+        if held:
+            _backtest_llm_hold.clear()
             try:
-                progress_cb(call_i + 1, calls_budget, len(chunk))
+                from app.neuralbet.pipeline import add_ai_log
+
+                add_ai_log(
+                    "SYSTEM",
+                    "DeepSeek: backtest exclusive hold OFF.",
+                    level="INFO",
+                )
             except Exception:
                 pass
-        _kept, meta = decide_bets_batch(
-            chunk,
-            required=False,
-            archive_mode=True,
-            max_n=len(chunk),
-        )
-        out["calls"] += 1
-        out["call_reasons"].append(meta.get("reason") or "unknown")
-        for j, c in enumerate(chunk):
-            key = (
-                f"{c.get('event_id')}:{c.get('factor_id')}:"
-                f"{c.get('parameter')}:{(c.get('market_prefix') or '').strip()}"
-            )
-            flag = int((meta.get("decisions") or {}).get(str(j), 0))
-            decisions_by_key[key] = flag
-        # Stop early if rate-limited and no decisions useful
-        if meta.get("reason") == "rate_limited" and not meta.get("decisions"):
-            out["status"] = "rate_limited"
-            break
-        if meta.get("reason") in ("rate_limited",) and out["calls"] >= 1:
-            # got zeros / fail-open path for that batch — continue only if not cooling
-            if _rate_limit_blocked():
-                out["status"] = "rate_limited"
-                break
 
     out["decisions"] = decisions_by_key
     out["approved"] = sum(1 for v in decisions_by_key.values() if int(v) == 1)

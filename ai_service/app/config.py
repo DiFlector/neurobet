@@ -39,6 +39,9 @@ LLM_DIGEST_HOURS = float(os.getenv("NEURALBET_LLM_DIGEST_HOURS", "0"))
 LLM_DIGEST_MAX_HISTORY = int(os.getenv("NEURALBET_LLM_DIGEST_MAX_HISTORY", "20"))
 LLM_MIN_INTERVAL_SECONDS = float(os.getenv("NEURALBET_LLM_MIN_INTERVAL_SECONDS", "15"))
 LLM_RATE_LIMIT_COOLDOWN_SEC = float(os.getenv("NEURALBET_LLM_RATE_LIMIT_COOLDOWN_SEC", "90"))
+# When DeepSeek returns rate_limit: sleep until cooldown clears, then retry.
+LLM_RATE_LIMIT_WAIT = _env_bool("NEURALBET_LLM_RATE_LIMIT_WAIT", "1")
+LLM_RATE_LIMIT_MAX_WAIT_SEC = float(os.getenv("NEURALBET_LLM_RATE_LIMIT_MAX_WAIT_SEC", "180"))
 LLM_MAX_CONTEXT_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_CONTEXT_PER_CYCLE", "2"))
 # Short bet rationales burned DeepSeek rate limit for little value — off by default.
 LLM_MAX_RATIONALE_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE", "0"))
@@ -57,3 +60,5 @@ LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
 # Backtest DeepSeek web-search ablation on top stake candidates (capped API calls).
 LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "1")
 LLM_BACKTEST_MAX_CALLS = int(os.getenv("NEURALBET_LLM_BACKTEST_MAX_CALLS", "4"))
+# While backtest owns DeepSeek, live batch fail-opens (no competing API spam).
+LLM_BACKTEST_EXCLUSIVE = _env_bool("NEURALBET_LLM_BACKTEST_EXCLUSIVE", "1")
