@@ -97,7 +97,14 @@ def read_settings():
 def write_settings(payload: Dict[str, Any] = Body(...)):
     ai_enabled = payload.get("ai_enabled")
     training_enabled = payload.get("training_enabled")
-    new_settings = update_ai_settings(ai_enabled=ai_enabled, training_enabled=training_enabled)
+    quality_gate_bypass = payload.get("quality_gate_bypass")
+    deepseek_enabled = payload.get("deepseek_enabled")
+    new_settings = update_ai_settings(
+        ai_enabled=ai_enabled,
+        training_enabled=training_enabled,
+        quality_gate_bypass=quality_gate_bypass,
+        deepseek_enabled=deepseek_enabled,
+    )
     return {"status": "success", "settings": new_settings}
 
 @router.get("/logs")

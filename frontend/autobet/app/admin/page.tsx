@@ -23,7 +23,9 @@ import {
   Ban,
   FlaskConical,
   Download,
-  FileJson
+  FileJson,
+  ShieldOff,
+  Sparkles,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
@@ -46,6 +48,8 @@ export default function AdminPage() {
   // AI Settings & Logs State
   const [aiEnabled, setAiEnabled] = useState(true)
   const [trainingEnabled, setTrainingEnabled] = useState(true)
+  const [qualityGateBypass, setQualityGateBypass] = useState(false)
+  const [deepseekEnabled, setDeepseekEnabled] = useState(true)
   const [logs, setLogs] = useState<AILog[]>([])
   const [logFilter, setLogFilter] = useState<string>("ALL")
   const [triggering, setTriggering] = useState(false)
@@ -258,6 +262,8 @@ export default function AdminPage() {
         if (data.settings) {
           setAiEnabled(data.settings.ai_enabled)
           setTrainingEnabled(data.settings.training_enabled)
+          setQualityGateBypass(Boolean(data.settings.quality_gate_bypass))
+          setDeepseekEnabled(data.settings.deepseek_enabled !== false)
         }
       }
     } catch (err) {
@@ -572,10 +578,15 @@ export default function AdminPage() {
     }
   }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns, fetchLlmDigest])
 
-  const toggleAISetting = async (key: "ai_enabled" | "training_enabled", currentValue: boolean) => {
+  const toggleAISetting = async (
+    key: "ai_enabled" | "training_enabled" | "quality_gate_bypass" | "deepseek_enabled",
+    currentValue: boolean,
+  ) => {
     const newValue = !currentValue
     if (key === "ai_enabled") setAiEnabled(newValue)
     if (key === "training_enabled") setTrainingEnabled(newValue)
+    if (key === "quality_gate_bypass") setQualityGateBypass(newValue)
+    if (key === "deepseek_enabled") setDeepseekEnabled(newValue)
 
     try {
       const res = await fetch(`${API_BASE}/api/admin/ai-settings`, {
@@ -594,6 +605,8 @@ export default function AdminPage() {
     } catch (err) {
       if (key === "ai_enabled") setAiEnabled(currentValue)
       if (key === "training_enabled") setTrainingEnabled(currentValue)
+      if (key === "quality_gate_bypass") setQualityGateBypass(currentValue)
+      if (key === "deepseek_enabled") setDeepseekEnabled(currentValue)
     }
   }
 
@@ -879,27 +892,49 @@ export default function AdminPage() {
             )
           }
           const passed = Boolean(gate.pass)
+          const bypassed = Boolean(gate.bypass) || qualityGateBypass
           const metrics = gate.metrics || {}
           const fmt = (v: unknown, digits = 1) =>
             v == null || Number.isNaN(Number(v)) ? "—" : Number(v).toFixed(digits)
+          const liveAllowed = passed || bypassed
           return (
             <div className={`rounded-2xl border p-5 backdrop-blur-md shadow-lg ${
-              passed
-                ? "bg-[#00b894]/10 border-[#00b894]/50"
+              liveAllowed
+                ? bypassed && !passed
+                  ? "bg-[#fdcb6e]/10 border-[#fdcb6e]/50"
+                  : "bg-[#00b894]/10 border-[#00b894]/50"
                 : "bg-[#d63031]/10 border-[#d63031]/50"
             }`}>
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div className="flex items-center gap-3.5">
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
-                    passed ? "border-[#00b894]/50 bg-[#00b894]/10" : "border-[#d63031]/50 bg-[#d63031]/10"
+                    liveAllowed
+                      ? bypassed && !passed
+                        ? "border-[#fdcb6e]/50 bg-[#fdcb6e]/10"
+                        : "border-[#00b894]/50 bg-[#00b894]/10"
+                      : "border-[#d63031]/50 bg-[#d63031]/10"
                   }`}>
-                    {passed
+                    {bypassed && !passed
+                      ? <ShieldOff className="w-6 h-6 text-[#ffeaa7]" />
+                      : passed
                       ? <ShieldCheck className="w-6 h-6 text-[#55efc4]" />
                       : <Ban className="w-6 h-6 text-[#ff7675]" />}
                   </div>
                   <div>
-                    <h3 className={`text-base font-black ${passed ? "text-[#55efc4]" : "text-[#ff7675]"}`}>
-                      Quality gate — {passed ? "пройден, live разрешены" : "блокирует live-ставки"}
+                    <h3 className={`text-base font-black ${
+                      bypassed && !passed
+                        ? "text-[#ffeaa7]"
+                        : passed
+                        ? "text-[#55efc4]"
+                        : "text-[#ff7675]"
+                    }`}>
+                      Quality gate — {
+                        bypassed && !passed
+                          ? "bypass ON — live разрешены несмотря на fail"
+                          : passed
+                          ? "пройден, live разрешены"
+                          : "блокирует live-ставки"
+                      }
                     </h3>
                     <p className="text-xs text-neutral-400 mt-0.5">
                       Тот же OOS-чек, что решает, открывать ли virtual live. Обновляется вместе со статусом обучения.
@@ -907,6 +942,11 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+                  {bypassed && (
+                    <span className="px-2.5 py-1.5 rounded-full border bg-[#fdcb6e]/15 border-[#fdcb6e]/40 text-[#ffeaa7]">
+                      bypass
+                    </span>
+                  )}
                   <span className="px-2.5 py-1.5 rounded-full border bg-neutral-950 border-neutral-800 text-neutral-300">
                     срез: {gate.eval_slice ?? "—"}
                   </span>
@@ -932,8 +972,11 @@ export default function AdminPage() {
                 </div>
               </div>
               {!passed && (gate.reasons?.length ?? 0) > 0 && (
-                <div className="mt-3 pt-3 border-t border-neutral-800/60 text-xs font-mono text-[#ff7675]">
+                <div className={`mt-3 pt-3 border-t border-neutral-800/60 text-xs font-mono ${
+                  bypassed ? "text-[#ffeaa7]" : "text-[#ff7675]"
+                }`}>
                   {(gate.reasons as string[]).join("; ")}
+                  {bypassed ? " — игнорируется (bypass)" : ""}
                 </div>
               )}
             </div>
@@ -1405,7 +1448,7 @@ export default function AdminPage() {
         )}
 
         {/* Toggle Switches Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* AI Inference Toggle */}
           <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
             aiEnabled ? "bg-neutral-900/90 border-[#00b894]/40" : "bg-neutral-900/50 border-[#d63031]/40"
@@ -1435,7 +1478,7 @@ export default function AdminPage() {
               {/* Toggle Switch */}
               <button
                 onClick={() => toggleAISetting("ai_enabled", aiEnabled)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center ${
+                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
                   aiEnabled ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
                 }`}
               >
@@ -1475,12 +1518,98 @@ export default function AdminPage() {
               {/* Toggle Switch */}
               <button
                 onClick={() => toggleAISetting("training_enabled", trainingEnabled)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center ${
+                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
                   trainingEnabled ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
                 }`}
               >
                 <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
                   trainingEnabled ? "translate-x-6" : "translate-x-0"
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Quality gate bypass */}
+          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
+            qualityGateBypass ? "bg-neutral-900/90 border-[#fdcb6e]/40" : "bg-neutral-900/50 border-neutral-800"
+          }`}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
+                  qualityGateBypass
+                    ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30"
+                    : "bg-neutral-800 text-neutral-400 border border-neutral-700"
+                }`}>
+                  <ShieldOff className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Bypass quality gate
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                      qualityGateBypass
+                        ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30"
+                        : "bg-neutral-800 text-neutral-400 border border-neutral-700"
+                    }`}>
+                      {qualityGateBypass ? "ВКЛЮЧЕН" : "ВЫКЛ"}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Разрешить live-ставки даже если walk-forward gate не проходит
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => toggleAISetting("quality_gate_bypass", qualityGateBypass)}
+                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
+                  qualityGateBypass ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
+                }`}
+              >
+                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                  qualityGateBypass ? "translate-x-6" : "translate-x-0"
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          {/* DeepSeek */}
+          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
+            deepseekEnabled ? "bg-neutral-900/90 border-[#0984e3]/40" : "bg-neutral-900/50 border-[#d63031]/40"
+          }`}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
+                  deepseekEnabled
+                    ? "bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30"
+                    : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
+                }`}>
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    DeepSeek
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                      deepseekEnabled
+                        ? "bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30"
+                        : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
+                    }`}>
+                      {deepseekEnabled ? "ВКЛЮЧЕН" : "ВЫКЛ"}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Batch decide / web-search. Выкл = ставки только от модели
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => toggleAISetting("deepseek_enabled", deepseekEnabled)}
+                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
+                  deepseekEnabled ? "bg-[#0984e3]" : "bg-neutral-800 border border-neutral-700"
+                }`}
+              >
+                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                  deepseekEnabled ? "translate-x-6" : "translate-x-0"
                 }`} />
               </button>
             </div>

@@ -184,7 +184,8 @@ TOOLS = [
     # --- admin panel slices ---
     _tool(
         "get_ai_settings",
-        "Whether inference (ai_enabled) and online training (training_enabled) are on.",
+        "Whether inference (ai_enabled), online training (training_enabled), "
+        "quality_gate_bypass, and deepseek_enabled are on.",
     ),
     _tool(
         "get_ai_logs",

@@ -47,6 +47,8 @@ class AdminLoginRequest(BaseModel):
 class AISettingsRequest(BaseModel):
     ai_enabled: Optional[bool] = None
     training_enabled: Optional[bool] = None
+    quality_gate_bypass: Optional[bool] = None
+    deepseek_enabled: Optional[bool] = None
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
@@ -63,9 +65,16 @@ def _fallback_ai_settings() -> dict:
         return {
             "ai_enabled": bool(saved["ai_enabled"]) if "ai_enabled" in saved else True,
             "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else False,
+            "quality_gate_bypass": bool(saved["quality_gate_bypass"]) if "quality_gate_bypass" in saved else False,
+            "deepseek_enabled": bool(saved["deepseek_enabled"]) if "deepseek_enabled" in saved else True,
         }
     except Exception:
-        return {"ai_enabled": True, "training_enabled": False}
+        return {
+            "ai_enabled": True,
+            "training_enabled": False,
+            "quality_gate_bypass": False,
+            "deepseek_enabled": True,
+        }
 
 
 def _read_ai_logs_file() -> Optional[list]:

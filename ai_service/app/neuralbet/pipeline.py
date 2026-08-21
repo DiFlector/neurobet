@@ -132,7 +132,12 @@ def _is_query_canceled(exc: BaseException) -> bool:
 # Defaults only apply when no saved file exists yet. After an admin toggle the values
 # live in AI_SETTINGS_PATH on the /app/data volume so a container restart does not
 # flip inference/training back on.
-AI_SETTINGS = {"ai_enabled": True, "training_enabled": False}
+AI_SETTINGS = {
+    "ai_enabled": True,
+    "training_enabled": False,
+    "quality_gate_bypass": False,
+    "deepseek_enabled": True,
+}
 AI_SETTINGS_PATH = os.path.join(MODEL_DIR, "ai_settings.json")
 
 # Replay-buffer knobs for the online trainer (see B4 in the plan): a resolved bet is
@@ -401,6 +406,8 @@ def _persist_ai_settings() -> None:
         payload = {
             "ai_enabled": bool(AI_SETTINGS["ai_enabled"]),
             "training_enabled": bool(AI_SETTINGS["training_enabled"]),
+            "quality_gate_bypass": bool(AI_SETTINGS.get("quality_gate_bypass")),
+            "deepseek_enabled": bool(AI_SETTINGS.get("deepseek_enabled", True)),
         }
         tmp_path = AI_SETTINGS_PATH + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -416,14 +423,21 @@ def _restore_ai_settings() -> None:
     try:
         with open(AI_SETTINGS_PATH, "r", encoding="utf-8") as f:
             saved = json.load(f)
-        for key in ("ai_enabled", "training_enabled"):
+        for key in (
+            "ai_enabled",
+            "training_enabled",
+            "quality_gate_bypass",
+            "deepseek_enabled",
+        ):
             if key in saved and saved[key] is not None:
                 AI_SETTINGS[key] = bool(saved[key])
         add_ai_log(
             "SYSTEM",
             "AI settings restored from disk: "
             f"inference={'ENABLED' if AI_SETTINGS['ai_enabled'] else 'DISABLED'}, "
-            f"training={'ENABLED' if AI_SETTINGS['training_enabled'] else 'DISABLED'}.",
+            f"training={'ENABLED' if AI_SETTINGS['training_enabled'] else 'DISABLED'}, "
+            f"quality_gate_bypass={'ON' if AI_SETTINGS.get('quality_gate_bypass') else 'OFF'}, "
+            f"deepseek={'ON' if AI_SETTINGS.get('deepseek_enabled', True) else 'OFF'}.",
         )
     except Exception as e:
         logger.error(f"Error loading AI settings: {e}")
@@ -534,7 +548,10 @@ def reset_neural_network() -> dict[str, Any]:
 
 
 def update_ai_settings(
-    ai_enabled: bool | None = None, training_enabled: bool | None = None
+    ai_enabled: bool | None = None,
+    training_enabled: bool | None = None,
+    quality_gate_bypass: bool | None = None,
+    deepseek_enabled: bool | None = None,
 ) -> dict[str, Any]:
     changed = False
     if ai_enabled is not None:
@@ -546,6 +563,30 @@ def update_ai_settings(
         AI_SETTINGS["training_enabled"] = bool(training_enabled)
         status_str = "ENABLED" if AI_SETTINGS["training_enabled"] else "DISABLED"
         add_ai_log("SYSTEM", f"Online Training toggle changed: {status_str}")
+        changed = True
+    if quality_gate_bypass is not None:
+        AI_SETTINGS["quality_gate_bypass"] = bool(quality_gate_bypass)
+        status_str = "ON" if AI_SETTINGS["quality_gate_bypass"] else "OFF"
+        add_ai_log(
+            "SYSTEM",
+            f"Quality gate bypass changed: {status_str}"
+            + (" — live bets ignore backtest gate." if AI_SETTINGS["quality_gate_bypass"] else "."),
+            level="WARNING" if AI_SETTINGS["quality_gate_bypass"] else "INFO",
+        )
+        changed = True
+    if deepseek_enabled is not None:
+        AI_SETTINGS["deepseek_enabled"] = bool(deepseek_enabled)
+        status_str = "ON" if AI_SETTINGS["deepseek_enabled"] else "OFF"
+        add_ai_log(
+            "SYSTEM",
+            f"DeepSeek toggle changed: {status_str}"
+            + (
+                " — batch decide / web-search off; model stakes without LLM filter."
+                if not AI_SETTINGS["deepseek_enabled"]
+                else "."
+            ),
+            level="WARNING" if not AI_SETTINGS["deepseek_enabled"] else "INFO",
+        )
         changed = True
     if changed:
         _persist_ai_settings()
@@ -856,6 +897,7 @@ def get_live_quality_gate() -> dict[str, Any]:
     from app.neuralbet.backtest import get_backtest_history, get_latest_backtest
     from app.neuralbet.quality_gate import evaluate_quality_gate
 
+    bypass = bool(AI_SETTINGS.get("quality_gate_bypass"))
     latest = get_latest_backtest()
     if not latest:
         return {
@@ -864,10 +906,25 @@ def get_live_quality_gate() -> dict[str, Any]:
             "eval_slice": None,
             "reasons": ["no backtest yet"],
             "metrics": {},
+            "bypass": bypass,
         }
-    return evaluate_quality_gate(
+    gate = evaluate_quality_gate(
         latest, history=get_backtest_history(), check_age=True,
     )
+    out = dict(gate)
+    out["bypass"] = bypass
+    return out
+
+
+def _live_quality_skip_reason() -> str | None:
+    """Block new virtual live bets until the latest backtest shows an edge on OOS."""
+    if AI_SETTINGS.get("quality_gate_bypass"):
+        return None
+    gate = get_live_quality_gate()
+    if not gate.get("enabled"):
+        return None
+    reasons = gate.get("reasons") or []
+    return "; ".join(reasons) if reasons else None
 
 
 def get_training_health() -> dict[str, Any]:
@@ -1682,15 +1739,6 @@ def _refresh_market_support() -> dict[tuple, int]:
     return _market_support
 
 
-def _live_quality_skip_reason() -> str | None:
-    """Block new virtual live bets until the latest backtest shows an edge on OOS."""
-    gate = get_live_quality_gate()
-    if not gate.get("enabled"):
-        return None
-    reasons = gate.get("reasons") or []
-    return "; ".join(reasons) if reasons else None
-
-
 def _place_live_bets(candidates: list[dict[str, Any]]):
     """
     Opens new live_bets from this cycle's predicted-win outcomes (the model's own
@@ -2212,6 +2260,15 @@ def _run_neuralbet_inference_and_training_locked(
             )
             place_result = {"placed": 0, "reason": "quality_gate"}
         else:
+            if AI_SETTINGS.get("quality_gate_bypass"):
+                gate_now = get_live_quality_gate()
+                if not gate_now.get("pass"):
+                    add_ai_log(
+                        "BANKROLL",
+                        "Quality gate bypass ON — placing despite gate fail: "
+                        + "; ".join(gate_now.get("reasons") or ["unknown"]) + ".",
+                        level="WARNING",
+                    )
             place_result = _place_live_bets(live_candidates)
 
     # Shadow / post-place enrich when veto is off.

@@ -23,7 +23,9 @@ import {
   Database,
   Loader2,
   ChevronDown,
-  Search
+  Search,
+  Copy,
+  Check,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { SPORT_FILTER_OPTIONS } from "@/lib/sports"
@@ -186,6 +188,7 @@ export default function NeurobetsPage() {
   const [bankroll, setBankroll] = useState<any>(null)
   const [openBetsCount, setOpenBetsCount] = useState(0)
   const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
+  const [openBetsJsonCopied, setOpenBetsJsonCopied] = useState(false)
   const [settledBotBetsList, setSettledBotBetsList] = useState<any[]>([])
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [liveBets, setLiveBets] = useState<NeuroBet[]>([])
@@ -414,6 +417,51 @@ export default function NeurobetsPage() {
     if (historyOffsetRef.current >= (historySummary?.filtered_count ?? historySummary?.total_count ?? 0)) return
     fetchHistory(historyOffsetRef.current, PAGE_SIZE, "append")
   }, [fetchHistory, loadingMoreHistory, historyLoading, historySummary])
+
+  const copyOpenBotBetsJson = useCallback(async () => {
+    const payload = openBotBetsList.map((b) => ({
+      id: b.id,
+      event_id: b.event_id,
+      factor_id: b.factor_id,
+      parameter: b.parameter ?? "",
+      market_prefix: b.market_prefix ?? "",
+      label: b.label ?? "",
+      match_name: b.match_name ?? "",
+      sport_path: b.sport_path ?? "",
+      stake: b.stake,
+      coefficient: b.coefficient,
+      current_coefficient: b.current_coefficient ?? null,
+      win_probability: b.win_probability,
+      expected_roi: b.expected_roi ?? null,
+      status: b.status,
+      placed_at: b.placed_at ?? null,
+      current_score: b.current_score ?? null,
+      current_timer: b.current_timer ?? null,
+      match_is_live: Boolean(b.match_is_live),
+    }))
+    const text = JSON.stringify(payload, null, 2)
+    try {
+      await navigator.clipboard.writeText(text)
+      setOpenBetsJsonCopied(true)
+      window.setTimeout(() => setOpenBetsJsonCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers / insecure contexts
+      const ta = document.createElement("textarea")
+      ta.value = text
+      ta.setAttribute("readonly", "")
+      ta.style.position = "fixed"
+      ta.style.left = "-9999px"
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        document.execCommand("copy")
+        setOpenBetsJsonCopied(true)
+        window.setTimeout(() => setOpenBetsJsonCopied(false), 2000)
+      } finally {
+        document.body.removeChild(ta)
+      }
+    }
+  }, [openBotBetsList])
 
   const fetchNeurobets = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
     const requestId = ++neurobetsRequestId.current
@@ -792,21 +840,48 @@ export default function NeurobetsPage() {
             separate from the "Активные LIVE Прогнозы" tab below (which is just every
             live outcome the AI has scored, most of which have no money on them). */}
         <div className="bg-neutral-900/80 border border-[#00b894]/40 rounded-2xl p-4 md:p-5 space-y-3 backdrop-blur-md shadow-lg shadow-[#00b894]/5">
-          <div className="flex items-center gap-3">
-            <div className="relative w-9 h-9 rounded-xl bg-[#00b894]/15 border border-[#00b894]/30 flex items-center justify-center shrink-0">
-              <motion.span
-                className="absolute inset-0 rounded-xl bg-[#00b894]/25"
-                animate={{ scale: [1, 1.3, 1], opacity: [0, 0.5, 0] }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <Zap className="relative w-4 h-4 text-[#55efc4]" />
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="relative w-9 h-9 rounded-xl bg-[#00b894]/15 border border-[#00b894]/30 flex items-center justify-center shrink-0">
+                <motion.span
+                  className="absolute inset-0 rounded-xl bg-[#00b894]/25"
+                  animate={{ scale: [1, 1.3, 1], opacity: [0, 0.5, 0] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                />
+                <Zap className="relative w-4 h-4 text-[#55efc4]" />
+              </div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Ставки нейросети
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                  открыто: {openBotBetsList.length}
+                </span>
+              </h3>
             </div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              Ставки нейросети
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
-                открыто: {openBotBetsList.length}
-              </span>
-            </h3>
+            <button
+              type="button"
+              onClick={copyOpenBotBetsJson}
+              disabled={openBotBetsList.length === 0}
+              className={`inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1.5 rounded-lg border transition shrink-0 ${
+                openBotBetsList.length === 0
+                  ? "bg-neutral-950/40 border-neutral-800 text-neutral-600 cursor-not-allowed"
+                  : openBetsJsonCopied
+                  ? "bg-[#00b894]/15 border-[#00b894]/40 text-[#55efc4]"
+                  : "bg-neutral-950/80 border-neutral-700 text-neutral-300 hover:border-[#00b894]/50 hover:text-[#55efc4]"
+              }`}
+              title="Скопировать открытые ставки бота как JSON-массив"
+            >
+              {openBetsJsonCopied ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  Скопировано
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Скопировать JSON
+                </>
+              )}
+            </button>
           </div>
 
           {openBotBetsList.length === 0 ? (

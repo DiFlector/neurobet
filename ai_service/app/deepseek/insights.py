@@ -89,12 +89,22 @@ def llm_is_enabled() -> bool:
     return bool(LLM_ENABLED) and bool(DEEPSEEK_TOKEN and DEEPSEEK_TOKEN.strip())
 
 
+def llm_admin_enabled() -> bool:
+    """Admin runtime toggle (default on). Fail-open when off — stake without DeepSeek."""
+    try:
+        from app.neuralbet.pipeline import get_ai_settings
+
+        return bool(get_ai_settings().get("deepseek_enabled", True))
+    except Exception:
+        return True
+
+
 def match_context_enabled() -> bool:
-    return llm_is_enabled() and bool(LLM_MATCH_CONTEXT)
+    return llm_is_enabled() and llm_admin_enabled() and bool(LLM_MATCH_CONTEXT)
 
 
 def shadow_enabled() -> bool:
-    return llm_is_enabled() and bool(LLM_SHADOW)
+    return llm_is_enabled() and llm_admin_enabled() and bool(LLM_SHADOW)
 
 
 def _auto_veto_eligible_cached() -> bool:
@@ -134,7 +144,7 @@ def digest_hours() -> float:
 
 
 def llm_batch_decide_enabled() -> bool:
-    return llm_is_enabled() and bool(LLM_BATCH_DECIDE)
+    return llm_is_enabled() and llm_admin_enabled() and bool(LLM_BATCH_DECIDE)
 
 
 def llm_batch_required() -> bool:
