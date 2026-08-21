@@ -704,6 +704,59 @@ def _parse_batch_decisions(raw: Any, n: int) -> Dict[str, int]:
     return out
 
 
+def _batch_decide_candidate_line(i: int, c: Dict[str, Any]) -> str:
+    match = (
+        c.get("match_name")
+        or f"{c.get('team_1') or ''} — {c.get('team_2') or ''}".strip(" —")
+        or ""
+    )
+    return (
+        f"{i}: sport={c.get('sport') or ''} | teams={c.get('team_1') or '?'} vs "
+        f"{c.get('team_2') or '?'} | match={match} | score={c.get('score') or ''} | "
+        f"market={c.get('market_prefix') or ''} / {c.get('label') or ''} | "
+        f"coeff={c.get('coeff') or c.get('coefficient')} | "
+        f"p_model={c.get('win_probability')}% | "
+        f"EV={round(float(c.get('expected_roi') or 0), 1)}%"
+    )
+
+
+def _batch_decide_live_prompt(lines: List[str]) -> str:
+    return (
+        "Ты спортивный аналитик NeuroBet. Сейчас LIVE: реши, на какие исходы "
+        "реально ставить из списка кандидатов модели.\n\n"
+        "ОБЯЗАТЕЛЬНО используй веб-поиск по КАЖДОМУ кандидату. Ищи:\n"
+        "— свежие прогнозы экспертов / статистику на этот матч и рынок;\n"
+        "— форму команд/игроков, H2H, травмы, ротацию, мотивацию;\n"
+        "— новости и контекст (серия, турнир, дома/в гостях, таймер/сет);\n"
+        "— типичную логику линии (тотал/П1/П2) при текущем счёте.\n"
+        "Не опирайся только на p_model/EV модели — они подсказка, не истина.\n"
+        "Если поиск пустой или сомнение — ставь 0. Можно одобрить несколько "
+        "или ни одного.\n\n"
+        "Ответ: ТОЛЬКО один JSON-объект. Ключ = id кандидата (строка), "
+        "значение = 1 (ставить) или 0 (не ставить).\n"
+        "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
+        "Без markdown, пояснений, других ключей и текста вне JSON.\n\n"
+        "Кандидаты:\n"
+        + "\n".join(lines)
+    )
+
+
+def _batch_decide_archive_prompt(lines: List[str]) -> str:
+    return (
+        "Ты спортивный аналитик. Ниже АРХИВНЫЕ кандидаты NeuroBet "
+        "(ставка уже была; исход известен букмекеру).\n\n"
+        "ОБЯЗАТЕЛЬНО используй веб-поиск. Ищи форму/H2H/прогнозы/контекст "
+        "на момент ставки. ВАЖНО: НЕ используй финальный счёт матча и исход "
+        "этой ставки — если поиск показывает итог, игнорируй.\n"
+        "Опирайся на счёт на момент ставки и типичную логику рынка.\n"
+        "При сомнении — 0.\n\n"
+        "Ответ: ТОЛЬКО JSON-объект {\"id\":0|1}. Пример: {\"0\":1,\"1\":0}\n"
+        "Без markdown и пояснений.\n\n"
+        "Кандидаты:\n"
+        + "\n".join(lines)
+    )
+
+
 def decide_bets_batch(
     candidates: List[Dict[str, Any]],
     *,
@@ -742,9 +795,14 @@ def decide_bets_batch(
         return list(candidates), meta
 
     # Live path yields while backtest owns DeepSeek (exclusive quota).
+    # When batch is required (DeepSeek ON for bot stakes), never place without a decide.
     if not archive_mode and _backtest_holds_llm():
         meta["reason"] = "backtest_hold"
-        meta["decisions"] = {str(i): 0 for i in range(min(len(candidates), max(1, int(LLM_BATCH_MAX))))}
+        n = min(len(candidates), max(1, int(LLM_BATCH_MAX)))
+        meta["decisions"] = {str(i): 0 for i in range(n)}
+        meta["requested"] = n
+        if fail_closed:
+            return [], meta
         return list(candidates), meta
 
     ranked = sorted(
@@ -785,40 +843,17 @@ def decide_bets_batch(
             else:
                 meta["reason"] = "rate_limited"
                 meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+                if fail_closed:
+                    return [], meta
                 return list(candidates), meta
 
         if need_api:
-            lines = []
-            for i, c in enumerate(batch):
-                lines.append(
-                    f"{i}: sport={c.get('sport') or ''} | match={c.get('match_name') or ''} | "
-                    f"score={c.get('score') or ''} | market={c.get('market_prefix') or ''} / "
-                    f"{c.get('label') or ''} | coeff={c.get('coeff') or c.get('coefficient')} | "
-                    f"p_model={c.get('win_probability')}% | EV={round(float(c.get('expected_roi') or 0), 1)}%"
-                )
-            if archive_mode:
-                prompt = (
-                    "Ты спортивный аналитик. Используй веб-поиск. Ниже АРХИВНЫЕ кандидаты "
-                    "NeuroBet (ставка уже была в прошлом; исход известен букмекеру).\n"
-                    "ВАЖНО: НЕ используй финальный счёт матча и исход этой ставки. "
-                    "Если поиск показывает итог — игнорируй. Опирайся на счёт на момент "
-                    "ставки, форму/H2H и типичную логику рынка.\n"
-                    "Реши, на что стоило бы ставить в тот момент.\n"
-                    "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
-                    "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
-                    "Никаких других ключей, markdown или пояснений.\n\n"
-                    + "\n".join(lines)
-                )
-            else:
-                prompt = (
-                    "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
-                    "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
-                    "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
-                    "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
-                    "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
-                    "Никаких других ключей, markdown или пояснений.\n\n"
-                    + "\n".join(lines)
-                )
+            lines = [_batch_decide_candidate_line(i, c) for i, c in enumerate(batch)]
+            prompt = (
+                _batch_decide_archive_prompt(lines)
+                if archive_mode
+                else _batch_decide_live_prompt(lines)
+            )
             data, reason = ask_json(
                 prompt,
                 search=True,
@@ -830,7 +865,7 @@ def decide_bets_batch(
                 data, reason = ask_json(
                     prompt
                     + "\n\nВеб-поиск недоступен — ответь осторожно по общим знаниям; "
-                    "при сомнении ставь 0.",
+                    "при сомнении ставь 0. Только JSON.",
                     search=False,
                     timeout=45.0,
                     wait_rate_limit=True,
@@ -848,6 +883,8 @@ def decide_bets_batch(
                     else:
                         meta["reason"] = "rate_limited"
                         meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+                        if fail_closed:
+                            return [], meta
                         return list(candidates), meta
                 else:
                     meta["reason"] = reason or "empty_response"

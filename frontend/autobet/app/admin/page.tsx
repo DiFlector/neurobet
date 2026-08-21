@@ -1554,7 +1554,7 @@ export default function AdminPage() {
                     </span>
                   </h3>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Разрешить live-ставки даже если walk-forward gate не проходит
+                    Снимает только gate. DeepSeek (если ВКЛ) всё равно обязателен
                   </p>
                 </div>
               </div>
@@ -1597,7 +1597,7 @@ export default function AdminPage() {
                     </span>
                   </h3>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Batch decide / web-search. Выкл = ставки только от модели
+                    Выборка → web-search → JSON → Kelly (с bypass тоже)
                   </p>
                 </div>
               </div>

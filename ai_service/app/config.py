@@ -13,16 +13,17 @@ def _env_bool(name: str, default: str = "0") -> bool:
 # Optional DeepSeek LLM layer (narratives, digests, match web-search context).
 # Master switch — keep off until DEEPSEEK_TOKEN is set on prod and behaviour is verified.
 LLM_ENABLED = _env_bool("NEURALBET_LLM_ENABLED", "0")
-LLM_MATCH_CONTEXT = _env_bool("NEURALBET_LLM_MATCH_CONTEXT", "1")
+# Match-context OFF by default — DeepSeek quota is for live bot stake JSON decide.
+LLM_MATCH_CONTEXT = _env_bool("NEURALBET_LLM_MATCH_CONTEXT", "0")
 # When on: skip a live stake if web-search LLM confidently disagrees with the model.
 LLM_VETO = _env_bool("NEURALBET_LLM_VETO", "0")
 LLM_VETO_MIN_CONFIDENCE = float(os.getenv("NEURALBET_LLM_VETO_MIN_CONFIDENCE", "0.7"))
 # Shadow-log every LLM decision (even with veto off) and score vs live_bets outcomes.
-LLM_SHADOW = _env_bool("NEURALBET_LLM_SHADOW", "1")
+LLM_SHADOW = _env_bool("NEURALBET_LLM_SHADOW", "0")
 # Run web-search / rationales after bankroll place (don't block staking). Forced sync when veto active.
 LLM_ASYNC = _env_bool("NEURALBET_LLM_ASYNC", "1")
 # Auto-enable veto only when shadow report proves model+veto beats model-only (see insights).
-LLM_VETO_AUTO = _env_bool("NEURALBET_LLM_VETO_AUTO", "1")
+LLM_VETO_AUTO = _env_bool("NEURALBET_LLM_VETO_AUTO", "0")
 LLM_VETO_AUTO_MIN_SETTLED = int(os.getenv("NEURALBET_LLM_VETO_AUTO_MIN_SETTLED", "150"))
 # Sports allowed for web-search context (* / all = every sport). Default: tennis+football
 # (news/rosters exist). Table-tennis live totals get little usable search signal.
@@ -57,9 +58,9 @@ LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
 LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
 LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "16"))
 LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
-# Backtest DeepSeek web-search: AND-filter walk-forward (and thus quality_gate).
-LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "1")
-LLM_BACKTEST_WF = _env_bool("NEURALBET_LLM_BACKTEST_WF", "1")
+# Backtest DeepSeek OFF by default — live bot stakes own the quota.
+LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "0")
+LLM_BACKTEST_WF = _env_bool("NEURALBET_LLM_BACKTEST_WF", "0")
 # Per archive call (WF). Larger than live BATCH_MAX to cut API round-trips.
 LLM_BACKTEST_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BACKTEST_BATCH_MAX", "64"))
 # Hard cap on archive web-search batches. 8×64 covers typical WF (~196 stakes).

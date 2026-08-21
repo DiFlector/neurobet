@@ -570,7 +570,11 @@ def update_ai_settings(
         add_ai_log(
             "SYSTEM",
             f"Quality gate bypass changed: {status_str}"
-            + (" — live bets ignore backtest gate." if AI_SETTINGS["quality_gate_bypass"] else "."),
+            + (
+                " — live bets ignore backtest gate; DeepSeek decide (если ON) всё равно обязателен."
+                if AI_SETTINGS["quality_gate_bypass"]
+                else "."
+            ),
             level="WARNING" if AI_SETTINGS["quality_gate_bypass"] else "INFO",
         )
         changed = True
@@ -2177,58 +2181,9 @@ def _run_neuralbet_inference_and_training_locked(
             f"Remaining {len(live_candidates)}.",
         )
 
-    # DeepSeek batch decide (required AND before place) + optional legacy veto.
+    # DeepSeek is used ONLY for live bot stake decisions (after quality gate below).
+    # Match-context / per-candidate veto are not part of the stake path when batch decide is on.
     llm_veto_active = False
-    if live_candidates:
-        try:
-            from app.deepseek.insights import (
-                decide_bets_batch,
-                llm_batch_decide_enabled,
-                run_llm_post_cycle,
-                veto_enabled,
-            )
-
-            if llm_batch_decide_enabled():
-                before = len(live_candidates)
-                live_candidates, batch_meta = decide_bets_batch(live_candidates)
-                approved = sum(1 for v in (batch_meta.get("decisions") or {}).values() if int(v) == 1)
-                add_ai_log(
-                    "BANKROLL",
-                    f"LLM batch decide: {before} → {len(live_candidates)} "
-                    f"(approved={approved}, reason={batch_meta.get('reason')}).",
-                    level="INFO" if live_candidates else "WARNING",
-                )
-
-            llm_veto_active = veto_enabled()
-            if llm_veto_active and live_candidates:
-                before = len(live_candidates)
-                live_candidates = run_llm_post_cycle(
-                    live_candidates,
-                    predictions,
-                    timestamp_str,
-                    apply_veto=True,
-                )
-                vetoed = before - len(live_candidates)
-                if vetoed:
-                    add_ai_log(
-                        "BANKROLL",
-                        f"LLM veto removed {vetoed} candidate(s); {len(live_candidates)} remain.",
-                        level="WARNING",
-                    )
-        except Exception as e:
-            add_ai_log("SYSTEM", f"LLM enrich skipped: {e}", level="WARNING")
-            try:
-                from app.deepseek.insights import llm_batch_required
-
-                if llm_batch_required():
-                    live_candidates = []
-                    add_ai_log(
-                        "BANKROLL",
-                        "LLM batch required but failed — fail-closed, 0 candidates.",
-                        level="WARNING",
-                    )
-            except Exception:
-                live_candidates = []
 
     if predictions:
         save_ai_predictions(predictions, timestamp_str)
@@ -2241,8 +2196,11 @@ def _run_neuralbet_inference_and_training_locked(
     _untrack_conn(conn)
     release_connection(conn)
 
-    # --- Live bankroll: propose bets to backend, which validates freshness, executes,
-    # and settles resolved ones on its own cycle (see backend/database.py) ---
+    # Live bankroll pipeline:
+    # 1) выборка (EV + live gates → live_candidates)
+    # 2) quality gate (or bypass)
+    # 3) DeepSeek web-search JSON decide (AND)
+    # 4) Kelly place
     if _load_cold_start().get("active"):
         add_ai_log(
             "BANKROLL",
@@ -2260,15 +2218,120 @@ def _run_neuralbet_inference_and_training_locked(
             )
             place_result = {"placed": 0, "reason": "quality_gate"}
         else:
-            if AI_SETTINGS.get("quality_gate_bypass"):
+            bypass_on = bool(AI_SETTINGS.get("quality_gate_bypass"))
+            if bypass_on:
                 gate_now = get_live_quality_gate()
                 if not gate_now.get("pass"):
                     add_ai_log(
                         "BANKROLL",
-                        "Quality gate bypass ON — placing despite gate fail: "
-                        + "; ".join(gate_now.get("reasons") or ["unknown"]) + ".",
+                        "Quality gate bypass ON — gate skipped ("
+                        + "; ".join(gate_now.get("reasons") or ["unknown"])
+                        + "). DeepSeek decide всё равно обязателен перед Kelly.",
                         level="WARNING",
                     )
+                else:
+                    add_ai_log(
+                        "BANKROLL",
+                        "Quality gate bypass ON (gate already pass) — "
+                        "DeepSeek decide всё равно в цепочке перед Kelly.",
+                    )
+
+            pool_n = len(live_candidates)
+            if live_candidates:
+                try:
+                    from app.deepseek.insights import (
+                        decide_bets_batch,
+                        llm_batch_decide_enabled,
+                        llm_batch_required,
+                        run_llm_post_cycle,
+                        veto_enabled,
+                    )
+
+                    if llm_batch_decide_enabled():
+                        add_ai_log(
+                            "BANKROLL",
+                            f"DeepSeek stake path: 1) выборка {pool_n}"
+                            + (" [gate bypass]" if bypass_on else "")
+                            + " → 2) web-search decide…",
+                        )
+                        live_candidates, batch_meta = decide_bets_batch(live_candidates)
+                        approved = sum(
+                            1
+                            for v in (batch_meta.get("decisions") or {}).values()
+                            if int(v) == 1
+                        )
+                        reason = batch_meta.get("reason")
+                        # DeepSeek ON + required: place only after a real decide
+                        # (ok / cache). Hold / rate-limit / errors already fail-closed
+                        # inside decide_bets_batch when BATCH_REQUIRED=1.
+                        add_ai_log(
+                            "BANKROLL",
+                            f"DeepSeek stake path: 2) decide {pool_n} → {len(live_candidates)} "
+                            f"(approved={approved}/{batch_meta.get('requested')}, "
+                            f"reason={reason}) → 3) Kelly.",
+                            level="INFO" if live_candidates else "WARNING",
+                        )
+                        if (
+                            llm_batch_required()
+                            and reason
+                            in (
+                                "backtest_hold",
+                                "rate_limited",
+                                "empty_response",
+                                "llm_disabled",
+                            )
+                            and live_candidates
+                        ):
+                            # Defensive: never place model-only while DeepSeek is ON.
+                            live_candidates = []
+                            add_ai_log(
+                                "BANKROLL",
+                                f"DeepSeek required but reason={reason} — "
+                                "fail-closed, 0 stakes (bypass не обходит DeepSeek).",
+                                level="WARNING",
+                            )
+                    else:
+                        add_ai_log(
+                            "BANKROLL",
+                            f"DeepSeek OFF — stake path: выборка {pool_n} → Kelly (без LLM).",
+                        )
+
+                    # Legacy hard veto only when batch decide is off (batch is the primary AND).
+                    llm_veto_active = veto_enabled() and not llm_batch_decide_enabled()
+                    if llm_veto_active and live_candidates:
+                        before = len(live_candidates)
+                        live_candidates = run_llm_post_cycle(
+                            live_candidates,
+                            predictions,
+                            timestamp_str,
+                            apply_veto=True,
+                        )
+                        vetoed = before - len(live_candidates)
+                        if vetoed:
+                            add_ai_log(
+                                "BANKROLL",
+                                f"LLM veto removed {vetoed} candidate(s); "
+                                f"{len(live_candidates)} remain.",
+                                level="WARNING",
+                            )
+                except Exception as e:
+                    add_ai_log("SYSTEM", f"LLM stake decide skipped: {e}", level="WARNING")
+                    try:
+                        from app.deepseek.insights import (
+                            llm_batch_decide_enabled as _lbde,
+                            llm_batch_required as _lbr,
+                        )
+
+                        if _lbr() and _lbde():
+                            live_candidates = []
+                            add_ai_log(
+                                "BANKROLL",
+                                "LLM batch required but failed — fail-closed, 0 candidates.",
+                                level="WARNING",
+                            )
+                    except Exception:
+                        live_candidates = []
+
             place_result = _place_live_bets(live_candidates)
 
     # Shadow / post-place enrich when veto is off.

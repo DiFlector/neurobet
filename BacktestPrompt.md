@@ -151,15 +151,13 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - **Objective B (2026-08-21):** live/backtest verdict = EV
   (`calibrated_p * c - 1 ≥ MIN_BET_EDGE`); residual decision-head loss default **0**;
   bankroll train mask тоже EV. `accuracy_pct` ~50% — не KPI.
-- **DeepSeek batch decide:** `NEURALBET_LLM_BATCH_DECIDE=1`,
-  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=16` по EV,
-  JSON `{"0":1,"1":0,…}` с web-search **до** Kelly; fail-closed.
-- **DeepSeek в walk-forward:** `NEURALBET_LLM_BACKTEST_WF=1` — AND на все WF
-  stake-кандидаты (`NEURALBET_LLM_BACKTEST_BATCH_MAX=64` за вызов, до
-  `NEURALBET_LLM_BACKTEST_MAX_CALLS` батчей). `walk_forward` / `quality_gate`
-  считаются **после** фильтра; `walk_forward_model_only` — срез без LLM.
-  Непокрытые (кап/rate-limit) fail-closed. Архивный поиск может утекать итогом матча —
-  live-sim, не чистый статистический OOS.
+- **DeepSeek batch decide (только live-ставки бота):** `NEURALBET_LLM_BATCH_DECIDE=1`,
+  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=16` по EV.
+  Цепочка: выборка (EV+gates) → quality gate → DeepSeek web-search
+  (прогнозы/форма/H2H/новости) → JSON `{"0":1,"1":0,…}` → Kelly.
+  Match-context / veto / backtest LLM по умолчанию выкл (квота только на ставки).
+- **DeepSeek в walk-forward:** опционально `NEURALBET_LLM_BACKTEST_WF=1` (default **0**).
+  Если включён — AND на WF stake-кандидаты; иначе gate считает model-only WF.
 - Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
   (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
 
@@ -177,8 +175,10 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 2. **Decision `predicted_win=1`** — decision head (≠ win-probability % в UI).
 3. Live gates — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
    `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
-4. **Quality gate** — последний бэктest `walk_forward` **после** DeepSeek AND (см. §2); иначе ставки не открываются.
-5. **DeepSeek batch decide** — AND на live-кандидатов перед Kelly.
+4. **Quality gate** — последний бэктest `walk_forward` (см. §2); иначе ставки не открываются
+   (bypass в админке может снять блок).
+5. **DeepSeek batch decide** — web-search по прогнозам/командам → JSON AND → Kelly
+   (только активные ставки бота; не для «Активные LIVE Прогнозы» UI).
 6. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
 
 **Не путать с:**
