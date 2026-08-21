@@ -421,6 +421,39 @@ def _build_flags(
             ),
         })
 
+    if llm_ab := result.get("llm_web_search_ablation"):
+        if isinstance(llm_ab, dict) and llm_ab.get("status") in ("ok", "rate_limited", "empty"):
+            model_roi = (llm_ab.get("model_only") or {}).get("roi_pct")
+            llm_roi = (llm_ab.get("with_llm") or {}).get("roi_pct")
+            approved = llm_ab.get("approved")
+            evaluated = llm_ab.get("evaluated")
+            if model_roi is not None and llm_roi is not None:
+                delta_pp = float(llm_roi) - float(model_roi)
+                severity = "info"
+                if delta_pp <= -5:
+                    severity = "warning"
+                flags.append({
+                    "severity": severity,
+                    "code": "llm_web_search_ablation",
+                    "message": (
+                        f"DeepSeek web-search on {evaluated} stake bets: "
+                        f"model ROI {model_roi}% → LLM {llm_roi}% "
+                        f"(Δ {delta_pp:+.1f} pp, approved={approved}/{evaluated}, "
+                        f"calls={llm_ab.get('calls')})"
+                    ),
+                })
+            elif llm_ab.get("status") == "skipped":
+                pass
+            else:
+                flags.append({
+                    "severity": "info",
+                    "code": "llm_web_search_ablation",
+                    "message": (
+                        f"DeepSeek backtest ablation: status={llm_ab.get('status')} "
+                        f"reason={llm_ab.get('reason') or llm_ab.get('call_reasons')}"
+                    ),
+                })
+
     if delta and delta.get("brier") is not None and float(delta["brier"]) > 0.005:
         flags.append({
             "severity": "warning",
@@ -525,6 +558,7 @@ def build_agent_review(
         "oos_ablation": _compact_oos_ablation(result),
         "delta_vs_previous": delta,
         "policy_ablation_oos": policy_ablation,
+        "llm_web_search_ablation": result.get("llm_web_search_ablation"),
         "walk_forward_meta": result.get("walk_forward_meta"),
         "flags": _build_flags(result, gate, wf, alignment, delta),
         "quality_gate": gate,

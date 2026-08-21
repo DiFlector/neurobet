@@ -153,6 +153,10 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - **DeepSeek batch decide:** `NEURALBET_LLM_BATCH_DECIDE=1`,
   `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=8` по EV,
   JSON `{"0":1,"1":0,…}` с web-search **до** Kelly; fail-closed.
+- **DeepSeek в бэктestе:** `NEURALBET_LLM_BACKTEST=1`, до
+  `NEURALBET_LLM_BACKTEST_MAX_CALLS` web-search батчей по top stake-кандидатам;
+  результат в `llm_web_search_ablation` / flag (не меняет quality_gate).
+  Архивный поиск может утекать итогом матча — diagnostic, не чистый OOS.
 - Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
   (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
 

@@ -1652,25 +1652,14 @@ export default function NeurobetsPage() {
                       </div>
                     </div>
 
-                    {(bet.llmRationale || bet.llmContextNotes) && (
+                    {(bet.llmContextNotes) && (
                       <div className="space-y-2 pt-1 border-t border-neutral-800/80">
-                        {bet.llmRationale && (
-                          <div className="rounded-xl border border-[#0984e3]/30 bg-[#0984e3]/10 px-3.5 py-2.5">
-                            <div className="text-[10px] font-mono uppercase text-[#74b9ff] mb-1 flex items-center gap-1.5">
-                              <BrainCircuit className="w-3 h-3" />
-                              DeepSeek — обоснование
-                            </div>
-                            <p className="text-xs text-neutral-200 leading-relaxed">{bet.llmRationale}</p>
+                        <div className="rounded-xl border border-neutral-700 bg-neutral-950/70 px-3.5 py-2.5">
+                          <div className="text-[10px] font-mono uppercase text-neutral-400 mb-1">
+                            Веб-контекст матча
                           </div>
-                        )}
-                        {bet.llmContextNotes && (
-                          <div className="rounded-xl border border-neutral-700 bg-neutral-950/70 px-3.5 py-2.5">
-                            <div className="text-[10px] font-mono uppercase text-neutral-400 mb-1">
-                              Веб-контекст матча
-                            </div>
-                            <p className="text-xs text-neutral-300 leading-relaxed">{bet.llmContextNotes}</p>
-                          </div>
-                        )}
+                          <p className="text-xs text-neutral-300 leading-relaxed">{bet.llmContextNotes}</p>
+                        </div>
                       </div>
                     )}
                   </motion.div>

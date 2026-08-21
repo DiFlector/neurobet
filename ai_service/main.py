@@ -88,8 +88,8 @@ def run_scheduled_backtest():
 
 
 def run_scheduled_llm_digest():
-    """Periodic DeepSeek digest of TRAINING/BANKROLL logs + training health."""
-    if not LLM_ENABLED:
+    """Periodic DeepSeek digest — off when NEURALBET_LLM_DIGEST_HOURS<=0."""
+    if not LLM_ENABLED or float(LLM_DIGEST_HOURS) <= 0:
         return
     try:
         result = run_llm_digest()
@@ -110,21 +110,25 @@ def startup_event():
         max_instances=1,
         coalesce=True,
     )
-    digest_hours = max(1.0, float(LLM_DIGEST_HOURS) or 3.0)
-    scheduler.add_job(
-        run_scheduled_llm_digest,
-        "interval",
-        hours=digest_hours,
-        id="scheduled_llm_digest",
-        misfire_grace_time=3600,
-        max_instances=1,
-        coalesce=True,
-    )
+    digest_hours = float(LLM_DIGEST_HOURS) if LLM_DIGEST_HOURS is not None else 0.0
+    if LLM_ENABLED and digest_hours > 0:
+        scheduler.add_job(
+            run_scheduled_llm_digest,
+            "interval",
+            hours=max(1.0, digest_hours),
+            id="scheduled_llm_digest",
+            misfire_grace_time=3600,
+            max_instances=1,
+            coalesce=True,
+        )
+        digest_msg = f"LLM digest every {digest_hours:g}h"
+    else:
+        digest_msg = "LLM digest OFF"
     scheduler.start()
     logger.info(
         "Scheduler started! Backtest will run automatically every 30 min "
         f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time); "
-        f"LLM digest every {digest_hours:g}h (enabled={bool(LLM_ENABLED)})."
+        f"{digest_msg}."
     )
     add_ai_log(
         "SYSTEM",

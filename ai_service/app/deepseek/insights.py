@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.config import (
     DEEPSEEK_TOKEN,
     LLM_ASYNC,
+    LLM_BACKTEST,
+    LLM_BACKTEST_MAX_CALLS,
     LLM_BATCH_DECIDE,
     LLM_BATCH_MAX,
     LLM_BATCH_REQUIRED,
@@ -65,6 +67,9 @@ _CACHE_LOCK = threading.Lock()
 _SHADOW_LOCK = threading.Lock()
 _ASYNC_LOCK = threading.Lock()
 _async_busy = False
+_async_started_at = 0.0
+_async_skip_log_at = 0.0
+_ASYNC_STALE_SEC = 90.0
 _auto_veto_cache: tuple[float, bool] = (0.0, False)
 _AUTO_VETO_TTL_SEC = 300.0
 _auto_veto_computing = False
@@ -127,6 +132,10 @@ def llm_batch_decide_enabled() -> bool:
 
 def llm_batch_required() -> bool:
     return bool(LLM_BATCH_REQUIRED)
+
+
+def llm_backtest_enabled() -> bool:
+    return llm_batch_decide_enabled() and bool(LLM_BACKTEST) and int(LLM_BACKTEST_MAX_CALLS) > 0
 
 
 def sport_allows_match_context(sport: Optional[str]) -> bool:
@@ -589,27 +598,35 @@ def _parse_batch_decisions(raw: Any, n: int) -> Dict[str, int]:
 
 def decide_bets_batch(
     candidates: List[Dict[str, Any]],
+    *,
+    required: Optional[bool] = None,
+    archive_mode: bool = False,
+    max_n: Optional[int] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     One web-search call over top-N EV candidates. Returns (kept_candidates, meta).
 
     Response shape from DeepSeek: {\"0\":1,\"1\":0,...}. Fail-closed when
-    LLM_BATCH_REQUIRED on empty/parse/error. Rate-limit is infrastructure:
-    reuse stale cache or fail-open (return all candidates) — never spam
-    empty_response every cycle.
+    required (default LLM_BATCH_REQUIRED) on empty/parse/error. Rate-limit is
+    infrastructure: reuse stale cache or fail-open — never spam empty_response.
+
+    ``archive_mode``: backtest / finished bets — instruct model not to use final
+    score/outcome (search still may leak; ablation is diagnostic).
     """
+    fail_closed = llm_batch_required() if required is None else bool(required)
     meta: Dict[str, Any] = {
         "reason": "ok",
         "decisions": {},
         "requested": 0,
         "approved": 0,
+        "archive_mode": bool(archive_mode),
     }
     if not candidates:
         meta["reason"] = "no_candidates"
         return [], meta
     if not llm_is_enabled():
         meta["reason"] = "llm_disabled"
-        if llm_batch_required():
+        if fail_closed:
             return [], meta
         return list(candidates), meta
     if not llm_batch_decide_enabled():
@@ -621,18 +638,17 @@ def decide_bets_batch(
         key=lambda c: float(c.get("expected_roi") or 0.0),
         reverse=True,
     )
-    max_n = max(1, int(LLM_BATCH_MAX))
-    batch = ranked[:max_n]
+    batch_cap = max(1, int(max_n if max_n is not None else LLM_BATCH_MAX))
+    batch = ranked[:batch_cap]
     meta["requested"] = len(batch)
 
     cache_fingerprint = "|".join(
-        # Ignore coeff/prob jitter — otherwise every scrape misses cache and
-        # hammers DeepSeek into rate_limit_reached (~empty_response in logs).
         f"{c.get('event_id')}:{c.get('factor_id')}:{c.get('parameter')}:"
         f"{(c.get('market_prefix') or '').strip()}"
         for c in batch
     )
-    cache_key = f"batch_decide:{hash(cache_fingerprint)}"
+    cache_prefix = "batch_decide_archive" if archive_mode else "batch_decide"
+    cache_key = f"{cache_prefix}:{hash(cache_fingerprint)}"
     cached = _cache_get(cache_key)
     if isinstance(cached, dict) and cached.get("decisions") is not None:
         decisions = _parse_batch_decisions(cached.get("decisions"), len(batch))
@@ -646,7 +662,6 @@ def decide_bets_batch(
                 meta["reason"] = "rate_limited_stale_cache"
                 meta["decisions"] = decisions
             else:
-                # Infra rate-limit ≠ LLM veto. Fail-open so we don't zero every cycle.
                 meta["reason"] = "rate_limited"
                 meta["decisions"] = {str(i): 0 for i in range(len(batch))}
                 return list(candidates), meta
@@ -659,18 +674,30 @@ def decide_bets_batch(
                     f"{c.get('label') or ''} | coeff={c.get('coeff') or c.get('coefficient')} | "
                     f"p_model={c.get('win_probability')}% | EV={round(float(c.get('expected_roi') or 0), 1)}%"
                 )
-            prompt = (
-                "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
-                "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
-                "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
-                "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
-                "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
-                "Никаких других ключей, markdown или пояснений.\n\n"
-                + "\n".join(lines)
-            )
+            if archive_mode:
+                prompt = (
+                    "Ты спортивный аналитик. Используй веб-поиск. Ниже АРХИВНЫЕ кандидаты "
+                    "NeuroBet (ставка уже была в прошлом; исход известен букмекеру).\n"
+                    "ВАЖНО: НЕ используй финальный счёт матча и исход этой ставки. "
+                    "Если поиск показывает итог — игнорируй. Опирайся на счёт на момент "
+                    "ставки, форму/H2H и типичную логику рынка.\n"
+                    "Реши, на что стоило бы ставить в тот момент.\n"
+                    "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
+                    "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
+                    "Никаких других ключей, markdown или пояснений.\n\n"
+                    + "\n".join(lines)
+                )
+            else:
+                prompt = (
+                    "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
+                    "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
+                    "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
+                    "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
+                    "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
+                    "Никаких других ключей, markdown или пояснений.\n\n"
+                    + "\n".join(lines)
+                )
             data, reason = ask_json(prompt, search=True, timeout=90.0)
-            # Only retry empty streams without search — never on rate_limited
-            # (second call makes the cooldown worse).
             if not data and reason == "empty_response":
                 data, reason = ask_json(
                     prompt
@@ -695,7 +722,7 @@ def decide_bets_batch(
                 else:
                     meta["reason"] = reason or "empty_response"
                     meta["decisions"] = {str(i): 0 for i in range(len(batch))}
-                    if llm_batch_required():
+                    if fail_closed:
                         return [], meta
                     return list(candidates), meta
             else:
@@ -720,14 +747,107 @@ def decide_bets_batch(
             kept.append(enriched)
     meta["approved"] = len(kept)
 
-    # Candidates beyond batch max: only keep if batch not required; otherwise drop.
-    overflow = ranked[max_n:]
-    if overflow and not llm_batch_required():
+    overflow = ranked[batch_cap:]
+    if overflow and not fail_closed:
         kept.extend(overflow)
-    elif overflow and llm_batch_required():
+    elif overflow and fail_closed:
         meta["overflow_dropped"] = len(overflow)
 
     return kept, meta
+
+
+def decide_backtest_batches(
+    candidates: List[Dict[str, Any]],
+    *,
+    max_calls: Optional[int] = None,
+    progress_cb: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Run up to ``max_calls`` web-search batch decides over archive stake candidates.
+
+    Returns summary with per-candidate decisions keyed by
+    ``event_id:factor_id:parameter:market_prefix``.
+    """
+    out: Dict[str, Any] = {
+        "status": "ok",
+        "calls": 0,
+        "requested": 0,
+        "approved": 0,
+        "decisions": {},
+        "call_reasons": [],
+        "note": (
+            "Diagnostic live-parity filter with web-search. Archive search may "
+            "leak final results — do not treat as clean OOS edge proof."
+        ),
+    }
+    if not llm_backtest_enabled():
+        out["status"] = "skipped"
+        out["reason"] = "disabled"
+        return out
+    if not candidates:
+        out["status"] = "skipped"
+        out["reason"] = "no_candidates"
+        return out
+
+    ranked = sorted(
+        candidates,
+        key=lambda c: float(c.get("expected_roi") or 0.0),
+        reverse=True,
+    )
+    calls_budget = max(0, int(max_calls if max_calls is not None else LLM_BACKTEST_MAX_CALLS))
+    batch_size = max(1, int(LLM_BATCH_MAX))
+    pool = ranked[: calls_budget * batch_size]
+    out["requested"] = len(pool)
+    if not pool:
+        out["status"] = "skipped"
+        out["reason"] = "empty_pool"
+        return out
+
+    decisions_by_key: Dict[str, int] = {}
+    for call_i, offset in enumerate(range(0, len(pool), batch_size)):
+        if call_i >= calls_budget:
+            break
+        chunk = pool[offset : offset + batch_size]
+        if progress_cb:
+            try:
+                progress_cb(call_i + 1, calls_budget, len(chunk))
+            except Exception:
+                pass
+        _kept, meta = decide_bets_batch(
+            chunk,
+            required=False,
+            archive_mode=True,
+            max_n=len(chunk),
+        )
+        out["calls"] += 1
+        out["call_reasons"].append(meta.get("reason") or "unknown")
+        for j, c in enumerate(chunk):
+            key = (
+                f"{c.get('event_id')}:{c.get('factor_id')}:"
+                f"{c.get('parameter')}:{(c.get('market_prefix') or '').strip()}"
+            )
+            flag = int((meta.get("decisions") or {}).get(str(j), 0))
+            decisions_by_key[key] = flag
+        # Stop early if rate-limited and no decisions useful
+        if meta.get("reason") == "rate_limited" and not meta.get("decisions"):
+            out["status"] = "rate_limited"
+            break
+        if meta.get("reason") in ("rate_limited",) and out["calls"] >= 1:
+            # got zeros / fail-open path for that batch — continue only if not cooling
+            if _rate_limit_blocked():
+                out["status"] = "rate_limited"
+                break
+
+    out["decisions"] = decisions_by_key
+    out["approved"] = sum(1 for v in decisions_by_key.values() if int(v) == 1)
+    if out["status"] == "ok" and not decisions_by_key:
+        out["status"] = "empty"
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Post-cycle enrich / rationales
+# ---------------------------------------------------------------------------
 
 
 def record_shadow_decision(
@@ -784,17 +904,20 @@ def enrich_candidates_with_llm(
     *,
     apply_veto: bool = False,
     placed_keys: Optional[set] = None,
+    skip_fresh_search: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Attach llm_context to candidates (max N fresh web-searches per cycle).
     Always shadow-logs when LLM_SHADOW is on. Hard-drops only when apply_veto=True.
+
+    ``skip_fresh_search``: cache-only (batch-decide already paid for web-search).
     """
     if not candidates or not match_context_enabled():
         return candidates
 
     kept: List[Dict[str, Any]] = []
     fresh_searches = 0
-    max_fresh = int(LLM_MAX_CONTEXT_PER_CYCLE)
+    max_fresh = 0 if skip_fresh_search else int(LLM_MAX_CONTEXT_PER_CYCLE)
     placed_keys = placed_keys or set()
 
     for c in candidates:
@@ -815,7 +938,7 @@ def enrich_candidates_with_llm(
                 fresh_searches += 1
                 did_fresh_fetch = True
             else:
-                null_reason = "budget_exhausted"
+                null_reason = "budget_exhausted" if max_fresh else "batch_covers_search"
 
         if ctx:
             c = {**c, "llm_context": ctx}
@@ -839,7 +962,7 @@ def enrich_candidates_with_llm(
 
                 add_ai_log(
                     "BANKROLL",
-                    f"LLM veto: event {event_id} «{c.get('match_name','')}» "
+                    f"LLM veto: event {c.get('event_id')} «{c.get('match_name','')}» "
                     f"{c.get('label','')} — confidence={float((ctx or {}).get('confidence') or 0):.2f}, "
                     f"notes={((ctx or {}).get('notes') or '')[:160]}",
                     level="WARNING",
@@ -857,7 +980,9 @@ def generate_rationale(
     *,
     llm_context: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
-    if not llm_is_enabled():
+    # Disabled by default — short narratives burned DeepSeek rate limits for
+    # little betting value. Re-enable with NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE>0.
+    if not llm_is_enabled() or int(LLM_MAX_RATIONALE_PER_CYCLE) <= 0:
         return None
 
     ctx = llm_context or prediction_or_candidate.get("llm_context") or {}
@@ -877,7 +1002,7 @@ def generate_rationale(
         f"Уверенность decision-head: {prediction_or_candidate.get('decision_confidence')}\n"
         f"Внешний контекст (если есть): {ctx_notes or 'нет'}"
     )
-    text = ask_text(prompt, search=False, timeout=25.0)
+    text = ask_text(prompt, search=False, timeout=15.0)
     if not text:
         return None
     return text.replace("\n", " ").strip()[:500]
@@ -889,9 +1014,9 @@ def attach_rationales(
 ) -> None:
     """
     Mutates `predictions` in place: fills llm_rationale / llm_context for up to
-    LLM_MAX_RATIONALE_PER_CYCLE live candidates (predicted_win bets that passed gates).
+    LLM_MAX_RATIONALE_PER_CYCLE live candidates. No-op when budget is 0.
     """
-    if not llm_is_enabled() or not candidates:
+    if not llm_is_enabled() or not candidates or int(LLM_MAX_RATIONALE_PER_CYCLE) <= 0:
         return
 
     by_key = {
@@ -938,6 +1063,7 @@ def run_llm_post_cycle(
     *,
     placed_keys: Optional[set] = None,
     apply_veto: bool = False,
+    skip_fresh_search: bool = False,
 ) -> List[Dict[str, Any]]:
     """Enrich + rationales + persist prediction LLM fields. Returns kept candidates."""
     if not candidates or not llm_is_enabled():
@@ -949,8 +1075,17 @@ def run_llm_post_cycle(
                 candidates,
                 apply_veto=apply_veto,
                 placed_keys=placed_keys,
+                skip_fresh_search=skip_fresh_search,
             )
-        attach_rationales(predictions, kept if kept else candidates)
+        # Rationales also hit DeepSeek — only for placed bets when we have keys.
+        rationale_src = kept if kept else candidates
+        if placed_keys:
+            rationale_src = [
+                c
+                for c in rationale_src
+                if _candidate_key(c) in placed_keys
+            ] or rationale_src
+        attach_rationales(predictions, rationale_src)
         # Persist only rows that gained LLM fields.
         to_save = [
             p
@@ -978,44 +1113,68 @@ def schedule_llm_post_cycle(
     timestamp_str: str,
     *,
     placed_keys: Optional[set] = None,
+    skip_fresh_search: bool = False,
 ) -> None:
     """Fire-and-forget LLM enrich after bankroll place (does not block staking)."""
-    global _async_busy
+    global _async_busy, _async_started_at, _async_skip_log_at
     if not candidates or not llm_is_enabled():
         return
     if not bool(LLM_ASYNC):
         run_llm_post_cycle(
-            candidates, predictions, timestamp_str, placed_keys=placed_keys
+            candidates,
+            predictions,
+            timestamp_str,
+            placed_keys=placed_keys,
+            skip_fresh_search=skip_fresh_search,
         )
         return
 
     with _ASYNC_LOCK:
+        now = time.monotonic()
         if _async_busy:
-            try:
-                from app.neuralbet.pipeline import add_ai_log
+            age = now - _async_started_at if _async_started_at else 0.0
+            if age < _ASYNC_STALE_SEC:
+                if now - _async_skip_log_at >= 60.0:
+                    _async_skip_log_at = now
+                    try:
+                        from app.neuralbet.pipeline import add_ai_log
 
-                add_ai_log(
-                    "SYSTEM",
-                    "LLM async enrich skipped — previous cycle still running.",
-                    level="INFO",
-                )
-            except Exception:
-                pass
-            return
+                        add_ai_log(
+                            "SYSTEM",
+                            "LLM async enrich skipped — previous cycle still running.",
+                            level="INFO",
+                        )
+                    except Exception:
+                        pass
+                return
+            # Stale flag: worker hung past budget; allow a new one.
+            logger.warning(
+                "LLM async enrich watchdog: busy flag stale after %.0fs — resetting",
+                age,
+            )
         _async_busy = True
+        _async_started_at = now
 
     # Copy so the inference thread can mutate originals safely.
     cands = [dict(c) for c in candidates]
     preds = [dict(p) for p in predictions]
     keys = set(placed_keys or set())
+    skip_search = bool(skip_fresh_search)
 
     def _worker() -> None:
-        global _async_busy
+        global _async_busy, _async_started_at
         try:
-            run_llm_post_cycle(cands, preds, timestamp_str, placed_keys=keys)
+            run_llm_post_cycle(
+                cands,
+                preds,
+                timestamp_str,
+                placed_keys=keys,
+                skip_fresh_search=skip_search,
+            )
         finally:
             with _ASYNC_LOCK:
                 _async_busy = False
+                _async_started_at = 0.0
 
     threading.Thread(target=_worker, name="llm-post-cycle", daemon=True).start()
 
@@ -1329,18 +1488,25 @@ def _save_digest_store(store: Dict[str, Any]) -> None:
 
 def get_llm_digest() -> Dict[str, Any]:
     store = _load_digest_store()
+    digest_on = llm_is_enabled() and float(LLM_DIGEST_HOURS) > 0
     return {
         "status": "success",
-        "enabled": llm_is_enabled(),
+        "enabled": digest_on,
+        "digest_hours": float(LLM_DIGEST_HOURS),
         "latest": store.get("latest"),
         "history": store.get("history") or [],
     }
 
 
 def run_llm_digest() -> Dict[str, Any]:
-    """Build a Russian digest of recent TRAINING/BANKROLL activity + health."""
+    """Build a Russian digest of recent TRAINING/BANKROLL activity + health.
+
+    Off by default (NEURALBET_LLM_DIGEST_HOURS<=0) — burns DeepSeek quota.
+    """
     if not llm_is_enabled():
         return {"status": "skipped", "reason": "llm_disabled"}
+    if float(LLM_DIGEST_HOURS) <= 0:
+        return {"status": "skipped", "reason": "digest_disabled"}
 
     try:
         from app.neuralbet.pipeline import get_ai_logs, get_training_health

@@ -35,12 +35,13 @@ LLM_MATCH_CONTEXT_SPORTS: frozenset[str] | None = (
     if _LLM_CTX_SPORTS_RAW in ("", "*", "all")
     else frozenset(s.strip() for s in _LLM_CTX_SPORTS_RAW.split(",") if s.strip())
 )
-LLM_DIGEST_HOURS = float(os.getenv("NEURALBET_LLM_DIGEST_HOURS", "3"))
+LLM_DIGEST_HOURS = float(os.getenv("NEURALBET_LLM_DIGEST_HOURS", "0"))
 LLM_DIGEST_MAX_HISTORY = int(os.getenv("NEURALBET_LLM_DIGEST_MAX_HISTORY", "20"))
 LLM_MIN_INTERVAL_SECONDS = float(os.getenv("NEURALBET_LLM_MIN_INTERVAL_SECONDS", "15"))
 LLM_RATE_LIMIT_COOLDOWN_SEC = float(os.getenv("NEURALBET_LLM_RATE_LIMIT_COOLDOWN_SEC", "90"))
 LLM_MAX_CONTEXT_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_CONTEXT_PER_CYCLE", "2"))
-LLM_MAX_RATIONALE_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE", "3"))
+# Short bet rationales burned DeepSeek rate limit for little value — off by default.
+LLM_MAX_RATIONALE_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE", "0"))
 LLM_SHADOW_MAX_DECISIONS = int(os.getenv("NEURALBET_LLM_SHADOW_MAX_DECISIONS", "2000"))
 # Match-context cache: key is event/factor/parameter/prefix. Re-fetch when coeff
 # or model win_probability moves by at least these deltas (probability in %-points).
@@ -53,3 +54,6 @@ LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
 LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
 LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "8"))
 LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
+# Backtest DeepSeek web-search ablation on top stake candidates (capped API calls).
+LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "1")
+LLM_BACKTEST_MAX_CALLS = int(os.getenv("NEURALBET_LLM_BACKTEST_MAX_CALLS", "4"))

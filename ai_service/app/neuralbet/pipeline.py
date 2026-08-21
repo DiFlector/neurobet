@@ -1769,8 +1769,10 @@ def _place_live_bets(candidates: list[dict[str, Any]]):
         }
 
     result = bankroll.submit_live_bet_candidates(to_submit)
+    placed_bets = result.get("placed", []) or []
     return {
-        "placed": len(result.get("placed", [])),
+        "placed": len(placed_bets),
+        "placed_bets": placed_bets,
         "candidates": len(candidates),
         "skipped": result.get("skipped", []),
     }
@@ -2212,11 +2214,19 @@ def _run_neuralbet_inference_and_training_locked(
         else:
             place_result = _place_live_bets(live_candidates)
 
-    # Shadow / rationales after place when veto is off (default async path).
+    # Shadow / post-place enrich when veto is off.
+    # With batch-decide, DeepSeek budget is reserved for JSON decisions only —
+    # no digest, no per-bet rationales, no extra web-search enrich when gate
+    # blocks or nothing was placed.
     if live_candidates and not llm_veto_active:
         try:
-            from app.deepseek.insights import schedule_llm_post_cycle
+            from app.config import LLM_MAX_RATIONALE_PER_CYCLE
+            from app.deepseek.insights import (
+                llm_batch_decide_enabled,
+                schedule_llm_post_cycle,
+            )
 
+            placed_list = place_result.get("placed_bets") or []
             placed_keys = {
                 (
                     p.get("event_id"),
@@ -2224,14 +2234,40 @@ def _run_neuralbet_inference_and_training_locked(
                     str(p.get("parameter", "")),
                     p.get("market_prefix") or "",
                 )
-                for p in (place_result.get("placed") or [])
+                for p in placed_list
+                if isinstance(p, dict)
             }
-            schedule_llm_post_cycle(
-                live_candidates,
-                predictions,
-                timestamp_str,
-                placed_keys=placed_keys,
-            )
+            gate_blocked = place_result.get("reason") == "quality_gate"
+            batch_on = llm_batch_decide_enabled()
+            want_rationales = int(LLM_MAX_RATIONALE_PER_CYCLE) > 0
+            # Batch path: skip async entirely unless rationales re-enabled and we placed.
+            if gate_blocked and not placed_keys:
+                pass
+            elif batch_on and (not placed_keys or not want_rationales):
+                pass
+            elif not batch_on and not placed_keys and not want_rationales:
+                pass
+            else:
+                enrich_cands = live_candidates
+                if placed_keys:
+                    enrich_cands = [
+                        c
+                        for c in live_candidates
+                        if (
+                            c.get("event_id"),
+                            c.get("factor_id"),
+                            str(c.get("parameter", "")),
+                            c.get("market_prefix") or "",
+                        )
+                        in placed_keys
+                    ] or live_candidates
+                schedule_llm_post_cycle(
+                    enrich_cands,
+                    predictions,
+                    timestamp_str,
+                    placed_keys=placed_keys,
+                    skip_fresh_search=batch_on,
+                )
         except Exception as e:
             add_ai_log("SYSTEM", f"LLM async schedule skipped: {e}", level="WARNING")
     if place_result.get("placed"):

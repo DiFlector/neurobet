@@ -395,6 +395,14 @@ def _records_from_scored(
             "historical_pred": m["historical_pred"],
             "market_prob": market_prob,
             "no_vig_prob": nv,
+            "factor_id": m.get("factor_id"),
+            "parameter": m.get("parameter") or "",
+            "market_prefix": m.get("market_prefix") or "",
+            "label": m.get("label") or "",
+            "match_name": m.get("match_name") or "",
+            "team_1": m.get("team_1") or "",
+            "team_2": m.get("team_2") or "",
+            "score": m.get("score") or "",
         })
     _dedupe_one_bet_per_event(records)
     return records
@@ -517,6 +525,103 @@ def _policy_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         ci = _bootstrap_roi_ci(scoped, "_policy_pred")
         out[policy] = {**(stake or {}), **(ci or {})}
     return out
+
+
+def _record_llm_key(rec: Dict[str, Any]) -> str:
+    return (
+        f"{rec.get('event_id')}:{rec.get('factor_id')}:"
+        f"{rec.get('parameter') or ''}:"
+        f"{(rec.get('market_prefix') or '').strip()}"
+    )
+
+
+def _llm_web_search_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    DeepSeek web-search batch decide on top stake candidates (capped).
+    Does not mutate quality_gate / current_pred — diagnostic live-parity only.
+    """
+    try:
+        from app.deepseek.insights import decide_backtest_batches, llm_backtest_enabled
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+    if not llm_backtest_enabled():
+        return {"status": "skipped", "reason": "disabled"}
+
+    stakes = [r for r in records if int(r.get("current_pred") or 0) == 1]
+    if not stakes:
+        return {"status": "skipped", "reason": "no_stake_candidates"}
+
+    candidates = []
+    for r in stakes:
+        candidates.append({
+            "event_id": r.get("event_id"),
+            "factor_id": r.get("factor_id"),
+            "parameter": r.get("parameter") or "",
+            "market_prefix": r.get("market_prefix") or "",
+            "label": r.get("label") or "",
+            "sport": r.get("sport") or "",
+            "match_name": r.get("match_name")
+            or f"{r.get('team_1') or ''} — {r.get('team_2') or ''}".strip(" —"),
+            "score": r.get("score") or "",
+            "coeff": r.get("coeff"),
+            "win_probability": r.get("current_prob"),
+            "expected_roi": r.get("current_expected_roi"),
+        })
+
+    def _progress(call_i: int, total_calls: int, chunk_n: int) -> None:
+        set_backtest_progress(
+            "llm_batch",
+            f"DeepSeek web-search {call_i}/{total_calls} ({chunk_n} кандидатов)…",
+            92 + min(3, call_i),
+            processed=call_i,
+            total=total_calls,
+        )
+
+    raw = decide_backtest_batches(candidates, progress_cb=_progress)
+    decisions = raw.get("decisions") or {}
+    if not decisions:
+        return {
+            "status": raw.get("status") or "empty",
+            "reason": raw.get("reason"),
+            "calls": raw.get("calls"),
+            "call_reasons": raw.get("call_reasons"),
+            "note": raw.get("note"),
+            "requested": raw.get("requested"),
+            "approved": 0,
+        }
+
+    # Evaluate only the subset DeepSeek actually scored.
+    evaluated_keys = set(decisions.keys())
+    model_scope: List[Dict[str, Any]] = []
+    llm_scope: List[Dict[str, Any]] = []
+    for r in stakes:
+        key = _record_llm_key(r)
+        if key not in evaluated_keys:
+            continue
+        model_clone = dict(r)
+        model_clone["_llm_eval_pred"] = 1
+        model_scope.append(model_clone)
+        llm_clone = dict(r)
+        llm_clone["_llm_eval_pred"] = 1 if int(decisions.get(key, 0)) == 1 else 0
+        llm_scope.append(llm_clone)
+
+    model_stake = _stake_metrics(model_scope, "_llm_eval_pred")
+    model_ci = _bootstrap_roi_ci(model_scope, "_llm_eval_pred")
+    llm_stake = _stake_metrics(llm_scope, "_llm_eval_pred")
+    llm_ci = _bootstrap_roi_ci(llm_scope, "_llm_eval_pred")
+
+    return {
+        "status": raw.get("status") or "ok",
+        "calls": raw.get("calls"),
+        "call_reasons": raw.get("call_reasons"),
+        "note": raw.get("note"),
+        "requested": raw.get("requested"),
+        "evaluated": len(model_scope),
+        "approved": sum(1 for v in decisions.values() if int(v) == 1),
+        "model_only": {**(model_stake or {}), **(model_ci or {})},
+        "with_llm": {**(llm_stake or {}), **(llm_ci or {})},
+    }
 
 
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -669,6 +774,12 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 coeff = float(view["current_coeff"])
                 items.append(view)
                 sport_name = (sample["sport_path"] or "").split("/")[0].strip() or "Другое"
+                team_1 = (sample.get("team_1") or r.get("team_1") or "") if isinstance(sample, dict) else (r.get("team_1") or "")
+                team_2 = (sample.get("team_2") or r.get("team_2") or "") if isinstance(sample, dict) else (r.get("team_2") or "")
+                # Prefer absolute names from finished_events join.
+                team_1 = r.get("team_1") or team_1 or ""
+                team_2 = r.get("team_2") or team_2 or ""
+                score_diff = sample.get("score_diff_at_bet")
                 meta.append({
                     "event_id": r["event_id"],
                     "sport": sport_name,
@@ -676,6 +787,12 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     "coeff": coeff,
                     "factor_id": sample["factor_id"],
                     "label": sample["label"],
+                    "parameter": sample.get("parameter") or "",
+                    "market_prefix": sample.get("market_prefix") or "",
+                    "team_1": team_1,
+                    "team_2": team_2,
+                    "match_name": f"{team_1} — {team_2}".strip(" —"),
+                    "score": f"diff={score_diff}" if score_diff is not None else "",
                     "is_win": int(r["is_win"]),
                     "trained_count": int(r.get("trained_count") or 0),
                     "overround_close": r.get("overround_close"),
@@ -793,6 +910,15 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         walk_forward_combined = (walk_forward or {}).get("combined") if walk_forward else None
         walk_forward_meta = (walk_forward or {}).get("meta") if walk_forward else None
 
+        set_backtest_progress(
+            "llm_batch",
+            "DeepSeek web-search ablation…",
+            92,
+            processed=0,
+            total=1,
+        )
+        llm_web_ablation = _llm_web_search_ablation(records)
+
         set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
 
         result = {
@@ -817,6 +943,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "walk_forward_folds": WALK_FORWARD_FOLDS,
                 "lgb_disable_team_features": LGB_DISABLE_TEAM_FEATURES,
                 "bootstrap_seed": BOOTSTRAP_SEED,
+                "llm_backtest": llm_web_ablation.get("status"),
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),
@@ -825,6 +952,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
             "walk_forward_meta": walk_forward_meta,
             "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
+            "llm_web_search_ablation": llm_web_ablation,
             "oos_by_market": sorted(
                 [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
                 key=lambda x: -x["evaluated"],
