@@ -27,8 +27,10 @@ from app.config import (
     DEEPSEEK_TOKEN,
     LLM_ASYNC,
     LLM_BACKTEST,
+    LLM_BACKTEST_BATCH_MAX,
     LLM_BACKTEST_EXCLUSIVE,
     LLM_BACKTEST_MAX_CALLS,
+    LLM_BACKTEST_WF,
     LLM_BATCH_DECIDE,
     LLM_BATCH_MAX,
     LLM_BATCH_REQUIRED,
@@ -141,6 +143,10 @@ def llm_batch_required() -> bool:
 
 def llm_backtest_enabled() -> bool:
     return llm_batch_decide_enabled() and bool(LLM_BACKTEST) and int(LLM_BACKTEST_MAX_CALLS) > 0
+
+
+def llm_backtest_wf_enabled() -> bool:
+    return llm_backtest_enabled() and bool(LLM_BACKTEST_WF)
 
 
 def sport_allows_match_context(sport: Optional[str]) -> bool:
@@ -874,10 +880,14 @@ def decide_backtest_batches(
     candidates: List[Dict[str, Any]],
     *,
     max_calls: Optional[int] = None,
+    cover_all: bool = False,
     progress_cb: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Run up to ``max_calls`` web-search batch decides over archive stake candidates.
+
+    ``cover_all``: score every candidate (still capped by ``max_calls`` × batch size).
+    Used for walk-forward live-parity. Unevaluated overflow is fail-closed by the caller.
 
     Holds exclusive DeepSeek access (live batch fail-opens) and waits out
     rate-limit cooldowns between calls instead of aborting.
@@ -889,9 +899,10 @@ def decide_backtest_batches(
         "approved": 0,
         "decisions": {},
         "call_reasons": [],
+        "cover_all": bool(cover_all),
         "note": (
-            "Diagnostic live-parity filter with web-search. Archive search may "
-            "leak final results — do not treat as clean OOS edge proof."
+            "Live-parity DeepSeek AND filter with web-search. Archive search may "
+            "leak final results — treat as live-sim, not clean statistical OOS."
         ),
     }
     if not llm_backtest_enabled():
@@ -908,9 +919,18 @@ def decide_backtest_batches(
         key=lambda c: float(c.get("expected_roi") or 0.0),
         reverse=True,
     )
-    calls_budget = max(0, int(max_calls if max_calls is not None else LLM_BACKTEST_MAX_CALLS))
-    batch_size = max(1, int(LLM_BATCH_MAX))
-    pool = ranked[: calls_budget * batch_size]
+    batch_size = max(1, int(LLM_BACKTEST_BATCH_MAX or LLM_BATCH_MAX))
+    cap = int(max_calls if max_calls is not None else LLM_BACKTEST_MAX_CALLS)
+    if cover_all:
+        needed = (len(ranked) + batch_size - 1) // batch_size
+        calls_budget = min(needed, max(0, cap))
+        pool = ranked[: calls_budget * batch_size]
+        out["pool_size"] = len(ranked)
+        out["uncovered"] = max(0, len(ranked) - len(pool))
+    else:
+        calls_budget = max(0, cap)
+        pool = ranked[: calls_budget * batch_size]
+        out["uncovered"] = max(0, len(ranked) - len(pool))
     out["requested"] = len(pool)
     if not pool:
         out["status"] = "skipped"

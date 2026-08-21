@@ -28,6 +28,7 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 ## 2. Чеклист: бэктest / `agent_review`
 
 **Главный срез для edge — `walk_forward`**, не `overall`. Quality gate смотрит туда же.
+При `NEURALBET_LLM_BACKTEST_WF=1` метрики WF = model ∩ DeepSeek AND.
 
 | # | Что проверить | Где |
 | :- | :--- | :--- |
@@ -153,10 +154,12 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - **DeepSeek batch decide:** `NEURALBET_LLM_BATCH_DECIDE=1`,
   `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=16` по EV,
   JSON `{"0":1,"1":0,…}` с web-search **до** Kelly; fail-closed.
-- **DeepSeek в бэктestе:** `NEURALBET_LLM_BACKTEST=1`, до
-  `NEURALBET_LLM_BACKTEST_MAX_CALLS` web-search батчей по top stake-кандидатам;
-  результат в `llm_web_search_ablation` / flag (не меняет quality_gate).
-  Архивный поиск может утекать итогом матча — diagnostic, не чистый OOS.
+- **DeepSeek в walk-forward:** `NEURALBET_LLM_BACKTEST_WF=1` — AND на все WF
+  stake-кандидаты (`NEURALBET_LLM_BACKTEST_BATCH_MAX=64` за вызов, до
+  `NEURALBET_LLM_BACKTEST_MAX_CALLS` батчей). `walk_forward` / `quality_gate`
+  считаются **после** фильтра; `walk_forward_model_only` — срез без LLM.
+  Непокрытые (кап/rate-limit) fail-closed. Архивный поиск может утекать итогом матча —
+  live-sim, не чистый статистический OOS.
 - Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
   (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
 
@@ -174,8 +177,9 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 2. **Decision `predicted_win=1`** — decision head (≠ win-probability % в UI).
 3. Live gates — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
    `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
-4. **Quality gate** — последний бэктest `walk_forward` (см. §2); иначе ставки не открываются.
-5. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
+4. **Quality gate** — последний бэктest `walk_forward` **после** DeepSeek AND (см. §2); иначе ставки не открываются.
+5. **DeepSeek batch decide** — AND на live-кандидатов перед Kelly.
+6. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
 
 **Не путать с:**
 

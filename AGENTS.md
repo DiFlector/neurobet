@@ -77,7 +77,7 @@ autobet/
    * **Gray**: Coefficient **unchanged** (`+-`).
 5. **Safe Mode**: Toggle to hide dangerous odds (`< 1.1` or `> 2.1`). Enabled by default on frontend load.
 6. **Popover Portals**: Popover tooltips must render via `createPortal(..., document.body)` with `position: fixed` and dynamic viewport collision calculation to prevent `overflow: hidden` clipping.
-7. **Neural verdict = EV, not a residual decision head**: the PyTorch GRU still has a 4-logit head for checkpoint compatibility, but live bankroll bets and the "Активные LIVE Прогнозы" tab only consider outcomes where calibrated `win_probability` implies `expected_roi ≥ MIN_BET_EDGE_PCT` (`predicted_win = 1`). Residual `decision_logit` training is off by default (`NEURALBET_DECISION_LOSS_WEIGHT=0`). DeepSeek **batch decide** (web-search JSON `{id:0|1}`) is an AND filter before Kelly when `NEURALBET_LLM_BATCH_DECIDE=1`. Overall `accuracy_pct` ≈ 50% is expected on 2-way lines and is not the edge KPI — use walk-forward ROI CI and Brier vs market. History outcomes are judged **guessed / not guessed** (`predicted_win` vs. `is_win`).
+7. **Neural verdict = EV, not a residual decision head**: the PyTorch GRU still has a 4-logit head for checkpoint compatibility, but live bankroll bets and the "Активные LIVE Прогнозы" tab only consider outcomes where calibrated `win_probability` implies `expected_roi ≥ MIN_BET_EDGE_PCT` (`predicted_win = 1`). Residual `decision_logit` training is off by default (`NEURALBET_DECISION_LOSS_WEIGHT=0`). DeepSeek **batch decide** (web-search JSON `{id:0|1}`) is an AND filter before Kelly when `NEURALBET_LLM_BATCH_DECIDE=1`. Walk-forward / quality_gate use the same AND (`NEURALBET_LLM_BACKTEST_WF=1`). Overall `accuracy_pct` ≈ 50% is expected on 2-way lines and is not the edge KPI — use walk-forward ROI CI and Brier vs market. History outcomes are judged **guessed / not guessed** (`predicted_win` vs. `is_win`).
 
 ---
 
@@ -189,7 +189,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | :--- | :--- |
 | `summary.edge_verdict` | `likely` / `promising` / `unproven` / `calibration_only` / `none` |
 | `summary.quality_gate_pass` | Можно ли снимать блок live-ставок |
-| `slices.walk_forward` | **OOS-главное**: ROI, `roi_pct_lo`, Brier vs market |
+| `slices.walk_forward` | **OOS-главное** (после DeepSeek AND): ROI, `roi_pct_lo`, Brier vs market |
 | `walk_forward_stability` | Сколько фолдов с ROI ≤ 0 |
 | `funnel` | verdict → candidate → final bets |
 | `head_alignment` | decision head vs EV (пункт 9 улучшений) |

@@ -57,8 +57,12 @@ LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
 LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
 LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "16"))
 LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
-# Backtest DeepSeek web-search ablation on top stake candidates (capped API calls).
+# Backtest DeepSeek web-search: AND-filter walk-forward (and thus quality_gate).
 LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "1")
-LLM_BACKTEST_MAX_CALLS = int(os.getenv("NEURALBET_LLM_BACKTEST_MAX_CALLS", "4"))
+LLM_BACKTEST_WF = _env_bool("NEURALBET_LLM_BACKTEST_WF", "1")
+# Per archive call (WF). Larger than live BATCH_MAX to cut API round-trips.
+LLM_BACKTEST_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BACKTEST_BATCH_MAX", "64"))
+# Hard cap on archive web-search batches. 8×64 covers typical WF (~196 stakes).
+LLM_BACKTEST_MAX_CALLS = int(os.getenv("NEURALBET_LLM_BACKTEST_MAX_CALLS", "8"))
 # While backtest owns DeepSeek, live batch fail-opens (no competing API spam).
 LLM_BACKTEST_EXCLUSIVE = _env_bool("NEURALBET_LLM_BACKTEST_EXCLUSIVE", "1")
