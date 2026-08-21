@@ -121,9 +121,28 @@ class DeepSeekWebClient:
             session_id = biz_data.get("id") or biz_data.get("chat_session_id") or biz_data.get("session_id")
             return session_id
 
-    def send_message(self, prompt: str, thinking_enabled: bool = False, search_enabled: bool = False) -> str:
-        if not self.session_id:
+    def send_message(
+        self,
+        prompt: str,
+        thinking_enabled: bool = False,
+        search_enabled: bool = False,
+        *,
+        new_session: bool = True,
+    ) -> str:
+        """
+        Send one user prompt and return the assistant reply text.
+
+        By default each call creates a **fresh chat session** (`new_session=True`).
+        Reusing one session with parent_message_id=None stacks sibling variants of
+        the same bubble in the DeepSeek UI (the «124 / 127» pager) and mixes
+        prior match context into later answers.
+        """
+        if new_session or not self.session_id:
             self.session_id = self.create_session()
+            self.parent_message_id = None
+            if not self.session_id:
+                raise RuntimeError("DeepSeek chat_session/create returned no session id")
+            logger.info("DeepSeek new chat session=%s", self.session_id)
 
         pow_b64 = self.get_pow_response_b64("/api/v0/chat/completion")
 
@@ -138,10 +157,13 @@ class DeepSeekWebClient:
             "X-App-Version": "20241129.0"
         }
 
+        # Always start a turn as a root message in this session (no parent chain).
+        # Continuations would need a real parent_message_id from the prior SSE —
+        # NeuroBet never multi-turns inside one chat on purpose.
         payload = {
             "prompt": prompt,
             "model": "deepseek-chat",
-            "model_type": "default" if self.parent_message_id is None else None,
+            "model_type": "default",
             "stream": True,
             "temperature": 0.7,
             "max_tokens": 4096,
@@ -149,7 +171,7 @@ class DeepSeekWebClient:
             "thinking_enabled": thinking_enabled,
             "search_enabled": search_enabled,
             "chat_session_id": self.session_id,
-            "parent_message_id": self.parent_message_id
+            "parent_message_id": None,
         }
 
         full_response_text = []
@@ -181,6 +203,11 @@ class DeepSeekWebClient:
                     if _is_stream_finished(chunk_json):
                         if full_response_text or not search_enabled:
                             break
+
+        # Drop sticky session so a mistaken caller without new_session cannot
+        # append another sibling into the chat we just used.
+        self.session_id = None
+        self.parent_message_id = None
 
         final_text = "".join(full_response_text).strip()
         return _sanitize_stream_text(final_text)
