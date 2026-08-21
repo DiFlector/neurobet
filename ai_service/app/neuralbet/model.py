@@ -18,7 +18,7 @@ from app.neuralbet.context import (
     NUM_SPORTS, NUM_MARKET_FAMILIES, sport_index, market_family_index,
     TEAM_HASH_BUCKETS, team_index,
 )
-from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, in_bet_band
+from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, MIN_BET_EDGE_PCT, in_bet_band
 from neurobet_features import (
     GRU_INPUT_DIM,
     LGB_CATEGORICAL_FEATURES,
@@ -79,8 +79,8 @@ GRAD_CLIP_NORM = 1.0
 # Weight on the decision-head loss (the bet/no-bet verdict) relative to the win-head BCE.
 # 1.0 — same order of magnitude as bce_loss, so early training doesn't let one head starve
 # the other of gradient.
-DECISION_LOSS_WEIGHT = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT", "1.0"))
-# Cost-sensitive verdict BCE: positive weight ≈ c-1 (capped) — optimal 0.5 boundary ↔ p*c>1.
+DECISION_LOSS_WEIGHT = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT", "0.0"))
+# Cost-sensitive verdict BCE: vestigial when DECISION_LOSS_WEIGHT=0 (objective B).
 DECISION_POS_WEIGHT_CAP = float(os.getenv("NEURALBET_DECISION_POS_WEIGHT_CAP", "1.0"))
 PAIRED_MARKET_LOSS_WEIGHT = float(os.getenv("NEURALBET_PAIRED_MARKET_LOSS_WEIGHT", "0.15"))
 # Reject checkpoint if val_loss regresses more than this above last accepted checkpoint.
@@ -120,24 +120,16 @@ class OddsTrajectoryGRU(nn.Module):
         concatenated onto the GRU's final hidden state.
     Output: 4 raw logits per sample — [win_logit, decision_logit, stake_logit,
     exposure_logit]:
-      - win_logit: sigmoid() gives the win-probability estimate (same role the old
-        single-output head had) — still an input to the LightGBM/PyTorch ensemble blend.
-      - decision_logit: tanh() is the predicted residual vs the bookmaker
-        (is_win - 1/coeff). Mapped to [0, 1] as (tanh+1)/2 for storage/thresholds:
-        0.5 means "no edge", above 0.5 means "bet — the market underprices this".
-        Trained with MSE on that residual, not BCE on is_win — a two-way book is
-        50/50 by construction, so "will this line win" has no headroom.
-      - stake_logit: sigmoid() scales a candidate's position size down from its
-        formula-capped fractional-Kelly size — see bankroll.allocate(). Unused at plain
-        inference.
-      - exposure_logit: vestigial. Kelly sizing (bankroll.allocate) no longer needs a
-        learned "how much of the bank to sit out" signal — each position is sized
-        independently and capped, so nothing reads this output anymore. Kept only so
-        the 4-logit head shape stays checkpoint-compatible; not worth a head resize and
-        another _load_model_state_soft remap for a fifth number nothing would use.
-    No activation is applied here; callers apply sigmoid/softmax as appropriate so the
-    raw logits can feed BCEWithLogitsLoss directly (numerically more stable than a
-    Sigmoid layer + BCELoss).
+      - win_logit: sigmoid() gives the win-probability estimate — blended with
+        LightGBM + market, then calibrated. Live / backtest verdict (objective B)
+        is EV-based: stake iff calibrated_p * coeff - 1 ≥ MIN_BET_EDGE.
+      - decision_logit: kept for checkpoint shape compatibility. Residual-edge
+        training is off by default (NEURALBET_DECISION_LOSS_WEIGHT=0); inference
+        does not use this head for predicted_win.
+      - stake_logit: sigmoid() scales Kelly size in bankroll.allocate().
+      - exposure_logit: vestigial — checkpoint-compatible only.
+    No activation is applied here; callers apply sigmoid as appropriate so the
+    raw logits can feed BCEWithLogitsLoss directly.
     """
     def __init__(self, input_dim: int = GRU_INPUT_DIM, hidden_dim: int = HIDDEN_DIM, num_layers: int = GRU_LAYERS):
         super(OddsTrajectoryGRU, self).__init__()
@@ -212,8 +204,19 @@ def _market_prob_tensor(coefficients: torch.Tensor) -> torch.Tensor:
 
 
 def _decision_confidence(decision_logits: torch.Tensor) -> torch.Tensor:
-    """Map residual-edge tanh to [0, 1]: 0.5 = edge 0, >0.5 = predicted +EV vs market."""
+    """Map residual-edge tanh to [0, 1] (legacy head; not used for live verdict)."""
     return (torch.tanh(decision_logits) + 1.0) * 0.5
+
+
+def _ev_verdict_mask(
+    win_probs: torch.Tensor,
+    coeffs: torch.Tensor,
+    *,
+    min_edge_pct: float = MIN_BET_EDGE_PCT,
+) -> torch.Tensor:
+    """Hard bet mask: expected value vs book ≥ min edge (fractional)."""
+    edge = win_probs * coeffs - 1.0
+    return (edge >= (min_edge_pct / 100.0)).float()
 
 
 def _checkpoint_val_prepared(prepared: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1301,13 +1304,9 @@ class NeuralBetEnsemble:
 
     def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float]:
         """
-        Returns (decision_loss, hit_rate) for a prepared batch in eval mode, no grad.
-        Decision loss is MSE of predicted residual (tanh) vs (is_win - 1/coeff).
-        Hit rate is how often a +EV verdict (predicted edge >= 0) actually won — the
-        number that matters once the head is a bet/no-bet gate, not a 50/50 classifier
-        on complementary markets.
-        Chunked by BATCH_SIZE: a single tensor of a 280k-row cold-start pool OOMs
-        the AI worker right after early-stopping, which then restarts epoch 1 forever.
+        Returns (win_bce_loss, hit_rate) for a prepared batch in eval mode, no grad.
+        Hit rate: among in-band rows with EV ≥ MIN_BET_EDGE, how often is_win=1.
+        Chunked by BATCH_SIZE to avoid OOM on large cold-start pools.
         """
         if not prepared:
             return float("nan"), float("nan")
@@ -1327,19 +1326,16 @@ class NeuralBetEnsemble:
                     [p["coefficient"] for p in chunk], dtype=torch.float32
                 )
                 sport_t, market_t, team1_t, team2_t = self._context_tensors(chunk)
-                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)[:, 1]
-                pred_edge = torch.tanh(logits)
-                true_edge = targets - _market_prob_tensor(coeffs)
-                verdict_mask = (coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)
-                n_verdict = int(verdict_mask.sum().item())
-                if n_verdict:
-                    chunk_loss = nn.functional.mse_loss(
-                        pred_edge[verdict_mask], true_edge[verdict_mask]
-                    ).item()
-                    loss_sum += chunk_loss * n_verdict
-                    loss_n += n_verdict
+                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+                win_logits = logits[:, 0]
+                chunk_loss = nn.functional.binary_cross_entropy_with_logits(
+                    win_logits, targets,
+                ).item()
+                loss_sum += chunk_loss * len(chunk)
+                loss_n += len(chunk)
+                win_probs = torch.sigmoid(win_logits)
                 would_bet = (
-                    (pred_edge >= 0)
+                    (win_probs * coeffs - 1.0 >= MIN_BET_EDGE_PCT / 100.0)
                     & (coeffs >= MIN_BET_COEFF)
                     & (coeffs <= MAX_BET_COEFF)
                 )
@@ -1392,12 +1388,9 @@ class NeuralBetEnsemble:
                 wins = torch.tensor([c["target"] for c in chunk], dtype=torch.float32)
 
                 fractions = bankroll.allocate(win_probs, coeffs, stake_logits)
-                # Only actually risk money on candidates the model's own verdict says will
-                # win — see decision_logit in OddsTrajectoryGRU. The mask is a hard,
-                # non-differentiable decision (detached), same as allocate()'s own
-                # min-stake/max-positions cuts; gradient into stake_logits still flows
-                # through the softmax weights of whichever candidates the mask keeps.
-                verdict = (_decision_confidence(logits[:, 1]) >= VALUE_THRESHOLD_FLOOR).float().detach()
+                # Objective B: risk money only when raw ensemble EV clears min edge
+                # (same rule as live predicted_win after calibration).
+                verdict = _ev_verdict_mask(win_probs, coeffs).detach()
                 # Match live: only size a position the bot is allowed to place (1.5–2.0).
                 coeff_ok = ((coeffs >= MIN_BET_COEFF) & (coeffs <= MAX_BET_COEFF)).float()
                 fractions = fractions * verdict * coeff_ok
@@ -1518,28 +1511,28 @@ class NeuralBetEnsemble:
             win_logits = logits[:, 0:1]
             bce_loss = bce(win_logits, targets)
 
-            decision_logits = logits[:, 1]
-            coeffs_t = torch.tensor(
-                [b["coefficient"] for b in batch], dtype=torch.float32
-            )
-            pred_edge = torch.tanh(decision_logits)
-            true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
-            verdict_mask = (
-                (coeffs_t >= MIN_BET_COEFF)
-                & (coeffs_t <= MAX_BET_COEFF)
-            )
-            per = (pred_edge - true_edge) ** 2
-            if int(verdict_mask.sum().item()) == 0:
-                decision_loss = per.new_zeros(())
-            else:
-                decision_loss = per[verdict_mask].mean()
-            decision_bce = self._decision_cost_loss(
-                decision_logits, targets.squeeze(1), coeffs_t,
-            )
-
-            loss = bce_loss + DECISION_LOSS_WEIGHT * (
-                decision_loss + decision_bce
-            )
+            loss = bce_loss
+            if DECISION_LOSS_WEIGHT > 0:
+                # Legacy residual + cost-sensitive decision heads (disabled in objective B).
+                decision_logits = logits[:, 1]
+                coeffs_t = torch.tensor(
+                    [b["coefficient"] for b in batch], dtype=torch.float32
+                )
+                pred_edge = torch.tanh(decision_logits)
+                true_edge = targets.squeeze(1) - _market_prob_tensor(coeffs_t)
+                verdict_mask = (
+                    (coeffs_t >= MIN_BET_COEFF)
+                    & (coeffs_t <= MAX_BET_COEFF)
+                )
+                per = (pred_edge - true_edge) ** 2
+                if int(verdict_mask.sum().item()) == 0:
+                    decision_loss = per.new_zeros(())
+                else:
+                    decision_loss = per[verdict_mask].mean()
+                decision_bce = self._decision_cost_loss(
+                    decision_logits, targets.squeeze(1), coeffs_t,
+                )
+                loss = loss + DECISION_LOSS_WEIGHT * (decision_loss + decision_bce)
 
             win_probs = torch.sigmoid(win_logits)
             paired = self._paired_market_loss(
@@ -1560,9 +1553,7 @@ class NeuralBetEnsemble:
                 self.pytorch_model.parameters(), GRAD_CLIP_NORM
             )
             self.pytorch_optimizer.step()
-            epoch_train_losses.append(
-                float((decision_loss + decision_bce).item())
-            )
+            epoch_train_losses.append(float(bce_loss.item()))
 
         train_loss = sum(epoch_train_losses) / max(len(epoch_train_losses), 1)
         return train_loss, aborted
@@ -1673,40 +1664,13 @@ class NeuralBetEnsemble:
         should_abort: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
-        Online-training pass: mini-batch AdamW over a batch of resolved bets, combining
-        three loss terms —
-          1. BCE-with-logits on the win/loss label for the win-probability head (still
-             feeds the LightGBM/PyTorch ensemble blend used for the displayed percentage),
-          2. MSE on the *decision* head — predicted residual vs the bookmaker
-             (tanh(decision_logit) vs is_win - 1/coeff). This is the bet/no-bet
-             verdict: above 0.5 mapped confidence means "the market underprices this",
-             not "this line will win". Complementary two-way markets are 50/50 by
-             construction, so BCE-on-is_win had no headroom.
-          3. a bankroll loss: -log(bank_growth) replayed over rounds of candidates using
-             the model's own decision/stake/exposure heads (bankroll.allocate/settle,
-             masked by the decision verdict — see _bankroll_pass) — this is what teaches
-             the network that betting size matters, not just direction (see plan part C).
-             Ruin (bank hits 0) adds a heavy penalty and resets the *virtual* training
-             bank used for this loss back to start_balance.
-        Runs up to `epochs` passes but keeps the weights from whichever epoch had the
-        best held-out (val_data) decision-loss — early-stopping model selection — since
-        the hardware budget allows a generous epoch count without every extra epoch
-        being pure overfitting. `on_epoch(epoch_index, train_loss, val_loss)` is called
-        after every epoch if provided.
-        After picking the winning epoch, allocations are replayed on the held-out
-        val split (not the train set) and committed to the persistent "training"
-        bankroll account, so the logged balance is a generalization check rather
-        than an in-sample Kelly compound.
-        The pass is then compared to the *incoming* weights on that same val split
-        (the incoming weights are the last accepted checkpoint, so this is the only
-        comparison that is like-for-like). Fail it → restore, file untouched. Next
-        cycle continues from the restored weights on new data.
-        `skip_checkpoint_gate` keeps the new weights regardless (cold-start through
-        the archive: a later chunk is allowed to raise val_loss without rolling back
-        everything learned so far). `learning_rate` temporarily overrides AdamW's
-        param-group rate for this pass, then puts LEARNING_RATE back. `rebalance_classes`
-        toggles BCE pos_weight; leave it off when the caller already drew a harsh
-        win/loss mix, or the weight would cancel that mix back to 50/50.
+        Online-training pass: mini-batch AdamW over resolved bets.
+        Primary loss: BCE-with-logits on is_win for the win-probability head
+        (ensemble blend → calibration → EV verdict). Optional legacy decision-head
+        residual/cost BCE when NEURALBET_DECISION_LOSS_WEIGHT > 0 (default 0).
+        Plus paired-market soft constraint and bankroll utility (Kelly replay,
+        masked by EV ≥ MIN_BET_EDGE). Early-stop on held-out val win-BCE; checkpoint
+        gate vs incoming weights. See OddsTrajectoryGRU docstring for head roles.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,

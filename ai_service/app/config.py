@@ -26,7 +26,10 @@ LLM_VETO_AUTO = _env_bool("NEURALBET_LLM_VETO_AUTO", "1")
 LLM_VETO_AUTO_MIN_SETTLED = int(os.getenv("NEURALBET_LLM_VETO_AUTO_MIN_SETTLED", "150"))
 # Sports allowed for web-search context (* / all = every sport). Default: tennis+football
 # (news/rosters exist). Table-tennis live totals get little usable search signal.
-_LLM_CTX_SPORTS_RAW = os.getenv("NEURALBET_LLM_MATCH_CONTEXT_SPORTS", "теннис,футбол").strip().lower()
+_LLM_CTX_SPORTS_RAW = os.getenv(
+    "NEURALBET_LLM_MATCH_CONTEXT_SPORTS",
+    "теннис,футбол,настольный теннис,баскетбол",
+).strip().lower()
 LLM_MATCH_CONTEXT_SPORTS: frozenset[str] | None = (
     None
     if _LLM_CTX_SPORTS_RAW in ("", "*", "all")
@@ -44,3 +47,8 @@ LLM_MATCH_CTX_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_TTL_SEC", str(3
 LLM_MATCH_CTX_NULL_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_NULL_TTL_SEC", str(5 * 60)))
 LLM_REANALYZE_COEFF_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_COEFF_DELTA", "0.05"))
 LLM_REANALYZE_PROB_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_PROB_DELTA", "3.0"))
+# Batch decide: one web-search call over top-N EV candidates before Kelly place.
+LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
+LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
+LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "8"))
+LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))

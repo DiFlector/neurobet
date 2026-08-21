@@ -67,9 +67,11 @@ MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
 
 # Live staking only — training/inference/backtest universe stays ALLOWED_SPORTS.
-# Default in code: table tennis (safe if env unset). Prod .env may set * while
-# NEURALBET_LIVE_STAKE_MARKETS=totals — see BacktestPrompt §7.
-_LIVE_STAKE_SPORTS_RAW = os.getenv("NEURALBET_LIVE_STAKE_SPORTS", "настольный теннис").strip().lower()
+# Default: four sports with historical OOS interest; volleyball stays out.
+_LIVE_STAKE_SPORTS_RAW = os.getenv(
+    "NEURALBET_LIVE_STAKE_SPORTS",
+    "настольный теннис,теннис,баскетбол,футбол",
+).strip().lower()
 LIVE_STAKE_SPORTS: frozenset[str] | None = (
     None
     if _LIVE_STAKE_SPORTS_RAW in ("", "*", "all")
@@ -79,16 +81,17 @@ LIVE_STAKE_SPORTS: frozenset[str] | None = (
 )
 
 # Live staking markets — training/inference still see П1/П2/draw + totals.
-# Default: totals only (backtest 20.08: total_under/over ~+11% ROI, w1/w2 negative).
-# Aliases: totals → total_over+total_under; * / all → every allowed family.
-# Or comma list of families: total_over,total_under,w1,w2,draw
+# Default: totals + moneyline (no draw stake until OOS proves it).
 _LIVE_STAKE_MARKET_ALIASES = {
     "totals": frozenset({"total_over", "total_under"}),
     "total": frozenset({"total_over", "total_under"}),
     "moneyline": frozenset({"w1", "w2", "draw"}),
     "1x2": frozenset({"w1", "w2", "draw"}),
 }
-_LIVE_STAKE_MARKETS_RAW = os.getenv("NEURALBET_LIVE_STAKE_MARKETS", "totals").strip().lower()
+_LIVE_STAKE_MARKETS_RAW = os.getenv(
+    "NEURALBET_LIVE_STAKE_MARKETS",
+    "totals,w1,w2",
+).strip().lower()
 if _LIVE_STAKE_MARKETS_RAW in ("", "*", "all"):
     LIVE_STAKE_MARKETS: frozenset[str] | None = None
 else:

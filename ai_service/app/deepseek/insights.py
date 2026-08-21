@@ -26,6 +26,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.config import (
     DEEPSEEK_TOKEN,
     LLM_ASYNC,
+    LLM_BATCH_DECIDE,
+    LLM_BATCH_MAX,
+    LLM_BATCH_REQUIRED,
+    LLM_BATCH_TTL_SEC,
     LLM_DIGEST_HOURS,
     LLM_DIGEST_MAX_HISTORY,
     LLM_ENABLED,
@@ -113,6 +117,14 @@ def veto_enabled() -> bool:
 
 def digest_hours() -> float:
     return float(LLM_DIGEST_HOURS)
+
+
+def llm_batch_decide_enabled() -> bool:
+    return llm_is_enabled() and bool(LLM_BATCH_DECIDE)
+
+
+def llm_batch_required() -> bool:
+    return bool(LLM_BATCH_REQUIRED)
 
 
 def sport_allows_match_context(sport: Optional[str]) -> bool:
@@ -510,6 +522,135 @@ def fetch_match_context(
     _cache_set(cache_key, result, ttl_seconds=float(LLM_MATCH_CTX_TTL_SEC))
     public = {k: v for k, v in result.items() if not str(k).startswith("_cache_")}
     return public, None
+
+
+def _parse_batch_decisions(raw: Any, n: int) -> Dict[str, int]:
+    """Normalize LLM JSON to {\"0\":0|1, ...} for ids 0..n-1. Missing → 0."""
+    out = {str(i): 0 for i in range(n)}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        key = str(k).strip()
+        if key not in out:
+            continue
+        try:
+            out[key] = 1 if int(v) == 1 else 0
+        except (TypeError, ValueError):
+            out[key] = 1 if str(v).strip().lower() in ("1", "true", "yes", "bet") else 0
+    return out
+
+
+def decide_bets_batch(
+    candidates: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    One web-search call over top-N EV candidates. Returns (kept_candidates, meta).
+
+    Response shape from DeepSeek: {\"0\":1,\"1\":0,...}. Fail-closed when
+    LLM_BATCH_REQUIRED: empty kept list on error/empty parse.
+    """
+    meta: Dict[str, Any] = {
+        "reason": "ok",
+        "decisions": {},
+        "requested": 0,
+        "approved": 0,
+    }
+    if not candidates:
+        meta["reason"] = "no_candidates"
+        return [], meta
+    if not llm_is_enabled():
+        meta["reason"] = "llm_disabled"
+        if llm_batch_required():
+            return [], meta
+        return list(candidates), meta
+    if not llm_batch_decide_enabled():
+        meta["reason"] = "disabled"
+        return list(candidates), meta
+
+    ranked = sorted(
+        candidates,
+        key=lambda c: float(c.get("expected_roi") or 0.0),
+        reverse=True,
+    )
+    max_n = max(1, int(LLM_BATCH_MAX))
+    batch = ranked[:max_n]
+    meta["requested"] = len(batch)
+
+    cache_fingerprint = "|".join(
+        f"{c.get('event_id')}:{c.get('factor_id')}:{c.get('parameter')}:"
+        f"{round(float(c.get('coeff') or c.get('coefficient') or 0), 2)}:"
+        f"{round(float(c.get('win_probability') or 0), 1)}"
+        for c in batch
+    )
+    cache_key = f"batch_decide:{hash(cache_fingerprint)}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict) and cached.get("decisions") is not None:
+        decisions = _parse_batch_decisions(cached.get("decisions"), len(batch))
+        meta["reason"] = "cache_hit"
+        meta["decisions"] = decisions
+    else:
+        lines = []
+        for i, c in enumerate(batch):
+            lines.append(
+                f"{i}: sport={c.get('sport') or ''} | match={c.get('match_name') or ''} | "
+                f"score={c.get('score') or ''} | market={c.get('market_prefix') or ''} / "
+                f"{c.get('label') or ''} | coeff={c.get('coeff') or c.get('coefficient')} | "
+                f"p_model={c.get('win_probability')}% | EV={round(float(c.get('expected_roi') or 0), 1)}%"
+            )
+        prompt = (
+            "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
+            "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
+            "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
+            "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
+            "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
+            "Никаких других ключей, markdown или пояснений.\n\n"
+            + "\n".join(lines)
+        )
+        data, reason = ask_json(prompt, search=True, timeout=90.0)
+        if not data and reason == "empty_response":
+            data, reason = ask_json(
+                prompt
+                + "\n\nВеб-поиск недоступен — ответь осторожно по общим знаниям; "
+                "при сомнении ставь 0.",
+                search=False,
+                timeout=45.0,
+            )
+        if not data:
+            meta["reason"] = reason or "empty_response"
+            meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+            if llm_batch_required():
+                return [], meta
+            return list(candidates), meta
+
+        decisions = _parse_batch_decisions(data, len(batch))
+        meta["decisions"] = decisions
+        meta["reason"] = "ok"
+        _cache_set(
+            cache_key,
+            {"decisions": decisions, "fingerprint": cache_fingerprint},
+            ttl_seconds=float(LLM_BATCH_TTL_SEC),
+        )
+
+    kept: List[Dict[str, Any]] = []
+    for i, c in enumerate(batch):
+        flag = int(meta["decisions"].get(str(i), 0))
+        enriched = {
+            **c,
+            "llm_batch_decision": flag,
+            "llm_batch_id": i,
+        }
+        if flag == 1:
+            kept.append(enriched)
+    meta["approved"] = len(kept)
+
+    # Candidates beyond batch max: only keep if batch not required; otherwise drop.
+    overflow = ranked[max_n:]
+    if overflow and not llm_batch_required():
+        kept.extend(overflow)
+    elif overflow and llm_batch_required():
+        meta["overflow_dropped"] = len(overflow)
+
+    return kept, meta
 
 
 def record_shadow_decision(

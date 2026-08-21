@@ -147,6 +147,14 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
   `train_*_attempted` при reject; flag `fixed_val_tuner_vs_walk_forward`.
 - OOS ablation в бэктest/`agent_review`: `oos_ablation.table_tennis_x_total_over`
   + `total_over` (не путать с overall by_sport).
+- **Objective B (2026-08-21):** live/backtest verdict = EV
+  (`calibrated_p * c - 1 ≥ MIN_BET_EDGE`); residual decision-head loss default **0**;
+  bankroll train mask тоже EV. `accuracy_pct` ~50% — не KPI.
+- **DeepSeek batch decide:** `NEURALBET_LLM_BATCH_DECIDE=1`,
+  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=8` по EV,
+  JSON `{"0":1,"1":0,…}` с web-search **до** Kelly; fail-closed.
+- Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
+  (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
 
@@ -178,8 +186,8 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 
 ## 7. Live по спортам (`NEURALBET_LIVE_STAKE_SPORTS`)
 
-**Live sports:** сейчас `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис,теннис,баскетбол,футбол`
-при **рынках = totals only** (волейбол исключён). Inference/обучение и так на всём
+**Live sports:** default `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис,теннис,баскетбол,футбол`
+при **рынках = totals + w1 + w2** (волейбол и draw stake исключены). Inference/обучение и так на всём
 `ALLOWED_SPORTS`; список влияет только на stake / «win» UI / бэктест «would bet».
 
 | Спорт | Ориентир |

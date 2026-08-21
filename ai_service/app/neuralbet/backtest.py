@@ -41,6 +41,7 @@ from neurobet_filters import (
     in_live_stake_market,
     MIN_BET_COEFF,
     MAX_BET_COEFF,
+    MIN_BET_EDGE_PCT,
 )
 from neurobet_features import (
     MARKET_FAMILIES,
@@ -351,8 +352,8 @@ def _records_from_scored(
             win_prob, buckets, sport=m["sport"], coeff=m["coeff"],
         )
         expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-        thr = sport_decision_thresholds.get(m["sport"], decision_threshold)
-        current_verdict = 1 if decision_prob >= thr else 0
+        # Objective B: verdict = EV gate (calibrated p), not residual decision_prob.
+        current_verdict = 1 if expected_roi >= MIN_BET_EDGE_PCT else 0
         support_count = None
         if market_support:
             support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)

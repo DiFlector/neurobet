@@ -2043,11 +2043,8 @@ def _run_neuralbet_inference_and_training_locked(
             win_prob, buckets, sport=meta["sport"], coeff=coeff
         )
         expected_roi = ((calibrated_prob / 100.0) * coeff - 1.0) * 100.0
-        # The verdict: residual-edge confidence mapped to [0, 1] (>= 0.5 means the
-        # market underprices this outcome, not "this line will win") — see
-        # decision_logit in OddsTrajectoryGRU. Threshold defaults to 0.52 (~4pp
-        # predicted edge) and is retuned against validation ROI periodically.
-        predicted_win = 1 if decision_prob >= ensemble_engine.sport_threshold(meta["sport"]) else 0
+        # Objective B: EV verdict from calibrated ensemble p (not residual decision head).
+        predicted_win = 1 if expected_roi >= MIN_BET_EDGE_PCT else 0
         if predicted_win:
             predicted_win_count += 1
         else:
@@ -2130,18 +2127,30 @@ def _run_neuralbet_inference_and_training_locked(
             f"Remaining {len(live_candidates)}.",
         )
 
-    # DeepSeek: hard veto (if active) runs sync *before* place; otherwise place first
-    # and enrich async so web-search never stalls Kelly staking.
+    # DeepSeek batch decide (required AND before place) + optional legacy veto.
     llm_veto_active = False
     if live_candidates:
         try:
             from app.deepseek.insights import (
+                decide_bets_batch,
+                llm_batch_decide_enabled,
                 run_llm_post_cycle,
                 veto_enabled,
             )
 
+            if llm_batch_decide_enabled():
+                before = len(live_candidates)
+                live_candidates, batch_meta = decide_bets_batch(live_candidates)
+                approved = sum(1 for v in (batch_meta.get("decisions") or {}).values() if int(v) == 1)
+                add_ai_log(
+                    "BANKROLL",
+                    f"LLM batch decide: {before} → {len(live_candidates)} "
+                    f"(approved={approved}, reason={batch_meta.get('reason')}).",
+                    level="INFO" if live_candidates else "WARNING",
+                )
+
             llm_veto_active = veto_enabled()
-            if llm_veto_active:
+            if llm_veto_active and live_candidates:
                 before = len(live_candidates)
                 live_candidates = run_llm_post_cycle(
                     live_candidates,
@@ -2158,6 +2167,18 @@ def _run_neuralbet_inference_and_training_locked(
                     )
         except Exception as e:
             add_ai_log("SYSTEM", f"LLM enrich skipped: {e}", level="WARNING")
+            try:
+                from app.deepseek.insights import llm_batch_required
+
+                if llm_batch_required():
+                    live_candidates = []
+                    add_ai_log(
+                        "BANKROLL",
+                        "LLM batch required but failed — fail-closed, 0 candidates.",
+                        level="WARNING",
+                    )
+            except Exception:
+                live_candidates = []
 
     if predictions:
         save_ai_predictions(predictions, timestamp_str)
