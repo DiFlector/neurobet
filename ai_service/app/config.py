@@ -55,7 +55,7 @@ LLM_REANALYZE_PROB_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_PROB_DELTA",
 # Batch decide: one web-search call over top-N EV candidates before Kelly place.
 LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
 LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
-LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "8"))
+LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "16"))
 LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
 # Backtest DeepSeek web-search ablation on top stake candidates (capped API calls).
 LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "1")

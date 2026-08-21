@@ -151,7 +151,7 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
   (`calibrated_p * c - 1 ≥ MIN_BET_EDGE`); residual decision-head loss default **0**;
   bankroll train mask тоже EV. `accuracy_pct` ~50% — не KPI.
 - **DeepSeek batch decide:** `NEURALBET_LLM_BATCH_DECIDE=1`,
-  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=8` по EV,
+  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=16` по EV,
   JSON `{"0":1,"1":0,…}` с web-search **до** Kelly; fail-closed.
 - **DeepSeek в бэктestе:** `NEURALBET_LLM_BACKTEST=1`, до
   `NEURALBET_LLM_BACKTEST_MAX_CALLS` web-search батчей по top stake-кандидатам;
