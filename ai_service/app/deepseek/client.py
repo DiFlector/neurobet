@@ -22,6 +22,23 @@ logger = logging.getLogger("deepseek_web_client")
 
 LOCAL_WASM = os.path.join(os.path.dirname(__file__), "wasm", "sha3_wasm_bg.7b9ca65ddd.wasm")
 
+
+class DeepSeekStreamError(RuntimeError):
+    """DeepSeek returned an in-stream error (rate limit, auth, etc.)."""
+
+    def __init__(self, message: str, *, finish_reason: Optional[str] = None):
+        super().__init__(message)
+        self.finish_reason = (finish_reason or "").strip().lower()
+
+    @property
+    def is_rate_limited(self) -> bool:
+        fr = self.finish_reason
+        msg = str(self).lower()
+        return fr in ("rate_limit_reached", "rate_limited", "too_many_requests") or (
+            "too frequent" in msg or "rate limit" in msg
+        )
+
+
 class DeepSeekWebClient:
     def __init__(self, token: Optional[str] = None, wasm_path: str = LOCAL_WASM):
         self.token = token or DEEPSEEK_TOKEN
@@ -194,15 +211,20 @@ class DeepSeekWebClient:
                         chunk_json = json.loads(raw_chunk)
                     except Exception:
                         continue
+                    err = _extract_sse_error(chunk_json)
+                    if err is not None:
+                        raise DeepSeekStreamError(
+                            str(err.get("content") or err.get("message") or "DeepSeek stream error"),
+                            finish_reason=str(err.get("finish_reason") or err.get("code") or ""),
+                        )
                     piece = _extract_sse_content(chunk_json)
                     if piece:
                         full_response_text.append(piece)
-                    # With web-search, DeepSeek often emits FINISHED on an intermediate
-                    # search turn before RESPONSE fragments — only stop early if we
-                    # already have answer text (or search is off).
-                    if _is_stream_finished(chunk_json):
-                        if full_response_text or not search_enabled:
-                            break
+                    # Search (and sometimes plain) streams emit FINISHED on an
+                    # intermediate turn before RESPONSE fragments. Never stop on
+                    # empty FINISHED — wait for [DONE] / connection close.
+                    if _is_stream_finished(chunk_json) and full_response_text:
+                        break
 
         # Drop sticky session so a mistaken caller without new_session cannot
         # append another sibling into the chat we just used.
@@ -217,6 +239,22 @@ _STATUS_TOKENS = frozenset({
     "FINISHED", "FINISH", "DONE", "STOP", "FAILED", "ERROR",
     "SEARCHING", "THINKING", "PENDING",
 })
+
+
+def _extract_sse_error(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    DeepSeek may emit a top-level error object (not under ``v``), e.g.:
+      {"type":"error","content":"Messages too frequent…","finish_reason":"rate_limit_reached"}
+    or the same nested in ``v``.
+    """
+    if not isinstance(chunk, dict):
+        return None
+    if str(chunk.get("type") or "").lower() == "error":
+        return chunk
+    val = chunk.get("v")
+    if isinstance(val, dict) and str(val.get("type") or "").lower() == "error":
+        return val
+    return None
 
 
 def _is_stream_finished(chunk: Dict[str, Any]) -> bool:

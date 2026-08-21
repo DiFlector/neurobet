@@ -40,6 +40,7 @@ from app.config import (
     LLM_MAX_CONTEXT_PER_CYCLE,
     LLM_MAX_RATIONALE_PER_CYCLE,
     LLM_MIN_INTERVAL_SECONDS,
+    LLM_RATE_LIMIT_COOLDOWN_SEC,
     LLM_REANALYZE_COEFF_DELTA,
     LLM_REANALYZE_PROB_DELTA,
     LLM_SHADOW,
@@ -58,6 +59,7 @@ MOSCOW_TZ = timezone(timedelta(hours=3))
 _client_lock = threading.Lock()
 _client = None
 _last_call_at = 0.0
+_rate_limited_until = 0.0
 _cache: Dict[str, tuple[float, Any]] = {}
 _CACHE_LOCK = threading.Lock()
 _SHADOW_LOCK = threading.Lock()
@@ -168,9 +170,31 @@ def _cache_get(key: str) -> Any:
         return value
 
 
+def _cache_get_expired(key: str) -> Any:
+    """Return cached value even past TTL (for rate-limit soft reuse)."""
+    with _CACHE_LOCK:
+        item = _cache.get(key)
+        if not item:
+            return None
+        return item[1]
+
+
 def _cache_set(key: str, value: Any, ttl_seconds: float) -> None:
     with _CACHE_LOCK:
         _cache[key] = (time.monotonic() + max(1.0, ttl_seconds), value)
+
+
+def _mark_rate_limited(seconds: Optional[float] = None) -> None:
+    global _rate_limited_until
+    cool = float(seconds if seconds is not None else LLM_RATE_LIMIT_COOLDOWN_SEC)
+    until = time.monotonic() + max(5.0, cool)
+    if until > _rate_limited_until:
+        _rate_limited_until = until
+    logger.warning("DeepSeek rate-limited — cooling down %.0fs", cool)
+
+
+def _rate_limit_blocked() -> bool:
+    return time.monotonic() < _rate_limited_until
 
 
 def _strip_json_fence(text: str) -> str:
@@ -207,10 +231,14 @@ def _call_send(
     """Returns (text, null_reason). null_reason set when text is None."""
     if not llm_is_enabled():
         return None, "disabled"
+    if _rate_limit_blocked():
+        return None, "rate_limited"
 
     def _run() -> str:
         with _client_lock:
             _rate_limit_wait()
+            if _rate_limit_blocked():
+                raise RuntimeError("rate_limited_cooldown")
             client = _get_client()
             return client.send_message(
                 prompt,
@@ -242,6 +270,23 @@ def _call_send(
             pass
         return None, "timeout"
     except Exception as e:
+        from app.deepseek.client import DeepSeekStreamError
+
+        if isinstance(e, DeepSeekStreamError) and e.is_rate_limited:
+            _mark_rate_limited()
+            try:
+                from app.neuralbet.pipeline import add_ai_log
+
+                add_ai_log(
+                    "SYSTEM",
+                    f"DeepSeek rate limit: {e} — cooldown {LLM_RATE_LIMIT_COOLDOWN_SEC:.0f}s.",
+                    level="WARNING",
+                )
+            except Exception:
+                pass
+            return None, "rate_limited"
+        if "rate_limited_cooldown" in str(e):
+            return None, "rate_limited"
         logger.warning("DeepSeek call failed: %s", e)
         try:
             from app.neuralbet.pipeline import add_ai_log
@@ -431,6 +476,8 @@ def fetch_match_context(
     """
     if not match_context_enabled():
         return None, "disabled"
+    if _rate_limit_blocked():
+        return None, "rate_limited"
 
     sport = candidate.get("sport") or ""
     if not sport_allows_match_context(sport):
@@ -547,7 +594,9 @@ def decide_bets_batch(
     One web-search call over top-N EV candidates. Returns (kept_candidates, meta).
 
     Response shape from DeepSeek: {\"0\":1,\"1\":0,...}. Fail-closed when
-    LLM_BATCH_REQUIRED: empty kept list on error/empty parse.
+    LLM_BATCH_REQUIRED on empty/parse/error. Rate-limit is infrastructure:
+    reuse stale cache or fail-open (return all candidates) — never spam
+    empty_response every cycle.
     """
     meta: Dict[str, Any] = {
         "reason": "ok",
@@ -577,9 +626,10 @@ def decide_bets_batch(
     meta["requested"] = len(batch)
 
     cache_fingerprint = "|".join(
+        # Ignore coeff/prob jitter — otherwise every scrape misses cache and
+        # hammers DeepSeek into rate_limit_reached (~empty_response in logs).
         f"{c.get('event_id')}:{c.get('factor_id')}:{c.get('parameter')}:"
-        f"{round(float(c.get('coeff') or c.get('coefficient') or 0), 2)}:"
-        f"{round(float(c.get('win_probability') or 0), 1)}"
+        f"{(c.get('market_prefix') or '').strip()}"
         for c in batch
     )
     cache_key = f"batch_decide:{hash(cache_fingerprint)}"
@@ -589,51 +639,78 @@ def decide_bets_batch(
         meta["reason"] = "cache_hit"
         meta["decisions"] = decisions
     else:
-        lines = []
-        for i, c in enumerate(batch):
-            lines.append(
-                f"{i}: sport={c.get('sport') or ''} | match={c.get('match_name') or ''} | "
-                f"score={c.get('score') or ''} | market={c.get('market_prefix') or ''} / "
-                f"{c.get('label') or ''} | coeff={c.get('coeff') or c.get('coefficient')} | "
-                f"p_model={c.get('win_probability')}% | EV={round(float(c.get('expected_roi') or 0), 1)}%"
+        if _rate_limit_blocked():
+            stale = _cache_get_expired(cache_key)
+            if isinstance(stale, dict) and stale.get("decisions") is not None:
+                decisions = _parse_batch_decisions(stale.get("decisions"), len(batch))
+                meta["reason"] = "rate_limited_stale_cache"
+                meta["decisions"] = decisions
+            else:
+                # Infra rate-limit ≠ LLM veto. Fail-open so we don't zero every cycle.
+                meta["reason"] = "rate_limited"
+                meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+                return list(candidates), meta
+        else:
+            lines = []
+            for i, c in enumerate(batch):
+                lines.append(
+                    f"{i}: sport={c.get('sport') or ''} | match={c.get('match_name') or ''} | "
+                    f"score={c.get('score') or ''} | market={c.get('market_prefix') or ''} / "
+                    f"{c.get('label') or ''} | coeff={c.get('coeff') or c.get('coefficient')} | "
+                    f"p_model={c.get('win_probability')}% | EV={round(float(c.get('expected_roi') or 0), 1)}%"
+                )
+            prompt = (
+                "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
+                "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
+                "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
+                "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
+                "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
+                "Никаких других ключей, markdown или пояснений.\n\n"
+                + "\n".join(lines)
             )
-        prompt = (
-            "Ты спортивный аналитик. Используй веб-поиск. Ниже LIVE-кандидаты NeuroBet.\n"
-            "Изучи свежие прогнозы, форму и новости. Реши, на что реально ставить.\n"
-            "Если ставить не на что — ставь 0. Можно одобрить несколько или ни одного.\n"
-            "Верни ТОЛЬКО JSON-объект: ключ = id (строка), значение = 1 или 0.\n"
-            "Пример: {\"0\":1,\"1\":0,\"2\":1}\n"
-            "Никаких других ключей, markdown или пояснений.\n\n"
-            + "\n".join(lines)
-        )
-        data, reason = ask_json(prompt, search=True, timeout=90.0)
-        if not data and reason == "empty_response":
-            data, reason = ask_json(
-                prompt
-                + "\n\nВеб-поиск недоступен — ответь осторожно по общим знаниям; "
-                "при сомнении ставь 0.",
-                search=False,
-                timeout=45.0,
-            )
-        if not data:
-            meta["reason"] = reason or "empty_response"
-            meta["decisions"] = {str(i): 0 for i in range(len(batch))}
-            if llm_batch_required():
-                return [], meta
-            return list(candidates), meta
-
-        decisions = _parse_batch_decisions(data, len(batch))
-        meta["decisions"] = decisions
-        meta["reason"] = "ok"
-        _cache_set(
-            cache_key,
-            {"decisions": decisions, "fingerprint": cache_fingerprint},
-            ttl_seconds=float(LLM_BATCH_TTL_SEC),
-        )
+            data, reason = ask_json(prompt, search=True, timeout=90.0)
+            # Only retry empty streams without search — never on rate_limited
+            # (second call makes the cooldown worse).
+            if not data and reason == "empty_response":
+                data, reason = ask_json(
+                    prompt
+                    + "\n\nВеб-поиск недоступен — ответь осторожно по общим знаниям; "
+                    "при сомнении ставь 0.",
+                    search=False,
+                    timeout=45.0,
+                )
+            if not data:
+                if reason == "rate_limited":
+                    stale = _cache_get_expired(cache_key)
+                    if isinstance(stale, dict) and stale.get("decisions") is not None:
+                        decisions = _parse_batch_decisions(
+                            stale.get("decisions"), len(batch)
+                        )
+                        meta["reason"] = "rate_limited_stale_cache"
+                        meta["decisions"] = decisions
+                    else:
+                        meta["reason"] = "rate_limited"
+                        meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+                        return list(candidates), meta
+                else:
+                    meta["reason"] = reason or "empty_response"
+                    meta["decisions"] = {str(i): 0 for i in range(len(batch))}
+                    if llm_batch_required():
+                        return [], meta
+                    return list(candidates), meta
+            else:
+                decisions = _parse_batch_decisions(data, len(batch))
+                meta["decisions"] = decisions
+                meta["reason"] = "ok"
+                _cache_set(
+                    cache_key,
+                    {"decisions": decisions, "fingerprint": cache_fingerprint},
+                    ttl_seconds=float(LLM_BATCH_TTL_SEC),
+                )
 
     kept: List[Dict[str, Any]] = []
     for i, c in enumerate(batch):
-        flag = int(meta["decisions"].get(str(i), 0))
+        flag = int((meta.get("decisions") or {}).get(str(i), 0))
         enriched = {
             **c,
             "llm_batch_decision": flag,
