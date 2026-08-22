@@ -1384,104 +1384,100 @@ export default function AdminPage() {
         )}
 
         {/* Toggle Switches Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* AI Inference Toggle */}
-          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
+          <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             aiEnabled ? "bg-neutral-900/90 border-[#00b894]/40" : "bg-neutral-900/50 border-[#d63031]/40"
           }`}>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
-                  aiEnabled ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
-                }`}>
-                  <BrainCircuit className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <div className="flex items-start gap-3">
+              <div className={`size-12 shrink-0 rounded-2xl flex items-center justify-center ${
+                aiEnabled ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
+              }`}>
+                <BrainCircuit className="size-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-base font-bold text-white flex flex-wrap items-center gap-2 min-w-0">
                     Нейросеть (Inference)
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full shrink-0 ${
                       aiEnabled ? "bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
                     }`}>
                       {aiEnabled ? "ВКЛЮЧЕНА" : "ОТКЛЮЧЕНА"}
                     </span>
                   </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Просчет вероятностей и ROI для всех LIVE ставок в реальном времени
-                  </p>
+                  <button
+                    onClick={() => toggleAISetting("ai_enabled", aiEnabled)}
+                    className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
+                      aiEnabled ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
+                    }`}
+                  >
+                    <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                      aiEnabled ? "translate-x-6" : "translate-x-0"
+                    }`} />
+                  </button>
                 </div>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  Просчет вероятностей и ROI для всех LIVE ставок в реальном времени
+                </p>
               </div>
-
-              {/* Toggle Switch */}
-              <button
-                onClick={() => toggleAISetting("ai_enabled", aiEnabled)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
-                  aiEnabled ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                  aiEnabled ? "translate-x-6" : "translate-x-0"
-                }`} />
-              </button>
             </div>
           </div>
 
           {/* AI Retraining Toggle */}
-          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
+          <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             trainingEnabled ? "bg-neutral-900/90 border-[#fdcb6e]/40" : "bg-neutral-900/50 border-[#d63031]/40"
           }`}>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
-                  trainingEnabled ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
-                }`}>
-                  <GraduationCap className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <div className="flex items-start gap-3">
+              <div className={`size-12 shrink-0 rounded-2xl flex items-center justify-center ${
+                trainingEnabled ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
+              }`}>
+                <GraduationCap className="size-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-base font-bold text-white flex flex-wrap items-center gap-2 min-w-0">
                     Обучение Нейросети
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full shrink-0 ${
                       trainingEnabled ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30" : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
                     }`}>
                       {trainingEnabled ? "ВКЛЮЧЕНО" : "ОТКЛЮЧЕНО"}
                     </span>
                   </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Фоновое дообучение PyTorch & LightGBM на завершенных матчах архива
-                  </p>
+                  <button
+                    onClick={() => toggleAISetting("training_enabled", trainingEnabled)}
+                    className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
+                      trainingEnabled ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
+                    }`}
+                  >
+                    <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                      trainingEnabled ? "translate-x-6" : "translate-x-0"
+                    }`} />
+                  </button>
                 </div>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  Фоновое дообучение PyTorch & LightGBM на завершенных матчах архива
+                </p>
               </div>
-
-              {/* Toggle Switch */}
-              <button
-                onClick={() => toggleAISetting("training_enabled", trainingEnabled)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
-                  trainingEnabled ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                  trainingEnabled ? "translate-x-6" : "translate-x-0"
-                }`} />
-              </button>
             </div>
           </div>
 
           {/* Quality gate bypass */}
-          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
+          <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             qualityGateBypass ? "bg-neutral-900/90 border-[#fdcb6e]/40" : "bg-neutral-900/50 border-neutral-800"
           }`}>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
-                  qualityGateBypass
-                    ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30"
-                    : "bg-neutral-800 text-neutral-400 border border-neutral-700"
-                }`}>
-                  <ShieldOff className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <div className="flex items-start gap-3">
+              <div className={`size-12 shrink-0 rounded-2xl flex items-center justify-center ${
+                qualityGateBypass
+                  ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30"
+                  : "bg-neutral-800 text-neutral-400 border border-neutral-700"
+              }`}>
+                <ShieldOff className="size-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-base font-bold text-white flex flex-wrap items-center gap-2 min-w-0">
                     Bypass quality gate
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full shrink-0 ${
                       qualityGateBypass
                         ? "bg-[#fdcb6e]/20 text-[#ffeaa7] border border-[#fdcb6e]/30"
                         : "bg-neutral-800 text-neutral-400 border border-neutral-700"
@@ -1489,22 +1485,21 @@ export default function AdminPage() {
                       {qualityGateBypass ? "ВКЛЮЧЕН" : "ВЫКЛ"}
                     </span>
                   </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Снимает quality gate для live-ставок (только для отладки)
-                  </p>
+                  <button
+                    onClick={() => toggleAISetting("quality_gate_bypass", qualityGateBypass)}
+                    className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
+                      qualityGateBypass ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
+                    }`}
+                  >
+                    <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                      qualityGateBypass ? "translate-x-6" : "translate-x-0"
+                    }`} />
+                  </button>
                 </div>
+                <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                  Снимает quality gate для live-ставок (только для отладки)
+                </p>
               </div>
-
-              <button
-                onClick={() => toggleAISetting("quality_gate_bypass", qualityGateBypass)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
-                  qualityGateBypass ? "bg-[#fdcb6e]" : "bg-neutral-800 border border-neutral-700"
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                  qualityGateBypass ? "translate-x-6" : "translate-x-0"
-                }`} />
-              </button>
             </div>
           </div>
         </div>
