@@ -532,7 +532,6 @@ def reset_neural_network() -> dict[str, Any]:
                         updated_at = now();
                 """)
                 f_conn.commit()
-                release_connection(f_conn)
 
                 _cycle_count = 0
                 _low_epoch_streak = 0
@@ -542,7 +541,11 @@ def reset_neural_network() -> dict[str, Any]:
                     f"Запускаю cold-start на {_cold_start_archive_fraction():.0%} старейших событий…",
                     94,
                 )
+                # Must run while f_cursor is still bound to an open connection —
+                # release_connection() invalidates the cursor (prod error:
+                # "connection pointer is NULL").
                 _begin_cold_start(f_cursor)
+                release_connection(f_conn)
             finally:
                 _release_tracked_conns()
 
