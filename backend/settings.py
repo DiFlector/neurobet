@@ -12,9 +12,6 @@ class Settings(BaseSettings):
     APP_NAME: str = "NeuroBet Fonbet LIVE Parser"
     DEBUG: bool = False
 
-    # DeepSeek / AI Integration
-    DEEPSEEK_TOKEN: str = ""
-
     # Database Settings
     DATABASE_URL: str = "postgresql://autobet:autobet@postgres:5432/autobet"
 

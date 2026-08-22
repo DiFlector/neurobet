@@ -21,7 +21,7 @@
 * **🛡️ Безопасный режим (Safe Mode)**: Переключатель, скрывающий опасные коэффициенты (`< 1.1` или `> 2.1`). Включен по умолчанию.
 * **💾 Размер базы данных на диске**: Отображение актуального размера файла SQLite (`autobet.db`) прямо в шапке UI.
 * **⚽ Поддержка кириллицы и видов спорта**: Корректный поиск и фильтрация футбола, хоккея, баскетбола, тенниса и киберспорта благодаря кастомной `py_lower` функции в SQLite.
-* **🤖 DeepSeek WASM Модуль**: Интегрированный модуль в `backend/ai/deepseek` для прямого взаимодействия с `chat.deepseek.com` через WebAssembly SHA3 Proof-of-Work ресолвер.
+* **🧠 NeuralBet ML**: GRU + LightGBM ensemble с as-of статистикой команд/игроков, sibling-coherence и единым predict path (UI / bot / backtest).
 * **🐳 Полная контейнеризация**: Запуск бэкенда и фронтенда одной командой через `docker compose`.
 
 ---
@@ -31,8 +31,6 @@
 ```
 neurobet/
 ├── backend/                  # FastAPI сервис (Python 3.11 + uv)
-│   ├── ai/
-│   │   └── deepseek/         # WASM SHA3 PoW модуль DeepSeek Web Client
 │   ├── database.py           # Таблицы events, odds_history, latest_odds, py_lower
 │   ├── parser_service.py     # Парсер Fonbet LIVE (ротация CDN и каталогов)
 │   ├── main.py               # REST API и планировщик парсинга каждые 60с

@@ -27,8 +27,6 @@ from app.neuralbet import (
     get_training_history,
 )
 from app.neuralbet import bankroll
-from app.deepseek import test_deepseek_web
-from app.deepseek.insights import get_llm_digest, get_llm_shadow_report, run_llm_digest
 
 router = APIRouter()
 
@@ -98,12 +96,10 @@ def write_settings(payload: Dict[str, Any] = Body(...)):
     ai_enabled = payload.get("ai_enabled")
     training_enabled = payload.get("training_enabled")
     quality_gate_bypass = payload.get("quality_gate_bypass")
-    deepseek_enabled = payload.get("deepseek_enabled")
     new_settings = update_ai_settings(
         ai_enabled=ai_enabled,
         training_enabled=training_enabled,
         quality_gate_bypass=quality_gate_bypass,
-        deepseek_enabled=deepseek_enabled,
     )
     return {"status": "success", "settings": new_settings}
 
@@ -265,27 +261,3 @@ def eval_snapshot(
         },
     }
 
-@router.post("/deepseek/ask")
-def ask_deepseek(payload: Dict[str, Any] = Body(...)):
-    prompt = payload.get("prompt", "Привет! Подтверди готовность.")
-    res = test_deepseek_web(prompt)
-    if res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=res.get("error"))
-    return res
-
-
-@router.get("/llm-digest")
-def llm_digest():
-    return get_llm_digest()
-
-
-@router.post("/llm-digest/run")
-def llm_digest_run():
-    """Manual digest refresh (admin). Same job as the scheduled interval."""
-    return run_llm_digest()
-
-
-@router.get("/llm-shadow")
-def llm_shadow():
-    """Shadow report: model-only vs model+LLM veto on logged DeepSeek decisions."""
-    return get_llm_shadow_report(refresh_outcomes=True)

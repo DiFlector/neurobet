@@ -1,7 +1,12 @@
 # BacktestPrompt — ревью NeuroBet (для AI-агента)
 
-NeuroBet: GRU + LightGBM + market blend, калибровка по спорту/кэфу, decision-порог,
-quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
+NeuroBet: GRU + LightGBM + market blend, калибровка по спорту/кэфу, EV-вердикт,
+quarter-Kelly, live band 1.5–2.0. Stake path: **EV → live gates → quality gate → Kelly**
+(без LLM). Код: `ai_service/app/neuralbet/`.
+
+**Parity:** train = serve (live UI) = bot Kelly = backtest — одни фичи/gates/sibling
+(`shared/neurobet_features/`, `shared/neurobet_filters/`). As-of KB игроков/команд
+кормит и LightGBM, и GRU context.
 
 > **Агент:** триггеры и порядок MCP — [`AGENTS.md`](AGENTS.md) (§ «🤖 Ревью модели»),
 > `.cursor/rules/neurobet-model-review.mdc`. **Первый вызов:** MCP `get_backtest_review`.
@@ -28,7 +33,7 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 ## 2. Чеклист: бэктest / `agent_review`
 
 **Главный срез для edge — `walk_forward`**, не `overall`. Quality gate смотрит туда же.
-При `NEURALBET_LLM_BACKTEST_WF=1` метрики WF = model ∩ DeepSeek AND.
+Walk-forward — **model-only** (EV + live gates), без LLM.
 
 | # | Что проверить | Где |
 | :- | :--- | :--- |
@@ -83,7 +88,7 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 | Срез | Назначение |
 | :--- | :--- |
 | `overall` | полная выборка, может быть оптимистичнее |
-| `walk_forward` | **честный OOS**, temporal folds + no-leakage calib |
+| `walk_forward` | **честный OOS** (model-only), temporal folds + no-leakage calib |
 | `oos_never_train` | holdout events с `trained_count=0` |
 | `in_sample` | обучаемая часть архива |
 
@@ -135,15 +140,6 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - Consecutive gate: история считается по **core-метрикам** (не по итоговому
   `quality_gate.pass`), иначе серия 1<2 никогда не закрывается; live re-eval
   пропускает тот же `generated_at` в history.
-- DeepSeek shadow (2026-08-20): web-search **после** place (async), не блокирует Kelly;
-  `NEURALBET_LLM_VETO=0`; `NEURALBET_LLM_MATCH_CONTEXT_SPORTS=теннис,футбол`;
-  shadow JSON + MCP `get_llm_shadow`; auto-veto только если shadow докажет edge
-  (≥150 settled, with_veto ROI/WR лучше, CI lo>0, vetoed ROI<0).
-- DeepSeek match-context cache (2026-08-21): ключ event/factor/parameter/prefix;
-  re-fetch при Δcoeff ≥ `NEURALBET_LLM_REANALYZE_COEFF_DELTA` (0.05) или
-  Δprob ≥ `NEURALBET_LLM_REANALYZE_PROB_DELTA` (3 п.п.).
-- Digest prompt: запрет советовать ослаблять gate без устойчивого walk-forward;
-  возраст снимка + раздельно model-only vs with_veto.
 - Training diagnostics: `val_pin` age в логах/history; `last_tune.json`;
   `train_*_attempted` при reject; flag `fixed_val_tuner_vs_walk_forward`.
 - OOS ablation в бэктest/`agent_review`: `oos_ablation.table_tennis_x_total_over`
@@ -151,15 +147,13 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 - **Objective B (2026-08-21):** live/backtest verdict = EV
   (`calibrated_p * c - 1 ≥ MIN_BET_EDGE`); residual decision-head loss default **0**;
   bankroll train mask тоже EV. `accuracy_pct` ~50% — не KPI.
-- **DeepSeek batch decide (только live-ставки бота):** `NEURALBET_LLM_BATCH_DECIDE=1`,
-  `NEURALBET_LLM_BATCH_REQUIRED=1`, top `NEURALBET_LLM_BATCH_MAX=16` по EV.
-  Цепочка: выборка (EV+gates) → quality gate → DeepSeek web-search
-  (прогнозы/форма/H2H/новости) → JSON `{"0":1,"1":0,…}` → Kelly.
-  Match-context / veto / backtest LLM по умолчанию выкл (квота только на ставки).
-- **DeepSeek в walk-forward:** опционально `NEURALBET_LLM_BACKTEST_WF=1` (default **0**).
-  Если включён — AND на WF stake-кандидаты; иначе gate считает model-only WF.
+- **DeepSeek / LLM полностью убраны из проекта** (batch decide, shadow, match-context,
+  veto, digest, `NEURALBET_LLM_*`, `get_llm_*` MCP). Stake path без LLM-шага.
 - Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
   (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
+- **Parity:** train = serve = bot = backtest — одни и те же фичи/gates/sibling
+  (`shared/neurobet_features/`, `shared/neurobet_filters/`). KB as-of статистики
+  игроков/команд кормит и LightGBM, и GRU context.
 
 **Cold-start / reset** — только при смене архитектуры/loss или явной просьбе пользователя.
 
@@ -169,17 +163,16 @@ quarter-Kelly, live band 1.5–2.0. Код: `ai_service/app/neuralbet/`.
 
 **Live** — simulated-банк (`bankroll.accounts.live`): реальные **virtual** ставки каждый цикл inference (~60 с).
 
-Цепочка:
+Цепочка (stake path, без LLM):
 
 1. **INFERENCE** — прогнозы на universe (GRU + LGBM + blend + calib).
-2. **Decision `predicted_win=1`** — decision head (≠ win-probability % в UI).
-3. Live gates — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
+2. **EV `predicted_win=1`** — `calibrated_p * coeff - 1 ≥ MIN_BET_EDGE_PCT`
+   (residual decision head не участвует в ставках).
+3. **Live gates** — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
    `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
-4. **Quality gate** — последний бэктest `walk_forward` (см. §2); иначе ставки не открываются
-   (bypass в админке может снять блок).
-5. **DeepSeek batch decide** — web-search по прогнозам/командам → JSON AND → Kelly
-   (только активные ставки бота; не для «Активные LIVE Прогнозы» UI).
-6. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
+4. **Quality gate** — последний бэктest `walk_forward` model-only (см. §2); иначе ставки
+   не открываются (bypass в админке может снять блок).
+5. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.
 
 **Не путать с:**
 
@@ -230,6 +223,5 @@ Gate не снимать, пока WF CI lo ≤ 0.
 | Бэктest, review, gate | `ai_service/app/neuralbet/backtest.py`, `quality_gate.py`, `review.py` |
 | Обучение, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |
-| DeepSeek LLM / shadow | `ai_service/app/deepseek/insights.py`, `.env` (`NEURALBET_LLM_*`) |
-| Фичи | `shared/neurobet_features/` |
+| Фичи / KB игроков·команд | `shared/neurobet_features/` |
 | MCP | `backend/mcp_eval.py` |

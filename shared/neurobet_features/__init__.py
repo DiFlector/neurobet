@@ -13,6 +13,7 @@ from .overround import (
     overround_from_grouped,
     overround_group_key,
 )
+from .sibling import apply_sibling_coherence
 from .no_vig import no_vig_probability
 from .parse import (
     TimerParse,
@@ -27,9 +28,19 @@ from .parse import (
     period_index,
     unpack_timer_entry,
 )
+from .player_stats import (
+    STATS_UNKNOWN,
+    TEAM_STATS_DIM,
+    TEAM_STATS_FEATURE_NAMES,
+    build_team_stats_asof_lookup,
+    build_team_stats_index,
+    lookup_team_stats_vector,
+    unknown_stats_vector,
+)
 from .team_form import build_team_form_asof_lookup, build_team_form_index, lookup_team_form
 from .view import (
     GRU_INPUT_DIM,
+    KB_CONTEXT_DIM,
     LGB_CATEGORICAL_FEATURES,
     LGB_FEATURE_NAMES,
     MATCH_TIME_NORM_SECONDS,
@@ -39,6 +50,7 @@ from .view import (
     build_gru_sequence,
     build_model_input,
     cutoff_index,
+    kb_context_vector,
     lgb_feature_row,
     live_sample,
     row_to_sample,
@@ -49,6 +61,7 @@ from .view import (
     scale_set_points,
     scale_total_line,
     set_team_form_cache,
+    set_team_stats_cache,
 )
 from .vocab import (
     MARKET_FAMILIES,
@@ -69,6 +82,7 @@ __all__ = [
     "overround_at_latest",
     "overround_from_grouped",
     "overround_group_key",
+    "apply_sibling_coherence",
     "TimerParse",
     "pack_timer_entry",
     "parse_period_ordinal",
@@ -76,10 +90,19 @@ __all__ = [
     "parse_score_diff",
     "parse_score_pair",
     "parse_score_sum",
+    "STATS_UNKNOWN",
+    "TEAM_STATS_DIM",
+    "TEAM_STATS_FEATURE_NAMES",
+    "build_team_stats_asof_lookup",
+    "build_team_stats_index",
+    "lookup_team_stats_vector",
+    "unknown_stats_vector",
     "build_team_form_asof_lookup",
     "build_team_form_index",
     "lookup_team_form",
     "set_team_form_cache",
+    "set_team_stats_cache",
+    "kb_context_vector",
     "scale_line_remaining",
     "scale_overround",
     "scale_score_sum",
@@ -89,6 +112,7 @@ __all__ = [
     "period_index",
     "unpack_timer_entry",
     "GRU_INPUT_DIM",
+    "KB_CONTEXT_DIM",
     "LGB_CATEGORICAL_FEATURES",
     "LGB_FEATURE_NAMES",
     "MATCH_TIME_NORM_SECONDS",

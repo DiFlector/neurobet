@@ -25,7 +25,6 @@ import {
   Download,
   FileJson,
   ShieldOff,
-  Sparkles,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
@@ -49,7 +48,6 @@ export default function AdminPage() {
   const [aiEnabled, setAiEnabled] = useState(true)
   const [trainingEnabled, setTrainingEnabled] = useState(true)
   const [qualityGateBypass, setQualityGateBypass] = useState(false)
-  const [deepseekEnabled, setDeepseekEnabled] = useState(true)
   const [logs, setLogs] = useState<AILog[]>([])
   const [logFilter, setLogFilter] = useState<string>("ALL")
   const [triggering, setTriggering] = useState(false)
@@ -81,9 +79,6 @@ export default function AdminPage() {
   })
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
-  const [llmDigest, setLlmDigest] = useState<any>(null)
-  const [llmDigestRunning, setLlmDigestRunning] = useState(false)
-  const [llmDigestError, setLlmDigestError] = useState<string | null>(null)
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
@@ -263,7 +258,6 @@ export default function AdminPage() {
           setAiEnabled(data.settings.ai_enabled)
           setTrainingEnabled(data.settings.training_enabled)
           setQualityGateBypass(Boolean(data.settings.quality_gate_bypass))
-          setDeepseekEnabled(data.settings.deepseek_enabled !== false)
         }
       }
     } catch (err) {
@@ -334,49 +328,6 @@ export default function AdminPage() {
       // Ignore
     }
   }, [API_BASE])
-
-  const fetchLlmDigest = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/llm-digest`, { cache: "no-store" })
-      if (res.ok) {
-        const data = await res.json()
-        setLlmDigest(data)
-      }
-    } catch (err) {
-      // Ignore — LLM digest is optional
-    }
-  }, [API_BASE])
-
-  const runLlmDigest = useCallback(async () => {
-    setLlmDigestRunning(true)
-    setLlmDigestError(null)
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/llm-digest/run`, { method: "POST" })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data.detail || `HTTP ${res.status}`)
-      }
-      if (data.status === "error" || data.status === "skipped") {
-        throw new Error(data.error || data.reason || data.status)
-      }
-      if (data.latest) {
-        setLlmDigest((prev: any) => ({
-          ...(prev || {}),
-          enabled: true,
-          latest: data.latest,
-          history: [data.latest, ...((prev?.history || []).filter(
-            (h: any) => h?.generated_at !== data.latest?.generated_at
-          ))].slice(0, 20),
-        }))
-      } else {
-        await fetchLlmDigest()
-      }
-    } catch (err: any) {
-      setLlmDigestError(err.message || "Не удалось запустить дайджест")
-    } finally {
-      setLlmDigestRunning(false)
-    }
-  }, [API_BASE, fetchLlmDigest])
 
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
@@ -548,7 +499,6 @@ export default function AdminPage() {
     fetchBacktestHistory()
     fetchTrainingHealth()
     fetchTrainingRuns()
-    fetchLlmDigest()
 
     const interval = setInterval(() => {
       fetchAILogs()
@@ -567,26 +517,23 @@ export default function AdminPage() {
     // Training passes fire more often than backtests (every couple of minutes when
     // data allows) but far less often than logs/stats — a middle-ground interval.
     const trainingRunsInterval = setInterval(fetchTrainingRuns, 15000)
-    const digestInterval = setInterval(fetchLlmDigest, 60000)
 
     return () => {
       clearInterval(interval)
       clearInterval(statsInterval)
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
-      clearInterval(digestInterval)
     }
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns, fetchLlmDigest])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns])
 
   const toggleAISetting = async (
-    key: "ai_enabled" | "training_enabled" | "quality_gate_bypass" | "deepseek_enabled",
+    key: "ai_enabled" | "training_enabled" | "quality_gate_bypass",
     currentValue: boolean,
   ) => {
     const newValue = !currentValue
     if (key === "ai_enabled") setAiEnabled(newValue)
     if (key === "training_enabled") setTrainingEnabled(newValue)
     if (key === "quality_gate_bypass") setQualityGateBypass(newValue)
-    if (key === "deepseek_enabled") setDeepseekEnabled(newValue)
 
     try {
       const res = await fetch(`${API_BASE}/api/admin/ai-settings`, {
@@ -606,7 +553,6 @@ export default function AdminPage() {
       if (key === "ai_enabled") setAiEnabled(currentValue)
       if (key === "training_enabled") setTrainingEnabled(currentValue)
       if (key === "quality_gate_bypass") setQualityGateBypass(currentValue)
-      if (key === "deepseek_enabled") setDeepseekEnabled(currentValue)
     }
   }
 
@@ -1249,16 +1195,6 @@ export default function AdminPage() {
                       ))}
                     </ul>
                   )}
-                  {backtestResult.agent_review.llm_narrative && (
-                    <div className="mt-2 rounded-lg border border-[#0984e3]/30 bg-[#0984e3]/10 px-3 py-2.5">
-                      <div className="text-[10px] text-[#74b9ff] uppercase font-mono mb-1">
-                        DeepSeek — резюме бэктеста
-                      </div>
-                      <p className="text-xs text-neutral-200 leading-relaxed whitespace-pre-wrap">
-                        {backtestResult.agent_review.llm_narrative}
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1554,7 +1490,7 @@ export default function AdminPage() {
                     </span>
                   </h3>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Снимает только gate. DeepSeek (если ВКЛ) всё равно обязателен
+                    Снимает quality gate для live-ставок (только для отладки)
                   </p>
                 </div>
               </div>
@@ -1570,69 +1506,6 @@ export default function AdminPage() {
                 }`} />
               </button>
             </div>
-          </div>
-
-          {/* DeepSeek */}
-          <div className={`p-6 rounded-2xl border transition shadow-lg backdrop-blur-md ${
-            deepseekEnabled ? "bg-neutral-900/90 border-[#0984e3]/40" : "bg-neutral-900/50 border-[#d63031]/40"
-          }`}>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-bold ${
-                  deepseekEnabled
-                    ? "bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30"
-                    : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
-                }`}>
-                  <Sparkles className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    DeepSeek
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
-                      deepseekEnabled
-                        ? "bg-[#0984e3]/20 text-[#74b9ff] border border-[#0984e3]/30"
-                        : "bg-[#d63031]/20 text-[#ff7675] border border-[#d63031]/30"
-                    }`}>
-                      {deepseekEnabled ? "ВКЛЮЧЕН" : "ВЫКЛ"}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Выборка → web-search → JSON → Kelly (с bypass тоже)
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => toggleAISetting("deepseek_enabled", deepseekEnabled)}
-                className={`relative w-14 h-8 rounded-full transition-colors duration-300 p-1 flex items-center shrink-0 ${
-                  deepseekEnabled ? "bg-[#0984e3]" : "bg-neutral-800 border border-neutral-700"
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                  deepseekEnabled ? "translate-x-6" : "translate-x-0"
-                }`} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* DeepSeek LLM Digest — disabled (quota reserved for batch decide) */}
-        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-3 opacity-70">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#0984e3]/15 border border-[#0984e3]/30 flex items-center justify-center text-[#74b9ff] shrink-0">
-                <BrainCircuit className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">DeepSeek — дайджест модели</h3>
-                <p className="text-xs text-neutral-400">
-                  Выключен (NEURALBET_LLM_DIGEST_HOURS=0). Квота DeepSeek идёт на batch JSON-решения ставок.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="text-xs text-neutral-500 font-mono rounded-xl border border-neutral-800 bg-neutral-950 px-3.5 py-3">
-            Дайджест и краткие обоснования ставок отключены. Включить: DIGEST_HOURS&gt;0 и MAX_RATIONALE_PER_CYCLE&gt;0.
           </div>
         </div>
 

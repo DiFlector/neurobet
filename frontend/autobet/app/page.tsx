@@ -7,7 +7,6 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
-  Sparkles,
   Trophy,
   Filter,
   CheckCircle2,
@@ -54,8 +53,6 @@ interface NeuroBet {
   stake: number | null // сумма, которую бот реально поставил на этот исход (₽), null если не ставил
   potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
   predictedWin: number | null // вердикт сети: 1 = выиграет, 0 = проиграет, null = не оценено
-  llmRationale: string | null
-  llmContextNotes: string | null
 }
 
 function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
@@ -524,22 +521,6 @@ export default function NeurobetsPage() {
               stake: openBet ? openBet.stake : null,
               potentialPayout: openBet ? openBet.stake * openBet.coefficient : null,
               predictedWin: b.predicted_win ?? null,
-              llmRationale: typeof b.llm_rationale === "string" && b.llm_rationale.trim()
-                ? b.llm_rationale.trim()
-                : null,
-              llmContextNotes: (() => {
-                const ctx = b.llm_context
-                if (!ctx) return null
-                if (typeof ctx === "string") {
-                  try {
-                    const parsed = JSON.parse(ctx)
-                    return typeof parsed?.notes === "string" ? parsed.notes : null
-                  } catch {
-                    return null
-                  }
-                }
-                return typeof ctx.notes === "string" ? ctx.notes : null
-              })(),
             }
           })
           setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
@@ -1726,17 +1707,6 @@ export default function NeurobetsPage() {
                         ))}
                       </div>
                     </div>
-
-                    {(bet.llmContextNotes) && (
-                      <div className="space-y-2 pt-1 border-t border-neutral-800/80">
-                        <div className="rounded-xl border border-neutral-700 bg-neutral-950/70 px-3.5 py-2.5">
-                          <div className="text-[10px] font-mono uppercase text-neutral-400 mb-1">
-                            Веб-контекст матча
-                          </div>
-                          <p className="text-xs text-neutral-300 leading-relaxed">{bet.llmContextNotes}</p>
-                        </div>
-                      </div>
-                    )}
                   </motion.div>
                 )
               })}

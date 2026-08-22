@@ -33,7 +33,6 @@ services:
       - .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - DEEPSEEK_TOKEN=${DEEPSEEK_TOKEN}
       - AI_SERVICE_URL=http://ai:8001
     volumes:
       - ./data:/app/data

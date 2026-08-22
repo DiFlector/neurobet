@@ -421,66 +421,6 @@ def _build_flags(
             ),
         })
 
-    if llm_ab := result.get("llm_web_search_ablation"):
-        if isinstance(llm_ab, dict):
-            applied_to = llm_ab.get("applied_to") or "overall_topn"
-            model_roi = (llm_ab.get("model_only") or {}).get("roi_pct")
-            llm_roi = (llm_ab.get("with_llm") or {}).get("roi_pct")
-            approved = llm_ab.get("approved")
-            evaluated = llm_ab.get("evaluated")
-            uncovered = int(llm_ab.get("uncovered") or 0)
-            unevaluated = int(llm_ab.get("unevaluated") or 0)
-            if llm_ab.get("applied") and applied_to == "walk_forward":
-                severity = "info"
-                if model_roi is not None and llm_roi is not None and (float(llm_roi) - float(model_roi)) <= -5:
-                    severity = "warning"
-                if uncovered > 0 or unevaluated > 0:
-                    severity = "warning"
-                parts = [
-                    f"Walk-forward / quality_gate = model ∩ DeepSeek AND on {evaluated} stake bets",
-                ]
-                if model_roi is not None and llm_roi is not None:
-                    parts.append(
-                        f"model ROI {model_roi}% → LLM {llm_roi}% "
-                        f"(Δ {float(llm_roi) - float(model_roi):+.1f} pp)"
-                    )
-                parts.append(f"approved={approved}/{evaluated}, calls={llm_ab.get('calls')}")
-                if uncovered:
-                    parts.append(f"uncovered={uncovered} fail-closed")
-                if unevaluated:
-                    parts.append(f"unevaluated={unevaluated} fail-closed")
-                flags.append({
-                    "severity": severity,
-                    "code": "llm_walk_forward",
-                    "message": "; ".join(parts),
-                })
-            elif llm_ab.get("status") in ("ok", "rate_limited", "empty") and model_roi is not None and llm_roi is not None:
-                delta_pp = float(llm_roi) - float(model_roi)
-                severity = "info"
-                if delta_pp <= -5:
-                    severity = "warning"
-                flags.append({
-                    "severity": severity,
-                    "code": "llm_web_search_ablation",
-                    "message": (
-                        f"DeepSeek web-search on {evaluated} stake bets: "
-                        f"model ROI {model_roi}% → LLM {llm_roi}% "
-                        f"(Δ {delta_pp:+.1f} pp, approved={approved}/{evaluated}, "
-                        f"calls={llm_ab.get('calls')})"
-                    ),
-                })
-            elif llm_ab.get("status") == "skipped":
-                pass
-            else:
-                flags.append({
-                    "severity": "info",
-                    "code": "llm_web_search_ablation",
-                    "message": (
-                        f"DeepSeek backtest: status={llm_ab.get('status')} "
-                        f"reason={llm_ab.get('reason') or llm_ab.get('call_reasons')}"
-                    ),
-                })
-
     if delta and delta.get("brier") is not None and float(delta["brier"]) > 0.005:
         flags.append({
             "severity": "warning",
@@ -570,6 +510,10 @@ def build_agent_review(
         "walk_forward_stability": wf,
         "funnel": funnel,
         "head_alignment": alignment,
+        "sibling_sum_mae": (result.get("sibling_coherence") or {}).get("sibling_sum_mae"),
+        "coherence_veto_count": (result.get("sibling_coherence") or {}).get(
+            "coherence_veto_count"
+        ),
         "by_sport": _compact_by_sport(result),
         "by_market": _compact_by_market(result),
         "oos_by_market": [
@@ -588,7 +532,6 @@ def build_agent_review(
         "oos_ablation": _compact_oos_ablation(result),
         "delta_vs_previous": delta,
         "policy_ablation_oos": policy_ablation,
-        "llm_web_search_ablation": result.get("llm_web_search_ablation"),
         "walk_forward_meta": result.get("walk_forward_meta"),
         "flags": _build_flags(result, gate, wf, alignment, delta),
         "quality_gate": gate,

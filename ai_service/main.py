@@ -16,13 +16,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.neuralbet import add_ai_log, run_backtest
-from app.config import LLM_DIGEST_HOURS, LLM_ENABLED
-from app.deepseek.insights import run_llm_digest
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("ai_service_main")
 
-app = FastAPI(title="NeuroBet AI Microservice (PyTorch, LightGBM & DeepSeek WASM)", version="2.0.0")
+app = FastAPI(title="NeuroBet AI Microservice (PyTorch & LightGBM)", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,19 +85,6 @@ def run_scheduled_backtest():
         add_ai_log("SYSTEM", f"Scheduled backtest failed: {e}", level="WARNING")
 
 
-def run_scheduled_llm_digest():
-    """Periodic DeepSeek digest — off when NEURALBET_LLM_DIGEST_HOURS<=0."""
-    if not LLM_ENABLED or float(LLM_DIGEST_HOURS) <= 0:
-        return
-    try:
-        result = run_llm_digest()
-        if result.get("status") not in ("success", "skipped"):
-            logger.warning("LLM digest returned: %s", result)
-    except Exception as e:
-        logger.error(f"Scheduled LLM digest failed: {e}", exc_info=True)
-        add_ai_log("SYSTEM", f"Scheduled LLM digest failed: {e}", level="WARNING")
-
-
 @app.on_event("startup")
 def startup_event():
     scheduler.add_job(
@@ -110,25 +95,10 @@ def startup_event():
         max_instances=1,
         coalesce=True,
     )
-    digest_hours = float(LLM_DIGEST_HOURS) if LLM_DIGEST_HOURS is not None else 0.0
-    if LLM_ENABLED and digest_hours > 0:
-        scheduler.add_job(
-            run_scheduled_llm_digest,
-            "interval",
-            hours=max(1.0, digest_hours),
-            id="scheduled_llm_digest",
-            misfire_grace_time=3600,
-            max_instances=1,
-            coalesce=True,
-        )
-        digest_msg = f"LLM digest every {digest_hours:g}h"
-    else:
-        digest_msg = "LLM digest OFF"
     scheduler.start()
     logger.info(
         "Scheduler started! Backtest will run automatically every 30 min "
-        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time); "
-        f"{digest_msg}."
+        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time)."
     )
     add_ai_log(
         "SYSTEM",

@@ -128,8 +128,7 @@ TOOLS = [
         (
             "Everything the admin panel polls (read-only): AI settings, training health, "
             "training-run trend, backtest history, DB stats, bankroll, live bets, "
-            "recent AI logs, optional LLM digest. No destructive actions. No full "
-            "latest_backtest JSON."
+            "recent AI logs. No destructive actions. No full latest_backtest JSON."
         ),
         {
             "logs_limit": _LOGS_LIMIT,
@@ -185,7 +184,7 @@ TOOLS = [
     _tool(
         "get_ai_settings",
         "Whether inference (ai_enabled), online training (training_enabled), "
-        "quality_gate_bypass, and deepseek_enabled are on.",
+        "and quality_gate_bypass are on.",
     ),
     _tool(
         "get_ai_logs",
@@ -256,21 +255,6 @@ TOOLS = [
         (
             "Live betting gates: allowed sports / factor IDs, live stake sports/markets, "
             "total-line ranges, min/max coefficient, min EV, min market support."
-        ),
-    ),
-    _tool(
-        "get_llm_digest",
-        (
-            "Latest DeepSeek digest of TRAINING/BANKROLL logs and training health "
-            "(optional LLM layer). Empty/disabled when NEURALBET_LLM_ENABLED=0."
-        ),
-    ),
-    _tool(
-        "get_llm_shadow",
-        (
-            "DeepSeek shadow report: model-only vs model+LLM-veto on logged decisions, "
-            "null_reason counts, auto-veto eligibility, recommendation. "
-            "Use before enabling NEURALBET_LLM_VETO."
         ),
     ),
     _tool(
@@ -460,8 +444,6 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
             "bankroll": m.get_bankroll_state(),
             "live_bets": {"total": live.get("total"), "open_count": open_count, "items": live.get("items")},
             "recent_ai_logs": (m.read_admin_ai_logs().get("logs") or [])[:logs_limit],
-            "llm_digest": m.admin_llm_digest(),
-            "llm_shadow": m.admin_llm_shadow(),
         })
 
     if name == "get_stats":
@@ -523,12 +505,6 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
 
     if name == "get_filters":
         return _ok(m._filters_snapshot())
-
-    if name == "get_llm_digest":
-        return _ok(m.admin_llm_digest())
-
-    if name == "get_llm_shadow":
-        return _ok(m.admin_llm_shadow())
 
     if name == "get_bankroll":
         return _ok(m.get_bankroll_state())

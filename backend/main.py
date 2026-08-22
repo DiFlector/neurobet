@@ -48,12 +48,12 @@ class AISettingsRequest(BaseModel):
     ai_enabled: Optional[bool] = None
     training_enabled: Optional[bool] = None
     quality_gate_bypass: Optional[bool] = None
-    deepseek_enabled: Optional[bool] = None
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
 _RESET_PROGRESS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "reset_progress.json")
 _BACKTEST_PROGRESS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "backtest_progress.json")
+_TRAINING_HEALTH_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "training_health.json")
 
 
 def _fallback_ai_settings() -> dict:
@@ -66,14 +66,12 @@ def _fallback_ai_settings() -> dict:
             "ai_enabled": bool(saved["ai_enabled"]) if "ai_enabled" in saved else True,
             "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else False,
             "quality_gate_bypass": bool(saved["quality_gate_bypass"]) if "quality_gate_bypass" in saved else False,
-            "deepseek_enabled": bool(saved["deepseek_enabled"]) if "deepseek_enabled" in saved else True,
         }
     except Exception:
         return {
             "ai_enabled": True,
             "training_enabled": False,
             "quality_gate_bypass": False,
-            "deepseek_enabled": True,
         }
 
 
@@ -138,6 +136,24 @@ def _read_reset_progress_file() -> Optional[dict]:
         return None
     except Exception as e:
         logger.error(f"Error reading reset progress: {e}")
+    return None
+
+
+def _read_training_health_file() -> Optional[dict]:
+    """Stale-but-valid health snapshot written by ai_service at end of each train
+    cycle. Prefer this when HTTP GET /training-health times out (single AI worker
+    blocked on torch)."""
+    try:
+        with open(_TRAINING_HEALTH_PATH, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, dict) and saved.get("status") is not None:
+            out = dict(saved)
+            out["stale"] = True
+            return out
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.error(f"Error reading training health snapshot: {e}")
     return None
 
 
@@ -576,12 +592,15 @@ def read_admin_ai_logs():
 @app.get("/api/admin/training-health")
 def admin_training_health():
     try:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=30.0) as client:
             res = client.get(f"{AI_SERVICE_URL}/training-health")
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
         logger.error(f"Error fetching training health: {e}")
+    snapshot = _read_training_health_file()
+    if snapshot is not None:
+        return {"status": "success", "health": snapshot}
     # "unknown", not "ok" — ai_service being unreachable is not the same thing as "no
     # overfitting signals active", and the admin panel's status block should show that
     # distinction (grey/unknown) rather than falsely reporting green.
@@ -697,54 +716,6 @@ def admin_training_runs():
     except Exception as e:
         logger.error(f"Error fetching training run history: {e}")
     return {"status": "success", "runs": []}
-
-
-def admin_llm_digest():
-    try:
-        with httpx.Client(timeout=15.0) as client:
-            res = client.get(f"{AI_SERVICE_URL}/llm-digest")
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        logger.error(f"Error fetching LLM digest: {e}")
-    return {"status": "success", "enabled": False, "latest": None, "history": []}
-
-
-def admin_llm_shadow():
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            res = client.get(f"{AI_SERVICE_URL}/llm-shadow")
-            if res.status_code == 200:
-                return res.json()
-    except Exception as e:
-        logger.error(f"Error fetching LLM shadow report: {e}")
-    return {"status": "error", "enabled": False, "error": "unreachable"}
-
-
-@app.get("/api/admin/llm-digest")
-def admin_llm_digest_route():
-    return admin_llm_digest()
-
-
-@app.get("/api/admin/llm-shadow")
-def admin_llm_shadow_route():
-    return admin_llm_shadow()
-
-
-@app.post("/api/admin/llm-digest/run")
-def admin_llm_digest_run():
-    """Manual DeepSeek digest refresh — can take up to ~70s on the AI worker."""
-    try:
-        with httpx.Client(timeout=120.0) as client:
-            res = client.post(f"{AI_SERVICE_URL}/llm-digest/run")
-            if res.status_code == 200:
-                return res.json()
-            raise HTTPException(status_code=res.status_code, detail=res.text[:500])
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error running LLM digest: {e}")
-        raise HTTPException(status_code=502, detail="Failed to reach AI service for LLM digest")
 
 
 def _filters_snapshot() -> Dict[str, Any]:

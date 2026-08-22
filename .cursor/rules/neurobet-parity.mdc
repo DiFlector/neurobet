@@ -1,0 +1,28 @@
+---
+description: NeuroBet train/serve/backtest/bot feature and gate parity — always apply
+alwaysApply: true
+---
+
+# NeuroBet — parity (train = live = bot = backtest)
+
+Любая фича, gate, вердикт, sibling-логика и KB игроков/команд должны отрабатывать **одинаково** на всех поверхностях.
+
+## Поверхности
+
+| Поверхность | Путь |
+| :--- | :--- |
+| Live UI прогнозы | `pipeline` inference → `build_model_input(..., mode=serve)` |
+| Live ставки бота (Kelly) | те же калиброванные p / EV / sibling / gates |
+| Обучение GRU / LGB | тот же `build_model_input` / те же as-of фичи (cutoff) |
+| Бэктест / walk-forward | `mode=backtest`, as-of lookup, те же gates |
+
+## Правила
+
+- Источник правды фич и фильтров: только `shared/neurobet_features/` и `shared/neurobet_filters/`. Не копировать логику в backend/frontend.
+- Запрещено: фича только в backtest; stats только в LGB train, но не на live; sibling-veto только у бота; разный EV / min edge / coeff band.
+- Новые as-of статистики игроков/команд — через общий view → и LightGBM, и GRU context (если скаляры в GRU уже введены).
+- DeepSeek / LLM в проекте **нет** — stake path: EV → live gates → quality gate → Kelly.
+
+## Перед мержем фичи
+
+Проверить, что один sample при том же cutoff даёт те же поля view на serve и backtest; bot и UI читают тот же predict path.

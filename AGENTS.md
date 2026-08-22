@@ -1,6 +1,6 @@
 # AGENTS.md - NeuroBet System Architecture & Agent Guidelines
 
-Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, SQLite, Next.js, and DeepSeek Web WASM integration.
+Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, Postgres, Next.js, and a PyTorch GRU + LightGBM ensemble.
 
 ---
 
@@ -9,9 +9,9 @@ Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds 
 ### Backend (`/backend`)
 * **Framework**: FastAPI + Uvicorn
 * **Package Manager**: `uv` (`ghcr.io/astral-sh/uv:latest` inside Docker)
-* **Database**: SQLite (`/app/data/autobet.db`)
-* **Scheduler**: APScheduler (Background worker scraping Fonbet every 60 seconds)
-* **AI Module**: WASM-based DeepSeek Web Client (`backend/ai/deepseek`) using `wasmtime` for SHA3 Proof-of-Work challenge solving.
+* **Database**: Postgres (live + finished schemas)
+* **Scheduler**: APScheduler (Background worker scraping Fonbet)
+* **AI Module**: `ai_service` — PyTorch GRU + LightGBM blend, calibration, Kelly bankroll (no LLM)
 
 ### Frontend (`/frontend/autobet`)
 * **Framework**: Next.js (App Router), React 19, TypeScript
@@ -31,13 +31,7 @@ Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds 
 ```
 autobet/
 ├── backend/
-│   ├── ai/
-│   │   └── deepseek/
-│   │       ├── client.py                    # WASM PoW solver DeepSeek Web client
-│   │       ├── __init__.py
-│   │       └── wasm/
-│   │           └── sha3_wasm_bg.7b9ca65ddd.wasm
-│   ├── database.py                          # SQLite database schema, py_lower function, stats
+│   ├── database.py                          # Postgres access, stats, live bets
 │   ├── parser_service.py                    # Fonbet LIVE API catalog resolver & scraper
 │   ├── main.py                              # FastAPI REST endpoints & background scheduler
 │   ├── mcp_eval.py                          # Streamable HTTP MCP at POST /api/mcp
@@ -77,7 +71,9 @@ autobet/
    * **Gray**: Coefficient **unchanged** (`+-`).
 5. **Safe Mode**: Toggle to hide dangerous odds (`< 1.1` or `> 2.1`). Enabled by default on frontend load.
 6. **Popover Portals**: Popover tooltips must render via `createPortal(..., document.body)` with `position: fixed` and dynamic viewport collision calculation to prevent `overflow: hidden` clipping.
-7. **Neural verdict = EV, not a residual decision head**: the PyTorch GRU still has a 4-logit head for checkpoint compatibility, but live bankroll bets and the "Активные LIVE Прогнозы" tab only consider outcomes where calibrated `win_probability` implies `expected_roi ≥ MIN_BET_EDGE_PCT` (`predicted_win = 1`). Residual `decision_logit` training is off by default (`NEURALBET_DECISION_LOSS_WEIGHT=0`). DeepSeek **batch decide** (web-search JSON `{id:0|1}`) is an AND filter before Kelly when `NEURALBET_LLM_BATCH_DECIDE=1` — only for bot stakes (выборка → search прогнозов/команд → JSON → Kelly), not for UI predictions or backtest by default. Overall `accuracy_pct` ≈ 50% is expected on 2-way lines and is not the edge KPI — use walk-forward ROI CI and Brier vs market. History outcomes are judged **guessed / not guessed** (`predicted_win` vs. `is_win`).
+7. **Neural verdict = EV, not a residual decision head**: the PyTorch GRU still has a 4-logit head for checkpoint compatibility, but live bankroll bets and the "Активные LIVE Прогнозы" tab only consider outcomes where calibrated `win_probability` implies `expected_roi ≥ MIN_BET_EDGE_PCT` (`predicted_win = 1`). Residual `decision_logit` training is off by default (`NEURALBET_DECISION_LOSS_WEIGHT=0`). Stake path: EV → live gates → quality gate → Kelly (no LLM). Overall `accuracy_pct` ≈ 50% is expected on 2-way lines and is not the edge KPI — use walk-forward ROI CI and Brier vs market. History outcomes are judged **guessed / not guessed** (`predicted_win` vs. `is_win`).
+
+8. **Parity (always)**: features, gates, sibling coherence, and player/team KB must be identical on live UI, bot Kelly, training, and backtest. Source of truth: `shared/neurobet_features/` + `shared/neurobet_filters/`. See `.cursor/rules/neurobet-parity.mdc`.
 
 ---
 
@@ -111,7 +107,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_eval_pack` | Full agent pack: filters, ensemble, latest full backtest JSON, ROI/stats, training health, training runs, bankroll, logs. No new backtest. | Model review / attaching one JSON |
 | `run_eval_pack` | Fresh backtest (default 40000 samples) then the same pack | Judging **current** weights |
 | `get_overview` | Lighter all-in-one: db/ROI/bet-type stats, bankroll, settings, health, backtest history, logs. No ensemble, no full backtest JSON | Quick health check |
-| `get_admin` | Everything the admin panel polls: settings, health, training-run trend, backtest history, DB stats, bankroll, live bets, logs, LLM digest | Admin-page snapshot |
+| `get_admin` | Everything the admin panel polls: settings, health, training-run trend, backtest history, DB stats, bankroll, live bets, logs | Admin-page snapshot |
 | `get_stats` | Everything on «Статистика»: `db_stats`, `bet_type_stats`, `roi_stats` | Stats-page snapshot |
 
 ### Страница «Статистика»
@@ -136,8 +132,6 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
 | `get_filters` | Live betting gates: allowed sports/factors, live stake sports/markets, coeff band, min EV, min market support |
-| `get_llm_digest` | Latest DeepSeek digest of TRAINING/BANKROLL logs + training health (optional; empty if LLM off) |
-| `get_llm_shadow` | Shadow report: model-only vs model+LLM veto, null_reasons, auto-veto eligibility |
 | `get_bankroll` | Live + training accounts |
 | `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
 
@@ -189,7 +183,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | :--- | :--- |
 | `summary.edge_verdict` | `likely` / `promising` / `unproven` / `calibration_only` / `none` |
 | `summary.quality_gate_pass` | Можно ли снимать блок live-ставок |
-| `slices.walk_forward` | **OOS-главное** (после DeepSeek AND): ROI, `roi_pct_lo`, Brier vs market |
+| `slices.walk_forward` | **OOS-главное** (model-only): ROI, `roi_pct_lo`, Brier vs market |
 | `walk_forward_stability` | Сколько фолдов с ROI ≤ 0 |
 | `funnel` | verdict → candidate → final bets |
 | `head_alignment` | decision head vs EV (пункт 9 улучшений) |
@@ -218,8 +212,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | Бэктest, agent_review, quality_gate | `ai_service/app/neuralbet/backtest.py`, `review.py` |
 | Обучение, checkpoint, тюнер | `ai_service/app/neuralbet/model.py`, `pipeline.py` |
 | Калибровка | `ai_service/app/neuralbet/calibration.py` |
-| DeepSeek LLM (нарратив / дайджест / web-search контекст) | `ai_service/app/deepseek/insights.py`, `.env` (`NEURALBET_LLM_*`) |
-| Фичи | `shared/neurobet_features/` |
+| Фичи / KB игроков·команд | `shared/neurobet_features/` |
 | MCP tools | `backend/mcp_eval.py` |
 | Промпт ревью | `BacktestPrompt.md` |
 

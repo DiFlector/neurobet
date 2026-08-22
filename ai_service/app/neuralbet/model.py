@@ -20,12 +20,16 @@ from app.neuralbet.context import (
 )
 from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, MIN_BET_EDGE_PCT, in_bet_band
 from neurobet_features import (
+    OVERROUND_EXPECTED_SIZE,
     GRU_INPUT_DIM,
+    KB_CONTEXT_DIM,
     LGB_CATEGORICAL_FEATURES,
     LGB_FEATURE_NAMES,
     build_gru_sequence,
     build_model_input,
+    kb_context_vector,
     lgb_feature_row,
+    overround_group_key,
 )
 
 logger = logging.getLogger("ai_service_model")
@@ -83,8 +87,12 @@ DECISION_LOSS_WEIGHT = float(os.getenv("NEURALBET_DECISION_LOSS_WEIGHT", "0.0"))
 # Cost-sensitive verdict BCE: vestigial when DECISION_LOSS_WEIGHT=0 (objective B).
 DECISION_POS_WEIGHT_CAP = float(os.getenv("NEURALBET_DECISION_POS_WEIGHT_CAP", "1.0"))
 PAIRED_MARKET_LOSS_WEIGHT = float(os.getenv("NEURALBET_PAIRED_MARKET_LOSS_WEIGHT", "0.15"))
-# Reject checkpoint if val_loss regresses more than this above last accepted checkpoint.
+# Checkpoint gate primary metric is mean in-band Brier (not raw win-BCE). Reject if
+# attempted Brier is worse than last accepted by more than this absolute slack.
+# Brier sits ~0.18–0.25; 0.02 ≈ one modest regression step (same env key as before).
 CHECKPOINT_VAL_FLOOR_TOLERANCE = float(os.getenv("NEURALBET_CHECKPOINT_VAL_FLOOR_TOLERANCE", "0.02"))
+# Must beat incoming Brier by this margin to accept; within ±eps, win-BCE can break ties.
+CHECKPOINT_BRIER_EPS = float(os.getenv("NEURALBET_CHECKPOINT_BRIER_EPS", "1e-4"))
 CHECKPOINT_IN_BAND_ONLY = os.getenv("NEURALBET_CHECKPOINT_IN_BAND_ONLY", "1").strip().lower() not in (
     "0", "false", "no", "off",
 )
@@ -106,18 +114,20 @@ ROUND_SIZE = 20
 SPORT_EMB_DIM = 8
 MARKET_EMB_DIM = 6
 TEAM_EMB_DIM = 6
+# Re-export: must match neurobet_features.TEAM_STATS_DIM / kb_context_vector length.
 
 
 class OddsTrajectoryGRU(nn.Module):
     """
     PyTorch GRU sequence model over odds-trajectory + live-score steps, conditioned on
     which sport, which market family, and which two teams/players (team1_idx/team2_idx —
-    see app/neuralbet/context.py's team_index) the bet is on.
-        Sequence input: (batch, seq_len=10, input_dim=6) — per step:
-        [log(coefficient), scaled match score_diff, t_norm, match_time,
-        scaled set-point diff, pad_mask]. Built by neurobet_features.build_gru_sequence
-        so live / train / backtest cannot drift. Sport/market/team embeddings are
-        concatenated onto the GRU's final hidden state.
+    see app/neuralbet/context.py's team_index) the bet is on, plus a fixed-length
+    team-stats knowledge-base vector (rolling scored/conceded/WR/H2H — see
+    neurobet_features.player_stats / kb_context_vector).
+        Sequence input: (batch, seq_len=10, input_dim=GRU_INPUT_DIM) — per step built by
+        neurobet_features.build_gru_sequence so live / train / backtest cannot drift.
+        Sport/market/team embeddings and the KB context vector are concatenated onto the
+        GRU's final hidden state.
     Output: 4 raw logits per sample — [win_logit, decision_logit, stake_logit,
     exposure_logit]:
       - win_logit: sigmoid() gives the win-probability estimate — blended with
@@ -144,19 +154,24 @@ class OddsTrajectoryGRU(nn.Module):
         # well as an underdog" should mean the same thing whether that team happens to
         # be sitting in the team_1 or team_2 column for a given match.
         self.team_embed = nn.Embedding(TEAM_HASH_BUCKETS, TEAM_EMB_DIM)
-        self.fc1 = nn.Linear(hidden_dim + SPORT_EMB_DIM + MARKET_EMB_DIM + 2 * TEAM_EMB_DIM, 32)
+        self.fc1 = nn.Linear(
+            hidden_dim + SPORT_EMB_DIM + MARKET_EMB_DIM + 2 * TEAM_EMB_DIM + KB_CONTEXT_DIM,
+            32,
+        )
         self.relu = nn.ReLU()
         self.head = nn.Linear(32, 4)
 
     def forward(
         self, x: torch.Tensor, sport_idx: torch.Tensor, market_idx: torch.Tensor,
         team1_idx: torch.Tensor, team2_idx: torch.Tensor,
+        kb_ctx: torch.Tensor,
     ) -> torch.Tensor:
         out, _ = self.gru(x)
         last_step = out[:, -1, :]
         ctx = torch.cat([
             last_step, self.sport_embed(sport_idx), self.market_embed(market_idx),
             self.team_embed(team1_idx), self.team_embed(team2_idx),
+            kb_ctx,
         ], dim=-1)
         h = self.relu(self.fc1(ctx))
         return self.head(h)
@@ -283,7 +298,8 @@ class NeuralBetEnsemble:
         self.lgb_last_val_brier: Optional[float] = None
         self.lgb_last_accepted_at: Optional[str] = None
         self.lgb_newest_finished_at: Optional[str] = None
-        # Last val_loss on an *accepted* checkpoint — floor gate compares against this.
+        # Last *accepted* in-band val Brier — floor gate compares against this.
+        # Field name kept for checkpoint JSON compatibility (was win-BCE historically).
         self.last_accepted_val_loss: Optional[float] = None
         # Cold-start streams many chunks as one global epoch. This snapshot is the
         # epoch-start baseline; chunks update the in-memory model without gating, and
@@ -291,7 +307,8 @@ class NeuralBetEnsemble:
         self._checkpoint_window_state: Optional[
             Tuple[Dict[str, Any], Dict[str, Any]]
         ] = None
-        self._checkpoint_window_val_loss: Optional[float] = None
+        self._checkpoint_window_val_loss: Optional[float] = None  # pinned incoming Brier
+        self._checkpoint_window_win_bce: Optional[float] = None
 
     def reset(self) -> None:
         """
@@ -455,7 +472,9 @@ class NeuralBetEnsemble:
         if not prepared_val:
             return None
         self._checkpoint_window_state = self._snapshot_train_state()
-        self._checkpoint_window_val_loss, _ = self._forward_metrics(prepared_val)
+        brier, _, win_bce = self._forward_metrics(prepared_val)
+        self._checkpoint_window_val_loss = brier
+        self._checkpoint_window_win_bce = win_bce
         self.pytorch_model.train()
         return self._checkpoint_window_val_loss
 
@@ -465,9 +484,14 @@ class NeuralBetEnsemble:
         *,
         best_epoch: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Gate a complete streaming epoch against its pinned incoming baseline."""
+        """Gate a complete streaming epoch against its pinned incoming baseline.
+
+        Primary metric: mean in-band Brier (same as train_online). See
+        `_checkpoint_gate_decision`.
+        """
         baseline_state = self._checkpoint_window_state
         val_incoming = self._checkpoint_window_val_loss
+        incoming_bce = self._checkpoint_window_win_bce
         if baseline_state is None or val_incoming is None:
             return {
                 "checkpoint_accepted": False,
@@ -497,20 +521,13 @@ class NeuralBetEnsemble:
                 "val_guess_rate": None,
                 "checkpoint_saved": False,
             }
-        val_attempted, val_guess = self._forward_metrics(prepared_val)
-        accepted = True
-        reject_reason = None
-        floor = self.last_accepted_val_loss
-
-        if val_attempted >= val_incoming - 1e-4:
-            accepted = False
-            reject_reason = "incoming"
-        elif floor is not None and (
-            val_incoming > floor + CHECKPOINT_VAL_FLOOR_TOLERANCE
-            or val_attempted > floor + CHECKPOINT_VAL_FLOOR_TOLERANCE
-        ):
-            accepted = False
-            reject_reason = "floor"
+        val_attempted, val_guess, attempted_bce = self._forward_metrics(prepared_val)
+        accepted, reject_reason = self._checkpoint_gate_decision(
+            attempted_brier=val_attempted,
+            incoming_brier=val_incoming,
+            attempted_win_bce=attempted_bce,
+            incoming_win_bce=incoming_bce,
+        )
 
         if accepted:
             self.last_accepted_val_loss = float(val_attempted)
@@ -521,12 +538,13 @@ class NeuralBetEnsemble:
             self._restore_train_state(*baseline_state)
             logger.info(
                 "Cold-start epoch checkpoint rejected "
-                f"({reject_reason}): attempted {val_attempted:.4f}, "
+                f"({reject_reason}): attempted Brier {val_attempted:.4f}, "
                 f"incoming {val_incoming:.4f}; restored epoch-start weights."
             )
 
         self._checkpoint_window_state = None
         self._checkpoint_window_val_loss = None
+        self._checkpoint_window_win_bce = None
         self.pytorch_model.train()
         return {
             "checkpoint_accepted": accepted,
@@ -544,7 +562,44 @@ class NeuralBetEnsemble:
             self._restore_train_state(*self._checkpoint_window_state)
         self._checkpoint_window_state = None
         self._checkpoint_window_val_loss = None
+        self._checkpoint_window_win_bce = None
         self.pytorch_model.train()
+
+    def _checkpoint_gate_decision(
+        self,
+        *,
+        attempted_brier: float,
+        incoming_brier: float,
+        attempted_win_bce: Optional[float] = None,
+        incoming_win_bce: Optional[float] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Accept attempted weights when in-band val Brier improves vs incoming
+        (primary), with a floor vs last accepted Brier.
+
+        Accept if:
+          - attempted_brier < incoming_brier - CHECKPOINT_BRIER_EPS, OR
+          - Brier is within ±eps of incoming AND win-BCE improved (tie-break), AND
+          - neither incoming nor attempted exceeds last_accepted + FLOOR_TOLERANCE.
+        """
+        floor = self.last_accepted_val_loss
+        tol = CHECKPOINT_VAL_FLOOR_TOLERANCE
+        if floor is not None and (
+            incoming_brier > floor + tol or attempted_brier > floor + tol
+        ):
+            return False, "floor"
+
+        eps = CHECKPOINT_BRIER_EPS
+        if attempted_brier < incoming_brier - eps:
+            return True, None
+        if (
+            attempted_brier <= incoming_brier + eps
+            and attempted_win_bce is not None
+            and incoming_win_bce is not None
+            and attempted_win_bce < incoming_win_bce - 1e-4
+        ):
+            return True, None
+        return False, "incoming"
 
     def _load_model_state_soft(self, state_dict: Dict[str, Any]) -> bool:
         """
@@ -748,9 +803,14 @@ class NeuralBetEnsemble:
         market_tensor = torch.tensor(market_idxs, dtype=torch.long)
         team1_tensor = torch.tensor(team1_idxs, dtype=torch.long)
         team2_tensor = torch.tensor(team2_idxs, dtype=torch.long)
+        kb_tensor = torch.tensor(
+            [kb_context_vector(it) for it in items], dtype=torch.float32,
+        )
         self.pytorch_model.eval()
         with torch.no_grad():
-            logits = self.pytorch_model(x_tensor, sport_tensor, market_tensor, team1_tensor, team2_tensor)
+            logits = self.pytorch_model(
+                x_tensor, sport_tensor, market_tensor, team1_tensor, team2_tensor, kb_tensor,
+            )
             pytorch_probs = torch.sigmoid(logits[:, 0]).tolist()
             decision_probs = _decision_confidence(logits[:, 1]).tolist()
             stake_logits = logits[:, 2].tolist()
@@ -1013,63 +1073,32 @@ class NeuralBetEnsemble:
         blend_market_frozen: bool = False,
     ) -> Dict[str, Any]:
         """
-        Re-picks blend_weight, market_weight and decision_threshold against held-out
-        validation data instead of leaving them at whatever they were initialized to
-        forever. Called from pipeline.py at the same (now throttled — see
-        TUNE_EVERY_CYCLES) cadence as the LightGBM refit, since that's when a
-        freshly-fit booster and a validation split are both on hand together.
+        Re-picks blend_weight / market_weight (and optionally decision thresholds)
+        against held-out validation data. Called from pipeline.py at the same
+        (throttled — see TUNE_EVERY_CYCLES) cadence as the LightGBM refit.
 
-        - blend_weight / market_weight: 2D grid search over _BLEND_CANDIDATES (w_py,
-          w_market pairs with w_py + w_market <= 1; LightGBM gets 1 - w_py - w_market),
-          keeping whichever pair minimizes Brier score (mean squared error of the
-          blended probability against the true 0/1 outcome) on data neither model
-          trained on. market_weight puts the raw bookmaker-implied probability (1/coeff)
-          directly in the blend — when the model's own Brier is worse than the market's
-          (val_brier_base below; this was consistently true in production), the search
-          naturally shifts weight onto the market term instead of an undertrained model.
-        - decision_threshold: grid search over _THRESHOLD_CANDIDATES (see
-          _sweep_threshold), keeping whichever cutoff on the decision head maximizes a
-          sample-size-penalized simulated flat-stake ROI on validation (see
-          _THRESHOLD_SAMPLE_PENALTY) — a direct proxy for "does betting on this verdict
-          make money," not just "is the verdict usually right," while discounting
-          thresholds propped up by a small, lucky sample. Thresholds that would place
-          fewer than _MIN_THRESHOLD_BETS bets are skipped entirely; if none qualify, the
-          previous threshold is kept.
-        - sport_decision_thresholds: the same sweep repeated per top-level sport (see
-          sport_threshold()) — a single global cutoff can't be optimal for every sport
-          when Brier-vs-market quality varies this much between them (production
-          backtests: model beats market on football/basketball/hockey, loses on table
-          tennis). Needs _MIN_THRESHOLD_BETS_PER_SPORT val bets *for that sport
-          specifically* to update at all; sports that don't clear it this pass simply
-          keep whatever they had (or the global decision_threshold, if they've never
-          earned a value).
-        - Every parameter is smoothed towards this cycle's grid-search result rather
-          than snapping to it (see _TUNE_SMOOTH_ALPHA) — the target values are reported
-          alongside the smoothed ones so the log line shows both.
-        - Blend/market are gated like GRU weights: the grid's best Brier must beat the
-          *current live mixture* on this val slice (see _TUNE_BRIER_EPS). If it does
-          not, blend_weight/market_weight stay put — the search no longer walks toward
-          an off-grid-worse 0.8/1.0 just because those are the only candidates. The
-          decision-threshold sweep is independent (it does not enter Brier) and still
-          has its own min-bets floor.
-        - Accepted scalars are written onto the existing GRU checkpoint immediately
-          (see save_ensemble): they must survive a container restart even when the
-          next train_online pass is rejected and does not rewrite the file. A rejected
-          blend does not rewrite the file unless a threshold actually moved.
-
-        Uses the same random-cutoff trajectory view as training (_prepare_sample) so
-        this is evaluating the model the way it actually gets scored elsewhere (val_loss,
-        val_guess_rate), not on full-match hindsight.
+        - blend_weight / market_weight: 2D grid search over _BLEND_CANDIDATES
+          minimizing Brier on data neither model trained on. market_weight puts
+          raw bookmaker-implied probability (1/coeff) in the blend.
+        - decision_threshold / sport_decision_thresholds: only when
+          NEURALBET_DECISION_LOSS_WEIGHT > 0. Under Objective B (default weight 0)
+          live predicted_win is EV-based (calibrated_p * coeff - 1 ≥ MIN_BET_EDGE),
+          so residual-head cutoffs do not affect staking — sweeps are skipped and
+          thresholds stay frozen.
+        - Every updated parameter is EMA-smoothed (_TUNE_SMOOTH_ALPHA).
+        - Blend/market are gated like GRU weights: best Brier must beat the live
+          mixture and the market-only baseline (_TUNE_BRIER_EPS).
+        - Accepted scalars are written via save_ensemble immediately.
         """
         prepared = [p for p in (self._prepare_sample(s, mode="val") for s in val_data) if p is not None]
         if len(prepared) < self._MIN_TUNE_SAMPLES:
             return {"tuned": False, "reason": "not_enough_val_samples", "samples": len(prepared)}
 
         seqs = torch.tensor([_gru_seq(p) for p in prepared], dtype=torch.float32)
-        sport_t, market_t, team1_t, team2_t = self._context_tensors(prepared)
+        sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(prepared)
         self.pytorch_model.eval()
         with torch.no_grad():
-            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
             pytorch_probs = torch.sigmoid(logits[:, 0]).tolist()
             decision_probs = _decision_confidence(logits[:, 1]).tolist()
 
@@ -1115,56 +1144,55 @@ class NeuralBetEnsemble:
             and best_brier < base_brier - self._TUNE_BRIER_EPS
         )
 
-        best_threshold, best_roi, best_bets = self._sweep_threshold(
-            decision_probs, coeffs, targets, self.decision_threshold, self._MIN_THRESHOLD_BETS,
-        )
-
+        # Objective B (DECISION_LOSS_WEIGHT=0): EV policy ignores decision_threshold.
+        tune_thresholds = DECISION_LOSS_WEIGHT > 0
         old_blend, old_market, old_threshold = self.blend_weight, self.market_weight, self.decision_threshold
         a = self._TUNE_SMOOTH_ALPHA
         if blend_accepted:
             self.blend_weight = old_blend + a * (best_blend - old_blend)
             self.market_weight = old_market + a * (best_market - old_market)
         self._apply_market_weight_floor()
-        if best_bets >= self._MIN_THRESHOLD_BETS:
-            self.decision_threshold = max(
-                VALUE_THRESHOLD_FLOOR,
-                old_threshold + a * (best_threshold - old_threshold),
-            )
 
-        # Per-sport decision_threshold — same sweep, run again per sport group of the
-        # same val samples (see sport_threshold()'s docstring for why: a single global
-        # cutoff can't be optimal for every sport when Brier-vs-market quality varies
-        # this much between them). Groups with too few val bets this pass are left
-        # untouched — they keep whatever they had before (or the global fallback if
-        # they've never earned a value at all), not overwritten with a worse guess.
-        by_sport: Dict[str, List[int]] = {}
-        for idx, p in enumerate(prepared):
-            by_sport.setdefault(p.get("sport") or "Другое", []).append(idx)
-
+        best_threshold, best_roi, best_bets = old_threshold, None, 0
         sport_threshold_report: Dict[str, Dict[str, Any]] = {}
-        for sport, idxs in by_sport.items():
-            sport_dp = [decision_probs[i] for i in idxs]
-            sport_coeffs = [coeffs[i] for i in idxs]
-            sport_targets = [targets[i] for i in idxs]
-            old_sport_thr = self.sport_decision_thresholds.get(sport, self.decision_threshold)
-            thr, roi, bets = self._sweep_threshold(
-                sport_dp, sport_coeffs, sport_targets, old_sport_thr, self._MIN_THRESHOLD_BETS_PER_SPORT,
+        if tune_thresholds:
+            best_threshold, best_roi, best_bets = self._sweep_threshold(
+                decision_probs, coeffs, targets, self.decision_threshold, self._MIN_THRESHOLD_BETS,
             )
-            if bets < self._MIN_THRESHOLD_BETS_PER_SPORT:
-                continue
-            new_sport_thr = max(
-                _sport_threshold_floor(sport),
-                old_sport_thr + a * (thr - old_sport_thr),
-            )
-            self.sport_decision_thresholds[sport] = new_sport_thr
-            sport_threshold_report[sport] = {
-                "old": round(old_sport_thr, 2), "new": round(new_sport_thr, 2), "target": round(thr, 2),
-                "val_roi_pct": round(roi * 100.0, 1), "val_bets": bets,
-            }
+            if best_bets >= self._MIN_THRESHOLD_BETS:
+                self.decision_threshold = max(
+                    VALUE_THRESHOLD_FLOOR,
+                    old_threshold + a * (best_threshold - old_threshold),
+                )
 
-        # Sports that didn't clear the val-bets floor this pass still need their
-        # SPORT_THRESHOLD_FLOORS minimum in the stored dict (backtest snapshots it).
-        self._apply_sport_threshold_floors()
+            by_sport: Dict[str, List[int]] = {}
+            for idx, p in enumerate(prepared):
+                by_sport.setdefault(p.get("sport") or "Другое", []).append(idx)
+
+            for sport, idxs in by_sport.items():
+                sport_dp = [decision_probs[i] for i in idxs]
+                sport_coeffs = [coeffs[i] for i in idxs]
+                sport_targets = [targets[i] for i in idxs]
+                old_sport_thr = self.sport_decision_thresholds.get(sport, self.decision_threshold)
+                thr, roi, bets = self._sweep_threshold(
+                    sport_dp, sport_coeffs, sport_targets, old_sport_thr, self._MIN_THRESHOLD_BETS_PER_SPORT,
+                )
+                if bets < self._MIN_THRESHOLD_BETS_PER_SPORT:
+                    continue
+                new_sport_thr = max(
+                    _sport_threshold_floor(sport),
+                    old_sport_thr + a * (thr - old_sport_thr),
+                )
+                self.sport_decision_thresholds[sport] = new_sport_thr
+                sport_threshold_report[sport] = {
+                    "old": round(old_sport_thr, 2), "new": round(new_sport_thr, 2), "target": round(thr, 2),
+                    "val_roi_pct": round(roi * 100.0, 1), "val_bets": bets,
+                }
+
+            # Sports that didn't clear the val-bets floor this pass still need their
+            # SPORT_THRESHOLD_FLOORS minimum in the stored dict (backtest snapshots it).
+            self._apply_sport_threshold_floors()
+
         threshold_moved = abs(self.decision_threshold - old_threshold) > 1e-9
         changed = blend_accepted or threshold_moved or bool(sport_threshold_report)
         persisted = self.save_ensemble() if changed else False
@@ -1173,6 +1201,7 @@ class NeuralBetEnsemble:
             "tuned": True,
             "accepted": blend_accepted,
             "blend_market_frozen": blend_market_frozen,
+            "thresholds_tuned": tune_thresholds,
             "persisted": persisted,
             "samples": len(prepared),
             "val_brier_base": round(base_brier, 4),
@@ -1186,16 +1215,19 @@ class NeuralBetEnsemble:
             },
             "decision_threshold": {
                 "old": round(old_threshold, 2), "new": round(self.decision_threshold, 2),
-                "target": round(best_threshold, 2) if best_bets >= self._MIN_THRESHOLD_BETS else None,
-                "val_roi_pct": round(best_roi * 100.0, 1) if best_bets >= self._MIN_THRESHOLD_BETS else None,
-                "val_bets": best_bets,
+                "target": (
+                    round(best_threshold, 2)
+                    if tune_thresholds and best_bets >= self._MIN_THRESHOLD_BETS
+                    else None
+                ),
+                "val_roi_pct": (
+                    round(best_roi * 100.0, 1)
+                    if tune_thresholds and best_bets >= self._MIN_THRESHOLD_BETS and best_roi is not None
+                    else None
+                ),
+                "val_bets": best_bets if tune_thresholds else 0,
+                "skipped": not tune_thresholds,
             },
-            # Only sports that actually cleared _MIN_THRESHOLD_BETS_PER_SPORT this pass
-            # appear here — most won't, on any given pass, since the val batch splits
-            # across 12+ sports and only the couple of largest ones (table tennis,
-            # basketball) reliably clear the floor. That's expected, not an error: every
-            # other sport keeps using its last tuned value (or decision_threshold, if it
-            # has never earned one) via sport_threshold() — see that method's docstring.
             "sport_decision_threshold": sport_threshold_report,
         }
 
@@ -1269,20 +1301,27 @@ class NeuralBetEnsemble:
         batch: List[Dict[str, Any]],
         pred_probs: torch.Tensor,
     ) -> Optional[torch.Tensor]:
-        """Soft 2-way normalization penalty for sibling outcomes on the same event."""
+        """Soft sum-to-1 penalty for complete sibling sets (overround_group_key)."""
         if PAIRED_MARKET_LOSS_WEIGHT <= 0:
             return None
         groups: Dict[Any, List[int]] = {}
         for idx, item in enumerate(batch):
-            key = (item.get("event_id"), item.get("parameter"), item.get("market_prefix"))
+            gk = overround_group_key(
+                item.get("factor_id"),
+                str(item.get("parameter") or ""),
+                str(item.get("market_prefix") or ""),
+            )
+            if gk is None:
+                continue
+            key = (item.get("event_id"), gk)
             groups.setdefault(key, []).append(idx)
         penalties = []
-        for idxs in groups.values():
-            if len(idxs) < 2:
+        for (_eid, gk), idxs in groups.items():
+            need = OVERROUND_EXPECTED_SIZE.get(gk[0], 0)
+            if not need or len(idxs) != need:
                 continue
             sub = pred_probs[idxs]
-            total = sub.sum()
-            penalties.append((total - 1.0) ** 2)
+            penalties.append((sub.sum() - 1.0) ** 2)
         if not penalties:
             return None
         return torch.stack(penalties).mean()
@@ -1295,21 +1334,30 @@ class NeuralBetEnsemble:
         return build_model_input(sample, mode=val_mode)
 
     @staticmethod
-    def _context_tensors(prepared: List[Dict[str, Any]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _context_tensors(
+        prepared: List[Dict[str, Any]],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         sport_t = torch.tensor([p.get("sport_idx", 0) for p in prepared], dtype=torch.long)
         market_t = torch.tensor([p.get("market_idx", 0) for p in prepared], dtype=torch.long)
         team1_t = torch.tensor([p.get("team1_idx", 0) for p in prepared], dtype=torch.long)
         team2_t = torch.tensor([p.get("team2_idx", 0) for p in prepared], dtype=torch.long)
-        return sport_t, market_t, team1_t, team2_t
+        kb_t = torch.tensor([kb_context_vector(p) for p in prepared], dtype=torch.float32)
+        return sport_t, market_t, team1_t, team2_t, kb_t
 
-    def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float]:
+    def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float, float]:
         """
-        Returns (win_bce_loss, hit_rate) for a prepared batch in eval mode, no grad.
-        Hit rate: among in-band rows with EV ≥ MIN_BET_EDGE, how often is_win=1.
+        Returns (mean_brier, hit_rate, win_bce) for a prepared batch in eval mode.
+
+        Checkpoint gate and early-stop use mean Brier on win-head probs (Objective B /
+        EV path cares about calibrated probability quality, not raw logit BCE alone).
+        win_bce is retained for the Brier-tie break and logging. Hit rate: among
+        in-band rows with EV ≥ MIN_BET_EDGE, how often is_win=1.
         Chunked by BATCH_SIZE to avoid OOM on large cold-start pools.
         """
         if not prepared:
-            return float("nan"), float("nan")
+            return float("nan"), float("nan"), float("nan")
+        brier_sum = 0.0
+        brier_n = 0
         loss_sum = 0.0
         loss_n = 0
         hit_sum = 0.0
@@ -1325,8 +1373,8 @@ class NeuralBetEnsemble:
                 coeffs = torch.tensor(
                     [p["coefficient"] for p in chunk], dtype=torch.float32
                 )
-                sport_t, market_t, team1_t, team2_t = self._context_tensors(chunk)
-                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+                sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(chunk)
+                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
                 win_logits = logits[:, 0]
                 chunk_loss = nn.functional.binary_cross_entropy_with_logits(
                     win_logits, targets,
@@ -1334,6 +1382,8 @@ class NeuralBetEnsemble:
                 loss_sum += chunk_loss * len(chunk)
                 loss_n += len(chunk)
                 win_probs = torch.sigmoid(win_logits)
+                brier_sum += float(((win_probs - targets) ** 2).sum().item())
+                brier_n += len(chunk)
                 would_bet = (
                     (win_probs * coeffs - 1.0 >= MIN_BET_EDGE_PCT / 100.0)
                     & (coeffs >= MIN_BET_COEFF)
@@ -1343,9 +1393,10 @@ class NeuralBetEnsemble:
                 if n_bet:
                     hit_sum += float((targets[would_bet] >= 0.5).sum().item())
                     hit_n += n_bet
+        brier = (brier_sum / brier_n) if brier_n else float("nan")
         loss = (loss_sum / loss_n) if loss_n else float("nan")
         hit_rate = (hit_sum / hit_n) if hit_n else 0.0
-        return loss, hit_rate
+        return brier, hit_rate, loss
 
     def _bankroll_pass(
         self, prepared: List[Dict[str, Any]], account: str, commit: bool,
@@ -1380,8 +1431,8 @@ class NeuralBetEnsemble:
                 if len(chunk) < 2:
                     continue
                 seqs = torch.tensor([_gru_seq(c) for c in chunk], dtype=torch.float32)
-                sport_t, market_t, team1_t, team2_t = self._context_tensors(chunk)
-                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+                sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(chunk)
+                logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
                 win_probs = torch.sigmoid(logits[:, 0])
                 stake_logits = logits[:, 2]
                 coeffs = torch.tensor([c["coefficient"] for c in chunk], dtype=torch.float32)
@@ -1504,10 +1555,10 @@ class NeuralBetEnsemble:
             targets = torch.tensor(
                 [b["target"] for b in batch], dtype=torch.float32
             ).unsqueeze(1)
-            sport_t, market_t, team1_t, team2_t = self._context_tensors(batch)
+            sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(batch)
 
             self.pytorch_optimizer.zero_grad()
-            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t)
+            logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
             win_logits = logits[:, 0:1]
             bce_loss = bce(win_logits, targets)
 
@@ -1631,11 +1682,11 @@ class NeuralBetEnsemble:
 
         self.is_trained = True
         self.pytorch_model.train()
-        final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
+        final_train_brier, final_train_guess_rate, _ = self._forward_metrics(prepared)
 
         logger.info(
             f"Cold-start chunk complete: {len(prepared)} samples, "
-            f"pass_loss {train_loss:.4f}, eval_loss {final_train_loss:.4f}."
+            f"pass_loss {train_loss:.4f}, eval_brier {final_train_brier:.4f}."
         )
 
         return {
@@ -1644,7 +1695,7 @@ class NeuralBetEnsemble:
             "positive_count": positive_count,
             "negative_count": negative_count,
             "epochs_run": 1,
-            "final_loss": round(final_train_loss, 4),
+            "final_loss": round(final_train_brier, 4),
             "train_guess_rate": round(final_train_guess_rate * 100.0, 1),
             "pass_loss": round(train_loss, 4),
             "checkpoint_reject_reason": None,
@@ -1669,8 +1720,10 @@ class NeuralBetEnsemble:
         (ensemble blend → calibration → EV verdict). Optional legacy decision-head
         residual/cost BCE when NEURALBET_DECISION_LOSS_WEIGHT > 0 (default 0).
         Plus paired-market soft constraint and bankroll utility (Kelly replay,
-        masked by EV ≥ MIN_BET_EDGE). Early-stop on held-out val win-BCE; checkpoint
-        gate vs incoming weights. See OddsTrajectoryGRU docstring for head roles.
+        masked by EV ≥ MIN_BET_EDGE). Early-stop on held-out in-band val Brier;
+        checkpoint gate vs incoming uses the same Brier (win-BCE tie-break) and
+        CHECKPOINT_VAL_FLOOR_TOLERANCE vs last accepted Brier.
+        See OddsTrajectoryGRU docstring for head roles.
         """
         empty_metrics = {
             "samples_used": 0, "samples_skipped": len(training_data), "positive_count": 0,
@@ -1703,9 +1756,12 @@ class NeuralBetEnsemble:
         incoming_state = None
         val_incoming = None
         val_incoming_guess = None
+        val_incoming_bce = None
         if checkpoint_val:
             incoming_state = self._snapshot_train_state()
-            val_incoming, val_incoming_guess = self._forward_metrics(checkpoint_val)
+            val_incoming, val_incoming_guess, val_incoming_bce = self._forward_metrics(
+                checkpoint_val
+            )
 
         positive_count = sum(1 for p in prepared if p["target"] == 1.0)
         negative_count = len(prepared) - positive_count
@@ -1750,12 +1806,15 @@ class NeuralBetEnsemble:
 
                 epoch_losses.append(train_loss)
 
-                val_loss, val_guess_rate = self._forward_metrics(checkpoint_val) if checkpoint_val else (train_loss, None)
+                if checkpoint_val:
+                    val_loss, val_guess_rate, _ = self._forward_metrics(checkpoint_val)
+                else:
+                    val_loss, val_guess_rate = train_loss, None
                 selection_metric = val_loss if checkpoint_val else train_loss
 
                 logger.info(
                     f"PyTorch online training epoch {epoch_idx}/{epochs} — "
-                    f"train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}"
+                    f"train_loss: {train_loss:.4f}, val_brier: {val_loss:.4f}"
                 )
                 if on_epoch is not None:
                     try:
@@ -1763,7 +1822,7 @@ class NeuralBetEnsemble:
                     except Exception:
                         pass
 
-                if selection_metric < best_val - 1e-4:
+                if selection_metric < best_val - CHECKPOINT_BRIER_EPS:
                     best_val = selection_metric
                     best_state = copy.deepcopy(self.pytorch_model.state_dict())
                     best_epoch = epoch_idx
@@ -1798,8 +1857,13 @@ class NeuralBetEnsemble:
         if best_state is not None:
             self.pytorch_model.load_state_dict(best_state)
 
-        final_val_loss, final_val_guess_rate = self._forward_metrics(checkpoint_val) if checkpoint_val else (None, None)
-        final_train_loss, final_train_guess_rate = self._forward_metrics(prepared)
+        if checkpoint_val:
+            final_val_loss, final_val_guess_rate, final_val_bce = self._forward_metrics(
+                checkpoint_val
+            )
+        else:
+            final_val_loss, final_val_guess_rate, final_val_bce = None, None, None
+        final_train_loss, final_train_guess_rate, _ = self._forward_metrics(prepared)
 
         # The number that used to land in the TRAINING log as "1000 → 4 000 000 ₽"
         # was a Kelly compound over the *training* set (10000 / ROUND_SIZE ≈ 500
@@ -1823,7 +1887,7 @@ class NeuralBetEnsemble:
 
         logger.info(
             f"PyTorch online training complete: best epoch {best_epoch}/{len(epoch_losses)}, "
-            f"train_loss {final_train_loss:.4f}, val_loss "
+            f"train_brier {final_train_loss:.4f}, val_brier "
             f"{final_val_loss if final_val_loss is not None else float('nan'):.4f}, "
             f"training bankroll {bank_result['bank_start']:.1f} -> {bank_result['bank_end']:.1f}."
         )
@@ -1831,40 +1895,30 @@ class NeuralBetEnsemble:
         checkpoint_accepted = True
         checkpoint_reject_reason = None
         val_loss_attempted = final_val_loss
-        floor = self.last_accepted_val_loss
         if (
             not skip_checkpoint_gate
             and incoming_state is not None
             and final_val_loss is not None
             and val_incoming is not None
         ):
-            if final_val_loss >= val_incoming - 1e-4:
-                checkpoint_accepted = False
-                checkpoint_reject_reason = "incoming"
-                logger.info(
-                    f"Online pass did not beat incoming val_loss "
-                    f"(attempt {val_loss_attempted:.4f} >= {val_incoming:.4f}); "
-                    f"restored previous weights, checkpoint file unchanged."
-                )
-            elif floor is not None:
-                tol = CHECKPOINT_VAL_FLOOR_TOLERANCE
-                if final_val_loss > floor + tol:
-                    checkpoint_accepted = False
-                    checkpoint_reject_reason = "floor"
-                    logger.info(
-                        f"Online pass regressed vs last accepted val_loss "
-                        f"(attempt {val_loss_attempted:.4f} > floor {floor:.4f}+{tol}); "
-                        f"restored previous weights."
-                    )
-                elif val_incoming > floor + tol:
-                    checkpoint_accepted = False
-                    checkpoint_reject_reason = "floor"
-                    logger.info(
-                        f"Incoming val_loss {val_incoming:.4f} already above last accepted "
-                        f"{floor:.4f}+{tol}; restored previous weights."
-                    )
+            checkpoint_accepted, checkpoint_reject_reason = self._checkpoint_gate_decision(
+                attempted_brier=final_val_loss,
+                incoming_brier=val_incoming,
+                attempted_win_bce=final_val_bce,
+                incoming_win_bce=val_incoming_bce,
+            )
             if not checkpoint_accepted:
                 self._restore_train_state(*incoming_state)
+                logger.info(
+                    f"Online pass checkpoint rejected ({checkpoint_reject_reason}): "
+                    f"attempted Brier {val_loss_attempted:.4f}, incoming {val_incoming:.4f}"
+                    + (
+                        f", last accepted floor {self.last_accepted_val_loss:.4f}"
+                        if self.last_accepted_val_loss is not None
+                        else ""
+                    )
+                    + "; restored previous weights, checkpoint file unchanged."
+                )
 
         if checkpoint_accepted and save_checkpoint:
             if final_val_loss is not None:

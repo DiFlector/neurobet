@@ -45,8 +45,10 @@ from neurobet_filters import (
 )
 from neurobet_features import (
     MARKET_FAMILIES,
+    apply_sibling_coherence,
     build_model_input,
     build_team_form_asof_lookup,
+    build_team_stats_asof_lookup,
     market_family_index,
     no_vig_probability,
     row_to_sample,
@@ -63,7 +65,6 @@ from app.neuralbet.quality_gate import (  # noqa: F401 — re-export for callers
     QUALITY_GATE_SAMPLE_TOLERANCE,
     evaluate_quality_gate,
 )
-from app.neuralbet.llm_gate import apply_llm_and_to_records, record_llm_key
 
 logger = logging.getLogger("ai_service_backtest")
 
@@ -163,7 +164,8 @@ def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
                    h.ts_seq_json, h.timer_seq_json, h.overround_seq_json,
                    h.score_diff_at_bet, h.finished_at, h.overround_close, h.trained_count,
                    h.final_coefficient, h.predicted_win_probability, h.predicted_win,
-                   f.sport_path, f.team_1, f.team_2
+                   f.sport_path, f.team_1, f.team_2,
+                   f.score_1, f.score_2, f.period_scores_json
             FROM finished_bets h
             JOIN finished_events f ON h.event_id = f.event_id
             WHERE h.is_win IS NOT NULL {where_since}
@@ -344,17 +346,33 @@ def _records_from_scored(
     decision_threshold: float,
     sport_decision_thresholds: Dict[str, float],
     market_support: Optional[dict],
-) -> List[Dict[str, Any]]:
-    records: List[Dict[str, Any]] = []
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    work: List[Dict[str, Any]] = []
     for m in scored:
         win_prob = m["raw_win_prob"]
-        decision_prob = m["decision_prob"]
         calibrated = calibrate_probability(
             win_prob, buckets, sport=m["sport"], coeff=m["coeff"],
         )
-        expected_roi = ((calibrated / 100.0) * m["coeff"] - 1.0) * 100.0
-        # Objective B: verdict = EV gate (calibrated p), not residual decision_prob.
-        current_verdict = 1 if expected_roi >= MIN_BET_EDGE_PCT else 0
+        work.append({
+            "event_id": m["event_id"],
+            "factor_id": m["factor_id"],
+            "parameter": m.get("parameter") or "",
+            "market_prefix": m.get("market_prefix") or "",
+            "calibrated_p": calibrated / 100.0,
+            "coeff": m["coeff"],
+            "_scored": m,
+            "_calibrated_pct": calibrated,
+        })
+
+    coherence = apply_sibling_coherence(work, min_edge_pct=MIN_BET_EDGE_PCT)
+
+    records: List[Dict[str, Any]] = []
+    for item in work:
+        m = item["_scored"]
+        calibrated = float(item["calibrated_p"]) * 100.0
+        expected_roi = float(item.get("expected_roi") or 0.0)
+        # Objective B: verdict = EV gate on post-coherence calibrated p.
+        current_verdict = int(item.get("predicted_win") or 0)
         support_count = None
         if market_support:
             support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
@@ -390,8 +408,8 @@ def _records_from_scored(
             "current_pred": current_pred,
             "current_expected_roi": expected_roi,
             "stake_logit": m.get("stake_logit"),
-            "raw_win_prob": win_prob,
-            "decision_prob": decision_prob,
+            "raw_win_prob": m["raw_win_prob"],
+            "decision_prob": m["decision_prob"],
             "historical_prob": m["historical_prob"],
             "historical_pred": m["historical_pred"],
             "market_prob": market_prob,
@@ -406,7 +424,7 @@ def _records_from_scored(
             "score": m.get("score") or "",
         })
     _dedupe_one_bet_per_event(records)
-    return records
+    return records, coherence
 
 
 def _walk_forward_folds(event_order: List[Any]) -> List[Tuple[int, set]]:
@@ -495,7 +513,7 @@ def _walk_forward_eval(
         fold_ts = min(str(event_ts[e]) for e in fold_events)
         buckets = get_calibration_buckets(before=fold_ts)
         fold_scored = [s for s in scored if s["event_id"] in fold_events]
-        fold_records = _records_from_scored(
+        fold_records, _fold_coherence = _records_from_scored(
             fold_scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
         )
         fold_groups.append({
@@ -554,243 +572,6 @@ def _policy_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         ci = _bootstrap_roi_ci(scoped, "_policy_pred")
         out[policy] = {**(stake or {}), **(ci or {})}
     return out
-
-
-def _record_llm_key(rec: Dict[str, Any]) -> str:
-    return record_llm_key(rec)
-
-
-def _llm_candidate_from_record(r: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "event_id": r.get("event_id"),
-        "factor_id": r.get("factor_id"),
-        "parameter": r.get("parameter") or "",
-        "market_prefix": r.get("market_prefix") or "",
-        "label": r.get("label") or "",
-        "sport": r.get("sport") or "",
-        "match_name": r.get("match_name")
-        or f"{r.get('team_1') or ''} — {r.get('team_2') or ''}".strip(" —"),
-        "score": r.get("score") or "",
-        "coeff": r.get("coeff"),
-        "win_probability": r.get("current_prob"),
-        "expected_roi": r.get("current_expected_roi"),
-    }
-
-
-def _apply_llm_and_to_records(
-    records: List[Dict[str, Any]],
-    decisions: Dict[str, int],
-    *,
-    fail_closed: bool = True,
-) -> List[Dict[str, Any]]:
-    return apply_llm_and_to_records(records, decisions, fail_closed=fail_closed)
-
-
-def _llm_stake_ablation(
-    stakes: List[Dict[str, Any]],
-    decisions: Dict[str, int],
-    *,
-    fail_closed: bool = True,
-) -> Dict[str, Any]:
-    """Model-only vs AND-filtered ROI on the same WF stake set (incl. unevaluated)."""
-    model_scope: List[Dict[str, Any]] = []
-    llm_scope: List[Dict[str, Any]] = []
-    for r in stakes:
-        key = _record_llm_key(r)
-        model_clone = dict(r)
-        model_clone["_llm_eval_pred"] = 1
-        model_scope.append(model_clone)
-        llm_clone = dict(r)
-        if key in decisions:
-            llm_clone["_llm_eval_pred"] = 1 if int(decisions[key]) == 1 else 0
-        else:
-            llm_clone["_llm_eval_pred"] = 0 if fail_closed else 1
-        llm_scope.append(llm_clone)
-    model_stake = _stake_metrics(model_scope, "_llm_eval_pred")
-    model_ci = _bootstrap_roi_ci(model_scope, "_llm_eval_pred")
-    llm_stake = _stake_metrics(llm_scope, "_llm_eval_pred")
-    llm_ci = _bootstrap_roi_ci(llm_scope, "_llm_eval_pred")
-    return {
-        "evaluated": len(model_scope),
-        "model_only": {**(model_stake or {}), **(model_ci or {})},
-        "with_llm": {**(llm_stake or {}), **(llm_ci or {})},
-    }
-
-
-def _llm_web_search_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Diagnostic DeepSeek filter on overall top-N stake candidates.
-    Used only when walk-forward LLM is off — does not mutate quality_gate.
-    """
-    try:
-        from app.deepseek.insights import decide_backtest_batches, llm_backtest_enabled
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-    if not llm_backtest_enabled():
-        return {"status": "skipped", "reason": "disabled"}
-
-    stakes = [r for r in records if int(r.get("current_pred") or 0) == 1]
-    if not stakes:
-        return {"status": "skipped", "reason": "no_stake_candidates"}
-
-    candidates = [_llm_candidate_from_record(r) for r in stakes]
-
-    def _progress(call_i: int, total_calls: int, chunk_n: int) -> None:
-        set_backtest_progress(
-            "llm_batch",
-            f"DeepSeek web-search {call_i}/{total_calls} ({chunk_n} кандидатов)…",
-            92 + min(3, call_i),
-            processed=call_i,
-            total=total_calls,
-        )
-
-    raw = decide_backtest_batches(candidates, progress_cb=_progress)
-    decisions = raw.get("decisions") or {}
-    payload = {
-        "status": raw.get("status") or ("empty" if not decisions else "ok"),
-        "applied_to": "overall_topn",
-        "calls": raw.get("calls"),
-        "call_reasons": raw.get("call_reasons"),
-        "note": raw.get("note"),
-        "requested": raw.get("requested"),
-        "approved": sum(1 for v in decisions.values() if int(v) == 1),
-        "uncovered": raw.get("uncovered"),
-        "reason": raw.get("reason"),
-    }
-    if not decisions:
-        payload["evaluated"] = 0
-        return payload
-    # Diagnostic path: metrics only on the scored subset (legacy behaviour).
-    evaluated_keys = set(decisions.keys())
-    scored_stakes = [r for r in stakes if _record_llm_key(r) in evaluated_keys]
-    payload.update(_llm_stake_ablation(scored_stakes, decisions, fail_closed=False))
-    return payload
-
-
-def _apply_llm_walk_forward(walk_forward: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    DeepSeek AND on every walk-forward stake candidate. Mutates ``walk_forward``
-    combined/folds/meta so quality_gate sees live-parity metrics.
-    """
-    try:
-        from app.deepseek.insights import (
-            decide_backtest_batches,
-            llm_backtest_wf_enabled,
-        )
-    except Exception as e:
-        return {"status": "error", "error": str(e), "applied_to": "walk_forward", "applied": False}
-
-    if not llm_backtest_wf_enabled():
-        return {
-            "status": "skipped",
-            "reason": "disabled",
-            "applied_to": "walk_forward",
-            "applied": False,
-        }
-
-    fold_groups = walk_forward.get("fold_groups") or []
-    stakes: List[Dict[str, Any]] = []
-    seen: set = set()
-    for group in fold_groups:
-        for rec in group.get("records") or []:
-            if int(rec.get("current_pred") or 0) != 1:
-                continue
-            key = _record_llm_key(rec)
-            if key in seen:
-                continue
-            seen.add(key)
-            stakes.append(rec)
-
-    if not stakes:
-        return {
-            "status": "skipped",
-            "reason": "no_stake_candidates",
-            "applied_to": "walk_forward",
-            "applied": False,
-        }
-
-    candidates = [_llm_candidate_from_record(r) for r in stakes]
-
-    def _progress(call_i: int, total_calls: int, chunk_n: int) -> None:
-        set_backtest_progress(
-            "llm_batch",
-            f"DeepSeek WF {call_i}/{total_calls} ({chunk_n} кандидатов)…",
-            88 + min(6, int(6 * call_i / max(1, total_calls))),
-            processed=call_i,
-            total=total_calls,
-        )
-
-    raw = decide_backtest_batches(candidates, cover_all=True, progress_cb=_progress)
-    decisions = raw.get("decisions") or {}
-    fail_closed = True
-    skipped = raw.get("status") == "skipped"
-    if skipped and not decisions:
-        return {
-            "status": "skipped",
-            "reason": raw.get("reason"),
-            "applied_to": "walk_forward",
-            "applied": False,
-            "calls": raw.get("calls"),
-        }
-
-    llm_groups = [
-        {
-            "fold": group["fold"],
-            "events": group["events"],
-            "records": _apply_llm_and_to_records(
-                group.get("records") or [], decisions, fail_closed=fail_closed,
-            ),
-        }
-        for group in fold_groups
-    ]
-    rebuilt = _rebuild_walk_forward(
-        llm_groups,
-        meta_extra={
-            "llm_filter": "deepseek_batch_and",
-            "llm_status": raw.get("status") or "ok",
-            "llm_calls": raw.get("calls"),
-            "llm_requested": raw.get("requested"),
-            "llm_approved": sum(1 for v in decisions.values() if int(v) == 1),
-            "llm_uncovered": raw.get("uncovered"),
-            "llm_note": raw.get("note"),
-        },
-    )
-    walk_forward["folds"] = rebuilt["folds"]
-    walk_forward["combined"] = rebuilt["combined"]
-    walk_forward["fold_groups"] = rebuilt["fold_groups"]
-    walk_forward["meta"] = rebuilt["meta"]
-
-    ablation = {
-        "status": raw.get("status") or ("empty" if not decisions else "ok"),
-        "applied": True,
-        "applied_to": "walk_forward",
-        "calls": raw.get("calls"),
-        "call_reasons": raw.get("call_reasons"),
-        "note": raw.get("note"),
-        "requested": raw.get("requested"),
-        "approved": sum(1 for v in decisions.values() if int(v) == 1),
-        "uncovered": raw.get("uncovered"),
-        "unevaluated": sum(1 for r in stakes if _record_llm_key(r) not in decisions),
-        "reason": raw.get("reason"),
-        "pool_size": raw.get("pool_size") or len(stakes),
-    }
-    ablation.update(_llm_stake_ablation(stakes, decisions, fail_closed=fail_closed))
-    try:
-        from app.neuralbet.pipeline import add_ai_log
-
-        add_ai_log(
-            "SYSTEM",
-            (
-                f"DeepSeek AND applied to walk-forward: "
-                f"approved={ablation.get('approved')}/{ablation.get('evaluated')} "
-                f"calls={ablation.get('calls')} status={ablation.get('status')}."
-            ),
-            level="INFO",
-        )
-    except Exception:
-        pass
-    return ablation
 
 
 def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -923,6 +704,25 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 }
                 for r in rows
             ])
+            # Deduplicate events (same scores on every bet of a match) for as-of KB.
+            seen_events: set = set()
+            event_rows: List[Dict[str, Any]] = []
+            for r in rows:
+                eid = r["event_id"]
+                if eid in seen_events:
+                    continue
+                seen_events.add(eid)
+                event_rows.append({
+                    "event_id": eid,
+                    "team_1": r.get("team_1"),
+                    "team_2": r.get("team_2"),
+                    "sport_path": r.get("sport_path"),
+                    "score_1": r.get("score_1"),
+                    "score_2": r.get("score_2"),
+                    "period_scores_json": r.get("period_scores_json"),
+                    "finished_at": r["finished_at"],
+                })
+            stats_lookup = build_team_stats_asof_lookup(event_rows)
             calibration_cutoff = str(rows[-1]["finished_at"])
             for idx, r in enumerate(rows):
                 sample = row_to_sample(r)
@@ -937,6 +737,9 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     sample["team1_form_asof"] = t1_form
                 if t2_form is not None:
                     sample["team2_form_asof"] = t2_form
+                stats_vec = stats_lookup.get(r["event_id"])
+                if stats_vec is not None:
+                    sample["team_stats_asof"] = stats_vec
                 view = build_model_input(sample, mode="backtest")
                 if view is None:
                     continue
@@ -1029,7 +832,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     "stake_logit": stake_logit,
                 })
 
-            records = _records_from_scored(
+            records, sibling_coherence = _records_from_scored(
                 scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
             )
 
@@ -1076,39 +879,6 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         walk_forward = _walk_forward_eval(
             scored, rows, decision_threshold, sport_decision_thresholds, market_support,
         )
-        walk_forward_model_only = (walk_forward or {}).get("combined") if walk_forward else None
-        walk_forward_folds_model_only = (walk_forward or {}).get("folds") if walk_forward else None
-
-        llm_web_ablation: Dict[str, Any]
-        if walk_forward:
-            set_backtest_progress(
-                "llm_batch",
-                "DeepSeek AND на walk-forward…",
-                88,
-                processed=0,
-                total=1,
-            )
-            llm_web_ablation = _apply_llm_walk_forward(walk_forward)
-            if llm_web_ablation.get("status") == "skipped" and llm_web_ablation.get("reason") == "disabled":
-                set_backtest_progress(
-                    "llm_batch",
-                    "DeepSeek web-search ablation (WF off)…",
-                    92,
-                    processed=0,
-                    total=1,
-                )
-                llm_web_ablation = _llm_web_search_ablation(records)
-        else:
-            set_backtest_progress(
-                "llm_batch",
-                "DeepSeek web-search ablation…",
-                92,
-                processed=0,
-                total=1,
-            )
-            llm_web_ablation = _llm_web_search_ablation(records)
-
-        llm_applied_wf = bool(llm_web_ablation.get("applied"))
         if walk_forward:
             walk_forward.pop("fold_groups", None)
 
@@ -1139,24 +909,20 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "walk_forward_folds": WALK_FORWARD_FOLDS,
                 "lgb_disable_team_features": LGB_DISABLE_TEAM_FEATURES,
                 "bootstrap_seed": BOOTSTRAP_SEED,
-                "llm_backtest": llm_web_ablation.get("status"),
-                "llm_walk_forward": bool(llm_applied_wf),
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),
             "oos_never_train": _agg_group(oos_records) if oos_records else None,
             "walk_forward": walk_forward_combined,
-            "walk_forward_model_only": walk_forward_model_only if llm_applied_wf else None,
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
-            "walk_forward_folds_model_only": walk_forward_folds_model_only if llm_applied_wf else None,
             "walk_forward_meta": walk_forward_meta,
             "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
-            "llm_web_search_ablation": llm_web_ablation,
             "oos_by_market": sorted(
                 [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
                 key=lambda x: -x["evaluated"],
             ) if oos_by_market_groups else None,
             "oos_ablation": oos_ablation,
+            "sibling_coherence": sibling_coherence,
             "by_sport": sorted(
                 [{"sport": s, **_agg_group(rs)} for s, rs in by_sport.items()],
                 key=lambda x: -x["evaluated"],
@@ -1175,15 +941,6 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         from app.neuralbet.review import build_agent_review
 
         result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
-        try:
-            from app.deepseek.insights import build_backtest_narrative, llm_is_enabled
-
-            if llm_is_enabled():
-                narrative = build_backtest_narrative(result["agent_review"])
-                if narrative:
-                    result["agent_review"]["llm_narrative"] = narrative
-        except Exception as e:
-            logger.warning("Backtest LLM narrative skipped: %s", e)
 
         save_and_record(result)
         set_backtest_progress(

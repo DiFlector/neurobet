@@ -34,6 +34,12 @@ from .parse import (
     period_index,
     unpack_timer_entry,
 )
+from .player_stats import (
+    TEAM_STATS_DIM,
+    TEAM_STATS_FEATURE_NAMES,
+    lookup_team_stats_vector,
+    unknown_stats_vector,
+)
 from .team_form import FORM_UNKNOWN, lookup_team_form
 from .vocab import market_family_index, sport_index, team_index
 
@@ -107,7 +113,9 @@ LGB_FEATURE_NAMES = [
     "total_line",
     "period_index",
     "set_point_diff",
+    *TEAM_STATS_FEATURE_NAMES,
 ]
+KB_CONTEXT_DIM = TEAM_STATS_DIM
 LGB_CATEGORICAL_FEATURES = [
     "factor_id",
     "sport_idx",
@@ -118,11 +126,32 @@ LGB_CATEGORICAL_FEATURES = [
 
 # Optional rolling form cache — populated by pipeline before LGB refit / inference.
 _TEAM_FORM_CACHE: Optional[Dict[Tuple[int, str, int], float]] = None
+# Optional team/player match-stats KB — same refresh points as form (+ inference ensure).
+_TEAM_STATS_CACHE: Optional[Dict[str, Any]] = None
 
 
 def set_team_form_cache(cache: Optional[Dict[Tuple[int, str, int], float]]) -> None:
     global _TEAM_FORM_CACHE
     _TEAM_FORM_CACHE = cache
+
+
+def set_team_stats_cache(cache: Optional[Dict[str, Any]]) -> None:
+    global _TEAM_STATS_CACHE
+    _TEAM_STATS_CACHE = cache
+
+
+def kb_context_vector(view: Mapping[str, Any]) -> List[float]:
+    """Fixed-length team-stats KB vector for the GRU context concat."""
+    if LGB_DISABLE_TEAM_FEATURES:
+        return unknown_stats_vector()
+    raw = view.get("team_stats_vec")
+    if isinstance(raw, (list, tuple)) and len(raw) == TEAM_STATS_DIM:
+        return [float(x) for x in raw]
+    out = unknown_stats_vector()
+    for i, name in enumerate(TEAM_STATS_FEATURE_NAMES):
+        if name in view and view[name] is not None:
+            out[i] = float(view[name])
+    return out
 
 
 def _row_get(row: Any, key: str, default: Any = None) -> Any:
@@ -479,6 +508,17 @@ def build_model_input(sample: Mapping[str, Any], mode: str = "serve") -> Optiona
     if team2_form is None:
         team2_form = lookup_team_form(_TEAM_FORM_CACHE, team2, sport_path, factor_id)
 
+    team_stats_vec = sample.get("team_stats_asof")
+    if not isinstance(team_stats_vec, (list, tuple)) or len(team_stats_vec) != TEAM_STATS_DIM:
+        team_stats_vec = lookup_team_stats_vector(
+            _TEAM_STATS_CACHE, team1, team2, sport_path,
+        )
+    else:
+        team_stats_vec = [float(x) for x in team_stats_vec]
+    stats_fields = {
+        name: float(team_stats_vec[i]) for i, name in enumerate(TEAM_STATS_FEATURE_NAMES)
+    }
+
     return {
         "step_pairs": step_pairs,
         "current_coeff": current_coeff,
@@ -513,6 +553,8 @@ def build_model_input(sample: Mapping[str, Any], mode: str = "serve") -> Optiona
         "team2_idx": team_index(team2),
         "team1_form": team1_form,
         "team2_form": team2_form,
+        "team_stats_vec": team_stats_vec,
+        **stats_fields,
         "sport": (sport_path.split("/")[0].strip() or "Другое"),
         "target": None if sample.get("is_win") is None else float(sample["is_win"]),
         "is_win": sample.get("is_win"),
@@ -634,4 +676,8 @@ def lgb_feature_row(view: Mapping[str, Any]) -> List[float]:
         float(view.get("total_line") or 0.0),
         float(int(view.get("period_index") or 0)),
         float(view.get("set_point_diff") or 0.0),
+        *(
+            unknown_stats_vector() if LGB_DISABLE_TEAM_FEATURES
+            else kb_context_vector(view)
+        ),
     ]

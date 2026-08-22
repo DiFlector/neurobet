@@ -2,68 +2,8 @@ import os
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 MODEL_DIR = os.getenv("MODEL_DIR", "/app/data/models")
-DEEPSEEK_TOKEN = os.getenv("DEEPSEEK_TOKEN", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 
 
 def _env_bool(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in ("1", "true", "yes", "on")
-
-
-# Optional DeepSeek LLM layer (narratives, digests, match web-search context).
-# Master switch — keep off until DEEPSEEK_TOKEN is set on prod and behaviour is verified.
-LLM_ENABLED = _env_bool("NEURALBET_LLM_ENABLED", "0")
-# Match-context OFF by default — DeepSeek quota is for live bot stake JSON decide.
-LLM_MATCH_CONTEXT = _env_bool("NEURALBET_LLM_MATCH_CONTEXT", "0")
-# When on: skip a live stake if web-search LLM confidently disagrees with the model.
-LLM_VETO = _env_bool("NEURALBET_LLM_VETO", "0")
-LLM_VETO_MIN_CONFIDENCE = float(os.getenv("NEURALBET_LLM_VETO_MIN_CONFIDENCE", "0.7"))
-# Shadow-log every LLM decision (even with veto off) and score vs live_bets outcomes.
-LLM_SHADOW = _env_bool("NEURALBET_LLM_SHADOW", "0")
-# Run web-search / rationales after bankroll place (don't block staking). Forced sync when veto active.
-LLM_ASYNC = _env_bool("NEURALBET_LLM_ASYNC", "1")
-# Auto-enable veto only when shadow report proves model+veto beats model-only (see insights).
-LLM_VETO_AUTO = _env_bool("NEURALBET_LLM_VETO_AUTO", "0")
-LLM_VETO_AUTO_MIN_SETTLED = int(os.getenv("NEURALBET_LLM_VETO_AUTO_MIN_SETTLED", "150"))
-# Sports allowed for web-search context (* / all = every sport). Default: tennis+football
-# (news/rosters exist). Table-tennis live totals get little usable search signal.
-_LLM_CTX_SPORTS_RAW = os.getenv(
-    "NEURALBET_LLM_MATCH_CONTEXT_SPORTS",
-    "теннис,футбол,настольный теннис,баскетбол",
-).strip().lower()
-LLM_MATCH_CONTEXT_SPORTS: frozenset[str] | None = (
-    None
-    if _LLM_CTX_SPORTS_RAW in ("", "*", "all")
-    else frozenset(s.strip() for s in _LLM_CTX_SPORTS_RAW.split(",") if s.strip())
-)
-LLM_DIGEST_HOURS = float(os.getenv("NEURALBET_LLM_DIGEST_HOURS", "0"))
-LLM_DIGEST_MAX_HISTORY = int(os.getenv("NEURALBET_LLM_DIGEST_MAX_HISTORY", "20"))
-LLM_MIN_INTERVAL_SECONDS = float(os.getenv("NEURALBET_LLM_MIN_INTERVAL_SECONDS", "15"))
-LLM_RATE_LIMIT_COOLDOWN_SEC = float(os.getenv("NEURALBET_LLM_RATE_LIMIT_COOLDOWN_SEC", "90"))
-# When DeepSeek returns rate_limit: sleep until cooldown clears, then retry.
-LLM_RATE_LIMIT_WAIT = _env_bool("NEURALBET_LLM_RATE_LIMIT_WAIT", "1")
-LLM_RATE_LIMIT_MAX_WAIT_SEC = float(os.getenv("NEURALBET_LLM_RATE_LIMIT_MAX_WAIT_SEC", "180"))
-LLM_MAX_CONTEXT_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_CONTEXT_PER_CYCLE", "2"))
-# Short bet rationales burned DeepSeek rate limit for little value — off by default.
-LLM_MAX_RATIONALE_PER_CYCLE = int(os.getenv("NEURALBET_LLM_MAX_RATIONALE_PER_CYCLE", "0"))
-LLM_SHADOW_MAX_DECISIONS = int(os.getenv("NEURALBET_LLM_SHADOW_MAX_DECISIONS", "2000"))
-# Match-context cache: key is event/factor/parameter/prefix. Re-fetch when coeff
-# or model win_probability moves by at least these deltas (probability in %-points).
-LLM_MATCH_CTX_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_TTL_SEC", str(3 * 3600)))
-LLM_MATCH_CTX_NULL_TTL_SEC = float(os.getenv("NEURALBET_LLM_MATCH_CTX_NULL_TTL_SEC", str(5 * 60)))
-LLM_REANALYZE_COEFF_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_COEFF_DELTA", "0.05"))
-LLM_REANALYZE_PROB_DELTA = float(os.getenv("NEURALBET_LLM_REANALYZE_PROB_DELTA", "3.0"))
-# Batch decide: one web-search call over top-N EV candidates before Kelly place.
-LLM_BATCH_DECIDE = _env_bool("NEURALBET_LLM_BATCH_DECIDE", "1")
-LLM_BATCH_REQUIRED = _env_bool("NEURALBET_LLM_BATCH_REQUIRED", "1")
-LLM_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BATCH_MAX", "16"))
-LLM_BATCH_TTL_SEC = float(os.getenv("NEURALBET_LLM_BATCH_TTL_SEC", "180"))
-# Backtest DeepSeek OFF by default — live bot stakes own the quota.
-LLM_BACKTEST = _env_bool("NEURALBET_LLM_BACKTEST", "0")
-LLM_BACKTEST_WF = _env_bool("NEURALBET_LLM_BACKTEST_WF", "0")
-# Per archive call (WF). Larger than live BATCH_MAX to cut API round-trips.
-LLM_BACKTEST_BATCH_MAX = int(os.getenv("NEURALBET_LLM_BACKTEST_BATCH_MAX", "64"))
-# Hard cap on archive web-search batches. 8×64 covers typical WF (~196 stakes).
-LLM_BACKTEST_MAX_CALLS = int(os.getenv("NEURALBET_LLM_BACKTEST_MAX_CALLS", "8"))
-# While backtest owns DeepSeek, live batch fail-opens (no competing API spam).
-LLM_BACKTEST_EXCLUSIVE = _env_bool("NEURALBET_LLM_BACKTEST_EXCLUSIVE", "1")
