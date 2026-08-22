@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # table tennis Przykazski–Koubek left live at 1:2 / 8:10, then results had
     # 1:3 / 8:11. Without this wait we graded the frozen live snapshot.
     EVENT_RESULTS_WAIT_MINUTES: int = 5
+    # Event still in Fonbet's live catalog but with zero odds (line recalc / pull).
+    # Do NOT treat a 1-minute stale upsert as "match finished" — Liga Pro "за 3 место"
+    # style stuck catalog entries need a longer no-odds window before finalize.
+    EVENT_CATALOG_NO_ODDS_FINISH_MINUTES: int = 20
     # Snapshot sanity guard, to avoid finalizing events on a parser/API hiccup: an
     # almost-empty snapshot is skipped entirely (see save_parsed_events).
     MIN_SNAPSHOT_EVENTS: int = 5

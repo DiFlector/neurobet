@@ -185,6 +185,10 @@ FACTORS_X2 = {925, 926}
 # just encodes it differently per league/tournament type) and the mirror set for team 2.
 FACTORS_FINAL_WIN1 = {7035, 933, 7348, 16617, 16680, 17036}
 FACTORS_FINAL_WIN2 = {7036, 934, 7349, 16618, 16681, 17037}
+MAIN_MATCH_WINNER_FACTORS = (
+    FACTORS_W1 | FACTORS_X | FACTORS_W2 | FACTORS_1X | FACTORS_12 | FACTORS_X2
+    | FACTORS_FINAL_WIN1 | FACTORS_FINAL_WIN2
+)
 # Was {930}/{931} only for a long time — every other total line (alternate totals
 # offered alongside the main one, shared across sports) was silently unresolvable even
 # for football/hockey/basketball/handball/water polo, where it's fully gradable. Pairing
@@ -821,18 +825,17 @@ def save_parsed_events(
         if missing_count:
             logger.info(f"{missing_count}/{live_before} live events missing from this snapshot.")
 
-        # Only events we actually upserted this cycle (had odds) count as "still live".
-        # Fonbet often keeps a finished match in the catalog with zero markets — those
-        # IDs sit in present_ids, so treating them as present froze last_updated_at,
-        # never incremented miss_count, and left live_bets open while the UI already
-        # showed «матч завершён» (stale last_updated_at vs latest scrape).
+        # Grace-period counters track disappearance from the *catalog* (present_ids),
+        # not "had zero odds this poll". A line recalc pulls markets for a minute while
+        # the event stays in seen_live_ids — that must not finalize the match or settle
+        # open bot bets on an interim score.
         upserted_ids = [int(e["event_id"]) for e in parsed_events] or [-1]
         cursor.execute(
             """UPDATE events
                    SET miss_count = 0, missing_since = NULL
                  WHERE event_id = ANY(%s)
                    AND (miss_count > 0 OR missing_since IS NOT NULL)""",
-            (upserted_ids,),
+            (id_list,),
         )
         cursor.execute(
             """UPDATE events
@@ -840,7 +843,7 @@ def save_parsed_events(
                        missing_since = COALESCE(missing_since, %s)
                  WHERE is_live = 1
                    AND NOT (event_id = ANY(%s))""",
-            (timestamp_str, upserted_ids),
+            (timestamp_str, id_list),
         )
         # Finalize only once BOTH thresholds are satisfied (consecutive misses AND
         # a minimum grace window since the event first went missing) — see settings.py
@@ -857,22 +860,31 @@ def save_parsed_events(
         if cursor.rowcount:
             logger.info(f"Finalized {cursor.rowcount} events after grace period.")
 
-        # Catalog-present matches with no markets never enter parsed_events, so the
-        # miss_count path above should catch them. Liga Pro "за 3 место" still sat
-        # is_live=1 for hours with a stale last_updated_at (UI «матч завершён»,
-        # live_bets open). Treat "not touched in this scrape for the grace window"
-        # as finished even if miss_count was reset.
+        # Catalog-present, zero-odds stuck entries (finished match still listed, or
+        # Liga Pro "за 3 место"). Use a *long* no-upsert window — not EVENT_MISS_GRACE
+        # (1 min), which falsely finalized live football during a line recalc.
         cursor.execute(
             """UPDATE events
                   SET is_live = 0,
                       missing_since = COALESCE(missing_since, last_updated_at)
                 WHERE is_live = 1
+                  AND event_id = ANY(%s)
+                  AND NOT (event_id = ANY(%s))
                   AND last_updated_at IS DISTINCT FROM %s
                   AND EXTRACT(EPOCH FROM (%s::timestamptz - last_updated_at::timestamptz)) / 60.0 >= %s""",
-            (timestamp_str, timestamp_str, settings.EVENT_MISS_GRACE_MINUTES),
+            (
+                id_list,
+                upserted_ids,
+                timestamp_str,
+                timestamp_str,
+                settings.EVENT_CATALOG_NO_ODDS_FINISH_MINUTES,
+            ),
         )
         if cursor.rowcount:
-            logger.info(f"Finalized {cursor.rowcount} events with stale last_updated_at.")
+            logger.info(
+                f"Finalized {cursor.rowcount} catalog-present event(s) with no odds "
+                f"for {settings.EVENT_CATALOG_NO_ODDS_FINISH_MINUTES}+ min."
+            )
 
     # Live snapshot is committed first. Archiving finished events (copying odds
     # trajectories into finished_bets) can take minutes on a large batch and used
@@ -2931,6 +2943,13 @@ def _feed_active(is_live: bool, last_updated_at: Any, latest_scrape_ts: Any) -> 
     return bool(is_live) and last_updated_at is not None and last_updated_at == latest_scrape_ts
 
 
+def _is_main_match_winner_bet(factor_id: int, market_prefix: str) -> bool:
+    prefix = (market_prefix or "").strip()
+    if prefix and prefix != MAIN_MARKET_PREFIX:
+        return False
+    return int(factor_id) in MAIN_MATCH_WINNER_FACTORS
+
+
 def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
     """Match scores for grading open bets when finished_bets row is not ready yet."""
     conn = get_connection()
@@ -2948,6 +2967,7 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
             stored = _parse_period_scores_json(row["period_scores_json"])
             named = _parse_named_scores_json(row["named_scores_json"])
             sport_path = row["sport_path"] or ""
+            db_is_live = bool(row["is_live"])
             return {
                 "score_1": int(row["score_1"] or 0),
                 "score_2": int(row["score_2"] or 0),
@@ -2956,7 +2976,10 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
                     stored, row.get("timer"), named, sport_path,
                 ),
                 "named_scores": named,
-                "is_live": _feed_active(bool(row["is_live"]), row.get("last_updated_at"), latest_scrape_ts),
+                "feed_active": _feed_active(
+                    db_is_live, row.get("last_updated_at"), latest_scrape_ts,
+                ),
+                "finalized": not db_is_live,
                 "missing_since": row.get("missing_since"),
                 "last_updated_at": row.get("last_updated_at"),
             }
@@ -2986,7 +3009,8 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
                     sport_path,
                 ),
                 "named_scores": named,
-                "is_live": False,
+                "feed_active": False,
+                "finalized": True,
                 "last_updated_at": None,
             }
     finally:
@@ -3075,11 +3099,17 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         # Event finalized (is_live=0) but not archived yet — grade from live DB scores
         # instead of waiting for finished_bets (can lag minutes behind results API).
         state = _load_event_grading_state(b["event_id"])
-        if state is None or state["is_live"]:
+        if state is None or not state.get("finalized"):
             continue
 
         prefix = (b["market_prefix"] or "").strip()
         ordinal = _parse_period_ordinal(prefix) if prefix and prefix != MAIN_MARKET_PREFIX else None
+        start_ts = state.get("missing_since") or state.get("last_updated_at")
+        # Main-match bets need the official-results wait — interim scores (1:1 on П1)
+        # must not settle as a loss during a line recalc / premature finalize.
+        if ordinal is None and not _stale_past_results_wait(start_ts, timestamp_str):
+            continue
+
         period_ready = True
         if ordinal is not None:
             period_ready = _period_ready_for_settlement(
@@ -3089,7 +3119,6 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
             # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
             # After the official-results wait, void rather than grade 10-6 as a final
             # or leave the stake locked forever.
-            start_ts = state.get("missing_since") or state.get("last_updated_at")
             if not _stale_past_grace_only(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
