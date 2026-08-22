@@ -210,6 +210,7 @@ TRAIN_CATCHUP_UNTIL_RATIO = float(os.getenv("NEURALBET_TRAIN_CATCHUP_UNTIL_RATIO
 _COVERAGE_REFRESH_SECONDS = float(os.getenv("NEURALBET_COVERAGE_REFRESH_SECONDS", "60"))
 _coverage_cache: dict[str, Any] | None = None
 _coverage_loaded_at = 0.0
+_coverage_lock = threading.Lock()
 _last_catch_up: bool | None = None
 
 # After an admin reset the live weights are random: running the online 10k loop
@@ -230,7 +231,7 @@ COLD_START_ARCHIVE_FRACTION = float(
 )
 # One HTTP cycle trains this many archive rows (shuffle in Python). 0 = the entire
 # cold pool in one fetch — that OOMs the AI worker during fetchall / exhausts
-# the 10-conn Postgres pool, then Docker restarts and epoch 1/2 begins again.
+# the Postgres pool, then Docker restarts and epoch 1/2 begins again.
 # 40000 is large enough for from-scratch GRU updates; two outer archive epochs
 # still walk the whole pool across cycles via samples_this_epoch offset.
 COLD_START_CHUNK = int(os.getenv("NEURALBET_COLD_START_CHUNK", "40000"))
@@ -240,6 +241,11 @@ COLD_START_INNER_EPOCHS = int(os.getenv("NEURALBET_COLD_START_INNER_EPOCHS", "1"
 COLD_START_LR = float(os.getenv("NEURALBET_COLD_START_LR", "1e-3"))
 COLD_START_LR_DECAY = float(os.getenv("NEURALBET_COLD_START_LR_DECAY", "0.3"))
 COLD_START_PATH = os.path.join(MODEL_DIR, "cold_start.json")
+# Ordered finished_bets.id list for the frozen cold-start pool. Built once, then
+# each chunk is WHERE id = ANY(slice) — OFFSET over JSON trajectories got slower
+# every chunk (240k skip ≈ 90s) and sat on a pool connection the whole time.
+COLD_START_ROW_IDS_PATH = os.path.join(MODEL_DIR, "cold_start_row_ids.json")
+_cold_start_row_ids: list[int] | None = None
 VAL_PIN_PATH = os.path.join(MODEL_DIR, "val_pin.json")
 VAL_PIN_REFRESH_SECONDS = float(os.getenv("NEURALBET_VAL_PIN_REFRESH_SECONDS", "86400"))
 LAST_TUNE_PATH = os.path.join(MODEL_DIR, "last_tune.json")
@@ -687,6 +693,7 @@ def _reset_training_caches() -> None:
     _online_pass_count = 0
     set_team_form_cache(None)
     set_team_stats_cache(None)
+    _clear_cold_start_row_ids()
     for path in (VAL_PIN_PATH, TEAM_FORM_PATH, TEAM_STATS_PATH, LAST_TUNE_PATH):
         try:
             if os.path.exists(path):
@@ -795,6 +802,7 @@ def _ensure_cold_start_pool(
         f_cursor, val_event_ids, event_ids=event_ids,
     )
     _save_cold_start(state)
+    _clear_cold_start_row_ids()
     add_ai_log(
         "TRAINING",
         f"Cold-start pool: oldest {len(event_ids)}/{n_events} events "
@@ -805,7 +813,77 @@ def _ensure_cold_start_pool(
     return state
 
 
+def _clear_cold_start_row_ids() -> None:
+    global _cold_start_row_ids
+    _cold_start_row_ids = None
+    try:
+        if os.path.exists(COLD_START_ROW_IDS_PATH):
+            os.remove(COLD_START_ROW_IDS_PATH)
+    except Exception:
+        pass
+
+
+def _ensure_cold_start_row_ids(
+    f_cursor,
+    val_event_ids: set | None,
+    pool_event_ids: list | None,
+) -> list[int]:
+    """Stable ordered finished_bets.id list for the frozen cold-start pool.
+
+    Built once (ids only, no trajectory JSON), then each chunk is a PK lookup.
+    """
+    global _cold_start_row_ids
+    if _cold_start_row_ids:
+        return _cold_start_row_ids
+    if os.path.exists(COLD_START_ROW_IDS_PATH):
+        try:
+            with open(COLD_START_ROW_IDS_PATH, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, list) and loaded:
+                _cold_start_row_ids = [int(x) for x in loaded]
+                return _cold_start_row_ids
+        except Exception as e:
+            logger.error(f"Error loading cold-start row ids: {e}")
+
+    if not pool_event_ids:
+        _cold_start_row_ids = []
+        return _cold_start_row_ids
+
+    uni, where_val, params = _universe_filter(val_event_ids)
+    add_ai_log(
+        "TRAINING",
+        f"Building cold-start row index ({len(pool_event_ids)} events) — "
+        "one-time sort, later chunks use PK lookups.",
+    )
+    f_cursor.execute(
+        f"""
+        SELECT h.id
+        FROM finished_bets h
+        JOIN finished_events f ON h.event_id = f.event_id
+        WHERE h.is_win IS NOT NULL
+        {uni} {where_val}
+        AND h.event_id = ANY(%s)
+        ORDER BY h.finished_at ASC, h.event_id, h.factor_id,
+                 h.parameter, h.market_prefix, h.id
+        """,
+        list(params) + [list(pool_event_ids)],
+    )
+    ids = [int(r["id"]) for r in f_cursor.fetchall() if r and r.get("id") is not None]
+    _cold_start_row_ids = ids
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        tmp_path = COLD_START_ROW_IDS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(ids, f)
+        os.replace(tmp_path, COLD_START_ROW_IDS_PATH)
+    except Exception as e:
+        logger.error(f"Error persisting cold-start row ids: {e}")
+    add_ai_log("TRAINING", f"Cold-start row index ready — {len(ids)} bet rows.")
+    return ids
+
+
 def _begin_cold_start(f_cursor=None, val_event_ids: set | None = None) -> dict[str, Any]:
+    _clear_cold_start_row_ids()
     state = {
         "active": True,
         "epoch": 1,
@@ -828,6 +906,7 @@ def _begin_cold_start(f_cursor=None, val_event_ids: set | None = None) -> dict[s
 def _finish_cold_start(state: dict[str, Any]) -> dict[str, Any]:
     state["active"] = False
     _save_cold_start(state)
+    _clear_cold_start_row_ids()
     _invalidate_archive_coverage()
     add_ai_log(
         "TRAINING",
@@ -899,92 +978,104 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
     ):
         return _coverage_cache
 
-    untrained = trained = total = 0
-    holdout: set | None = None
-    f_conn = None
-    try:
-        f_conn = get_finished_connection()
-        f_cursor = f_conn.cursor()
-        sports, factors = universe_sql_params()
-        holdout = _holdout_event_ids()
-        holdout_sql = "AND h.event_id != ALL(%s)" if holdout else ""
-        params: list[Any] = [sports, factors]
-        if holdout:
-            params.append(list(holdout))
-        f_cursor.execute(
-            f"""
-            SELECT
-              COUNT(*) FILTER (WHERE h.trained_count = 0) AS untrained,
-              COUNT(*) FILTER (WHERE h.trained_count > 0) AS trained,
-              COUNT(*) AS total
-            FROM finished_bets h
-            JOIN finished_events f ON h.event_id = f.event_id
-            WHERE h.is_win IS NOT NULL
-            {universe_sql("f", "h")}
-            {holdout_sql}
-            """,
-            params,
-        )
-        row = f_cursor.fetchone()
-        if row:
-            untrained = int(row["untrained"] or 0)
-            trained = int(row["trained"] or 0)
-            total = int(row["total"] or 0)
-    except Exception as e:
-        logger.error(f"Error querying archive training coverage: {e}")
-        if _coverage_cache is not None:
+    # Single-flight: waiters sit on the lock (no extra DB checkouts) until the
+    # in-flight COUNT fills the cache. A cache-miss stampede used to exhaust
+    # the AI-service pool and kill every inference cycle.
+    with _coverage_lock:
+        now = time.monotonic()
+        if (
+            not force
+            and _coverage_cache is not None
+            and (now - _coverage_loaded_at) < _COVERAGE_REFRESH_SECONDS
+        ):
             return _coverage_cache
-    finally:
-        if f_conn is not None:
-            release_connection(f_conn)
 
-    trained_ratio = (trained / total) if total else 0.0
-    fresh_n = _fresh_target()
-    cold_start = _load_cold_start()
-    catch_up = total > 0 and (
-        trained_ratio < TRAIN_CATCHUP_UNTIL_RATIO or untrained >= fresh_n
-    )
-    if cold_start.get("active"):
-        catch_up = True
-        every = 1
-    else:
-        every = TRAIN_CATCHUP_EVERY_CYCLES if catch_up else TRAIN_EVERY_CYCLES
-    payload = {
-        "untrained": untrained,
-        "trained": trained,
-        "total": total,
-        "trained_ratio": round(trained_ratio, 4),
-        "catch_up": catch_up,
-        "train_every_cycles": every,
-        "fresh_target": fresh_n,
-        "val_holdout_events": len(holdout) if holdout else 0,
-        "cold_start": {
-            "active": bool(cold_start.get("active")),
-            "epoch": int(cold_start.get("epoch") or 1),
-            "epochs_total": int(cold_start.get("epochs_total") or COLD_START_EPOCHS),
-            "samples_this_epoch": int(cold_start.get("samples_this_epoch") or 0),
-            "train_pool_size": int(cold_start.get("train_pool_size") or 0),
-            "chunk": COLD_START_CHUNK,
-        },
-    }
-    if _last_catch_up is None or catch_up != _last_catch_up:
-        add_ai_log(
-            "TRAINING",
-            (
-                f"Catch-up training {'ON' if catch_up else 'OFF'} — train pool "
-                f"{trained_ratio:.0%} trained ({trained}/{total}), {untrained} unseen"
-                + (
-                    f", {payload['val_holdout_events']} val events held out"
-                    if payload["val_holdout_events"]
-                    else ""
-                )
-                + f", cadence every {every} cycles."
-            ),
+        untrained = trained = total = 0
+        holdout: set | None = None
+        f_conn = None
+        try:
+            f_conn = get_finished_connection()
+            f_cursor = f_conn.cursor()
+            sports, factors = universe_sql_params()
+            holdout = _holdout_event_ids()
+            holdout_sql = "AND h.event_id != ALL(%s)" if holdout else ""
+            params: list[Any] = [sports, factors]
+            if holdout:
+                params.append(list(holdout))
+            f_cursor.execute(
+                f"""
+                SELECT
+                  COUNT(*) FILTER (WHERE h.trained_count = 0) AS untrained,
+                  COUNT(*) FILTER (WHERE h.trained_count > 0) AS trained,
+                  COUNT(*) AS total
+                FROM finished_bets h
+                JOIN finished_events f ON h.event_id = f.event_id
+                WHERE h.is_win IS NOT NULL
+                {universe_sql("f", "h")}
+                {holdout_sql}
+                """,
+                params,
+            )
+            row = f_cursor.fetchone()
+            if row:
+                untrained = int(row["untrained"] or 0)
+                trained = int(row["trained"] or 0)
+                total = int(row["total"] or 0)
+        except Exception as e:
+            logger.error(f"Error querying archive training coverage: {e}")
+            if _coverage_cache is not None:
+                return _coverage_cache
+        finally:
+            if f_conn is not None:
+                release_connection(f_conn)
+
+        trained_ratio = (trained / total) if total else 0.0
+        fresh_n = _fresh_target()
+        cold_start = _load_cold_start()
+        catch_up = total > 0 and (
+            trained_ratio < TRAIN_CATCHUP_UNTIL_RATIO or untrained >= fresh_n
         )
-    _last_catch_up = catch_up
-    _coverage_cache = payload
-    _coverage_loaded_at = now
-    return payload
+        if cold_start.get("active"):
+            catch_up = True
+            every = 1
+        else:
+            every = TRAIN_CATCHUP_EVERY_CYCLES if catch_up else TRAIN_EVERY_CYCLES
+        payload = {
+            "untrained": untrained,
+            "trained": trained,
+            "total": total,
+            "trained_ratio": round(trained_ratio, 4),
+            "catch_up": catch_up,
+            "train_every_cycles": every,
+            "fresh_target": fresh_n,
+            "val_holdout_events": len(holdout) if holdout else 0,
+            "cold_start": {
+                "active": bool(cold_start.get("active")),
+                "epoch": int(cold_start.get("epoch") or 1),
+                "epochs_total": int(cold_start.get("epochs_total") or COLD_START_EPOCHS),
+                "samples_this_epoch": int(cold_start.get("samples_this_epoch") or 0),
+                "train_pool_size": int(cold_start.get("train_pool_size") or 0),
+                "chunk": COLD_START_CHUNK,
+            },
+        }
+        if _last_catch_up is None or catch_up != _last_catch_up:
+            add_ai_log(
+                "TRAINING",
+                (
+                    f"Catch-up training {'ON' if catch_up else 'OFF'} — train pool "
+                    f"{trained_ratio:.0%} trained ({trained}/{total}), {untrained} unseen"
+                    + (
+                        f", {payload['val_holdout_events']} val events held out"
+                        if payload["val_holdout_events"]
+                        else ""
+                    )
+                    + f", cadence every {every} cycles."
+                ),
+            )
+        _last_catch_up = catch_up
+        _coverage_cache = payload
+        _coverage_loaded_at = now
+        return payload
 
 
 def get_live_quality_gate() -> dict[str, Any]:
@@ -1452,35 +1543,24 @@ def _fetch_cold_start_batch(
 ) -> tuple[list[dict[str, Any]], list[tuple]]:
     """Sequential streaming slice of the cold-start event pool (one epoch = full pass)."""
     uni, where_val, params = _universe_filter(val_event_ids)
-    query_params = list(params)
-    pool_clause = ""
-    if pool_event_ids is not None:
-        if not pool_event_ids:
-            return [], []
-        pool_clause = "AND h.event_id = ANY(%s)"
-        query_params.append(list(pool_event_ids))
     unlimited = COLD_START_CHUNK <= 0
+    ids = _ensure_cold_start_row_ids(f_cursor, val_event_ids, pool_event_ids)
+    if not ids:
+        return [], []
     if unlimited:
-        f_cursor.execute(
-            f"""
-            {_TRAIN_ROW_SELECT}
-            {uni} {where_val} {pool_clause}
-            ORDER BY h.finished_at ASC, h.event_id, h.factor_id,
-                     h.parameter, h.market_prefix
-            """,
-            query_params,
-        )
+        slice_ids = ids[offset:]
     else:
-        f_cursor.execute(
-            f"""
-            {_TRAIN_ROW_SELECT}
-            {uni} {where_val} {pool_clause}
-            ORDER BY h.finished_at ASC, h.event_id, h.factor_id,
-                     h.parameter, h.market_prefix
-            OFFSET %s LIMIT %s
-            """,
-            query_params + [offset, COLD_START_CHUNK],
-        )
+        slice_ids = ids[offset:offset + COLD_START_CHUNK]
+    if not slice_ids:
+        return [], []
+    f_cursor.execute(
+        f"""
+        {_TRAIN_ROW_SELECT}
+        {uni} {where_val}
+        AND h.id = ANY(%s)
+        """,
+        list(params) + [slice_ids],
+    )
     samples = _rows_to_train_samples(f_cursor.fetchall())
     rng = random.Random(VAL_CUTOFF_SEED + epoch * 1_000_003 + offset)
     rng.shuffle(samples)
@@ -1955,11 +2035,17 @@ def _refresh_market_support() -> dict[tuple, int]:
         _market_support_loaded_at = now
         _untrack_conn(f_conn)
         release_connection(f_conn)
+        f_conn = None
     except Exception as e:
         logger.error(f"Error refreshing market support counts: {e}")
+    finally:
         if f_conn is not None:
             try:
                 _untrack_conn(f_conn)
+            except Exception:
+                pass
+            try:
+                release_connection(f_conn)
             except Exception:
                 pass
     return _market_support
@@ -2090,43 +2176,8 @@ def run_neuralbet_inference_and_training(
             _release_tracked_conns()
 
 
-def _run_neuralbet_inference_and_training_locked(
-    scrape_timestamp: str | None = None,
-) -> dict[str, Any]:
-    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak
-    _cycle_count += 1
-    logger.info(
-        f"AI cycle {_cycle_count} start "
-        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
-        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
-        f"scrape_ts={scrape_timestamp})"
-    )
-    add_ai_log(
-        "INFERENCE",
-        f"Cycle {_cycle_count} started "
-        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
-        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
-        f"scrape_ts={scrape_timestamp or 'latest'}).",
-    )
-
-    if not AI_SETTINGS["ai_enabled"]:
-        add_ai_log(
-            "INFERENCE", "AI Inference skipped (Disabled by Admin).", level="WARNING"
-        )
-        return {
-            "status": "disabled",
-            "predictions_count": 0,
-            "finished_samples_trained": 0,
-        }
-
-    if cycle_aborted():
-        add_ai_log("SYSTEM", "AI cycle aborted before inference.")
-        return {
-            "status": "aborted",
-            "predictions_count": 0,
-            "finished_samples_trained": 0,
-        }
-
+def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str, Any]]:
+    """Live odds -> calibrated predictions -> Kelly. Skipped during cold-start."""
     # Refresh team-stats KB before live views (same finished_events path as LGB).
     try:
         stats_conn = _track_conn(get_finished_connection())
@@ -2538,6 +2589,61 @@ def _run_neuralbet_inference_and_training_locked(
             )
         elif reason == "quality_gate":
             pass
+    return predictions
+
+
+def _run_neuralbet_inference_and_training_locked(
+    scrape_timestamp: str | None = None,
+) -> dict[str, Any]:
+    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak
+    _cycle_count += 1
+    logger.info(
+        f"AI cycle {_cycle_count} start "
+        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
+        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
+        f"scrape_ts={scrape_timestamp})"
+    )
+    add_ai_log(
+        "INFERENCE",
+        f"Cycle {_cycle_count} started "
+        f"(inference={'on' if AI_SETTINGS['ai_enabled'] else 'off'}, "
+        f"training={'on' if AI_SETTINGS['training_enabled'] else 'off'}, "
+        f"scrape_ts={scrape_timestamp or 'latest'}).",
+    )
+
+    if not AI_SETTINGS["ai_enabled"]:
+        add_ai_log(
+            "INFERENCE", "AI Inference skipped (Disabled by Admin).", level="WARNING"
+        )
+        return {
+            "status": "disabled",
+            "predictions_count": 0,
+            "finished_samples_trained": 0,
+        }
+
+    if cycle_aborted():
+        add_ai_log("SYSTEM", "AI cycle aborted before inference.")
+        return {
+            "status": "aborted",
+            "predictions_count": 0,
+            "finished_samples_trained": 0,
+        }
+
+    predictions: list[dict[str, Any]] = []
+    if _load_cold_start().get("active"):
+        add_ai_log(
+            "INFERENCE",
+            "Live inference skipped — cold-start archive walk in progress "
+            "(weights are random until the walk finishes).",
+        )
+        add_ai_log(
+            "BANKROLL",
+            "Cold-start in progress — live bets skipped (weights are random "
+            "until the archive walk finishes).",
+        )
+    else:
+        predictions = _run_live_inference_and_bets(scrape_timestamp)
+
 
     if cycle_aborted():
         add_ai_log("SYSTEM", "AI cycle aborted after inference — skipping training.")
@@ -2992,7 +3098,7 @@ def _run_neuralbet_inference_and_training_locked(
                     "best_epoch": metrics.get("best_epoch"),
                     "epochs_run": metrics.get("epochs_run"),
                     "train_loss": metrics["final_loss"],
-                    "train_guess_rate": metrics["train_guess_rate"],
+                    "train_guess_rate": metrics.get("train_guess_rate"),
                     "val_loss": metrics.get("val_loss"),
                     "val_guess_rate": metrics.get("val_guess_rate"),
                     "checkpoint_accepted": (
@@ -3025,9 +3131,7 @@ def _run_neuralbet_inference_and_training_locked(
                     "TRAINING",
                     f"Cold-start chunk: {metrics['samples_used']} samples "
                     f"({metrics['positive_count']} win / {metrics['negative_count']} loss) — "
-                    f"pass_loss {metrics.get('pass_loss', metrics['final_loss']):.4f}, "
-                    f"eval_loss {metrics['final_loss']:.4f} "
-                    f"(hit_rate {metrics['train_guess_rate']:.1f}%). "
+                    f"pass_loss {metrics.get('pass_loss', metrics['final_loss']):.4f}. "
                     f"Progress {progress}/{pool}. "
                     f"Checkpoint deferred to epoch end.",
                 )
@@ -3101,8 +3205,12 @@ def _run_neuralbet_inference_and_training_locked(
                         else ""
                     )
                     + f") — {epoch_bit}"
-                    f"train_loss {metrics['final_loss']:.4f} "
-                    f"(hit_rate {metrics['train_guess_rate']:.1f}%)"
+                    f"train_loss {metrics['final_loss']:.4f}"
+                    + (
+                        f" (hit_rate {metrics['train_guess_rate']:.1f}%)"
+                        if metrics.get("train_guess_rate") is not None
+                        else ""
+                    )
                     + val_str
                     + bank_str
                     + (

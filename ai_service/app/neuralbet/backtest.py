@@ -13,9 +13,11 @@ happened, not the 1.01 close), broken down by coefficient band and sport the sam
 with the live ensemble's current weights/blend/threshold instead of reading back
 whatever was actually predicted at the time (predicted_win_probability/predicted_win,
 which mixes together however many different model versions were live across the whole
-history window). Read-only: no gradient step, no checkpoint write, no bankroll ledger
-entry. Runs under pipeline._engine_lock like every other read of ensemble_engine, so it
-can't race a concurrent train_online() pass reading torn-mid-update weights.
+history window).     Read-only: no gradient step, no checkpoint write, no bankroll ledger
+    entry. Skipped entirely while a cold-start archive walk is active (random
+    weights, and the run would steal `_engine_lock` from the next chunk).
+    Otherwise runs under pipeline._engine_lock like every other read of ensemble_engine, so it
+    can't race a concurrent train_online() pass reading torn-mid-update weights.
 """
 import json
 import logging
@@ -663,28 +665,52 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
     # need pipeline's live state.
     from app.neuralbet.pipeline import (
         _engine_lock,
+        _load_cold_start,
         _refresh_market_support, ensemble_engine,
+        add_ai_log,
         cycle_aborted,
     )
 
     t0 = time.time()
+    # Check before taking _engine_lock: a scheduled :00/:30 job must not queue
+    # behind a 40k cold-start chunk (and then steal the lock from the next one).
+    if _load_cold_start().get("active"):
+        set_backtest_progress(
+            "skipped",
+            "Cold-start in progress — backtest deferred until the walk finishes.",
+            0,
+            active=False,
+            total=limit,
+        )
+        add_ai_log(
+            "SYSTEM",
+            "Backtest skipped — cold-start archive walk in progress "
+            "(scheduled and manual runs resume after the walk finishes).",
+        )
+        return {
+            "status": "skipped_cold_start",
+            "samples_evaluated": 0,
+            "samples_requested": limit,
+            "reason": "cold_start",
+        }
+
     set_backtest_progress(
         "starting",
-        f"Запуск бэктеста на {limit:,} ставок…".replace(",", " "),
+        f"Starting backtest on {limit:,} bets…".replace(",", " "),
         1,
         total=limit,
     )
     try:
-        set_backtest_progress("waiting_lock", "Жду завершения обучения или другого бэктеста…", 3, total=limit)
+        set_backtest_progress("waiting_lock", "Waiting for training or another backtest to finish…", 3, total=limit)
         with _engine_lock:
             if cycle_aborted():
-                set_backtest_progress("error", "Прервано", 0, active=False)
+                set_backtest_progress("error", "Aborted", 0, active=False)
                 return {"status": "aborted", "samples_evaluated": 0}
-            set_backtest_progress("fetch", "Загружаю архив завершённых ставок…", 8, total=limit)
+            set_backtest_progress("fetch", "Loading resolved-bet archive…", 8, total=limit)
             market_support = _refresh_market_support()
             rows = _fetch_backtest_rows(limit=limit, since=since)
             if not rows:
-                set_backtest_progress("error", "Нет данных для бэктеста", 0, active=False)
+                set_backtest_progress("error", "Not enough data for a backtest", 0, active=False)
                 return {"status": "no_data", "samples_evaluated": 0}
 
             items: List[Dict[str, Any]] = []
@@ -776,19 +802,19 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     pct = 8 + int(7 * idx / row_total)
                     set_backtest_progress(
                         "prepare",
-                        f"Подготовка {idx:,}/{row_total:,}…".replace(",", " "),
+                        f"Preparing {idx:,}/{row_total:,}…".replace(",", " "),
                         pct,
                         processed=idx,
                         total=row_total,
                     )
 
             if not items:
-                set_backtest_progress("error", "Нет валидных срезов для бэктеста", 0, active=False)
+                set_backtest_progress("error", "No valid backtest slices", 0, active=False)
                 return {"status": "no_data", "samples_evaluated": 0}
 
             set_backtest_progress(
                 "prepare",
-                f"Готово {len(items):,} срезов — запуск инференса…".replace(",", " "),
+                f"Prepared {len(items):,} slices — starting inference…".replace(",", " "),
                 15,
                 processed=len(items),
                 total=len(items),
@@ -809,14 +835,14 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             n_items = len(items)
             for i in range(0, n_items, PREDICT_CHUNK):
                 if cycle_aborted():
-                    set_backtest_progress("error", "Прервано", 0, active=False)
+                    set_backtest_progress("error", "Aborted", 0, active=False)
                     return {"status": "aborted", "samples_evaluated": 0}
                 chunk_end = min(i + PREDICT_CHUNK, n_items)
                 raw_results.extend(ensemble_engine.predict_batch(items[i:chunk_end]))
                 pct = 15 + int(70 * chunk_end / n_items)
                 set_backtest_progress(
                     "predict",
-                    f"Инференс {chunk_end:,}/{n_items:,}…".replace(",", " "),
+                    f"Inference {chunk_end:,}/{n_items:,}…".replace(",", " "),
                     pct,
                     processed=chunk_end,
                     total=n_items,
@@ -836,7 +862,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
             )
 
-        set_backtest_progress("aggregate", "Агрегация и фильтр по матчам…", 88, processed=len(records), total=len(records))
+        set_backtest_progress("aggregate", "Aggregating and filtering by match…", 88, processed=len(records), total=len(records))
 
         by_sport: Dict[str, List[Dict[str, Any]]] = {}
         by_coeff: Dict[int, List[Dict[str, Any]]] = {}
@@ -885,7 +911,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         walk_forward_combined = (walk_forward or {}).get("combined") if walk_forward else None
         walk_forward_meta = (walk_forward or {}).get("meta") if walk_forward else None
 
-        set_backtest_progress("save", "Сохранение результата…", 95, processed=len(records), total=len(records))
+        set_backtest_progress("save", "Saving result…", 95, processed=len(records), total=len(records))
 
         result = {
             "status": "success",
@@ -945,7 +971,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         save_and_record(result)
         set_backtest_progress(
             "done",
-            f"Готово — {len(records):,} ставок за {round(time.time() - t0, 1)}с".replace(",", " "),
+            f"Done — {len(records):,} bets in {round(time.time() - t0, 1)}s".replace(",", " "),
             100,
             active=False,
             processed=len(records),
@@ -953,7 +979,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         )
         return result
     except Exception as e:
-        set_backtest_progress("error", f"Ошибка: {e}", 0, active=False)
+        set_backtest_progress("error", f"Error: {e}", 0, active=False)
         raise
 
 

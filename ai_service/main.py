@@ -74,6 +74,8 @@ def run_scheduled_backtest():
                 f"{current.get('bets')} bets, ROI {current.get('roi_pct')}%, "
                 f"Brier {current.get('brier')} (market {overall.get('market_brier')}).",
             )
+        elif result.get("status") == "skipped_cold_start":
+            pass
         else:
             add_ai_log(
                 "SYSTEM",

@@ -402,6 +402,9 @@ export default function AdminPage() {
         return
       }
       if (postData?.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
+      if (postData?.status === "skipped_cold_start") {
+        throw new Error("Идёт cold-start — бэктест запустится, когда walk закончится")
+      }
       if (postData && postData.status !== "success") throw new Error("Бэктест завершился с ошибкой")
 
       let latest: { pct: number; label: string; step: string; active: boolean; processed: number; total: number } | null = null

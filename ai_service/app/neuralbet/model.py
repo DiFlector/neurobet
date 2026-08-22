@@ -1681,12 +1681,11 @@ class NeuralBetEnsemble:
             }
 
         self.is_trained = True
-        self.pytorch_model.train()
-        final_train_brier, final_train_guess_rate, _ = self._forward_metrics(prepared)
-
+        # Skip a second full forward over the 40k chunk — pass_loss is the
+        # training metric; val/checkpoint still run at epoch end.
         logger.info(
             f"Cold-start chunk complete: {len(prepared)} samples, "
-            f"pass_loss {train_loss:.4f}, eval_brier {final_train_brier:.4f}."
+            f"pass_loss {train_loss:.4f}."
         )
 
         return {
@@ -1695,8 +1694,8 @@ class NeuralBetEnsemble:
             "positive_count": positive_count,
             "negative_count": negative_count,
             "epochs_run": 1,
-            "final_loss": round(final_train_brier, 4),
-            "train_guess_rate": round(final_train_guess_rate * 100.0, 1),
+            "final_loss": round(train_loss, 4),
+            "train_guess_rate": None,
             "pass_loss": round(train_loss, 4),
             "checkpoint_reject_reason": None,
         }
