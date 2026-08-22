@@ -152,10 +152,9 @@ AI_SETTINGS_PATH = os.path.join(MODEL_DIR, "ai_settings.json")
 # no longer risks eating the next 15s scrape cycle, so there's no reason left to leave
 # this hardware idle. With ~150k+ resolved bets backlogged, 2100 fresh/cycle clears it
 # in a reasonable number of cycles instead of trickling through 210/cycle.
-# 5000 -> 10000: hardware still has headroom (see the note above about 12 cores /
-# 14GB, <5% utilized at the old 300-sample size), and a bigger batch means fewer,
-# more representative training passes instead of more frequent smaller ones.
-TRAIN_BATCH_TOTAL = 10000
+# Online GRU pass size. 10000 held the engine lock ~9 min/epoch on this CPU VM
+# (32 vCPU, ~60% steal); 5000 halves wall time without dropping below MIN_TRAIN_SAMPLES.
+TRAIN_BATCH_TOTAL = int(os.getenv("NEURALBET_TRAIN_BATCH_TOTAL", "5000"))
 TRAIN_FRESH_SHARE = float(os.getenv("NEURALBET_TRAIN_FRESH_SHARE", "0.7"))
 MAX_REPLAY = 5
 VAL_MIN_POOL = 50
