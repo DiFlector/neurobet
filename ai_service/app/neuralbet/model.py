@@ -98,13 +98,10 @@ CHECKPOINT_IN_BAND_ONLY = os.getenv("NEURALBET_CHECKPOINT_IN_BAND_ONLY", "1").st
 )
 THRESHOLD_BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_THRESHOLD_BOOTSTRAP_SAMPLES", "200"))
 
-# No GPU here (torch.cuda.is_available() is False in this container) — everything runs
-# on CPU, so thread count is the real lever. Defaults to PyTorch's own heuristic (which
-# undercounts on this host — observed torch.get_num_threads() == 6 on a 12-core
-# machine); pin it explicitly instead of leaving throughput on the table. Left just
-# short of the full core count so the FastAPI/Uvicorn process and the rest of the
-# container still get scheduled promptly.
-torch.set_num_threads(int(os.getenv("NEURALBET_TORCH_THREADS", str(max((os.cpu_count() or 4) - 2, 1)))))
+# No GPU (torch.cuda.is_available() is False). Do not default to cpu_count-2: this VM
+# advertises 32 vCPU with ~60% steal, so 30 threads just oversubscribe the ~12 real
+# cores and starve Postgres/backend. 16 still saturates training with headroom left.
+torch.set_num_threads(int(os.getenv("NEURALBET_TORCH_THREADS", "16")))
 
 # How many candidate bets make up one "round" for the bankroll-allocation loss —
 # roughly how many live outcomes the bot might be weighing at once in a real cycle.
