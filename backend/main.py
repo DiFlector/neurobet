@@ -407,7 +407,7 @@ def read_admin_db_overview():
 @app.get("/api/neurobets/top")
 def read_neurobets_top(
     sport: Optional[str] = Query(None, description="Filter by sport path"),
-    sort: str = Query("best", description="Sort mode: 'best' or 'safe'"),
+    sort: str = Query("best", description="Sort mode: 'best', 'safe', or 'score'"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset"),
     verdict: str = Query("win", description="win=will_win=1 (incl. don't-stake); loss=will_win=0; all=scored"),

@@ -189,7 +189,7 @@ function LoadMoreSentinel({ onIntersect, disabled }: { onIntersect: () => void; 
 
 export default function NeurobetsPage() {
   const [activeTab, setActiveTab] = useState<"live" | "history">("live")
-  const [sortMode, setSortMode] = useState<"best" | "safe">("best")
+  const [sortMode, setSortMode] = useState<"best" | "safe" | "score">("best")
   const [selectedSport, setSelectedSport] = useState<string>("all")
   const [selectedMarket, setSelectedMarket] = useState<string>("all")
   const [stats, setStats] = useState<any>(null)
@@ -1103,7 +1103,7 @@ export default function NeurobetsPage() {
                   <BarChart3 className="w-3.5 h-3.5 text-[#fdcb6e]" />
                   Режим сортировки ставок:
                 </label>
-                <div className="inline-flex items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
+                <div className="inline-flex flex-wrap items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
                   <button
                     onClick={() => setSortMode("best")}
                     className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
@@ -1138,6 +1138,24 @@ export default function NeurobetsPage() {
                     )}
                     <ShieldCheck className="relative z-10 w-3.5 h-3.5" />
                     <span className="relative z-10">🛡️ Самая безопасная (Max Win %)</span>
+                  </button>
+
+                  <button
+                    onClick={() => setSortMode("score")}
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      sortMode === "score" ? "text-neutral-950" : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    {sortMode === "score" && (
+                      <motion.div
+                        layoutId="sortModeIndicator"
+                        layoutDependency={sortMode}
+                        className="absolute inset-0 rounded-lg bg-[#0984e3] shadow-sm shadow-[#0984e3]/20"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <Activity className="relative z-10 w-3.5 h-3.5" />
+                    <span className="relative z-10">🔢 По счёту</span>
                   </button>
                 </div>
               </div>

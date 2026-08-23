@@ -1732,6 +1732,32 @@ def _live_pick_currently_winning(row: Dict[str, Any]) -> bool:
     return is_win == 1
 
 
+def _live_score_sort_key(row: Dict[str, Any]) -> Tuple[int, int]:
+    """Match-score magnitude for the «По счёту» LIVE sort: bigger score first.
+
+    Primary = score_1 + score_2 (the scoreboard the card shows). Secondary =
+    points in the latest period, so a 2:1 set with 10–8 in play ranks above
+    2:1 at 0–0. Missing / unparseable scores sort as 0.
+    """
+    try:
+        s1, s2 = row.get("score_1"), row.get("score_2")
+        if s1 is None or s2 is None:
+            total = parse_score_sum(row.get("score"))
+        else:
+            total = int(s1) + int(s2)
+    except (TypeError, ValueError):
+        total = parse_score_sum(row.get("score"))
+    period_total = 0
+    periods = _parse_period_scores_json(row.get("period_scores_json"))
+    if periods:
+        try:
+            last = periods[-1]
+            period_total = int(last[0]) + int(last[1])
+        except (TypeError, ValueError, IndexError):
+            period_total = 0
+    return total, period_total
+
+
 def get_top_neurobets(
     sport_filter: Optional[str] = None,
     sort_mode: str = "best",
@@ -1870,12 +1896,19 @@ def get_top_neurobets(
     if verdict == "win":
         candidates = [c for c in candidates if c.get("will_win") == 1]
 
-    if sort_mode == "best":
+    mode = (sort_mode or "best").strip().lower()
+    if mode == "score":
+        candidates.sort(
+            key=lambda d: (*_live_score_sort_key(d), d["expected_roi"], d["win_probability"]),
+            reverse=True,
+        )
+    elif mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
     else:
         candidates.sort(key=lambda d: (d["win_probability"], -d["coefficient"]), reverse=True)
     # Stable: stake-eligible calls first on the win tab, then «выиграет · не ставить».
-    if verdict == "win":
+    # Score mode is a scoreboard ranking — don't reshuffle it by stake eligibility.
+    if verdict == "win" and mode != "score":
         candidates.sort(key=lambda d: d.get("would_stake") or 0, reverse=True)
 
     # One pick per event on the win tab so a match with several p≥50% markets does not

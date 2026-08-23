@@ -299,8 +299,8 @@ TOOLS = [
             "sport": {"type": "string", "description": "Filter by sport path."},
             "sort": {
                 "type": "string",
-                "enum": ["best", "safe"],
-                "description": "Sort mode. Default best.",
+                "enum": ["best", "safe", "score"],
+                "description": "Sort mode: best (EV), safe (win %), score (biggest match score first). Default best.",
             },
             "limit": {
                 "type": "integer",
