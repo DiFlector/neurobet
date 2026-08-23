@@ -131,7 +131,7 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 - Live stake sports: env ceiling ∩ last-backtest Brier-vs-market allowlist
   (`NEURALBET_BRIER_SPORT_GATE`, margin 0.005) **and** `roi_pct_lo > 0` on
   ≥ `NEURALBET_BRIER_SPORT_MIN_BETS` (default 40). Auto-updates after each backtest.
-- Live stake markets: `NEURALBET_LIVE_STAKE_MARKETS=totals` (w1/w2 excluded from staking; still in training universe).
+- Live stake markets: `NEURALBET_LIVE_STAKE_MARKETS=totals,w1,w2,draw` (football draw is staked; still in training universe either way).
 - Online GRU LR: `NEURALBET_LEARNING_RATE=5e-5` (was 1e-4; reduces best_epoch=1 / checkpoint reject).
 - Тюнер: EMA 0.3, min val bets, sample-size penalty; threshold sweep по **ROI CI lo**.
 - Обучение: `TRAIN_EVERY_CYCLES=20`, `MIN_TRAIN_SAMPLES=2000`, batch 5k, val 2k,
@@ -160,8 +160,8 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
   bankroll train mask тоже EV. `accuracy_pct` ~50% — не KPI.
 - **DeepSeek / LLM полностью убраны из проекта** (batch decide, shadow, match-context,
   veto, digest, `NEURALBET_LLM_*`, `get_llm_*` MCP). Stake path без LLM-шага.
-- Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2`
-  (волейбол / draw stake — нет). Смена objective → cold-start после деплоя.
+- Live defaults: sports `НТ,теннис,баскетбол,футбол`; markets `totals,w1,w2,draw`
+  (волейбол в stake-потолке нет). Смена objective → cold-start после деплоя.
 - **Parity:** train = serve = bot = backtest — одни и те же фичи/gates/sibling
   (`shared/neurobet_features/`, `shared/neurobet_filters/`). KB as-of статистики
   игроков/команд кормит и LightGBM, и GRU context.
@@ -199,7 +199,7 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 ## 7. Live по спортам (`NEURALBET_LIVE_STAKE_SPORTS`)
 
 **Live sports:** default `NEURALBET_LIVE_STAKE_SPORTS=настольный теннис,теннис,баскетбол,футбол`
-при **рынках = totals + w1 + w2** (волейбол и draw stake исключены). Inference/обучение и так на всём
+при **рынках = totals + w1 + w2 + draw** (волейбол в stake-потолке исключён). Inference/обучение и так на всём
 `ALLOWED_SPORTS`; список влияет только на stake / «win» UI / бэктест «would bet».
 
 | Спорт | Ориентир |
@@ -210,7 +210,7 @@ MCP archive stats: `get_stats`, `get_roi_stats`.
 | Футбол | 0 stake-ставок на totals — в списке без вреда |
 
 Env: `NEURALBET_LIVE_STAKE_SPORTS=*` | `настольный теннис` | список.
-Рынки: `NEURALBET_LIVE_STAKE_MARKETS=totals` (default) | `*` | `total_over,total_under,w1,…`.
+Рынки: `NEURALBET_LIVE_STAKE_MARKETS=totals,w1,w2,draw` (default) | `*` | `total_over,total_under,w1,…`.
 
 Критерий отката: если walk_forward ROI/CI lo **хуже** без волейбола — сузить до
 `настольный теннис`. Не возвращать волейбол / w1/w2 в live без устойчивого OOS.

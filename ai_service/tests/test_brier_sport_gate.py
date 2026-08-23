@@ -133,6 +133,51 @@ class BrierSportGateTests(unittest.TestCase):
                 filters.BRIER_SPORT_GATE = old_gate
                 filters._brier_sports_cache = (-1.0, None)
 
+    def test_empty_allowlist_does_not_freeze_live(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "live_stake_brier_sports.json")
+            old_path = filters.LIVE_BRIER_SPORTS_PATH
+            old_gate = filters.BRIER_SPORT_GATE
+            filters.LIVE_BRIER_SPORTS_PATH = path
+            filters.BRIER_SPORT_GATE = True
+            filters._brier_sports_cache = (-1.0, None)
+            try:
+                write_brier_stake_sports([], source="test")
+                self.assertIsNone(brier_stake_sports_override())
+                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ"))
+            finally:
+                clear_brier_stake_sports()
+                filters.LIVE_BRIER_SPORTS_PATH = old_path
+                filters.BRIER_SPORT_GATE = old_gate
+                filters._brier_sports_cache = (-1.0, None)
+
+    def test_zero_bet_backtest_does_not_overwrite_allowlist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "live_stake_brier_sports.json")
+            old_path = filters.LIVE_BRIER_SPORTS_PATH
+            old_gate = filters.BRIER_SPORT_GATE
+            filters.LIVE_BRIER_SPORTS_PATH = path
+            filters.BRIER_SPORT_GATE = True
+            filters._brier_sports_cache = (-1.0, None)
+            try:
+                write_brier_stake_sports(["футбол"], source="prior")
+                out = filters.update_brier_stake_sports_from_backtest({
+                    "walk_forward": {"bets": 0},
+                    "walk_forward_by_sport": [
+                        _row("Футбол", 0.15, 0.18, bets=0, roi_pct_lo=None),
+                    ],
+                })
+                self.assertTrue(out.get("skipped"))
+                self.assertEqual(
+                    brier_stake_sports_override(),
+                    frozenset({"футбол"}),
+                )
+            finally:
+                clear_brier_stake_sports()
+                filters.LIVE_BRIER_SPORTS_PATH = old_path
+                filters.BRIER_SPORT_GATE = old_gate
+                filters._brier_sports_cache = (-1.0, None)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -138,16 +138,18 @@ LIVE_STAKE_SPORTS: frozenset[str] | None = (
 )
 
 # Live staking markets — training/inference still see П1/П2/draw + totals.
-# Default: totals + moneyline (no draw stake until OOS proves it).
+# Default: totals + 1X2 (including football draw).
 _LIVE_STAKE_MARKET_ALIASES = {
     "totals": frozenset({"total_over", "total_under"}),
     "total": frozenset({"total_over", "total_under"}),
     "moneyline": frozenset({"w1", "w2", "draw"}),
     "1x2": frozenset({"w1", "w2", "draw"}),
+    "draws": frozenset({"draw"}),
+    "draw": frozenset({"draw"}),
 }
 _LIVE_STAKE_MARKETS_RAW = os.getenv(
     "NEURALBET_LIVE_STAKE_MARKETS",
-    "totals,w1,w2",
+    "totals,w1,w2,draw",
 ).strip().lower()
 if _LIVE_STAKE_MARKETS_RAW in ("", "*", "all"):
     LIVE_STAKE_MARKETS: frozenset[str] | None = None
@@ -555,9 +557,15 @@ def _read_brier_allowlist_unlocked() -> Optional[frozenset[str]]:
             payload = json.load(f)
         sports = payload.get("sports")
         if not isinstance(sports, list):
-            allow = frozenset()
+            # Malformed file: do not extra-restrict (same as missing file).
+            allow = None
         else:
             allow = frozenset(sport_top(str(s)) for s in sports if str(s).strip())
+            if not allow:
+                # Empty list used to mean "stake no sport" and deadlocked live:
+                # 0 bets → no sport can pass ROI CI → write [] → 0 bets forever.
+                # Treat empty as "no extra restriction"; the env ceiling still applies.
+                allow = None
     except (OSError, json.JSONDecodeError, TypeError):
         allow = None
     _brier_sports_cache = (mtime, allow)
@@ -565,7 +573,8 @@ def _read_brier_allowlist_unlocked() -> Optional[frozenset[str]]:
 
 
 def brier_stake_sports_override() -> Optional[frozenset[str]]:
-    """None = gate off or no file yet. Empty frozenset = stake no sport."""
+    """None = gate off, no file, or empty allowlist (do not extra-restrict).
+    Non-empty frozenset = stake only those sports (intersected with the env ceiling)."""
     if not BRIER_SPORT_GATE:
         return None
     with _brier_sports_lock:
@@ -623,14 +632,39 @@ def clear_brier_stake_sports() -> None:
         _brier_sports_cache = (-1.0, None)
 
 
+def _result_stake_bets(result: dict[str, Any]) -> int:
+    """How many virtual bets the backtest actually placed (any slice)."""
+    n = 0
+    for key in ("walk_forward", "overall", "oos_never_train"):
+        block = result.get(key)
+        if not isinstance(block, dict):
+            continue
+        n = max(n, int(block.get("bets") or 0))
+        stake = ((block.get("stake_policy") or {}).get("current")) or {}
+        n = max(n, int(stake.get("bets") or 0))
+    return n
+
+
 def update_brier_stake_sports_from_backtest(result: dict[str, Any]) -> dict[str, Any]:
-    """Persist Brier winners from a finished backtest. Prefers walk-forward by_sport."""
+    """Persist Brier winners from a finished backtest. Prefers walk-forward by_sport.
+
+    Skip the write when the run placed 0 bets — overwriting with [] would freeze
+    live staking and guarantee the next run is also 0 bets.
+    """
     wf_rows = result.get("walk_forward_by_sport")
     if wf_rows:
         rows, source = wf_rows, "walk_forward"
     else:
         rows, source = (result.get("by_sport") or []), "overall"
     selected, detail = select_brier_stake_sports(rows)
+    if not selected and _result_stake_bets(result) == 0:
+        return {
+            "skipped": True,
+            "reason": "zero_bets",
+            "source": source,
+            "sports": [],
+            "detail": detail,
+        }
     return write_brier_stake_sports(selected, source=source, detail=detail)
 
 
