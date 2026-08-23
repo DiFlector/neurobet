@@ -218,7 +218,8 @@ def in_verdict_train_band(coeff: float) -> bool:
 
 # ---------------------------------------------------------------------------
 # Per-sport Brier gate — last backtest writes a JSON allowlist; live + next
-# backtest stake only sports whose model Brier clearly beats the bookmaker.
+# backtest stake only sports whose model Brier clearly beats the bookmaker
+# and (by default) whose walk-forward ROI CI lo is positive on enough bets.
 # File missing / gate off → env ceiling only (no extra restriction).
 # ---------------------------------------------------------------------------
 BRIER_SPORT_GATE = os.getenv("NEURALBET_BRIER_SPORT_GATE", "1").strip().lower() not in (
@@ -226,6 +227,12 @@ BRIER_SPORT_GATE = os.getenv("NEURALBET_BRIER_SPORT_GATE", "1").strip().lower() 
 )
 BRIER_SPORT_MIN_EVALUATED = int(os.getenv("NEURALBET_BRIER_SPORT_MIN_EVALUATED", "2000"))
 BRIER_SPORT_MARGIN = float(os.getenv("NEURALBET_BRIER_SPORT_MARGIN", "0.005"))
+# Extra stake filter on top of Brier: sport must have enough bets and roi_pct_lo > 0
+# (walk-forward CI). Basketball can beat market Brier while its ROI CI is negative.
+BRIER_SPORT_MIN_BETS = int(os.getenv("NEURALBET_BRIER_SPORT_MIN_BETS", "40"))
+BRIER_SPORT_REQUIRE_ROI_LO = os.getenv(
+    "NEURALBET_BRIER_SPORT_REQUIRE_ROI_LO", "1",
+).strip().lower() not in ("0", "false", "no", "off")
 LIVE_BRIER_SPORTS_PATH = os.path.join(
     os.getenv("MODEL_DIR", "/app/data/models"),
     "live_stake_brier_sports.json",
@@ -261,15 +268,45 @@ def _sport_brier_pair(row: dict[str, Any]) -> tuple[Optional[float], Optional[fl
     return brier_f, market_f, evaluated
 
 
+def _sport_stake_ci(row: dict[str, Any]) -> tuple[Optional[float], int]:
+    stake = ((row.get("stake_policy") or {}).get("current")) or {}
+    bets = stake.get("flat_bets")
+    if bets is None:
+        bets = stake.get("bets")
+    if bets is None:
+        bets = row.get("bets")
+    if bets is None:
+        legacy = row.get("current")
+        if isinstance(legacy, dict):
+            bets = legacy.get("bets")
+    try:
+        bets_i = int(bets or 0)
+    except (TypeError, ValueError):
+        bets_i = 0
+    lo = stake.get("roi_pct_lo")
+    if lo is None:
+        lo = row.get("roi_pct_lo")
+    try:
+        lo_f = float(lo) if lo is not None else None
+    except (TypeError, ValueError):
+        lo_f = None
+    return lo_f, bets_i
+
+
 def select_brier_stake_sports(
     by_sport: list[dict[str, Any]],
     *,
     min_evaluated: Optional[int] = None,
     margin: Optional[float] = None,
+    min_bets: Optional[int] = None,
+    require_roi_lo: Optional[bool] = None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    """Sports whose model Brier is at least `margin` below market Brier."""
+    """Sports whose model Brier beats market by `margin` and (by default) whose
+    walk-forward ROI CI lo is positive on enough bets."""
     floor = BRIER_SPORT_MIN_EVALUATED if min_evaluated is None else int(min_evaluated)
     gap = BRIER_SPORT_MARGIN if margin is None else float(margin)
+    bets_floor = BRIER_SPORT_MIN_BETS if min_bets is None else int(min_bets)
+    need_ci = BRIER_SPORT_REQUIRE_ROI_LO if require_roi_lo is None else bool(require_roi_lo)
     selected: list[str] = []
     detail: list[dict[str, Any]] = []
     for row in by_sport or []:
@@ -277,12 +314,19 @@ def select_brier_stake_sports(
         if not sport:
             continue
         brier, market, evaluated = _sport_brier_pair(row)
-        enabled = (
+        roi_lo, bets = _sport_stake_ci(row)
+        brier_ok = (
             brier is not None
             and market is not None
             and evaluated >= floor
             and brier < (market - gap)
         )
+        ci_ok = (
+            True
+            if not need_ci
+            else (roi_lo is not None and roi_lo > 0.0 and bets >= bets_floor)
+        )
+        enabled = bool(brier_ok and ci_ok)
         if enabled:
             selected.append(sport)
         detail.append({
@@ -290,6 +334,8 @@ def select_brier_stake_sports(
             "evaluated": evaluated,
             "brier": brier,
             "market_brier": market,
+            "bets": bets,
+            "roi_pct_lo": roi_lo,
             "enabled": enabled,
         })
     selected = sorted(set(selected))
@@ -353,6 +399,8 @@ def write_brier_stake_sports(
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "source": source,
         "min_evaluated": BRIER_SPORT_MIN_EVALUATED,
+        "min_bets": BRIER_SPORT_MIN_BETS,
+        "require_roi_lo": BRIER_SPORT_REQUIRE_ROI_LO,
         "margin": BRIER_SPORT_MARGIN,
         "sports": sorted({sport_top(s) for s in sports if sport_top(s)}),
         "detail": detail or [],
@@ -395,8 +443,8 @@ def in_live_stake_sport(sport_path: Optional[str]) -> bool:
 
     Env `NEURALBET_LIVE_STAKE_SPORTS` is the ceiling. When the Brier gate file
     exists, the sport must also be in that allowlist (last backtest's Brier
-    winners). The file is written *after* a backtest scores, so that run itself
-    still uses the previous allowlist (no leakage).
+    winners with positive ROI CI lo). The file is written *after* a backtest
+    scores, so that run itself still uses the previous allowlist (no leakage).
     """
     sport = sport_top(sport_path)
     if LIVE_STAKE_SPORTS is not None and sport not in LIVE_STAKE_SPORTS:
