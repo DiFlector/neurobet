@@ -2,14 +2,14 @@
 """
 Local stdio fallback. Production is Streamable HTTP on the backend:
 
-  https://necrolich.ru/neurobet/api/mcp
+  https://diflector.ru/neurobet/api/mcp
 
 Cursor is the client — see .cursor/mcp.json. This script is only for offline/dev:
 it speaks MCP over stdin/stdout and forwards JSON-RPC to POST {NEUROBET_API_URL}/api/mcp
 so the tool list always matches the live server (eval pack, stats, admin reads).
 
 Env:
-  NEUROBET_API_URL  origin with /api (default https://necrolich.ru/neurobet)
+  NEUROBET_API_URL  origin with /api (default https://diflector.ru/neurobet)
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Optional
 
-API = os.environ.get("NEUROBET_API_URL", "https://necrolich.ru/neurobet").rstrip("/")
+API = os.environ.get("NEUROBET_API_URL", "https://diflector.ru/neurobet").rstrip("/")
 
 
 def _rpc_err(msg_id: Any, code: int, message: str) -> dict:

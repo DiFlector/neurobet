@@ -95,7 +95,7 @@ services:
       - default
       - nginx-master-network
 
-# necrolich.ru relocate. Check if change host.
+# Public: https://diflector.ru/neurobet via host nginx (do not bind :80/:443).
 networks:
   nginx-master-network:
     external: true

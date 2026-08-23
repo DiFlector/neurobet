@@ -2,6 +2,8 @@
 
 Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, Postgres, Next.js, and a PyTorch GRU + LightGBM ensemble.
 
+**Public URL on this host:** `https://diflector.ru/neurobet` (and `/admin`, `/stats`, …). The frontend joins Docker network `nginx-master-network`; host nginx in `/home/diflector/nginx` proxies `/neurobet` to `neurobet_frontend:3000`. Do not publish `:80`/`:443` from this compose. See `/home/diflector/nginx/AGENTS.md`.
+
 ---
 
 ## 🚀 Technical Stack & Architecture
@@ -91,7 +93,7 @@ autobet/
 
 Cursor connects as the **client**; NeuroBet is the **server**. Production endpoint is Streamable HTTP — no extra port, it rides the existing `/api` rewrite:
 
-* URL: `https://necrolich.ru/neurobet/api/mcp` (local: `POST /api/mcp` on the backend)
+* URL: `https://diflector.ru/neurobet/api/mcp` (local: `POST /api/mcp` on the backend)
 * Cursor config: `.cursor/mcp.json` (`neurobet-eval`, `"type": "http"`)
 * Implementation: `backend/mcp_eval.py` (source of truth for the tool list)
 * Stdio fallback for offline/dev: `mcp/neurobet_eval.py` — forwards JSON-RPC to `{NEUROBET_API_URL}/api/mcp`

@@ -6,13 +6,13 @@ alwaysApply: true
 # NeuroBet — прод, не локально
 
 Рабочий стек (backend, ai, postgres, frontend) крутится **на проде**
-(`necrolich.ru/neurobet`), не в локальном Docker на машине разработчика.
+(`diflector.ru/neurobet`), не в локальном Docker на машине разработчика.
 
 ## Следствия для агента
 
 - **Не** запускать `docker compose up/build/restart` «чтобы применить правки» —
   локальные контейнеры не есть runtime.
-- Данные, бэктest, логи, MCP (`neurobet-eval` → `https://necrolich.ru/neurobet/api/mcp`) —
+- Данные, бэктest, логи, MCP (`neurobet-eval` → `https://diflector.ru/neurobet/api/mcp`) —
   это **прод**. Оценка модели и gate — только через MCP / прод API.
 - Правки в репо применяются на проде после **git push + rebuild** на сервере
   (images копируют `shared/neurobet_filters` и читают `.env` через `env_file`).
