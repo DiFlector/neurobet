@@ -2458,6 +2458,7 @@ def get_live_bets(
 
     live_info: Dict[int, Dict[str, Any]] = {}
     current_odds: Dict[tuple, float] = {}
+    current_preds: Dict[tuple, Dict[str, Any]] = {}
     latest_scrape_ts = None
     if open_ids:
         with dashboard_db("live") as conn:
@@ -2486,6 +2487,19 @@ def get_live_bets(
                 (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["coefficient"]
                 for r in cursor.fetchall()
             }
+            cursor.execute(
+                """SELECT event_id, factor_id,
+                          COALESCE(parameter, '') AS parameter,
+                          COALESCE(market_prefix, '') AS market_prefix,
+                          predicted_win, expected_roi
+                     FROM ai_predictions
+                    WHERE event_id = ANY(%s)""",
+                (open_ids,),
+            )
+            current_preds = {
+                (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): dict(r)
+                for r in cursor.fetchall()
+            }
 
     missing_ids = [eid for eid in event_ids if eid not in live_info]
     finished_info: Dict[int, Dict[str, Any]] = {}
@@ -2508,6 +2522,9 @@ def get_live_bets(
             b["match_is_live"] = bool(info["is_live"]) and info["last_updated_at"] == latest_scrape_ts
             b["current_coefficient"] = current_odds.get(odds_key)
             b["sport_path"] = info["sport_path"]
+            pred = current_preds.get(odds_key)
+            b["current_predicted_win"] = None if pred is None else pred.get("predicted_win")
+            b["current_expected_roi"] = None if pred is None else pred.get("expected_roi")
         else:
             info = finished_info.get(eid)
             b["current_score"] = info["score"] if info else None
@@ -2515,6 +2532,8 @@ def get_live_bets(
             b["match_is_live"] = False
             b["current_coefficient"] = None
             b["sport_path"] = info["sport_path"] if info else None
+            b["current_predicted_win"] = None
+            b["current_expected_roi"] = None
 
     return {"total": total, "items": _sanitize_non_finite(rows)}
 
