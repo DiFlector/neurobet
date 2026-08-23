@@ -135,7 +135,7 @@ def _ai_gpu_snapshot(ai_url: Optional[str]) -> Optional[dict[str, Any]]:
         return None
     try:
         import httpx
-        with httpx.Client(timeout=1.5) as client:
+        with httpx.Client(timeout=2.5, trust_env=False) as client:
             res = client.get(f"{ai_url.rstrip('/')}/hardware")
         if res.status_code != 200:
             return None

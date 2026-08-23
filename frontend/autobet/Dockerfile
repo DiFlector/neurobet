@@ -2,8 +2,12 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Enable corepack for pnpm v10
-RUN corepack enable && corepack prepare pnpm@10 --activate
+# Prefer IPv4: in Docker, Node/undici often hangs on IPv6 to registry.npmjs.org
+# and corepack then dies with `Type Error: terminated` (~75s TLS abort).
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
+# npm ships with the image; corepack prepare hits the registry with no retries.
+RUN npm install -g pnpm@10 --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --frozen-lockfile || pnpm install
@@ -46,8 +50,6 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
 ENV PORT=3000
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
-
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/next.config.ts ./
 COPY --from=builder /app/public ./public
@@ -56,4 +58,5 @@ COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 
-CMD ["pnpm", "start"]
+# next is already in node_modules — no second pnpm download in this stage.
+CMD ["node", "./node_modules/next/dist/bin/next", "start"]

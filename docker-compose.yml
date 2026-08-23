@@ -1,6 +1,19 @@
 # Schema is managed by Alembic (see db/), not auto-applied on container start.
 # First-time setup / after adding a new revision:
 #   docker compose run --rm --no-deps -v ./db:/db -w /db backend alembic upgrade head
+#
+# Host Docker injects HTTP_PROXY=127.0.0.1:3128 (gost). Inside a container that
+# address is the container itself, so backend→ai HTTP gets connection refused
+# and the admin panel reports "нет GPU". Clear the proxy for runtime services;
+# builds still use network: host so gost on the host remains reachable.
+x-no-container-proxy: &no-container-proxy
+  HTTP_PROXY: ""
+  HTTPS_PROXY: ""
+  http_proxy: ""
+  https_proxy: ""
+  NO_PROXY: "localhost,127.0.0.1,::1,ai,backend,postgres,frontend"
+  no_proxy: "localhost,127.0.0.1,::1,ai,backend,postgres,frontend"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,9 +21,10 @@ services:
     env_file:
       - .env
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-autobet}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-autobet}
-      - POSTGRES_DB=${POSTGRES_DB:-autobet}
+      <<: *no-container-proxy
+      POSTGRES_USER: ${POSTGRES_USER:-autobet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autobet}
+      POSTGRES_DB: ${POSTGRES_DB:-autobet}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     # Deliberately no `ports:` mapping — reachable only from other containers on the
@@ -26,14 +40,19 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      network: host
     container_name: neurobet_backend
     expose:
       - "8000"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - AI_SERVICE_URL=http://ai:8001
+      <<: *no-container-proxy
+      DATABASE_URL: ${DATABASE_URL}
+      AI_SERVICE_URL: http://ai:8001
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    gpus: all
     volumes:
       - ./data:/app/data
     depends_on:
@@ -47,17 +66,23 @@ services:
     build:
       context: .
       dockerfile: ai_service/Dockerfile
+      network: host
     container_name: neurobet_ai
     expose:
       - "8001"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      <<: *no-container-proxy
+      DATABASE_URL: ${DATABASE_URL}
       # Internal Docker network address of the backend service — used so ai_service
       # can read its live-account balance and propose bet candidates over HTTP instead
       # of writing bankroll_accounts/live_bets directly (backend is the sole writer).
-      - BACKEND_URL=http://backend:8000
+      BACKEND_URL: http://backend:8000
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      NEURALBET_DEVICE: ${NEURALBET_DEVICE:-auto}
+    gpus: all
     volumes:
       - ./data:/app/data
     depends_on:
@@ -69,6 +94,7 @@ services:
     build:
       context: ./frontend/autobet
       dockerfile: Dockerfile
+      network: host
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/neurobet}
         NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/neurobet}
@@ -81,13 +107,14 @@ services:
     env_file:
       - .env
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/neurobet}
-      - NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH:-/neurobet}
+      <<: *no-container-proxy
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/neurobet}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/neurobet}
       # Internal Docker network address of the backend service — used only by the
       # Next.js server to proxy /api/* (see next.config.ts). Plain env var (no
       # NEXT_PUBLIC_ prefix), so this is read fresh at container start, no rebuild
       # needed if it ever changes.
-      - BACKEND_INTERNAL_URL=http://backend:8000
+      BACKEND_INTERNAL_URL: http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped

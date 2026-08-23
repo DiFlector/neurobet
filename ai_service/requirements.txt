@@ -3,7 +3,8 @@ uvicorn==0.34.0
 httpx==0.28.1
 pydantic==2.10.6
 apscheduler==3.11.0
-torch
+# PyTorch CUDA 12.4 wheel is installed in ai_service/Dockerfile (Pascal sm_61 / GTX 1050 Ti).
+# A plain `torch` from PyPI is CPU-only and would ignore the GPU.
 lightgbm
 numpy
 psycopg2-binary==2.9.10

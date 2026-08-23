@@ -103,10 +103,36 @@ CHECKPOINT_IN_BAND_ONLY = os.getenv("NEURALBET_CHECKPOINT_IN_BAND_ONLY", "1").st
 )
 THRESHOLD_BOOTSTRAP_SAMPLES = int(os.getenv("NEURALBET_THRESHOLD_BOOTSTRAP_SAMPLES", "200"))
 
-# No GPU (torch.cuda.is_available() is False). Do not default to cpu_count-2: this VM
-# advertises 32 vCPU with ~60% steal, so 30 threads just oversubscribe the ~12 real
-# cores and starve Postgres/backend. 16 still saturates training with headroom left.
-torch.set_num_threads(int(os.getenv("NEURALBET_TORCH_THREADS", "16")))
+def _select_device() -> torch.device:
+    """cuda if the driver is visible, unless NEURALBET_DEVICE=cpu (or cuda is forced)."""
+    choice = os.getenv("NEURALBET_DEVICE", "auto").strip().lower()
+    if choice in ("cpu", "none", "off"):
+        return torch.device("cpu")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if choice == "cuda":
+        logger.warning("NEURALBET_DEVICE=cuda but CUDA is not available — using CPU")
+    return torch.device("cpu")
+
+
+DEVICE = _select_device()
+
+
+def _tensor(data, dtype=torch.float32) -> torch.Tensor:
+    return torch.tensor(data, dtype=dtype, device=DEVICE)
+
+
+def _optimizer_to_device(optimizer: torch.optim.Optimizer, device: torch.device) -> None:
+    for state in optimizer.state.values():
+        for key, value in list(state.items()):
+            if torch.is_tensor(value):
+                state[key] = value.to(device)
+
+
+# On CPU, 16 intra-op threads saturates this host without starving Postgres.
+# On CUDA the GRU barely uses the CPU — keep a few threads for dataloading.
+_default_threads = "4" if DEVICE.type == "cuda" else "16"
+torch.set_num_threads(int(os.getenv("NEURALBET_TORCH_THREADS", _default_threads)))
 
 # How many candidate bets make up one "round" for the bankroll-allocation loss —
 # roughly how many live outcomes the bot might be weighing at once in a real cycle.
@@ -254,6 +280,14 @@ class NeuralBetEnsemble:
         # but deliberately skips this call (a reset means *discarding* whatever's on
         # disk, not reloading it right back).
         self.load_checkpoints()
+        if DEVICE.type == "cuda":
+            logger.info(
+                "PyTorch GRU on CUDA: %s (%.1f GiB)",
+                torch.cuda.get_device_name(0),
+                torch.cuda.get_device_properties(0).total_memory / (1024 ** 3),
+            )
+        else:
+            logger.info("PyTorch GRU on CPU (CUDA not visible)")
 
     def _reset_state(self):
         """
@@ -263,7 +297,7 @@ class NeuralBetEnsemble:
         reload afterward). Keeping this in one place means the two can never drift apart
         on what "untrained" actually means.
         """
-        self.pytorch_model = OddsTrajectoryGRU()
+        self.pytorch_model = OddsTrajectoryGRU().to(DEVICE)
         self.pytorch_optimizer = optim.AdamW(self.pytorch_model.parameters(), lr=LEARNING_RATE)
         self.is_trained = False
 
@@ -652,7 +686,7 @@ class NeuralBetEnsemble:
     def load_checkpoints(self):
         try:
             if os.path.exists(PYTORCH_WEIGHTS_PATH):
-                blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
+                blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location=DEVICE)
                 # Backward compat: older checkpoints were a bare state_dict rather than
                 # {"model_state": ...}.
                 state = blob["model_state"] if isinstance(blob, dict) and "model_state" in blob else blob
@@ -692,6 +726,7 @@ class NeuralBetEnsemble:
                         # Momentum buffers are what we want restored; the rate is config.
                         for group in self.pytorch_optimizer.param_groups:
                             group["lr"] = LEARNING_RATE
+                        _optimizer_to_device(self.pytorch_optimizer, DEVICE)
                     except Exception:
                         # Optimizer shape changed (e.g. architecture bump) — keep the
                         # fresh optimizer state, the model weights still loaded fine.
@@ -788,16 +823,16 @@ class NeuralBetEnsemble:
             return []
 
         sequences = [_gru_seq(it) for it in items]
-        x_tensor = torch.tensor(np.array(sequences, dtype=np.float32))
+        x_tensor = _tensor(np.array(sequences, dtype=np.float32))
         sport_idxs = [it.get("sport_idx", sport_index(it.get("sport_path"))) for it in items]
         market_idxs = [it.get("market_idx", market_family_index(it.get("factor_id", 0))) for it in items]
         team1_idxs = [it.get("team1_idx", team_index(it.get("team_1"))) for it in items]
         team2_idxs = [it.get("team2_idx", team_index(it.get("team_2"))) for it in items]
-        sport_tensor = torch.tensor(sport_idxs, dtype=torch.long)
-        market_tensor = torch.tensor(market_idxs, dtype=torch.long)
-        team1_tensor = torch.tensor(team1_idxs, dtype=torch.long)
-        team2_tensor = torch.tensor(team2_idxs, dtype=torch.long)
-        kb_tensor = torch.tensor(
+        sport_tensor = _tensor(sport_idxs, dtype=torch.long)
+        market_tensor = _tensor(market_idxs, dtype=torch.long)
+        team1_tensor = _tensor(team1_idxs, dtype=torch.long)
+        team2_tensor = _tensor(team2_idxs, dtype=torch.long)
+        kb_tensor = _tensor(
             [kb_context_vector(it) for it in items], dtype=torch.float32,
         )
         self.pytorch_model.eval()
@@ -1088,7 +1123,7 @@ class NeuralBetEnsemble:
         if len(prepared) < self._MIN_TUNE_SAMPLES:
             return {"tuned": False, "reason": "not_enough_val_samples", "samples": len(prepared)}
 
-        seqs = torch.tensor([_gru_seq(p) for p in prepared], dtype=torch.float32)
+        seqs = _tensor([_gru_seq(p) for p in prepared], dtype=torch.float32)
         sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(prepared)
         self.pytorch_model.eval()
         with torch.no_grad():
@@ -1331,11 +1366,11 @@ class NeuralBetEnsemble:
     def _context_tensors(
         prepared: List[Dict[str, Any]],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        sport_t = torch.tensor([p.get("sport_idx", 0) for p in prepared], dtype=torch.long)
-        market_t = torch.tensor([p.get("market_idx", 0) for p in prepared], dtype=torch.long)
-        team1_t = torch.tensor([p.get("team1_idx", 0) for p in prepared], dtype=torch.long)
-        team2_t = torch.tensor([p.get("team2_idx", 0) for p in prepared], dtype=torch.long)
-        kb_t = torch.tensor([kb_context_vector(p) for p in prepared], dtype=torch.float32)
+        sport_t = _tensor([p.get("sport_idx", 0) for p in prepared], dtype=torch.long)
+        market_t = _tensor([p.get("market_idx", 0) for p in prepared], dtype=torch.long)
+        team1_t = _tensor([p.get("team1_idx", 0) for p in prepared], dtype=torch.long)
+        team2_t = _tensor([p.get("team2_idx", 0) for p in prepared], dtype=torch.long)
+        kb_t = _tensor([kb_context_vector(p) for p in prepared], dtype=torch.float32)
         return sport_t, market_t, team1_t, team2_t, kb_t
 
     def _forward_metrics(self, prepared: List[Dict[str, Any]]) -> Tuple[float, float, float]:
@@ -1360,11 +1395,11 @@ class NeuralBetEnsemble:
         with torch.no_grad():
             for i in range(0, len(prepared), BATCH_SIZE):
                 chunk = prepared[i:i + BATCH_SIZE]
-                seqs = torch.tensor(
+                seqs = _tensor(
                     [_gru_seq(p) for p in chunk], dtype=torch.float32
                 )
-                targets = torch.tensor([p["target"] for p in chunk], dtype=torch.float32)
-                coeffs = torch.tensor(
+                targets = _tensor([p["target"] for p in chunk], dtype=torch.float32)
+                coeffs = _tensor(
                     [p["coefficient"] for p in chunk], dtype=torch.float32
                 )
                 sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(chunk)
@@ -1424,13 +1459,13 @@ class NeuralBetEnsemble:
                 chunk = prepared[i:i + ROUND_SIZE]
                 if len(chunk) < 2:
                     continue
-                seqs = torch.tensor([_gru_seq(c) for c in chunk], dtype=torch.float32)
+                seqs = _tensor([_gru_seq(c) for c in chunk], dtype=torch.float32)
                 sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(chunk)
                 logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
                 win_probs = torch.sigmoid(logits[:, 0])
                 stake_logits = logits[:, 2]
-                coeffs = torch.tensor([c["coefficient"] for c in chunk], dtype=torch.float32)
-                wins = torch.tensor([c["target"] for c in chunk], dtype=torch.float32)
+                coeffs = _tensor([c["coefficient"] for c in chunk], dtype=torch.float32)
+                wins = _tensor([c["target"] for c in chunk], dtype=torch.float32)
 
                 fractions = bankroll.allocate(win_probs, coeffs, stake_logits)
                 # Objective B: risk money only when raw ensemble EV clears min edge
@@ -1545,8 +1580,8 @@ class NeuralBetEnsemble:
                 break
             batch_idx = order[start:start + BATCH_SIZE]
             batch = [prepared[i] for i in batch_idx]
-            seqs = torch.tensor([_gru_seq(b) for b in batch], dtype=torch.float32)
-            targets = torch.tensor(
+            seqs = _tensor([_gru_seq(b) for b in batch], dtype=torch.float32)
+            targets = _tensor(
                 [b["target"] for b in batch], dtype=torch.float32
             ).unsqueeze(1)
             sport_t, market_t, team1_t, team2_t, kb_t = self._context_tensors(batch)
@@ -1559,7 +1594,7 @@ class NeuralBetEnsemble:
 
             loss = bce_loss
             if BRIER_LOSS_WEIGHT > 0:
-                coeffs_t = torch.tensor(
+                coeffs_t = _tensor(
                     [b["coefficient"] for b in batch], dtype=torch.float32
                 )
                 in_band = (coeffs_t >= MIN_BET_COEFF) & (coeffs_t <= MAX_BET_COEFF)
@@ -1571,7 +1606,7 @@ class NeuralBetEnsemble:
             if DECISION_LOSS_WEIGHT > 0:
                 # Legacy residual + cost-sensitive decision heads (disabled in objective B).
                 decision_logits = logits[:, 1]
-                coeffs_t = torch.tensor(
+                coeffs_t = _tensor(
                     [b["coefficient"] for b in batch], dtype=torch.float32
                 )
                 pred_edge = torch.tanh(decision_logits)
@@ -1647,7 +1682,7 @@ class NeuralBetEnsemble:
         positive_count = sum(1 for p in prepared if p["target"] == 1.0)
         negative_count = len(prepared) - positive_count
         if rebalance_classes and positive_count and negative_count:
-            pos_weight = torch.tensor(
+            pos_weight = _tensor(
                 [negative_count / positive_count], dtype=torch.float32
             )
             bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -1772,7 +1807,7 @@ class NeuralBetEnsemble:
         # would be trained as if it were 50/50). Cold-start keeps it; online random
         # mix does not.
         if rebalance_classes and positive_count and negative_count:
-            pos_weight = torch.tensor(
+            pos_weight = _tensor(
                 [negative_count / positive_count], dtype=torch.float32
             )
             bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
