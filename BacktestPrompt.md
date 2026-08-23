@@ -126,7 +126,8 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 - `NEURALBET_DECISION_POS_WEIGHT_CAP=1.0` (cost-sensitive decision в live band).
 - `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.5`.
 - Калибровка с учётом кэфа; **no-leakage calib** в бэктest (`calibration_cutoff`).
-- Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=3%`, `MIN_MARKET_SUPPORT=150`.
+- Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=5%`, `MIN_MARKET_SUPPORT=150`.
+- Live stake sports: env ceiling ∩ last-backtest Brier-vs-market allowlist (`NEURALBET_BRIER_SPORT_GATE`, margin 0.005). Auto-updates after each backtest.
 - Live stake markets: `NEURALBET_LIVE_STAKE_MARKETS=totals` (w1/w2 excluded from staking; still in training universe).
 - Online GRU LR: `NEURALBET_LEARNING_RATE=5e-5` (was 1e-4; reduces best_epoch=1 / checkpoint reject).
 - Тюнер: EMA 0.3, min val bets, sample-size penalty; threshold sweep по **ROI CI lo**.
@@ -168,8 +169,8 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 1. **INFERENCE** — прогнозы на universe (GRU + LGBM + blend + calib).
 2. **EV `predicted_win=1`** — `calibrated_p * coeff - 1 ≥ MIN_BET_EDGE_PCT`
    (residual decision head не участвует в ставках).
-3. **Live gates** — coeff 1.5–2.0, EV ≥ 3%, support ≥ 150, `NEURALBET_LIVE_STAKE_SPORTS`,
-   `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
+3. **Live gates** — coeff 1.5–2.0, EV ≥ 5%, support ≥ 150, Brier-sport allowlist
+   (`in_live_stake_sport`), `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
 4. **Quality gate** — последний бэктest `walk_forward` model-only (см. §2); иначе ставки
    не открываются (bypass в админке может снять блок).
 5. **BANKROLL** — Kelly `allocate()`, запись в `live_bets`.

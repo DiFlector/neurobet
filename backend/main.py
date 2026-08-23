@@ -33,6 +33,11 @@ from neurobet_filters import (
     MIN_MARKET_SUPPORT,
     LIVE_STAKE_SPORTS,
     LIVE_STAKE_MARKETS,
+    BRIER_SPORT_GATE,
+    BRIER_SPORT_MARGIN,
+    BRIER_SPORT_MIN_EVALUATED,
+    effective_live_stake_sports,
+    brier_stake_sports_override,
 )
 
 MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
@@ -719,6 +724,8 @@ def admin_training_runs():
 
 
 def _filters_snapshot() -> Dict[str, Any]:
+    effective = effective_live_stake_sports()
+    override = brier_stake_sports_override()
     return {
         "allowed_sports": sorted(ALLOWED_SPORTS),
         "allowed_factor_ids": sorted(ALLOWED_FACTOR_IDS),
@@ -729,8 +736,15 @@ def _filters_snapshot() -> Dict[str, Any]:
         "min_bet_edge_pct": MIN_BET_EDGE_PCT,
         "min_market_support": MIN_MARKET_SUPPORT,
         "live_stake_sports": (
+            None if effective is None else sorted(effective)
+        ),
+        "live_stake_sports_ceiling": (
             None if LIVE_STAKE_SPORTS is None else sorted(LIVE_STAKE_SPORTS)
         ),
+        "live_stake_brier_sports": None if override is None else sorted(override),
+        "brier_sport_gate": BRIER_SPORT_GATE,
+        "brier_sport_margin": BRIER_SPORT_MARGIN,
+        "brier_sport_min_evaluated": BRIER_SPORT_MIN_EVALUATED,
         "live_stake_markets": (
             None if LIVE_STAKE_MARKETS is None else sorted(LIVE_STAKE_MARKETS)
         ),

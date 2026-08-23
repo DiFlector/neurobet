@@ -12,11 +12,15 @@ Two layers, on purpose:
 
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
-Env: `NEURALBET_LIVE_STAKE_SPORTS`, `NEURALBET_LIVE_STAKE_MARKETS`.
+Env: `NEURALBET_LIVE_STAKE_SPORTS`, `NEURALBET_LIVE_STAKE_MARKETS`,
+`NEURALBET_MIN_BET_EDGE_PCT`, `NEURALBET_BRIER_SPORT_GATE`.
 """
+import json
 import os
 import re
-from typing import Optional, Tuple
+import threading
+from datetime import datetime, timezone
+from typing import Any, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Universe — top-level sport_path segment, exact match (so "теннис" does not
@@ -63,14 +67,16 @@ TOTAL_LINE_RANGES: dict[str, Tuple[float, float]] = {
 # ---------------------------------------------------------------------------
 MIN_BET_COEFF = float(os.getenv("NEURALBET_MIN_BET_COEFF", "1.5"))
 MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
-MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "3.0"))
+MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "5.0"))
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
 
-# Live staking only — training/inference/backtest universe stays ALLOWED_SPORTS.
-# Default: four sports with historical OOS interest; volleyball stays out.
+# Live staking ceiling — training/inference/backtest universe stays ALLOWED_SPORTS.
+# Actual live sports are this set ∩ last-backtest Brier winners (see
+# `in_live_stake_sport`). Default ceiling = full universe so a sport can auto-join
+# when its Brier starts beating the market.
 _LIVE_STAKE_SPORTS_RAW = os.getenv(
     "NEURALBET_LIVE_STAKE_SPORTS",
-    "настольный теннис,теннис,баскетбол,футбол",
+    "настольный теннис,теннис,баскетбол,футбол,волейбол",
 ).strip().lower()
 LIVE_STAKE_SPORTS: frozenset[str] | None = (
     None
@@ -191,11 +197,195 @@ def in_verdict_train_band(coeff: float) -> bool:
     return coeff < MAX_BET_COEFF
 
 
-def in_live_stake_sport(sport_path: Optional[str]) -> bool:
-    """Whether live staking / «Активные LIVE» lists include this sport."""
+# ---------------------------------------------------------------------------
+# Per-sport Brier gate — last backtest writes a JSON allowlist; live + next
+# backtest stake only sports whose model Brier clearly beats the bookmaker.
+# File missing / gate off → env ceiling only (no extra restriction).
+# ---------------------------------------------------------------------------
+BRIER_SPORT_GATE = os.getenv("NEURALBET_BRIER_SPORT_GATE", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+BRIER_SPORT_MIN_EVALUATED = int(os.getenv("NEURALBET_BRIER_SPORT_MIN_EVALUATED", "2000"))
+BRIER_SPORT_MARGIN = float(os.getenv("NEURALBET_BRIER_SPORT_MARGIN", "0.005"))
+LIVE_BRIER_SPORTS_PATH = os.path.join(
+    os.getenv("MODEL_DIR", "/app/data/models"),
+    "live_stake_brier_sports.json",
+)
+_brier_sports_lock = threading.Lock()
+_brier_sports_cache: tuple[float, Optional[frozenset[str]]] = (-1.0, None)
+
+
+def _sport_brier_pair(row: dict[str, Any]) -> tuple[Optional[float], Optional[float], int]:
+    evaluated = int(row.get("evaluated") or 0)
+    prob = row.get("probability") or {}
+    current = prob.get("current") if isinstance(prob, dict) else None
+    brier = None
+    if isinstance(current, dict):
+        brier = current.get("brier")
+    if brier is None:
+        legacy = row.get("current")
+        if isinstance(legacy, dict):
+            brier = legacy.get("brier")
+        else:
+            brier = row.get("brier")
+    market = row.get("market_brier")
+    if market is None and isinstance(prob, dict):
+        market = (prob.get("market_raw") or {}).get("brier")
+    try:
+        brier_f = float(brier) if brier is not None else None
+    except (TypeError, ValueError):
+        brier_f = None
+    try:
+        market_f = float(market) if market is not None else None
+    except (TypeError, ValueError):
+        market_f = None
+    return brier_f, market_f, evaluated
+
+
+def select_brier_stake_sports(
+    by_sport: list[dict[str, Any]],
+    *,
+    min_evaluated: Optional[int] = None,
+    margin: Optional[float] = None,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Sports whose model Brier is at least `margin` below market Brier."""
+    floor = BRIER_SPORT_MIN_EVALUATED if min_evaluated is None else int(min_evaluated)
+    gap = BRIER_SPORT_MARGIN if margin is None else float(margin)
+    selected: list[str] = []
+    detail: list[dict[str, Any]] = []
+    for row in by_sport or []:
+        sport = sport_top(str(row.get("sport") or ""))
+        if not sport:
+            continue
+        brier, market, evaluated = _sport_brier_pair(row)
+        enabled = (
+            brier is not None
+            and market is not None
+            and evaluated >= floor
+            and brier < (market - gap)
+        )
+        if enabled:
+            selected.append(sport)
+        detail.append({
+            "sport": sport,
+            "evaluated": evaluated,
+            "brier": brier,
+            "market_brier": market,
+            "enabled": enabled,
+        })
+    selected = sorted(set(selected))
+    return selected, detail
+
+
+def _read_brier_allowlist_unlocked() -> Optional[frozenset[str]]:
+    """None = file missing / unreadable (do not extra-restrict)."""
+    global _brier_sports_cache
+    path = LIVE_BRIER_SPORTS_PATH
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        _brier_sports_cache = (-1.0, None)
+        return None
+    cached_mtime, cached_sports = _brier_sports_cache
+    if cached_mtime == mtime:
+        return cached_sports
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        sports = payload.get("sports")
+        if not isinstance(sports, list):
+            allow = frozenset()
+        else:
+            allow = frozenset(sport_top(str(s)) for s in sports if str(s).strip())
+    except (OSError, json.JSONDecodeError, TypeError):
+        allow = None
+    _brier_sports_cache = (mtime, allow)
+    return allow
+
+
+def brier_stake_sports_override() -> Optional[frozenset[str]]:
+    """None = gate off or no file yet. Empty frozenset = stake no sport."""
+    if not BRIER_SPORT_GATE:
+        return None
+    with _brier_sports_lock:
+        return _read_brier_allowlist_unlocked()
+
+
+def effective_live_stake_sports() -> Optional[frozenset[str]]:
+    """Sports that currently pass the live sport gate. None = no sport restriction."""
+    override = brier_stake_sports_override()
+    if LIVE_STAKE_SPORTS is None and override is None:
+        return None
     if LIVE_STAKE_SPORTS is None:
+        return override
+    if override is None:
+        return LIVE_STAKE_SPORTS
+    return LIVE_STAKE_SPORTS & override
+
+
+def write_brier_stake_sports(
+    sports: list[str],
+    *,
+    source: str,
+    detail: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    global _brier_sports_cache
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source": source,
+        "min_evaluated": BRIER_SPORT_MIN_EVALUATED,
+        "margin": BRIER_SPORT_MARGIN,
+        "sports": sorted({sport_top(s) for s in sports if sport_top(s)}),
+        "detail": detail or [],
+    }
+    path = LIVE_BRIER_SPORTS_PATH
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with _brier_sports_lock:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        _brier_sports_cache = (-1.0, None)
+    return payload
+
+
+def clear_brier_stake_sports() -> None:
+    path = LIVE_BRIER_SPORTS_PATH
+    with _brier_sports_lock:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        global _brier_sports_cache
+        _brier_sports_cache = (-1.0, None)
+
+
+def update_brier_stake_sports_from_backtest(result: dict[str, Any]) -> dict[str, Any]:
+    """Persist Brier winners from a finished backtest. Prefers walk-forward by_sport."""
+    wf_rows = result.get("walk_forward_by_sport")
+    if wf_rows:
+        rows, source = wf_rows, "walk_forward"
+    else:
+        rows, source = (result.get("by_sport") or []), "overall"
+    selected, detail = select_brier_stake_sports(rows)
+    return write_brier_stake_sports(selected, source=source, detail=detail)
+
+
+def in_live_stake_sport(sport_path: Optional[str]) -> bool:
+    """Whether live staking / «Активные LIVE» lists include this sport.
+
+    Env `NEURALBET_LIVE_STAKE_SPORTS` is the ceiling. When the Brier gate file
+    exists, the sport must also be in that allowlist (last backtest's Brier
+    winners). The file is written *after* a backtest scores, so that run itself
+    still uses the previous allowlist (no leakage).
+    """
+    sport = sport_top(sport_path)
+    if LIVE_STAKE_SPORTS is not None and sport not in LIVE_STAKE_SPORTS:
+        return False
+    override = brier_stake_sports_override()
+    if override is None:
         return True
-    return sport_top(sport_path) in LIVE_STAKE_SPORTS
+    return sport in override
 
 
 def live_market_family(

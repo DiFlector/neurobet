@@ -2480,7 +2480,8 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         or skipped_market
     ):
         sport_part = (
-            f", {skipped_sport} — sport outside live list (NEURALBET_LIVE_STAKE_SPORTS)"
+            f", {skipped_sport} — sport outside live list "
+            f"(NEURALBET_LIVE_STAKE_SPORTS ∩ Brier-vs-market gate)"
             if skipped_sport
             else ""
         )

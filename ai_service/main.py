@@ -106,6 +106,20 @@ def startup_event():
         "SYSTEM",
         "AI worker ready — inference/training cycles run in background threads.",
     )
+    try:
+        from app.neuralbet.backtest import get_latest_backtest
+        from neurobet_filters import update_brier_stake_sports_from_backtest
+
+        latest = get_latest_backtest()
+        if latest:
+            payload = update_brier_stake_sports_from_backtest(latest)
+            names = ", ".join(payload.get("sports") or []) or "none"
+            add_ai_log(
+                "SYSTEM",
+                f"Brier sport gate from latest backtest ({payload.get('source')}): {names}.",
+            )
+    except Exception as e:
+        logger.warning(f"Brier sport gate bootstrap failed: {e}")
 
 
 @app.on_event("shutdown")

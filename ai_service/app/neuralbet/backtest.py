@@ -44,6 +44,8 @@ from neurobet_filters import (
     MIN_BET_COEFF,
     MAX_BET_COEFF,
     MIN_BET_EDGE_PCT,
+    update_brier_stake_sports_from_backtest,
+    clear_brier_stake_sports,
 )
 from neurobet_features import (
     MARKET_FAMILIES,
@@ -905,7 +907,20 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         walk_forward = _walk_forward_eval(
             scored, rows, decision_threshold, sport_decision_thresholds, market_support,
         )
+        walk_forward_by_sport: Optional[List[Dict[str, Any]]] = None
         if walk_forward:
+            wf_recs: List[Dict[str, Any]] = []
+            for group in walk_forward.get("fold_groups") or []:
+                wf_recs.extend(group.get("records") or [])
+            wf_by: Dict[str, List[Dict[str, Any]]] = {}
+            for rec in wf_recs:
+                wf_by.setdefault(rec["sport"], []).append(rec)
+            wf_rows: List[Dict[str, Any]] = []
+            for sport_name, recs in wf_by.items():
+                agg = _agg_group(recs)
+                if agg:
+                    wf_rows.append({"sport": sport_name, **agg})
+            walk_forward_by_sport = sorted(wf_rows, key=lambda x: -x["evaluated"])
             walk_forward.pop("fold_groups", None)
 
         walk_forward_combined = (walk_forward or {}).get("combined") if walk_forward else None
@@ -942,6 +957,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             "walk_forward": walk_forward_combined,
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
             "walk_forward_meta": walk_forward_meta,
+            "walk_forward_by_sport": walk_forward_by_sport,
             "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
             "oos_by_market": sorted(
                 [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
@@ -967,6 +983,18 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         from app.neuralbet.review import build_agent_review
 
         result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
+
+        try:
+            brier_gate = update_brier_stake_sports_from_backtest(result)
+            result["brier_sport_gate"] = brier_gate
+            names = ", ".join(brier_gate.get("sports") or []) or "none"
+            add_ai_log(
+                "SYSTEM",
+                f"Brier sport gate updated from {brier_gate.get('source')} "
+                f"(margin {brier_gate.get('margin')}): {names}.",
+            )
+        except Exception as e:
+            logger.warning(f"Brier sport gate update failed: {e}")
 
         save_and_record(result)
         set_backtest_progress(
@@ -1067,7 +1095,8 @@ def clear_backtest_history() -> None:
                 if name.startswith("backtest_") and name.endswith(".json"):
                     try:
                         os.remove(os.path.join(BACKTEST_DIR, name))
-                    except Exception:
+                    except OSError:
                         pass
+        clear_brier_stake_sports()
     except Exception as e:
         logger.error(f"Error clearing backtest history: {e}")
