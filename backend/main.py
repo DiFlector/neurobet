@@ -37,6 +37,7 @@ from neurobet_filters import (
     BRIER_SPORT_GATE,
     BRIER_SPORT_MARGIN,
     BRIER_SPORT_MIN_EVALUATED,
+    MARKET_SHRINK,
     effective_live_stake_sports,
     brier_stake_sports_override,
 )
@@ -753,6 +754,7 @@ def _filters_snapshot() -> Dict[str, Any]:
         "min_bet_coeff": MIN_BET_COEFF,
         "max_bet_coeff": MAX_BET_COEFF,
         "min_bet_edge_pct": MIN_BET_EDGE_PCT,
+        "market_shrink": MARKET_SHRINK,
         "min_market_support": MIN_MARKET_SUPPORT,
         "live_stake_sports": (
             None if effective is None else sorted(effective)

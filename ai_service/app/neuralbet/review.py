@@ -98,6 +98,48 @@ def build_funnel(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def build_reliability(records: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Predicted-p vs actual win rate (calibration). current_prob is 0–100."""
+    if not records:
+        return []
+    edges = [50.0, 55.0, 60.0, 65.0, 70.0, 80.0, 100.0]
+    out: List[Dict[str, Any]] = []
+    for i, hi in enumerate(edges):
+        lo = 0.0 if i == 0 else edges[i - 1]
+        hit: List[Dict[str, Any]] = []
+        for r in records:
+            raw = r.get("current_prob")
+            if raw is None:
+                continue
+            p = float(raw)
+            if i == len(edges) - 1:
+                if p >= lo:
+                    hit.append(r)
+            elif i == 0:
+                if p < hi:
+                    hit.append(r)
+            elif lo <= p < hi:
+                hit.append(r)
+        n = len(hit)
+        if n == 0:
+            continue
+        mean_p = sum(float(r["current_prob"]) for r in hit) / n
+        emp = 100.0 * sum(int(r.get("is_win") or 0) for r in hit) / n
+        market_vals = [float(r["market_prob"]) for r in hit if r.get("market_prob") is not None]
+        mean_mkt = (sum(market_vals) / len(market_vals)) if market_vals else None
+        gap = emp - mean_p
+        out.append({
+            "lo_pct": lo,
+            "hi_pct": hi,
+            "n": n,
+            "mean_pred_pct": round(mean_p, 1),
+            "empirical_win_pct": round(emp, 1),
+            "mean_market_pct": round(mean_mkt, 1) if mean_mkt is not None else None,
+            "gap_pct": round(gap, 1),
+        })
+    return out
+
+
 def build_head_alignment(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     verdict_yes_ev_no = 0
     verdict_no_ev_yes = 0
@@ -303,6 +345,7 @@ def _build_flags(
     wf: Dict[str, Any],
     alignment: Optional[Dict[str, Any]],
     delta: Optional[Dict[str, Any]],
+    reliability: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     flags: List[Dict[str, str]] = []
 
@@ -437,6 +480,23 @@ def _build_flags(
                     "message": f"{sport['sport']}: ROI {sport['roi_pct']}%, Brier beats market",
                 })
 
+    if reliability:
+        worst = min(
+            (b for b in reliability if int(b.get("n") or 0) >= 80),
+            key=lambda b: float(b.get("gap_pct") or 0),
+            default=None,
+        )
+        if worst is not None and float(worst.get("gap_pct") or 0) <= -5:
+            flags.append({
+                "severity": "warning",
+                "code": "overconfident_probs",
+                "message": (
+                    f"Reliability {worst['lo_pct']:.0f}–{worst['hi_pct']:.0f}%: "
+                    f"pred {worst['mean_pred_pct']}% vs actual {worst['empirical_win_pct']}% "
+                    f"(n={worst['n']})"
+                ),
+            })
+
     return flags
 
 
@@ -462,6 +522,7 @@ def build_agent_review(
     wf = build_walk_forward_stability(result)
     alignment = build_head_alignment(records) if records else None
     funnel = build_funnel(records) if records else None
+    reliability = build_reliability(records) if records else []
     delta = _delta_vs_previous(result, history or []) if history else None
 
     slices = {
@@ -510,6 +571,7 @@ def build_agent_review(
         "walk_forward_stability": wf,
         "funnel": funnel,
         "head_alignment": alignment,
+        "reliability": reliability,
         "sibling_sum_mae": (result.get("sibling_coherence") or {}).get("sibling_sum_mae"),
         "coherence_veto_count": (result.get("sibling_coherence") or {}).get(
             "coherence_veto_count"
@@ -533,7 +595,7 @@ def build_agent_review(
         "delta_vs_previous": delta,
         "policy_ablation_oos": policy_ablation,
         "walk_forward_meta": result.get("walk_forward_meta"),
-        "flags": _build_flags(result, gate, wf, alignment, delta),
+        "flags": _build_flags(result, gate, wf, alignment, delta, reliability),
         "quality_gate": gate,
     }
 

@@ -46,6 +46,7 @@ from neurobet_filters import (
     MIN_BET_EDGE_PCT,
     MIN_MARKET_SUPPORT,
     FAST_FORMAT_SPORT_SQL,
+    effective_live_stake_sports,
 )
 from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
@@ -155,7 +156,14 @@ AI_SETTINGS_PATH = os.path.join(MODEL_DIR, "ai_settings.json")
 # Online GRU pass size. 10000 held the engine lock ~9 min/epoch on this CPU VM
 # (32 vCPU, ~60% steal); 5000 halves wall time without dropping below MIN_TRAIN_SAMPLES.
 TRAIN_BATCH_TOTAL = int(os.getenv("NEURALBET_TRAIN_BATCH_TOTAL", "5000"))
-TRAIN_FRESH_SHARE = float(os.getenv("NEURALBET_TRAIN_FRESH_SHARE", "0.7"))
+# Share of each class quota drawn from trained_count=0. The rest is replay so the
+# GRU cannot memorize a 100% fresh 5k slice in epoch 1. (The fetch helper used to
+# ignore this cap and fill the whole quota from fresh.)
+TRAIN_FRESH_SHARE = float(os.getenv("NEURALBET_TRAIN_FRESH_SHARE", "0.45"))
+# Fraction of the online batch taken from current Brier-gate sports (live stake
+# allowlist). Remainder stays on the rest of the universe so dropped sports can
+# still recover enough Brier to re-enter the list.
+TRAIN_STAKE_SPORT_SHARE = float(os.getenv("NEURALBET_TRAIN_STAKE_SPORT_SHARE", "0.60"))
 MAX_REPLAY = 5
 VAL_MIN_POOL = 50
 VAL_FRACTION = 0.2
@@ -1453,6 +1461,9 @@ def _fetch_class_rows(
     is_win: int,
     n: int,
     seen: set,
+    *,
+    sport_in: list[str] | None = None,
+    sport_not_in: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Fill up to `n` rows of one class: untrained newest first, then replay, then
     any remaining of that class. Dedupes against `seen` (mutated)."""
@@ -1460,22 +1471,32 @@ def _fetch_class_rows(
         return []
     uni, where_val, base_params = _universe_filter(val_event_ids)
     win_clause = "AND h.is_win = %s"
+    sport_sql = ""
+    sport_params: list = []
+    sport_expr = "LOWER(TRIM(SPLIT_PART(f.sport_path, '/', 1)))"
+    if sport_in:
+        sport_sql = f"AND {sport_expr} = ANY(%s)"
+        sport_params = [list(sport_in)]
+    elif sport_not_in:
+        sport_sql = f"AND NOT ({sport_expr} = ANY(%s))"
+        sport_params = [list(sport_not_in)]
     out: list[dict[str, Any]] = []
 
     def _take(order_sql: str, extra_where: str, extra_params: list, limit: int) -> None:
         nonlocal out
-        need = n - len(out)
+        cap = min(n, len(out) + max(0, limit))
+        need = cap - len(out)
         if need <= 0 or limit <= 0:
             return
-        fetch_n = max(limit * 2, limit + 32)
+        fetch_n = max(need * 2, need + 32)
         f_cursor.execute(
             f"""
             {_TRAIN_ROW_SELECT}
-            {uni} {where_val} {win_clause} {extra_where}
+            {uni} {where_val} {sport_sql} {win_clause} {extra_where}
             {order_sql}
             LIMIT %s
             """,
-            base_params + [is_win] + extra_params + [fetch_n],
+            base_params + sport_params + [is_win] + extra_params + [fetch_n],
         )
         for s in _rows_to_train_samples(f_cursor.fetchall()):
             key = s["_key"]
@@ -1483,7 +1504,7 @@ def _fetch_class_rows(
                 continue
             seen.add(key)
             out.append(s)
-            if len(out) >= n:
+            if len(out) >= cap:
                 return
 
     fresh_n = int(n * TRAIN_FRESH_SHARE)
@@ -1506,22 +1527,50 @@ def _fetch_training_batch(
     f_cursor, val_event_ids: set | None
 ) -> tuple[list[dict[str, Any]], list[tuple], dict[str, int]]:
     """
-    Builds this cycle's training batch: ~70% never-or-rarely-trained bets (freshest
-    first) + ~30% older ones sampled at random so the model doesn't catastrophically
-    forget history it hasn't seen in a while (see plan B4). Win/loss counts are drawn
-    to the archive's empirical win rate (see _get_archive_win_frac) so val_loss stays
-    comparable pass-to-pass. Excludes every bet belonging to a held-out validation event.
+    Builds this cycle's training batch: TRAIN_FRESH_SHARE never-trained bets
+    (freshest first) + replay so the GRU cannot memorize a 100% fresh slice in
+    epoch 1. Prefer TRAIN_STAKE_SPORT_SHARE from the current Brier-gate sports.
+    Win/loss counts follow the archive empirical win rate (_get_archive_win_frac).
+    Excludes every bet belonging to a held-out validation event.
     Returns (rows, key_list, mix) where mix is the drawn quota plus what was actually
     fetched.
     """
     win_frac = _get_archive_win_frac(f_cursor)
     n_win, n_loss = _draw_class_quota(TRAIN_BATCH_TOTAL, win_frac)
     seen: set = set()
-    wins = _fetch_class_rows(f_cursor, val_event_ids, 1, n_win, seen)
-    losses = _fetch_class_rows(f_cursor, val_event_ids, 0, n_loss, seen)
+    stake_sports = effective_live_stake_sports()
+    share = TRAIN_STAKE_SPORT_SHARE
+    if stake_sports and 0.0 < share < 1.0:
+        stake_list = sorted(stake_sports)
+        n_sw = int(round(n_win * share))
+        n_sl = int(round(n_loss * share))
+        wins = _fetch_class_rows(
+            f_cursor, val_event_ids, 1, n_sw, seen, sport_in=stake_list,
+        )
+        losses = _fetch_class_rows(
+            f_cursor, val_event_ids, 0, n_sl, seen, sport_in=stake_list,
+        )
+        wins.extend(_fetch_class_rows(
+            f_cursor, val_event_ids, 1, n_win - len(wins), seen, sport_not_in=stake_list,
+        ))
+        losses.extend(_fetch_class_rows(
+            f_cursor, val_event_ids, 0, n_loss - len(losses), seen, sport_not_in=stake_list,
+        ))
+        if len(wins) < n_win:
+            wins.extend(_fetch_class_rows(
+                f_cursor, val_event_ids, 1, n_win - len(wins), seen,
+            ))
+        if len(losses) < n_loss:
+            losses.extend(_fetch_class_rows(
+                f_cursor, val_event_ids, 0, n_loss - len(losses), seen,
+            ))
+    else:
+        wins = _fetch_class_rows(f_cursor, val_event_ids, 1, n_win, seen)
+        losses = _fetch_class_rows(f_cursor, val_event_ids, 0, n_loss, seen)
     samples = wins + losses
     random.shuffle(samples)
     keys = [s["_key"] for s in samples]
+    stake_set = set(stake_sports or [])
     mix = {
         "target_win": n_win,
         "target_loss": n_loss,
@@ -1529,6 +1578,10 @@ def _fetch_training_batch(
         "got_loss": len(losses),
         "got_fresh": sum(1 for s in samples if int(s.get("trained_count") or 0) == 0),
         "got_replay": sum(1 for s in samples if int(s.get("trained_count") or 0) > 0),
+        "got_stake_sport": sum(
+            1 for s in samples
+            if (s.get("sport_path") or "").split("/")[0].strip().lower() in stake_set
+        ) if stake_set else len(samples),
     }
     return samples, keys, mix
 
@@ -2936,6 +2989,9 @@ def _run_neuralbet_inference_and_training_locked(
             replay_n = (class_mix or {}).get("got_replay")
             if fresh_n is not None:
                 mix_str += f", {fresh_n} fresh / {replay_n} replay"
+            stake_n = (class_mix or {}).get("got_stake_sport")
+            if stake_n is not None:
+                mix_str += f", {stake_n} live-stake-sport"
             start_msg = (
                 f"Starting online training pass: {len(training_samples)} samples "
                 f"({mix_str}), {len(val_samples)} held out for validation "

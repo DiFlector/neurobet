@@ -69,6 +69,9 @@ MIN_BET_COEFF = float(os.getenv("NEURALBET_MIN_BET_COEFF", "1.5"))
 MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
 MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "5.0"))
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
+# After sibling renorm, pull calibrated p toward 1/coeff before EV.
+# 0.25: a 61.6% call at 1.73 (market ~57.8%) becomes ~60.7% and often drops below 5% EV.
+MARKET_SHRINK = float(os.getenv("NEURALBET_MARKET_SHRINK", "0.25"))
 
 # Live staking ceiling — training/inference/backtest universe stays ALLOWED_SPORTS.
 # Actual live sports are this set ∩ last-backtest Brier winners (see
@@ -189,6 +192,22 @@ def is_fast_format_sport_path(sport_path: Optional[str]) -> bool:
 
 def in_bet_band(coeff: float) -> bool:
     return MIN_BET_COEFF <= coeff <= MAX_BET_COEFF
+
+
+def shrink_p_toward_market(
+    p: float,
+    coeff: float,
+    shrink: Optional[float] = None,
+) -> float:
+    """Convex mix of model p and bookmaker-implied 1/coeff. Used on live, bot, backtest."""
+    s = MARKET_SHRINK if shrink is None else float(shrink)
+    if s <= 0.0:
+        return float(p)
+    s = min(max(s, 0.0), 1.0)
+    c = float(coeff or 0.0)
+    market = min(max(1.0 / c, 0.01), 0.99) if c > 1.0 else 0.99
+    mixed = (1.0 - s) * float(p) + s * market
+    return min(max(mixed, 0.01), 0.99)
 
 
 def in_verdict_train_band(coeff: float) -> bool:

@@ -37,7 +37,7 @@ logger = logging.getLogger("ai_service_model")
 # Minimum market_weight after tuning / checkpoint load — the only backtest-positive
 # day in production had market_weight≈0.78; floor keeps the blend from drifting
 # back to pure-model when val slices lie.
-MARKET_WEIGHT_FLOOR = float(os.getenv("NEURALBET_MARKET_WEIGHT_FLOOR", "0.5"))
+MARKET_WEIGHT_FLOOR = float(os.getenv("NEURALBET_MARKET_WEIGHT_FLOOR", "0.70"))
 
 PYTORCH_WEIGHTS_PATH = os.path.join(MODEL_DIR, "pytorch_gru.pt")
 LIGHTGBM_MODEL_PATH = os.path.join(MODEL_DIR, "lightgbm_model.txt")
@@ -93,6 +93,10 @@ PAIRED_MARKET_LOSS_WEIGHT = float(os.getenv("NEURALBET_PAIRED_MARKET_LOSS_WEIGHT
 CHECKPOINT_VAL_FLOOR_TOLERANCE = float(os.getenv("NEURALBET_CHECKPOINT_VAL_FLOOR_TOLERANCE", "0.02"))
 # Must beat incoming Brier by this margin to accept; within ±eps, win-BCE can break ties.
 CHECKPOINT_BRIER_EPS = float(os.getenv("NEURALBET_CHECKPOINT_BRIER_EPS", "1e-4"))
+# Reject online passes that memorized the batch in 1–2 epochs (val Brier often
+# still "improves" on a stale pin). 0 disables.
+CHECKPOINT_MIN_BEST_EPOCH = int(os.getenv("NEURALBET_CHECKPOINT_MIN_BEST_EPOCH", "3"))
+BRIER_LOSS_WEIGHT = float(os.getenv("NEURALBET_BRIER_LOSS_WEIGHT", "1.0"))
 CHECKPOINT_IN_BAND_ONLY = os.getenv("NEURALBET_CHECKPOINT_IN_BAND_ONLY", "1").strip().lower() not in (
     "0", "false", "no", "off",
 )
@@ -524,6 +528,7 @@ class NeuralBetEnsemble:
             incoming_brier=val_incoming,
             attempted_win_bce=attempted_bce,
             incoming_win_bce=incoming_bce,
+            best_epoch=best_epoch,
         )
 
         if accepted:
@@ -569,6 +574,7 @@ class NeuralBetEnsemble:
         incoming_brier: float,
         attempted_win_bce: Optional[float] = None,
         incoming_win_bce: Optional[float] = None,
+        best_epoch: Optional[int] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Accept attempted weights when in-band val Brier improves vs incoming
@@ -577,7 +583,8 @@ class NeuralBetEnsemble:
         Accept if:
           - attempted_brier < incoming_brier - CHECKPOINT_BRIER_EPS, OR
           - Brier is within ±eps of incoming AND win-BCE improved (tie-break), AND
-          - neither incoming nor attempted exceeds last_accepted + FLOOR_TOLERANCE.
+          - neither incoming nor attempted exceeds last_accepted + FLOOR_TOLERANCE, AND
+          - best_epoch >= CHECKPOINT_MIN_BEST_EPOCH (when that floor is > 0).
         """
         floor = self.last_accepted_val_loss
         tol = CHECKPOINT_VAL_FLOOR_TOLERANCE
@@ -585,6 +592,12 @@ class NeuralBetEnsemble:
             incoming_brier > floor + tol or attempted_brier > floor + tol
         ):
             return False, "floor"
+        if (
+            CHECKPOINT_MIN_BEST_EPOCH > 0
+            and best_epoch is not None
+            and int(best_epoch) < CHECKPOINT_MIN_BEST_EPOCH
+        ):
+            return False, "best_epoch"
 
         eps = CHECKPOINT_BRIER_EPS
         if attempted_brier < incoming_brier - eps:
@@ -1558,8 +1571,19 @@ class NeuralBetEnsemble:
             logits = self.pytorch_model(seqs, sport_t, market_t, team1_t, team2_t, kb_t)
             win_logits = logits[:, 0:1]
             bce_loss = bce(win_logits, targets)
+            win_probs = torch.sigmoid(win_logits)
 
             loss = bce_loss
+            if BRIER_LOSS_WEIGHT > 0:
+                coeffs_t = torch.tensor(
+                    [b["coefficient"] for b in batch], dtype=torch.float32
+                )
+                in_band = (coeffs_t >= MIN_BET_COEFF) & (coeffs_t <= MAX_BET_COEFF)
+                if int(in_band.sum().item()) > 0:
+                    p = win_probs.squeeze(1)[in_band]
+                    y = targets.squeeze(1)[in_band]
+                    loss = loss + BRIER_LOSS_WEIGHT * ((p - y) ** 2).mean()
+
             if DECISION_LOSS_WEIGHT > 0:
                 # Legacy residual + cost-sensitive decision heads (disabled in objective B).
                 decision_logits = logits[:, 1]
@@ -1582,7 +1606,6 @@ class NeuralBetEnsemble:
                 )
                 loss = loss + DECISION_LOSS_WEIGHT * (decision_loss + decision_bce)
 
-            win_probs = torch.sigmoid(win_logits)
             paired = self._paired_market_loss(
                 batch, win_probs.squeeze(1)
             )
@@ -1902,6 +1925,7 @@ class NeuralBetEnsemble:
                 incoming_brier=val_incoming,
                 attempted_win_bce=final_val_bce,
                 incoming_win_bce=val_incoming_bce,
+                best_epoch=best_epoch,
             )
             if not checkpoint_accepted:
                 self._restore_train_state(*incoming_state)

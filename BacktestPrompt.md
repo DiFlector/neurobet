@@ -124,14 +124,19 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 
 - Пол вероятности 1–99% (не 12% floor).
 - `NEURALBET_DECISION_POS_WEIGHT_CAP=1.0` (cost-sensitive decision в live band).
-- `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.5`.
+- `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.70`.
 - Калибровка с учётом кэфа; **no-leakage calib** в бэктest (`calibration_cutoff`).
+- Shrink p к 1/кэф после sibling: `NEURALBET_MARKET_SHRINK=0.25` (live / bot / backtest).
 - Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=5%`, `MIN_MARKET_SUPPORT=150`.
 - Live stake sports: env ceiling ∩ last-backtest Brier-vs-market allowlist (`NEURALBET_BRIER_SPORT_GATE`, margin 0.005). Auto-updates after each backtest.
 - Live stake markets: `NEURALBET_LIVE_STAKE_MARKETS=totals` (w1/w2 excluded from staking; still in training universe).
 - Online GRU LR: `NEURALBET_LEARNING_RATE=5e-5` (was 1e-4; reduces best_epoch=1 / checkpoint reject).
 - Тюнер: EMA 0.3, min val bets, sample-size penalty; threshold sweep по **ROI CI lo**.
-- Обучение: `TRAIN_EVERY_CYCLES=20`, `MIN_TRAIN_SAMPLES=2000`, batch 10k, val 2k, `MIN_FRESH_SAMPLES=500`.
+- Обучение: `TRAIN_EVERY_CYCLES=20`, `MIN_TRAIN_SAMPLES=2000`, batch 5k, val 2k,
+  `MIN_FRESH_SAMPLES=500`, `TRAIN_FRESH_SHARE=0.45` (replay),
+  `TRAIN_STAKE_SPORT_SHARE=0.60`, in-band `BRIER_LOSS_WEIGHT=1.0`,
+  `CHECKPOINT_MIN_BEST_EPOCH=3`.
+- `agent_review.reliability` — корзины pred p vs факт (не KPI `accuracy_pct`).
 - Cold-start streaming (chunk pass, val/checkpoint после полного epoch).
 - `NEURALBET_LIVE_QUALITY_GATE` + walk-forward OOS в бэктest.
 - Team form: as-of + правильная атрибуция P1/P2; overround/no-vig fix.
