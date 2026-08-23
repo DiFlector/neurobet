@@ -3,6 +3,10 @@
     "neurobet-eval": {
       "url": "https://diflector.ru/neurobet/api/mcp",
       "type": "http"
+    },
+    "codebase-memory-mcp": {
+      "command": "/home/diflector/.local/bin/codebase-memory-mcp",
+      "args": []
     }
   }
 }
