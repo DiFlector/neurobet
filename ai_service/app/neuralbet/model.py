@@ -19,6 +19,7 @@ from app.neuralbet.context import (
     TEAM_HASH_BUCKETS, team_index,
 )
 from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, MIN_BET_EDGE_PCT, in_bet_band
+from .checkpoint_gate import decide_online_checkpoint
 from neurobet_features import (
     OVERROUND_EXPECTED_SIZE,
     GRU_INPUT_DIM,
@@ -578,38 +579,21 @@ class NeuralBetEnsemble:
     ) -> Tuple[bool, Optional[str]]:
         """
         Accept attempted weights when in-band val Brier improves vs incoming
-        (primary), with a floor vs last accepted Brier.
-
-        Accept if:
-          - attempted_brier < incoming_brier - CHECKPOINT_BRIER_EPS, OR
-          - Brier is within ±eps of incoming AND win-BCE improved (tie-break), AND
-          - neither incoming nor attempted exceeds last_accepted + FLOOR_TOLERANCE, AND
-          - best_epoch >= CHECKPOINT_MIN_BEST_EPOCH (when that floor is > 0).
+        (primary). Floor vs last accepted applies to *attempted* only: if incoming
+        has already drifted over the floor, a probe that beats incoming (and
+        clears CHECKPOINT_MIN_BEST_EPOCH) is allowed so catch-up cannot deadlock.
         """
-        floor = self.last_accepted_val_loss
-        tol = CHECKPOINT_VAL_FLOOR_TOLERANCE
-        if floor is not None and (
-            incoming_brier > floor + tol or attempted_brier > floor + tol
-        ):
-            return False, "floor"
-        if (
-            CHECKPOINT_MIN_BEST_EPOCH > 0
-            and best_epoch is not None
-            and int(best_epoch) < CHECKPOINT_MIN_BEST_EPOCH
-        ):
-            return False, "best_epoch"
-
-        eps = CHECKPOINT_BRIER_EPS
-        if attempted_brier < incoming_brier - eps:
-            return True, None
-        if (
-            attempted_brier <= incoming_brier + eps
-            and attempted_win_bce is not None
-            and incoming_win_bce is not None
-            and attempted_win_bce < incoming_win_bce - 1e-4
-        ):
-            return True, None
-        return False, "incoming"
+        return decide_online_checkpoint(
+            attempted_brier=attempted_brier,
+            incoming_brier=incoming_brier,
+            last_accepted=self.last_accepted_val_loss,
+            floor_tol=CHECKPOINT_VAL_FLOOR_TOLERANCE,
+            brier_eps=CHECKPOINT_BRIER_EPS,
+            min_best_epoch=CHECKPOINT_MIN_BEST_EPOCH,
+            best_epoch=best_epoch,
+            attempted_win_bce=attempted_win_bce,
+            incoming_win_bce=incoming_win_bce,
+        )
 
     def _load_model_state_soft(self, state_dict: Dict[str, Any]) -> bool:
         """
@@ -1849,6 +1833,16 @@ class NeuralBetEnsemble:
                 else:
                     epochs_without_improvement += 1
                     if epochs_without_improvement >= EARLY_STOP_PATIENCE:
+                        break
+                    if (
+                        CHECKPOINT_MIN_BEST_EPOCH > 0
+                        and epoch_idx >= CHECKPOINT_MIN_BEST_EPOCH
+                        and best_epoch < CHECKPOINT_MIN_BEST_EPOCH
+                    ):
+                        logger.info(
+                            f"Online pass stopped at epoch {epoch_idx}: best_epoch="
+                            f"{best_epoch} < {CHECKPOINT_MIN_BEST_EPOCH} (batch memorization)."
+                        )
                         break
 
                 self.pytorch_model.train()

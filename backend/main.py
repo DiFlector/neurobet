@@ -37,6 +37,8 @@ from neurobet_filters import (
     BRIER_SPORT_GATE,
     BRIER_SPORT_MARGIN,
     BRIER_SPORT_MIN_EVALUATED,
+    BRIER_SPORT_MIN_BETS,
+    BRIER_SPORT_REQUIRE_ROI_LO,
     MARKET_SHRINK,
     effective_live_stake_sports,
     brier_stake_sports_override,
@@ -766,6 +768,8 @@ def _filters_snapshot() -> Dict[str, Any]:
         "brier_sport_gate": BRIER_SPORT_GATE,
         "brier_sport_margin": BRIER_SPORT_MARGIN,
         "brier_sport_min_evaluated": BRIER_SPORT_MIN_EVALUATED,
+        "brier_sport_min_bets": BRIER_SPORT_MIN_BETS,
+        "brier_sport_require_roi_lo": BRIER_SPORT_REQUIRE_ROI_LO,
         "live_stake_markets": (
             None if LIVE_STAKE_MARKETS is None else sorted(LIVE_STAKE_MARKETS)
         ),

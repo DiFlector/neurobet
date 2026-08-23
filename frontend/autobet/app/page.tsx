@@ -52,7 +52,7 @@ interface NeuroBet {
   pytorchScore: number
   stake: number | null // сумма, которую бот реально поставил на этот исход (₽), null если не ставил
   potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
-  predictedWin: number | null // вердикт сети: 1 = выиграет, 0 = проиграет, null = не оценено
+  predictedWin: number | null // 1 = EV ≥ порога (ставить), 0 = сейчас не ставить, null = не оценено
 }
 
 function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
@@ -436,6 +436,8 @@ export default function NeurobetsPage() {
       current_coefficient: b.current_coefficient ?? null,
       win_probability: b.win_probability,
       expected_roi: b.expected_roi ?? null,
+      current_predicted_win: b.current_predicted_win ?? null,
+      current_expected_roi: b.current_expected_roi ?? null,
       status: b.status,
       placed_at: b.placed_at ?? null,
       current_score: b.current_score ?? null,
@@ -895,6 +897,7 @@ export default function NeurobetsPage() {
                 const betCoeff = Number(b.coefficient)
                 const coeffRose = currentCoeff !== null && currentCoeff > betCoeff
                 const coeffDropped = currentCoeff !== null && currentCoeff < betCoeff
+                const skipNow = b.current_predicted_win != null && Number(b.current_predicted_win) === 0
 
                 return (
                   <div
@@ -907,7 +910,17 @@ export default function NeurobetsPage() {
                           {b.sport_path}
                         </span>
                       )}
-                      <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">{b.match_name}</div>
+                        {skipNow && (
+                          <span
+                            className="shrink-0 text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#d63031]/15 text-[#ff7675] border border-[#d63031]/40"
+                            title="Позиция уже открыта. Живой пересчёт: EV ниже порога, новую ставку бот сейчас бы не открыл."
+                          >
+                            (сейчас не ставить)
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-neutral-400 truncate">
                         {b.market_prefix} — {b.label}
                       </div>
@@ -1541,7 +1554,7 @@ export default function NeurobetsPage() {
                           {bet.predictedWin === 0 ? (
                             <>
                               <AlertTriangle className="w-3.5 h-3.5" />
-                              Сеть считает: проиграет
+                              Сейчас не ставить
                             </>
                           ) : (
                             <>
@@ -1658,6 +1671,14 @@ export default function NeurobetsPage() {
                         <span className="text-sm font-black font-mono text-[#55efc4]">
                           {bet.potentialPayout!.toFixed(1)} ₽
                         </span>
+                        {bet.predictedWin === 0 && (
+                          <span
+                            className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[#d63031]/15 text-[#ff7675] border border-[#d63031]/40"
+                            title="Позиция уже открыта. Живой пересчёт: EV ниже порога, новую ставку бот сейчас бы не открыл."
+                          >
+                            (сейчас не ставить)
+                          </span>
+                        )}
                         <span className="ml-auto flex items-center gap-1.5 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800">
                           <span className="text-[10px] text-neutral-400 font-mono uppercase">Live счёт</span>
                           <motion.span
