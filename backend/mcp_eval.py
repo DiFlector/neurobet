@@ -277,7 +277,7 @@ TOOLS = [
             "offset": {"type": "integer", "minimum": 0, "description": "Default 0."},
             "status": {
                 "type": "string",
-                "description": "Optional status filter: open, won, lost, void, cancelled.",
+                "description": "Optional status filter: open, settled, won, lost, void, cancelled.",
             },
         },
     ),
@@ -513,12 +513,9 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
         res = m.get_live_bets(
             limit=_clamp_int(arguments, "limit", 100, 1, 500),
             offset=_clamp_int(arguments, "offset", 0, 0, 1_000_000),
+            status=_opt_str(arguments, "status"),
         )
-        status = _opt_str(arguments, "status")
-        items = res.get("items") or []
-        if status:
-            items = [b for b in items if (b.get("status") or "") == status.lower()]
-        return _ok({"total": res.get("total"), "count": len(items), "items": items})
+        return _ok({"total": res.get("total"), "count": len(res.get("items") or []), "items": res.get("items") or []})
 
     if name == "get_top_neurobets":
         res = m.get_top_neurobets(

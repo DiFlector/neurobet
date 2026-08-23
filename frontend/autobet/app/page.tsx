@@ -150,6 +150,16 @@ function AccuracyRing({ pct, known, size = 68 }: { pct: number; known: boolean; 
 }
 
 const PAGE_SIZE = 20
+const FETCH_TIMEOUT_MS = 12_000
+
+function fetchApi(input: string, init?: RequestInit): Promise<Response> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS)
+  const signal = init?.signal && typeof AbortSignal.any === "function"
+    ? AbortSignal.any([init.signal, timeout])
+    : (init?.signal ?? timeout)
+  const { signal: _ignored, ...rest } = init || {}
+  return fetch(input, { ...rest, signal })
+}
 
 // Fires onIntersect once the sentinel scrolls near the viewport, so the next
 // page of results loads before the user actually hits the bottom.
@@ -187,6 +197,7 @@ export default function NeurobetsPage() {
   const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
   const [openBetsJsonCopied, setOpenBetsJsonCopied] = useState(false)
   const [settledBotBetsList, setSettledBotBetsList] = useState<any[]>([])
+  const [botBetsLoaded, setBotBetsLoaded] = useState(false)
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [liveBets, setLiveBets] = useState<NeuroBet[]>([])
   const [liveTotal, setLiveTotal] = useState(0)
@@ -213,6 +224,8 @@ export default function NeurobetsPage() {
   // backend directly on its own origin/port instead.
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
   const neurobetsRequestId = useRef(0)
+  const historyRequestId = useRef(0)
+  const historyAbortRef = useRef<AbortController | null>(null)
   // How many rows are currently loaded for each infinite-scroll list — kept in a ref
   // (not state) so it can be used as the next "offset" without retriggering fetches.
   const liveOffsetRef = useRef(0)
@@ -241,11 +254,12 @@ export default function NeurobetsPage() {
   useEffect(() => {
     historyOffsetRef.current = 0
     setHistoryItems([])
+    setHistoryLoading(true)
   }, [selectedSport, activeTab, historyOutcomeFilter])
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/stats`, { cache: "no-store" })
+      const res = await fetchApi(`${API_BASE}/api/stats`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         setStats(data.stats)
@@ -259,7 +273,7 @@ export default function NeurobetsPage() {
   // URLs containing "stats" while /api/neurobets/* still works (bankroll, top, etc.).
   const fetchHeadlineAccuracy = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/neurobets/headline-accuracy`, { cache: "no-store" })
+      const res = await fetchApi(`${API_BASE}/api/neurobets/headline-accuracy`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         setHeadlineAccuracy({
@@ -272,30 +286,9 @@ export default function NeurobetsPage() {
     }
   }, [API_BASE])
 
-  // Fast provisional % while headline-accuracy warms its cache (cold SQL aggregate).
-  const fetchHeadlineAccuracyFallback = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/neurobets/stats-by-type`, { cache: "no-store" })
-      if (res.ok) {
-        const data = await res.json()
-        const guess = data.overall?.guess_rate_pct
-        if (guess == null) return
-        setHeadlineAccuracy((prev) => {
-          if (prev?.guess_rate_pct != null) return prev
-          return {
-            guess_rate_pct: guess,
-            miss_rate_pct: Math.round((100 - guess) * 10) / 10,
-          }
-        })
-      }
-    } catch (err) {
-      // Ignore
-    }
-  }, [API_BASE])
-
   const fetchBankroll = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/neurobets/bankroll`)
+      const res = await fetchApi(`${API_BASE}/api/neurobets/bankroll?include_ledger=false`)
       if (res.ok) {
         const data = await res.json()
         setBankroll(data)
@@ -318,7 +311,7 @@ export default function NeurobetsPage() {
       })
       if (selectedSport !== "all") params.append("sport", selectedSport)
       if (searchQuery) params.append("search", searchQuery)
-      const res = await fetch(`${API_BASE}/api/neurobets/top?${params.toString()}`)
+      const res = await fetchApi(`${API_BASE}/api/neurobets/top?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         if (typeof data.total === "number") setLiveTotal(data.total)
@@ -333,7 +326,7 @@ export default function NeurobetsPage() {
       const params = new URLSearchParams()
       if (selectedSport !== "all") params.append("sport", selectedSport)
       if (historyOutcomeFilter !== "all") params.append("outcome", historyOutcomeFilter)
-      const res = await fetch(`${API_BASE}/api/neurobets/history-summary?${params.toString()}`, { cache: "no-store" })
+      const res = await fetchApi(`${API_BASE}/api/neurobets/history-summary?${params.toString()}`, { cache: "no-store" })
       if (res.ok) {
         const data = await res.json()
         if (data.summary) setHistorySummary(data.summary)
@@ -343,46 +336,53 @@ export default function NeurobetsPage() {
     }
   }, [API_BASE, selectedSport, historyOutcomeFilter])
 
-  // Pulls the bot's currently-open real stakes so each matching lot card can show
-  // "поставлено X ₽ / получит Y ₽ при выигрыше". Doesn't trigger a predictions re-fetch —
-  // just refreshes the lookup ref that fetchNeurobets reads from on its own schedule.
+  // Open + settled bot stakes are two cheap queries (not one mixed dump of 200
+  // rows that then joined every finished_bets market for those events).
   const fetchOpenBotBets = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
-      if (res.ok) {
-        const data = await res.json()
+      const [openRes, settledRes] = await Promise.allSettled([
+        fetchApi(`${API_BASE}/api/neurobets/live-bets?status=open&limit=50`),
+        fetchApi(`${API_BASE}/api/neurobets/live-bets?status=settled&limit=30`),
+      ])
+      if (openRes.status === "fulfilled" && openRes.value.ok) {
+        const data = await openRes.value.json()
         const map = new Map<string, { stake: number; coefficient: number }>()
-        const openList: any[] = []
-        const settledList: any[] = []
-        for (const b of data.items || []) {
-          if (b.status === "open") {
-            map.set(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix), {
-              stake: b.stake,
-              coefficient: b.coefficient,
-            })
-            openList.push(b)
-          } else {
-            settledList.push(b)
-          }
+        const openList: any[] = data.items || []
+        for (const b of openList) {
+          map.set(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix), {
+            stake: b.stake,
+            coefficient: b.coefficient,
+          })
         }
         openBotBetsRef.current = map
-        setOpenBetsCount(map.size)
+        setOpenBetsCount(typeof data.total === "number" ? data.total : map.size)
         setOpenBotBetsList(openList)
-        settledList.sort((a, b) => new Date(b.settled_at || 0).getTime() - new Date(a.settled_at || 0).getTime())
-        setSettledBotBetsList(settledList.slice(0, 30))
+      }
+      if (settledRes.status === "fulfilled" && settledRes.value.ok) {
+        const data = await settledRes.value.json()
+        setSettledBotBetsList(data.items || [])
       }
     } catch (err) {
       // Ignore
+    } finally {
+      setBotBetsLoaded(true)
     }
   }, [API_BASE])
 
   const fetchHistory = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
     if (mode === "append") setLoadingMoreHistory(true)
     else setHistoryLoading(true)
+    const requestId = ++historyRequestId.current
+    if (mode === "replace") {
+      historyAbortRef.current?.abort()
+      historyAbortRef.current = new AbortController()
+    }
+    const ac = historyAbortRef.current
     try {
       const params = new URLSearchParams({
         limit: limit.toString(),
-        offset: offset.toString()
+        offset: offset.toString(),
+        include_summary: "false",
       })
       if (selectedSport !== "all") {
         params.append("sport", selectedSport)
@@ -390,22 +390,27 @@ export default function NeurobetsPage() {
       if (historyOutcomeFilter !== "all") {
         params.append("outcome", historyOutcomeFilter)
       }
-      if (mode === "append") {
-        params.append("include_summary", "false")
-      }
-      const res = await fetch(`${API_BASE}/api/neurobets/history?${params.toString()}`, { cache: "no-store" })
+      const res = await fetchApi(`${API_BASE}/api/neurobets/history?${params.toString()}`, {
+        cache: "no-store",
+        signal: ac?.signal,
+      })
+      if (requestId !== historyRequestId.current) return
       if (res.ok) {
         const data = await res.json()
+        if (requestId !== historyRequestId.current) return
         const items = data.history || []
         setHistoryItems((prev) => (mode === "append" ? [...prev, ...items] : items))
         if (data.summary) setHistorySummary(data.summary)
         historyOffsetRef.current = offset + items.length
       }
     } catch (err) {
-      if (mode === "replace") setHistoryItems([])
+      if ((err as { name?: string })?.name === "AbortError") return
+      if (requestId === historyRequestId.current && mode === "replace") setHistoryItems([])
     } finally {
-      setHistoryLoading(false)
-      setLoadingMoreHistory(false)
+      if (requestId === historyRequestId.current) {
+        setHistoryLoading(false)
+        setLoadingMoreHistory(false)
+      }
     }
   }, [API_BASE, selectedSport, historyOutcomeFilter])
 
@@ -473,7 +478,7 @@ export default function NeurobetsPage() {
       if (selectedSport !== "all") params.append("sport", selectedSport)
       if (searchQuery) params.append("search", searchQuery)
 
-      const res = await fetch(`${API_BASE}/api/neurobets/top?${params.toString()}`)
+      const res = await fetchApi(`${API_BASE}/api/neurobets/top?${params.toString()}`)
       // Отбрасываем устаревший ответ, если после этого запроса уже успел уйти более новый
       if (requestId !== neurobetsRequestId.current) return
       if (res.ok) {
@@ -544,20 +549,16 @@ export default function NeurobetsPage() {
   }, [fetchNeurobets, loadingMoreLive, loading, liveTotal])
 
   useEffect(() => {
+    fetchOpenBotBets()
+    fetchStats()
+    fetchHeadlineAccuracy()
+    fetchBankroll()
     if (activeTab === "live") {
-      fetchOpenBotBets().then(() => fetchNeurobets(0, PAGE_SIZE, "replace"))
-      fetchStats()
-      fetchHeadlineAccuracyFallback()
-      fetchHeadlineAccuracy()
-      fetchBankroll()
+      fetchNeurobets(0, PAGE_SIZE, "replace")
       fetchHistoryTotal()
     } else {
       fetchHistory(0, PAGE_SIZE, "replace")
-      fetchStats()
-      fetchHeadlineAccuracyFallback()
-      fetchHeadlineAccuracy()
-      fetchBankroll()
-      fetchOpenBotBets()
+      fetchHistoryTotal()
       fetchLiveTotal()
     }
 
@@ -574,19 +575,19 @@ export default function NeurobetsPage() {
       fetchStats()
       fetchHeadlineAccuracy()
       fetchBankroll()
+      fetchOpenBotBets()
       if (activeTab === "live") {
         // Re-fetch from the top on each refresh, but keep however many rows the user
         // has already scrolled to load, so auto-refresh doesn't collapse the list back to one page.
-        fetchOpenBotBets().then(() => fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace"))
+        fetchNeurobets(0, Math.max(liveOffsetRef.current, PAGE_SIZE), "replace")
         fetchHistoryTotal()
       } else {
         fetchHistoryTotal()
-        fetchOpenBotBets()
         fetchLiveTotal()
       }
     }, 10000)
     return () => clearInterval(interval)
-  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchHeadlineAccuracyFallback, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
 
   const sportsList = SPORT_FILTER_OPTIONS
 
@@ -865,7 +866,12 @@ export default function NeurobetsPage() {
             </button>
           </div>
 
-          {openBotBetsList.length === 0 ? (
+          {!botBetsLoaded ? (
+            <div className="flex items-center gap-3 bg-neutral-950/60 border border-neutral-800/80 rounded-xl px-4 py-3.5">
+              <Loader2 className="w-4 h-4 text-neutral-500 shrink-0 animate-spin" />
+              <p className="text-xs text-neutral-400">Загрузка открытых ставок…</p>
+            </div>
+          ) : openBotBetsList.length === 0 ? (
             <div className="flex items-center gap-3 bg-neutral-950/60 border border-neutral-800/80 rounded-xl px-4 py-3.5">
               <Clock className="w-4 h-4 text-neutral-500 shrink-0" />
               <p className="text-xs text-neutral-400">
@@ -956,7 +962,12 @@ export default function NeurobetsPage() {
             <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
           </button>
 
-          {!historyExpanded ? null : settledBotBetsList.length === 0 ? (
+          {!historyExpanded ? null : !botBetsLoaded ? (
+            <div className="flex items-center gap-3 px-4 md:px-5 pb-4 md:pb-5">
+              <Loader2 className="w-4 h-4 text-neutral-500 shrink-0 animate-spin" />
+              <p className="text-xs text-neutral-400">Загрузка истории ставок…</p>
+            </div>
+          ) : settledBotBetsList.length === 0 ? (
             <p className="text-xs text-neutral-400 px-4 md:px-5 pb-4 md:pb-5">
               Пока нет рассчитанных ставок — как только открытая ставка бота разрешится, она появится здесь.
             </p>

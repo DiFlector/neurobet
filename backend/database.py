@@ -99,15 +99,21 @@ def get_finished_connection():
 
 def release_connection(conn):
     if isinstance(conn, _SafeConn):
-        conn._released = True
-        try:
-            _pg_pool.putconn(conn._conn)
-        except Exception:
-            pass
-    else:
+        conn._release()
+        return
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    try:
         _pg_pool.putconn(conn)
+    except Exception:
+        pass
 
 from contextlib import contextmanager
+
+DASHBOARD_STATEMENT_TIMEOUT_MS = int(os.getenv("NEUROBET_DASHBOARD_STATEMENT_TIMEOUT_MS", "8000"))
+
 
 @contextmanager
 def db_connection(schema="live"):
@@ -122,6 +128,27 @@ def db_connection(schema="live"):
         conn.rollback()
         raise
     finally:
+        release_connection(conn)
+
+
+@contextmanager
+def dashboard_db(schema: str = "live", timeout_ms: Optional[int] = None):
+    """Homepage/API reads: abort if training/backtest IO keeps the query queued.
+
+    Uses SET LOCAL so the timeout cannot leak onto scrape/archive connections
+    reused from the same pool.
+    """
+    ms = DASHBOARD_STATEMENT_TIMEOUT_MS if timeout_ms is None else int(timeout_ms)
+    conn = get_finished_connection() if schema == "finished" else get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('statement_timeout', %s, true)", (str(max(ms, 0)),))
+        yield conn
+    finally:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         release_connection(conn)
 
 def init_db():
@@ -1354,6 +1381,8 @@ def save_ai_predictions(predictions: List[Dict[str, Any]], timestamp_str: str):
 NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS = float(os.getenv("NEURALBET_MARKET_SUPPORT_REFRESH_SECONDS", "300"))
 _neurobet_market_support: Dict[Tuple[str, int, str], int] = {}
 _neurobet_market_support_loaded_at = 0.0
+_neurobet_market_support_refresh_lock = threading.Lock()
+_neurobet_market_support_refreshing = False
 
 # Recency weighting for get_db_stats()'s guess_rate_pct (the "Точность модели" ring on
 # the main page): a bet from GUESS_RATE_HALF_LIFE_HOURS ago counts half as much as one
@@ -1583,7 +1612,7 @@ def warm_neurobet_caches() -> None:
                 "loaded_at": time.time(),
                 "data": _compute_db_stats_core(),
             }
-            _get_market_support()
+            _refresh_market_support_cache()
             guess_rate_pct, miss_rate_pct = _compute_headline_guess_rate()
             _headline_guess_rate_cache = {
                 "loaded_at": time.time(),
@@ -1603,6 +1632,34 @@ def warm_headline_guess_rate_cache() -> None:
     warm_neurobet_caches()
 
 
+def _compute_market_support() -> Dict[Tuple[str, int, str], int]:
+    f_conn = get_finished_connection()
+    try:
+        f_cursor = f_conn.cursor()
+        f_cursor.execute("""
+            SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label, COUNT(*) AS c
+              FROM finished_bets h
+              JOIN finished_events f ON h.event_id = f.event_id
+             WHERE h.is_win IS NOT NULL
+             GROUP BY 1, 2, 3
+        """)
+        return {(r["sport"] or "", r["factor_id"], r["label"] or ""): r["c"] for r in f_cursor.fetchall()}
+    finally:
+        release_connection(f_conn)
+
+
+def _refresh_market_support_cache() -> None:
+    global _neurobet_market_support, _neurobet_market_support_loaded_at, _neurobet_market_support_refreshing
+    try:
+        _neurobet_market_support = _compute_market_support()
+        _neurobet_market_support_loaded_at = time.time()
+    except Exception as e:
+        logger.error(f"Error refreshing neurobet market support counts: {e}")
+    finally:
+        with _neurobet_market_support_refresh_lock:
+            _neurobet_market_support_refreshing = False
+
+
 def _get_market_support() -> Dict[Tuple[str, int, str], int]:
     """
     {(top_level_sport, factor_id, label): resolved_count} over the whole finished-bets
@@ -1614,25 +1671,19 @@ def _get_market_support() -> Dict[Tuple[str, int, str], int]:
     failure the stale cache (or an empty dict = fail-open, matching ai_service) is kept
     rather than raising — a DB hiccup here shouldn't take the whole prediction list down.
     """
-    global _neurobet_market_support, _neurobet_market_support_loaded_at
+    global _neurobet_market_support, _neurobet_market_support_loaded_at, _neurobet_market_support_refreshing
     now = time.time()
-    if _neurobet_market_support and now - _neurobet_market_support_loaded_at < NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS:
+    age = now - _neurobet_market_support_loaded_at if _neurobet_market_support_loaded_at else float("inf")
+    if _neurobet_market_support and age < NEUROBET_MARKET_SUPPORT_REFRESH_SECONDS:
         return _neurobet_market_support
-    try:
-        f_conn = get_finished_connection()
-        f_cursor = f_conn.cursor()
-        f_cursor.execute("""
-            SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label, COUNT(*) AS c
-              FROM finished_bets h
-              JOIN finished_events f ON h.event_id = f.event_id
-             WHERE h.is_win IS NOT NULL
-             GROUP BY 1, 2, 3
-        """)
-        _neurobet_market_support = {(r["sport"] or "", r["factor_id"], r["label"] or ""): r["c"] for r in f_cursor.fetchall()}
-        _neurobet_market_support_loaded_at = now
-        release_connection(f_conn)
-    except Exception as e:
-        logger.error(f"Error refreshing neurobet market support counts: {e}")
+    with _neurobet_market_support_refresh_lock:
+        if not _neurobet_market_support_refreshing:
+            _neurobet_market_support_refreshing = True
+            threading.Thread(
+                target=_refresh_market_support_cache,
+                daemon=True,
+                name="market-support-refresh",
+            ).start()
     return _neurobet_market_support
 
 
@@ -1644,9 +1695,6 @@ def get_top_neurobets(
     verdict: str = "win",
     search: Optional[str] = None,
 ) -> Dict[str, Any]:
-    conn = get_connection()
-    cursor = conn.cursor()
-
     # INNER JOIN ai_predictions (not LEFT JOIN + a 1/coefficient formula fallback) — this
     # list must reflect only what the trained model actually evaluated, the same as real
     # bet placement does (ai_service/app/neuralbet/pipeline.py never uses a heuristic
@@ -1675,19 +1723,7 @@ def get_top_neurobets(
         SELECT
             e.event_id, e.sport_path, e.match_name, e.team_1, e.team_2, e.score, e.timer,
             l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
-            COALESCE(
-                (
-                    SELECT h.coefficient
-                    FROM odds_history h
-                    WHERE h.event_id = l.event_id
-                      AND h.factor_id = l.factor_id
-                      AND COALESCE(CAST(h.parameter AS TEXT), '') = COALESCE(CAST(l.parameter AS TEXT), '')
-                      AND COALESCE(h.market_prefix, '') = COALESCE(l.market_prefix, '')
-                    ORDER BY h.id ASC
-                    LIMIT 1
-                ),
-                l.coefficient
-            ) AS initial_coefficient,
+            COALESCE(l.initial_coefficient, l.coefficient) AS initial_coefficient,
             p.win_probability AS win_probability,
             p.error_rate AS error_rate,
             p.expected_roi AS expected_roi,
@@ -1739,9 +1775,10 @@ def get_top_neurobets(
     # strongest pick per mutually-exclusive market group; sorted in Python instead.
     query += " LIMIT 5000"
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    release_connection(conn)
+    with dashboard_db("live") as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
 
     candidates = [dict(r) for r in rows if r.get("win_probability") is not None]
 
@@ -2122,9 +2159,6 @@ def get_neurobets_history(
     *,
     include_summary: bool = True,
 ) -> Dict[str, Any]:
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-
     base_query = f"""
         FROM finished_bets h
         JOIN finished_events e ON h.event_id = e.event_id
@@ -2161,6 +2195,9 @@ def get_neurobets_history(
 
     history_items: List[Dict[str, Any]] = []
     if limit > 0:
+        # id is IDENTITY-on-archive, so newest id ≈ most recently finished. The unique
+        # idx_finished_bets_id turns this LIMIT into an index scan instead of sorting
+        # the whole 450k-row archive — critical while training/backtest saturate disk.
         data_query = f"""
             SELECT
                 h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
@@ -2169,13 +2206,13 @@ def get_neurobets_history(
                 h.first_seen_at AS timestamp, h.finished_at,
                 e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
             {filtered_query}
-            ORDER BY h.finished_at DESC, h.id DESC
+            ORDER BY h.id DESC
             LIMIT %s OFFSET %s
         """
-        f_cursor.execute(data_query, params + [limit, offset])
-        history_items = [dict(r) for r in f_cursor.fetchall()]
-
-    release_connection(f_conn)
+        with dashboard_db("finished") as f_conn:
+            f_cursor = f_conn.cursor()
+            f_cursor.execute(data_query, params + [limit, offset])
+            history_items = [dict(r) for r in f_cursor.fetchall()]
 
     return {
         "summary": summary,
@@ -2239,9 +2276,6 @@ def _compute_history_summary(
     search: Optional[str],
     outcome_filter: Optional[str],
 ) -> Dict[str, Any]:
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-
     base_query = f"""
         FROM finished_bets h
         JOIN finished_events e ON h.event_id = e.event_id
@@ -2260,20 +2294,21 @@ def _compute_history_summary(
         s = f"%{search.lower()}%"
         params.extend([s, s, s])
 
-    count_query = f"""
-        SELECT COUNT(*) AS total_count,
-               SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
-                             AND h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct_count,
-               SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
-                             AND h.predicted_win <> h.is_win THEN 1 ELSE 0 END) AS incorrect_count,
-               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END) AS push_count,
-               SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0
-                        OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL) THEN 1 ELSE 0 END) AS pending_count
-        {base_query}
-    """
-    f_cursor.execute(count_query, params)
-    summary_row = f_cursor.fetchone()
-    release_connection(f_conn)
+    with dashboard_db("finished", timeout_ms=15000) as f_conn:
+        f_cursor = f_conn.cursor()
+        count_query = f"""
+            SELECT COUNT(*) AS total_count,
+                   SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+                                 AND h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct_count,
+                   SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
+                                 AND h.predicted_win <> h.is_win THEN 1 ELSE 0 END) AS incorrect_count,
+                   SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END) AS push_count,
+                   SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0
+                            OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL) THEN 1 ELSE 0 END) AS pending_count
+            {base_query}
+        """
+        f_cursor.execute(count_query, params)
+        summary_row = f_cursor.fetchone()
     return _history_summary_from_row(summary_row, outcome_filter)
 
 
@@ -2345,102 +2380,123 @@ def _sanitize_non_finite(value: Any) -> Any:
     return value
 
 
-def get_bankroll_state() -> Dict[str, Any]:
+def get_bankroll_state(*, include_ledger: bool = True) -> Dict[str, Any]:
     """
     Reads the neural bettor's bankroll state directly from autobet_finished.db —
     written by ai_service/app/neuralbet/bankroll.py, which shares this same file over
     the ./data volume. See docs in that module for the "training" vs "live" account
     split. Returns both accounts plus each one's recent ledger for a balance curve.
+    The homepage only needs accounts; skip the ledger scan there.
     """
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
+    with dashboard_db("finished") as f_conn:
+        f_cursor = f_conn.cursor()
 
-    accounts = {}
-    for account in ("training", "live"):
-        f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
-        row = f_cursor.fetchone()
-        accounts[account] = dict(row) if row else None
+        accounts = {}
+        for account in ("training", "live"):
+            f_cursor.execute("SELECT * FROM bankroll_accounts WHERE account = %s", (account,))
+            row = f_cursor.fetchone()
+            accounts[account] = dict(row) if row else None
 
-    ledger = {}
-    for account in ("training", "live"):
-        f_cursor.execute(
-            "SELECT * FROM bankroll_ledger WHERE account = %s ORDER BY id DESC LIMIT 200",
-            (account,),
-        )
-        rows = f_cursor.fetchall()
-        ledger[account] = [dict(r) for r in rows]
+        ledger: Dict[str, list] = {"training": [], "live": []}
+        if include_ledger:
+            for account in ("training", "live"):
+                f_cursor.execute(
+                    "SELECT * FROM bankroll_ledger WHERE account = %s ORDER BY id DESC LIMIT 200",
+                    (account,),
+                )
+                ledger[account] = [dict(r) for r in f_cursor.fetchall()]
 
-    release_connection(f_conn)
     return _sanitize_non_finite({"accounts": accounts, "ledger": ledger})
 
 
-def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
-    """The bot's actual simulated live bets (open + settled), newest first — enriched
-    with how the underlying match/market looks *right now* (current score, timer,
-    coefficient), not just what it looked like when the bet was placed."""
-    f_conn = get_finished_connection()
-    f_cursor = f_conn.cursor()
-    f_cursor.execute("SELECT COUNT(*) AS c FROM live_bets")
-    total = f_cursor.fetchone()["c"]
-    f_cursor.execute("SELECT * FROM live_bets ORDER BY id DESC LIMIT %s OFFSET %s", (limit, offset))
-    rows = [dict(r) for r in f_cursor.fetchall()]
-    release_connection(f_conn)
+def get_live_bets(
+    limit: int = 100,
+    offset: int = 0,
+    status: Optional[str] = None,
+) -> Dict[str, Any]:
+    """The bot's actual simulated live bets, newest first.
+
+    `status`:
+      - ``open`` — currently staked positions (enriched with live score/timer/odds)
+      - ``settled`` — won/lost/void/cancelled (no live enrichment)
+      - omitted — mixed page, same as before
+
+    Already-placed bets are never filtered by the current Brier/sport stake
+    whitelist: that gate decides *new* stakes, not whether history is visible.
+    """
+    status_norm = (status or "").strip().lower() or None
+    where_params: List[Any] = []
+    if status_norm == "open":
+        where_sql = "WHERE status = 'open'"
+        order_sql = "ORDER BY id DESC"
+    elif status_norm == "settled":
+        where_sql = "WHERE status <> 'open'"
+        order_sql = "ORDER BY id DESC"
+    elif status_norm in ("won", "lost", "void", "cancelled"):
+        where_sql = "WHERE status = %s"
+        where_params = [status_norm]
+        order_sql = "ORDER BY id DESC"
+    else:
+        where_sql = ""
+        order_sql = "ORDER BY id DESC"
+
+    with dashboard_db("finished") as f_conn:
+        f_cursor = f_conn.cursor()
+        f_cursor.execute(f"SELECT COUNT(*) AS c FROM live_bets {where_sql}", where_params)
+        total = f_cursor.fetchone()["c"]
+        f_cursor.execute(
+            f"SELECT * FROM live_bets {where_sql} {order_sql} LIMIT %s OFFSET %s",
+            where_params + [limit, offset],
+        )
+        rows = [dict(r) for r in f_cursor.fetchall()]
 
     if not rows:
         return {"total": total, "items": rows}
 
     event_ids = list({r["event_id"] for r in rows})
+    open_ids = list({r["event_id"] for r in rows if r.get("status") == "open"})
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    # An event stuck in the grace period after vanishing from Fonbet's feed still has
-    # is_live=1 with its score/timer/coefficients frozen — comparing last_updated_at to
-    # the latest successful scrape cycle's timestamp (not just to itself) is what
-    # actually tells "genuinely live right now" apart from "hasn't been finalized yet".
-    cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
-    latest_scrape_ts = cursor.fetchone()["max"]
-    cursor.execute(
-        "SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id = ANY(%s)",
-        (event_ids,),
-    )
-    live_info = {r["event_id"]: dict(r) for r in cursor.fetchall()}
-    cursor.execute(
-        """SELECT l.event_id, l.factor_id, l.parameter, l.market_prefix, l.coefficient
-            FROM latest_odds l
-            JOIN events e ON e.event_id = l.event_id
-            WHERE l.event_id = ANY(%s)
-              AND l.updated_at = e.last_updated_at
-              AND e.last_updated_at = %s""",
-        (event_ids, latest_scrape_ts),
-    )
-    current_odds = {
-        (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["coefficient"]
-        for r in cursor.fetchall()
-    }
-    release_connection(conn)
+    live_info: Dict[int, Dict[str, Any]] = {}
+    current_odds: Dict[tuple, float] = {}
+    latest_scrape_ts = None
+    if open_ids:
+        with dashboard_db("live") as conn:
+            cursor = conn.cursor()
+            # An event stuck in the grace period after vanishing from Fonbet's feed still has
+            # is_live=1 with its score/timer/coefficients frozen — comparing last_updated_at to
+            # the latest successful scrape cycle's timestamp (not just to itself) is what
+            # actually tells "genuinely live right now" apart from "hasn't been finalized yet".
+            cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
+            latest_scrape_ts = cursor.fetchone()["max"]
+            cursor.execute(
+                "SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id = ANY(%s)",
+                (open_ids,),
+            )
+            live_info = {r["event_id"]: dict(r) for r in cursor.fetchall()}
+            cursor.execute(
+                """SELECT l.event_id, l.factor_id, l.parameter, l.market_prefix, l.coefficient
+                    FROM latest_odds l
+                    JOIN events e ON e.event_id = l.event_id
+                    WHERE l.event_id = ANY(%s)
+                      AND l.updated_at = e.last_updated_at
+                      AND e.last_updated_at = %s""",
+                (open_ids, latest_scrape_ts),
+            )
+            current_odds = {
+                (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["coefficient"]
+                for r in cursor.fetchall()
+            }
 
-    # Events not in the live DB anymore have already been archived — fall back to their
-    # final score/coefficient so the card still shows something meaningful instead of blanks.
     missing_ids = [eid for eid in event_ids if eid not in live_info]
     finished_info: Dict[int, Dict[str, Any]] = {}
-    finished_odds: Dict[tuple, float] = {}
     if missing_ids:
-        f_conn = get_finished_connection()
-        f_cursor = f_conn.cursor()
-        f_cursor.execute(
-            "SELECT event_id, score, score_1, score_2, sport_path FROM finished_events WHERE event_id = ANY(%s)",
-            (missing_ids,),
-        )
-        finished_info = {r["event_id"]: dict(r) for r in f_cursor.fetchall()}
-        f_cursor.execute(
-            "SELECT event_id, factor_id, parameter, market_prefix, final_coefficient FROM finished_bets WHERE event_id = ANY(%s)",
-            (missing_ids,),
-        )
-        finished_odds = {
-            (r["event_id"], r["factor_id"], r["parameter"] or "", r["market_prefix"] or ""): r["final_coefficient"]
-            for r in f_cursor.fetchall()
-        }
-        release_connection(f_conn)
+        with dashboard_db("finished") as f_conn:
+            f_cursor = f_conn.cursor()
+            f_cursor.execute(
+                "SELECT event_id, score, score_1, score_2, sport_path FROM finished_events WHERE event_id = ANY(%s)",
+                (missing_ids,),
+            )
+            finished_info = {r["event_id"]: dict(r) for r in f_cursor.fetchall()}
 
     for b in rows:
         eid = b["event_id"]
@@ -2457,11 +2513,10 @@ def get_live_bets(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
             b["current_score"] = info["score"] if info else None
             b["current_timer"] = None
             b["match_is_live"] = False
-            b["current_coefficient"] = finished_odds.get(odds_key)
+            b["current_coefficient"] = None
             b["sport_path"] = info["sport_path"] if info else None
 
-    filtered = [b for b in rows if in_live_stake_sport(b.get("sport_path"))]
-    return {"total": len(filtered), "items": filtered}
+    return {"total": total, "items": _sanitize_non_finite(rows)}
 
 
 def cancel_open_live_bets() -> Dict[str, Any]:

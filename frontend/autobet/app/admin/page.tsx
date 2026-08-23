@@ -331,11 +331,10 @@ export default function AdminPage() {
 
   const fetchOpenLiveBetsCount = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?limit=200`)
+      const res = await fetch(`${API_BASE}/api/neurobets/live-bets?status=open&limit=1`)
       if (res.ok) {
         const data = await res.json()
-        const openCount = (data.items || []).filter((b: any) => b.status === "open").length
-        setOpenLiveBetsCount(openCount)
+        setOpenLiveBetsCount(typeof data.total === "number" ? data.total : 0)
       }
     } catch (err) {
       // Ignore

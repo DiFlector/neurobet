@@ -508,9 +508,11 @@ def read_neurobets_history_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/neurobets/bankroll")
-def read_bankroll():
+def read_bankroll(
+    include_ledger: bool = Query(True, description="Set false on the homepage — it only needs account totals"),
+):
     try:
-        return {"status": "success", **get_bankroll_state()}
+        return {"status": "success", **get_bankroll_state(include_ledger=include_ledger)}
     except Exception as e:
         logger.error(f"Error fetching bankroll state: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -519,9 +521,10 @@ def read_bankroll():
 def read_live_bets(
     limit: int = Query(100, description="Items limit"),
     offset: int = Query(0, description="Items offset"),
+    status: Optional[str] = Query(None, description="open | settled | omit for mixed"),
 ):
     try:
-        res = get_live_bets(limit=limit, offset=offset)
+        res = get_live_bets(limit=limit, offset=offset, status=status)
         return {"status": "success", "total": res["total"], "items": res["items"]}
     except Exception as e:
         logger.error(f"Error fetching live bets: {e}")
