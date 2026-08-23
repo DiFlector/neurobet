@@ -531,6 +531,7 @@ export default function NeurobetsPage() {
               potentialPayout: openBet ? openBet.stake * openBet.coefficient : null,
               predictedWin: b.predicted_win ?? null,
               willWin: b.will_win ?? null,
+            }
           })
           setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
           liveOffsetRef.current = offset + mapped.length
