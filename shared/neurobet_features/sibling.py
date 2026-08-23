@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, MutableMapping
 
-from neurobet_filters import MIN_BET_EDGE_PCT, MARKET_SHRINK, shrink_p_toward_market
+from neurobet_filters import (
+    MIN_BET_EDGE_PCT,
+    MARKET_SHRINK,
+    shrink_p_toward_market,
+    adjust_p_for_coeff_move,
+)
 
 from .overround import OVERROUND_EXPECTED_SIZE, overround_group_key
 
@@ -69,6 +74,25 @@ def apply_sibling_coherence(
             if total > 1e-12:
                 for i, idx in enumerate(idxs):
                     preds[idx][p_key] = probs[i] / total
+
+    # Steam: shortened price → higher p; drifted out → lower p. Then re-renorm
+    # complete groups so sibling totals still sum to 1.
+    for row in preds:
+        coeff = float(row.get(coeff_key) or 0.0)
+        row[p_key] = adjust_p_for_coeff_move(
+            float(row.get(p_key) or 0.0),
+            coeff,
+            row.get("initial_coeff") or row.get("initial_coefficient"),
+        )
+    for (_eid, gk), idxs in groups.items():
+        need = OVERROUND_EXPECTED_SIZE.get(gk[0], 0)
+        if not need or len(idxs) != need:
+            continue
+        probs = [max(0.0, float(preds[i].get(p_key) or 0.0)) for i in idxs]
+        total = sum(probs)
+        if total > 1e-12:
+            for i, idx in enumerate(idxs):
+                preds[idx][p_key] = probs[i] / total
 
     for row in preds:
         prob = float(row.get(p_key) or 0.0)

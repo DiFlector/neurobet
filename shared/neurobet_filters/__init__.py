@@ -7,8 +7,8 @@ Two layers, on purpose:
   fetch, UI, and stats. Win-head still sees every row inside this universe.
 - Live gates (coefficient band, min EV, min market support, live sports / markets) —
   staking real money, the "win" LIVE list, backtest "would bet", training
-  bankroll/tuner. Thin markets and 1.0–1.5 shorts stay in the gradient; they just
-  never get a stake.
+  bankroll/tuner. Thin markets and 1.0–1.1 shorts stay in the gradient; they just
+  never get a stake. Money band is 1.1–2.0, plus 2.0–2.5 when calibrated p ≥ 90%.
 
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
@@ -65,9 +65,17 @@ TOTAL_LINE_RANGES: dict[str, Tuple[float, float]] = {
 # ---------------------------------------------------------------------------
 # Live gates — same env vars both containers already read from the shared .env.
 # ---------------------------------------------------------------------------
-MIN_BET_COEFF = float(os.getenv("NEURALBET_MIN_BET_COEFF", "1.5"))
+MIN_BET_COEFF = float(os.getenv("NEURALBET_MIN_BET_COEFF", "1.1"))
 MAX_BET_COEFF = float(os.getenv("NEURALBET_MAX_BET_COEFF", "2.0"))
+# Tail above MAX: stake only when calibrated p is huge. Training still caps at MAX.
+MAX_BET_COEFF_HIGH_P = float(os.getenv("NEURALBET_MAX_BET_COEFF_HIGH_P", "2.5"))
+HIGH_P_STAKE = float(os.getenv("NEURALBET_HIGH_P_STAKE", "0.90"))
+# Steam: falling coeff (market p up) nudges calibrated p up; rising coeff nudges down.
+# 0 = off. 0.15 ≈ +1.5pp when the price shortens 10%.
+COEFF_MOVE_P_WEIGHT = float(os.getenv("NEURALBET_COEFF_MOVE_P_WEIGHT", "0.15"))
 MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "5.0"))
+W1_FACTOR_ID = 921
+W2_FACTOR_ID = 923
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
 # After sibling renorm, pull calibrated p toward 1/coeff before EV.
 # 0.25: a 61.6% call at 1.73 (market ~57.8%) becomes ~60.7% and often drops below 5% EV.
@@ -191,7 +199,155 @@ def is_fast_format_sport_path(sport_path: Optional[str]) -> bool:
 
 
 def in_bet_band(coeff: float) -> bool:
+    """Standard live band (1.1–2.0). Training / decision-head masks use this, not the high-p tail."""
     return MIN_BET_COEFF <= coeff <= MAX_BET_COEFF
+
+
+def _prob_01(win_p: Any) -> Optional[float]:
+    """Accept 0–1 or 0–100 calibrated p."""
+    try:
+        if win_p is None:
+            return None
+        v = float(win_p)
+    except (TypeError, ValueError):
+        return None
+    if v > 1.0:
+        v = v / 100.0
+    return min(max(v, 0.0), 1.0)
+
+
+def adjust_p_for_coeff_move(
+    p: float,
+    current_coeff: Any,
+    initial_coeff: Any = None,
+    weight: Optional[float] = None,
+) -> float:
+    """If the price shortened, market p rose — bump model p. If it drifted out, cut p.
+
+    Relative move is clipped to ±50% so a 3.0→1.2 collapse cannot dominate the model.
+    """
+    w = COEFF_MOVE_P_WEIGHT if weight is None else float(weight)
+    try:
+        out = float(p)
+    except (TypeError, ValueError):
+        return 0.5
+    if w <= 0:
+        return min(max(out, 0.01), 0.99)
+    try:
+        cur = float(current_coeff)
+        ini = float(initial_coeff) if initial_coeff is not None else None
+    except (TypeError, ValueError):
+        return min(max(out, 0.01), 0.99)
+    if ini is None or ini <= 1.0 or cur <= 1.0:
+        return min(max(out, 0.01), 0.99)
+    move = (ini - cur) / ini
+    move = min(max(move, -0.5), 0.5)
+    return min(max(out + w * move, 0.01), 0.99)
+
+
+def coeff_ok_for_stake(coeff: float, win_p: Any = None) -> bool:
+    """Money band: 1.1–2.0, or 2.0–2.5 when calibrated p ≥ HIGH_P_STAKE."""
+    try:
+        c = float(coeff)
+    except (TypeError, ValueError):
+        return False
+    if MIN_BET_COEFF <= c <= MAX_BET_COEFF:
+        return True
+    p = _prob_01(win_p)
+    if p is None:
+        return False
+    return MAX_BET_COEFF < c <= MAX_BET_COEFF_HIGH_P and p >= HIGH_P_STAKE
+
+
+def score_1x2_prior(
+    factor_id: Any,
+    score_1: Any,
+    score_2: Any,
+) -> Optional[int]:
+    """Hard 1X2 call from the live score. None = no prior (tied or not 1X2).
+
+    At 1:0, П1 is the leader (1), X and П2 are already losing (0). At 0:0
+    there is no prior — do not treat the draw as currently winning.
+    """
+    try:
+        fid = int(factor_id)
+    except (TypeError, ValueError):
+        return None
+    if fid not in (W1_FACTOR_ID, W2_FACTOR_ID, DRAW_FACTOR_ID):
+        return None
+    try:
+        if score_1 is None or score_2 is None:
+            return None
+        s1, s2 = int(score_1), int(score_2)
+    except (TypeError, ValueError):
+        return None
+    if s1 == s2:
+        return None
+    home_leads = s1 > s2
+    if fid == W1_FACTOR_ID:
+        return 1 if home_leads else 0
+    if fid == W2_FACTOR_ID:
+        return 0 if home_leads else 1
+    return 0
+
+
+def outcome_will_win(
+    predicted_win: Any,
+    coefficient: Any,
+    *,
+    factor_id: Any = None,
+    score_1: Any = None,
+    score_2: Any = None,
+    win_probability: Any = None,
+    initial_coefficient: Any = None,
+) -> Optional[int]:
+    """Outcome call for UI / guess-rate / stake eligibility — not the EV flag.
+
+    Order: 1X2 score prior; else p (optionally steam-adjusted) ≥ 50% → 1;
+    else p < 50% → 0 («скорее всего не победит»). No p and no prior → None
+    (skip — do **not** record as a miss just because the coeff is outside 1.1–2.0
+    or EV skipped). ``predicted_win`` is unused (EV/stake bit, not a loss label).
+    """
+    _ = predicted_win
+    prior = score_1x2_prior(factor_id, score_1, score_2)
+    if prior is not None:
+        return prior
+    p = _prob_01(win_probability)
+    if p is None:
+        return None
+    p = adjust_p_for_coeff_move(p, coefficient, initial_coefficient)
+    return 1 if p >= 0.5 else 0
+
+
+def outcome_will_win_sql(
+    predicted_expr: str = "h.predicted_win",
+    coeff_expr: str = "COALESCE(h.final_coefficient, h.initial_coefficient)",
+    *,
+    factor_expr: str = "h.factor_id",
+    score1_expr: str = "e.score_1",
+    score2_expr: str = "e.score_2",
+    p_expr: str = "h.predicted_win_probability",
+) -> str:
+    """SQL twin of ``outcome_will_win`` (1X2 prior + p≥50% → 1/0; else NULL skip).
+
+    Steam is applied at inference (sibling) and stored in ``p_expr`` — do not
+    apply it again here or history would double-count.
+    """
+    del predicted_expr, coeff_expr  # EV / band are not loss labels
+    w1, w2, draw = int(W1_FACTOR_ID), int(W2_FACTOR_ID), int(DRAW_FACTOR_ID)
+    p01 = f"(CASE WHEN {p_expr} > 1 THEN {p_expr} / 100.0 ELSE {p_expr} END)"
+    return (
+        f"(CASE "
+        f"WHEN {factor_expr} IN ({w1}, {w2}, {draw}) "
+        f"AND {score1_expr} IS NOT NULL AND {score2_expr} IS NOT NULL "
+        f"AND {score1_expr} <> {score2_expr} THEN "
+        f"CASE WHEN {factor_expr} = {w1} AND {score1_expr} > {score2_expr} THEN 1 "
+        f"WHEN {factor_expr} = {w2} AND {score2_expr} > {score1_expr} THEN 1 "
+        f"ELSE 0 END "
+        f"WHEN {p_expr} IS NOT NULL AND {p01} >= 0.5 THEN 1 "
+        f"WHEN {p_expr} IS NOT NULL AND {p01} < 0.5 THEN 0 "
+        f"ELSE NULL END)"
+    )
 
 
 def shrink_p_toward_market(
@@ -490,16 +646,26 @@ def live_gate_skip_reason(
     sport_path: Optional[str] = None,
     factor_id: Optional[int] = None,
     market_label: Optional[str] = None,
+    win_probability: Any = None,
+    will_win: Any = None,
 ) -> Optional[str]:
     """Why this candidate is not staked, or None if it clears every live gate.
-    `support_count is None` means 'don't check' (empty cache fails open)."""
+    `support_count is None` means 'don't check' (empty cache fails open).
+    Stake only from will_win=1; coeff 1.1–2.0 or 2.0–2.5 with p ≥ HIGH_P_STAKE.
+    """
+    if will_win is not None:
+        try:
+            if int(will_win) != 1:
+                return "will_win"
+        except (TypeError, ValueError):
+            return "will_win"
     if sport_path is not None and not in_live_stake_sport(sport_path):
         return "sport"
     if (factor_id is not None or market_label is not None) and not in_live_stake_market(
         factor_id=factor_id, market_label=market_label,
     ):
         return "market"
-    if not in_bet_band(coeff):
+    if not coeff_ok_for_stake(coeff, win_probability):
         return "coeff"
     if expected_roi < MIN_BET_EDGE_PCT:
         return "edge"
@@ -515,6 +681,8 @@ def passes_live_gates(
     sport_path: Optional[str] = None,
     factor_id: Optional[int] = None,
     market_label: Optional[str] = None,
+    win_probability: Any = None,
+    will_win: Any = None,
 ) -> bool:
     return live_gate_skip_reason(
         coeff,
@@ -523,6 +691,8 @@ def passes_live_gates(
         sport_path,
         factor_id=factor_id,
         market_label=market_label,
+        win_probability=win_probability,
+        will_win=will_win,
     ) is None
 
 
@@ -566,10 +736,28 @@ def universe_sql(event_alias: str, bet_alias: str) -> str:
     )
 
 
-def bet_band_sql(coeff_expr: str, roi_expr: Optional[str] = None) -> Tuple[str, list]:
-    """SQL fragment + bind params for the coefficient band and optional min-EV gate."""
-    sql = f" AND {coeff_expr} >= %s AND {coeff_expr} <= %s"
-    params: list = [MIN_BET_COEFF, MAX_BET_COEFF]
+def bet_band_sql(
+    coeff_expr: str,
+    roi_expr: Optional[str] = None,
+    p_expr: Optional[str] = None,
+) -> Tuple[str, list]:
+    """SQL fragment + bind params for the money band and optional min-EV gate.
+
+    With ``p_expr`` (0–1 or 0–100): also allow MAX < coeff ≤ MAX_HIGH_P when p ≥ HIGH_P.
+    """
+    if p_expr:
+        p01 = f"(CASE WHEN {p_expr} > 1 THEN {p_expr} / 100.0 ELSE {p_expr} END)"
+        sql = (
+            f" AND (({coeff_expr} >= %s AND {coeff_expr} <= %s)"
+            f" OR ({coeff_expr} > %s AND {coeff_expr} <= %s AND {p01} >= %s))"
+        )
+        params: list = [
+            MIN_BET_COEFF, MAX_BET_COEFF,
+            MAX_BET_COEFF, MAX_BET_COEFF_HIGH_P, HIGH_P_STAKE,
+        ]
+    else:
+        sql = f" AND {coeff_expr} >= %s AND {coeff_expr} <= %s"
+        params = [MIN_BET_COEFF, MAX_BET_COEFF]
     if roi_expr:
         sql += f" AND {roi_expr} >= %s"
         params.append(MIN_BET_EDGE_PCT)

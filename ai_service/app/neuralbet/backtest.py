@@ -41,8 +41,11 @@ from neurobet_filters import (
     in_bet_band,
     in_live_stake_sport,
     in_live_stake_market,
+    outcome_will_win,
     MIN_BET_COEFF,
     MAX_BET_COEFF,
+    MAX_BET_COEFF_HIGH_P,
+    HIGH_P_STAKE,
     MIN_BET_EDGE_PCT,
     update_brier_stake_sports_from_backtest,
     clear_brier_stake_sports,
@@ -364,6 +367,7 @@ def _records_from_scored(
             "market_prefix": m.get("market_prefix") or "",
             "calibrated_p": calibrated / 100.0,
             "coeff": m["coeff"],
+            "initial_coeff": m.get("initial_coeff") or m.get("initial_coefficient"),
             "_scored": m,
             "_calibrated_pct": calibrated,
         })
@@ -380,14 +384,24 @@ def _records_from_scored(
         support_count = None
         if market_support:
             support_count = market_support.get((m["sport"], m["factor_id"], m["label"]), 0)
+        will_win = outcome_will_win(
+            current_verdict,
+            m["coeff"],
+            factor_id=m.get("factor_id"),
+            score_1=m.get("score_1"),
+            score_2=m.get("score_2"),
+            win_probability=calibrated,
+        )
         current_pred = 1 if (
-            current_verdict == 1
+            will_win == 1
             and passes_live_gates(
                 m["coeff"],
                 expected_roi,
                 support_count,
                 sport_path=m["sport_path"],
                 factor_id=m["factor_id"],
+                win_probability=calibrated,
+                will_win=will_win,
             )
         ) else 0
         market_prob = (
@@ -426,6 +440,7 @@ def _records_from_scored(
             "team_1": m.get("team_1") or "",
             "team_2": m.get("team_2") or "",
             "score": m.get("score") or "",
+            "will_win": will_win,
         })
     _dedupe_one_bet_per_event(records)
     return records, coherence
@@ -542,7 +557,12 @@ def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
         return int(record.get("current_pred") or 0) == 1
     if policy == "ev_only":
         return passes_live_gates(
-            coeff, expected_roi, sport_path=sport_path, market_label=market_label,
+            coeff,
+            expected_roi,
+            sport_path=sport_path,
+            market_label=market_label,
+            win_probability=record.get("current_prob"),
+            will_win=record.get("will_win"),
         )
     if policy == "decision_only":
         if verdict != 1:
@@ -793,6 +813,14 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                     "team_2": team_2,
                     "match_name": f"{team_1} — {team_2}".strip(" —"),
                     "score": f"diff={score_diff}" if score_diff is not None else "",
+                    "score_1": r.get("score_1"),
+                    "score_2": r.get("score_2"),
+                    "initial_coeff": (
+                        sample.get("initial_coeff")
+                        if isinstance(sample, dict)
+                        else None
+                    ) or r.get("initial_coefficient") or view.get("initial_coeff")
+                    or view.get("initial_coefficient") or coeff,
                     "is_win": int(r["is_win"]),
                     "trained_count": int(r.get("trained_count") or 0),
                     "overround_close": r.get("overround_close"),
@@ -945,6 +973,8 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 },
                 "max_bet_coeff": MAX_BET_COEFF,
                 "min_bet_coeff": MIN_BET_COEFF,
+                "max_bet_coeff_high_p": MAX_BET_COEFF_HIGH_P,
+                "high_p_stake": HIGH_P_STAKE,
                 "oos_holdout_events": len(hold_events),
                 "calibration_cutoff": calibration_cutoff,
                 "walk_forward_folds": WALK_FORWARD_FOLDS,

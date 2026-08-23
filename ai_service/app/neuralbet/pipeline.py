@@ -41,8 +41,11 @@ from neurobet_filters import (
     universe_sql,
     universe_sql_params,
     live_gate_skip_reason,
+    outcome_will_win,
     MIN_BET_COEFF,
     MAX_BET_COEFF,
+    MAX_BET_COEFF_HIGH_P,
+    HIGH_P_STAKE,
     MIN_BET_EDGE_PCT,
     MIN_MARKET_SUPPORT,
     FAST_FORMAT_SPORT_SQL,
@@ -2274,6 +2277,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         f"""
         SELECT
             l.event_id, l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
+            COALESCE(l.initial_coefficient, l.coefficient) AS initial_coefficient,
             e.sport_path, e.match_name, e.score_1, e.score_2, e.timer, e.team_1, e.team_2
         FROM latest_odds l
         JOIN events e ON l.event_id = e.event_id
@@ -2390,6 +2394,9 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
                 "team_1": row["team_1"] or "",
                 "team_2": row["team_2"] or "",
                 "score": f"{s1}:{s2}",
+                "score_1": s1,
+                "score_2": s2,
+                "initial_coeff": float(row.get("initial_coefficient") or coeff),
             }
         )
 
@@ -2413,6 +2420,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     skipped_coeff = 0
     skipped_sport = 0
     skipped_market = 0
+    skipped_will_win = 0
     market_support = _refresh_market_support()
 
     # Calibrate first, then sibling coherence (soft sum-to-1 + 2-way EV veto),
@@ -2481,32 +2489,47 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             }
         )
 
-        if predicted_win:
-            support_count = None
-            if market_support:
-                support_count = market_support.get(
-                    (row["sport"] or "", fid, row["label"] or ""), 0
-                )
-            reason = live_gate_skip_reason(
-                coeff,
-                expected_roi,
-                support_count,
-                row.get("sport"),
-                factor_id=fid,
+        will_win = outcome_will_win(
+            predicted_win,
+            coeff,
+            factor_id=fid,
+            score_1=row.get("score_1"),
+            score_2=row.get("score_2"),
+            win_probability=calibrated_prob,
+        )
+        if will_win != 1:
+            if predicted_win:
+                skipped_will_win += 1
+            continue
+        support_count = None
+        if market_support:
+            support_count = market_support.get(
+                (row["sport"] or "", fid, row["label"] or ""), 0
             )
-            if reason == "coeff":
-                skipped_coeff += 1
-            elif reason == "edge":
-                skipped_low_edge += 1
-            elif reason == "support":
-                skipped_low_support += 1
-            elif reason == "sport":
-                skipped_sport += 1
-            elif reason == "market":
-                skipped_market += 1
-            else:
-                live_candidates.append(
-                    {
+        reason = live_gate_skip_reason(
+            coeff,
+            expected_roi,
+            support_count,
+            row.get("sport"),
+            factor_id=fid,
+            win_probability=calibrated_prob,
+            will_win=will_win,
+        )
+        if reason == "will_win":
+            skipped_will_win += 1
+        elif reason == "coeff":
+            skipped_coeff += 1
+        elif reason == "edge":
+            skipped_low_edge += 1
+        elif reason == "support":
+            skipped_low_support += 1
+        elif reason == "sport":
+            skipped_sport += 1
+        elif reason == "market":
+            skipped_market += 1
+        elif reason is None:
+            live_candidates.append(
+                {
                         "event_id": eid,
                         "factor_id": fid,
                         "market_prefix": prefix,
@@ -2531,6 +2554,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         or skipped_coeff
         or skipped_sport
         or skipped_market
+        or skipped_will_win
     ):
         sport_part = (
             f", {skipped_sport} — sport outside live list "
@@ -2545,8 +2569,10 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         )
         add_ai_log(
             "BANKROLL",
-            f"Bet candidates filtered: {skipped_coeff} — coeff outside "
-            f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f}, "
+            f"Bet candidates filtered: {skipped_will_win} — not will_win, "
+            f"{skipped_coeff} — coeff outside "
+            f"{MIN_BET_COEFF:.1f}–{MAX_BET_COEFF:.1f} "
+            f"(or {MAX_BET_COEFF:.1f}–{MAX_BET_COEFF_HIGH_P:.1f} with p<{HIGH_P_STAKE:.0%}), "
             f"{skipped_low_edge} — EV below {MIN_BET_EDGE_PCT:.0f}%, "
             f"{skipped_low_support} — market has fewer than {MIN_MARKET_SUPPORT} resolved archive outcomes"
             f"{sport_part}{market_part}. "

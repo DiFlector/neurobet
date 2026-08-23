@@ -52,7 +52,8 @@ interface NeuroBet {
   pytorchScore: number
   stake: number | null // сумма, которую бот реально поставил на этот исход (₽), null если не ставил
   potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
-  predictedWin: number | null // 1 = EV ≥ порога (ставить), 0 = сейчас не ставить, null = не оценено
+  predictedWin: number | null // 1 = EV ≥ порога (класть деньги), 0 = не ставить, null = не оценено
+  willWin: number | null // 1 = исход зайдёт; 0 = скорее всего не зайдёт; null = нет вызова (скип, не проигрыш)
 }
 
 function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
@@ -529,7 +530,7 @@ export default function NeurobetsPage() {
               stake: openBet ? openBet.stake : null,
               potentialPayout: openBet ? openBet.stake * openBet.coefficient : null,
               predictedWin: b.predicted_win ?? null,
-            }
+              willWin: b.will_win ?? null,
           })
           setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
           liveOffsetRef.current = offset + mapped.length
@@ -1330,7 +1331,7 @@ export default function NeurobetsPage() {
             </div>
 
             <p className="text-xs text-neutral-500 -mt-3">
-              Угадано/не угадано — совпал ли вердикт сети («выиграет» / «проиграет») с фактическим исходом ставки, в обе стороны. Синим помечен возврат — линия ставки легла точно в ноль (законный исход, не ошибка). Серым — прогнозы без известного исхода или без вердикта сети. Нажмите на карточку выше, чтобы отфильтровать список.
+              Угадано/не угадано — совпал ли прогноз исхода с фактом. Вне коридора 1.1–2.0 деньги не кладём, но это не автопроигрыш: либо скип, либо «выиграет / скорее всего не победит». Падение кэфа повышает вероятность исхода, рост — понижает. «Не ставить» из‑за нулевого EV больше не считается прогнозом «проиграет».
             </p>
 
             {/* History Items List */}
@@ -1350,11 +1351,12 @@ export default function NeurobetsPage() {
             ) : (
               <div className="space-y-3">
                 {historyItems.map((item: any, idx: number) => {
+                  const outcomeCall = item.will_win ?? item.predicted_win
                   const judged = item.is_win !== null && item.is_win !== undefined
                     && item.predicted_win !== null && item.predicted_win !== undefined
                   const status: "correct" | "incorrect" | "push" | "pending" =
                     judged
-                      ? (item.predicted_win === item.is_win ? "correct" : "incorrect")
+                      ? (outcomeCall === item.is_win ? "correct" : "incorrect")
                       : item.is_win === null && item.is_push
                       ? "push"
                       : "pending"
@@ -1413,10 +1415,15 @@ export default function NeurobetsPage() {
                           <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
                             <div className="text-[10px] text-neutral-400 font-mono uppercase">Прогноз сети</div>
                             <div className={`text-sm font-black font-mono mt-0.5 ${
-                              item.predicted_win === 1 ? "text-[#55efc4]" : item.predicted_win === 0 ? "text-[#ff7675]" : "text-neutral-500"
+                              outcomeCall === 1 ? "text-[#55efc4]" : outcomeCall === 0 ? "text-[#ff7675]" : "text-neutral-500"
                             }`}>
-                              {item.predicted_win === 1 ? "🟢 выиграет" : item.predicted_win === 0 ? "🔴 проиграет" : "—"}
+                              {outcomeCall === 1 ? "🟢 выиграет" : outcomeCall === 0 ? "🔴 проиграет" : "—"}
                             </div>
+                            {item.predicted_win === 0 && outcomeCall === 1 && (
+                              <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                                не ставить
+                              </div>
+                            )}
                             {item.predicted_win_probability != null && (
                               <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
                                 {item.predicted_win_probability}%
@@ -1547,19 +1554,33 @@ export default function NeurobetsPage() {
                         </div>
 
                         <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono uppercase flex items-center gap-1 ${
-                          bet.predictedWin === 0
+                          bet.predictedWin === 1
+                            ? "bg-[#00b894]/15 border border-[#00b894]/40 text-[#55efc4]"
+                            : bet.willWin === 1
+                            ? "bg-[#fdcb6e]/15 border border-[#fdcb6e]/40 text-[#ffeaa7]"
+                            : bet.willWin === 0
                             ? "bg-[#d63031]/15 border border-[#d63031]/40 text-[#ff7675]"
-                            : "bg-[#00b894]/15 border border-[#00b894]/40 text-[#55efc4]"
+                            : "bg-neutral-800/80 border border-neutral-700 text-neutral-400"
                         }`}>
-                          {bet.predictedWin === 0 ? (
-                            <>
-                              <AlertTriangle className="w-3.5 h-3.5" />
-                              Сейчас не ставить
-                            </>
-                          ) : (
+                          {bet.predictedWin === 1 ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               Сеть ставит: выиграет
+                            </>
+                          ) : bet.willWin === 1 ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Выиграет · не ставить
+                            </>
+                          ) : bet.willWin === 0 ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Скорее всего не победит
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Сейчас не ставить
                             </>
                           )}
                         </div>

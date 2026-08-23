@@ -1,7 +1,7 @@
 # BacktestPrompt — ревью NeuroBet (для AI-агента)
 
 NeuroBet: GRU + LightGBM + market blend, калибровка по спорту/кэфу, EV-вердикт,
-quarter-Kelly, live band 1.5–2.0. Stake path: **EV → live gates → quality gate → Kelly**
+quarter-Kelly, live band 1.1–2.0 (2.0–2.5 only if p≥90%). Stake path: **EV → live gates → quality gate → Kelly**
 (без LLM). Код: `ai_service/app/neuralbet/`.
 
 **Parity:** train = serve (live UI) = bot Kelly = backtest — одни фичи/gates/sibling
@@ -45,7 +45,7 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 | B6 | Готовые сигналы — **не дублировать** | `agent_review.flags` |
 | B7 | Δ vs прошлый прогон | `agent_review.delta_vs_previous` |
 | B8 | Brier current vs `market_brier` | `overall` / slices |
-| B9 | ROI по кэфу 1.5–2.0, кап `MAX_BET_COEFF` | `by_coefficient` |
+| B9 | ROI по кэфу 1.1–2.0 (+ хвост 2.0–2.5 @ p≥90%), кап `MAX_BET_COEFF` | `by_coefficient` |
 | B10 | `total_under` vs `total_over` | `by_market` |
 | B11 | По спортам (live-лист) | `by_sport` или `agent_review.by_sport` |
 | B12 | Тренд нескольких прогонов | `get_backtest_history` |
@@ -127,7 +127,7 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 - `market_weight` в blend, тюнинг по Brier, `NEURALBET_MARKET_WEIGHT_FLOOR=0.70`.
 - Калибровка с учётом кэфа; **no-leakage calib** в бэктest (`calibration_cutoff`).
 - Shrink p к 1/кэф после sibling: `NEURALBET_MARKET_SHRINK=0.25` (live / bot / backtest).
-- Live gates: `MIN_BET_COEFF=1.5`, `MAX_BET_COEFF=2.0`, `MIN_BET_EDGE_PCT=5%`, `MIN_MARKET_SUPPORT=150`.
+- Live gates: `MIN_BET_COEFF=1.1`, `MAX_BET_COEFF=2.0`, high-p tail `MAX_BET_COEFF_HIGH_P=2.5` @ `HIGH_P_STAKE=0.90`, `MIN_BET_EDGE_PCT=5%`, `MIN_MARKET_SUPPORT=150`. Stake ⊂ `will_win` (1X2 score prior). Outside the band: skip or analyzed call, not auto-loss. Falling coeff raises p, rising coeff lowers it.
 - Live stake sports: env ceiling ∩ last-backtest Brier-vs-market allowlist
   (`NEURALBET_BRIER_SPORT_GATE`, margin 0.005) **and** `roi_pct_lo > 0` on
   ≥ `NEURALBET_BRIER_SPORT_MIN_BETS` (default 40). Auto-updates after each backtest.
@@ -179,7 +179,7 @@ Walk-forward — **model-only** (EV + live gates), без LLM.
 1. **INFERENCE** — прогнозы на universe (GRU + LGBM + blend + calib).
 2. **EV `predicted_win=1`** — `calibrated_p * coeff - 1 ≥ MIN_BET_EDGE_PCT`
    (residual decision head не участвует в ставках).
-3. **Live gates** — coeff 1.5–2.0, EV ≥ 5%, support ≥ 150, Brier-sport allowlist
+3. **Live gates** — will_win=1, coeff 1.1–2.0 (or 2.0–2.5 @ p≥90%), EV ≥ 5%, support ≥ 150, Brier-sport allowlist
    (`in_live_stake_sport`), `NEURALBET_LIVE_STAKE_MARKETS` (default: totals).
 4. **Quality gate** — последний бэктest `walk_forward` model-only (см. §2); иначе ставки
    не открываются (bypass в админке может снять блок).

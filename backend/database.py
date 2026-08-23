@@ -28,11 +28,15 @@ from neurobet_filters import (  # noqa: E402
     is_fast_format_sport_path,
     in_live_stake_sport,
     in_live_stake_market,
+    outcome_will_win,
+    outcome_will_win_sql,
+    passes_live_gates,
 )
 from neurobet_features import (  # noqa: E402
     pack_timer_entry,
     parse_period_ordinal as _parse_period_ordinal,
     parse_score_diff,
+    parse_score_pair,
     parse_score_sum,
     parse_timer,
     parse_ts_epoch as _parse_ts_epoch,
@@ -1484,6 +1488,7 @@ def _compute_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
         band_sql, band_params = bet_band_sql(
             "h.final_coefficient",
             "((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0",
+            p_expr="h.predicted_win_probability",
         )
         sports, factors = universe_sql_params()
 
@@ -1517,9 +1522,16 @@ def _compute_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
             f"""
             SELECT
                 COALESCE(SUM(w), 0) AS weighted_total,
-                COALESCE(SUM(CASE WHEN predicted_win = is_win THEN w ELSE 0 END), 0) AS weighted_correct
+                COALESCE(SUM(CASE WHEN {outcome_will_win_sql(
+                    "predicted_win", "final_coefficient",
+                    factor_expr="factor_id",
+                    score1_expr="score_1",
+                    score2_expr="score_2",
+                    p_expr="predicted_win_probability",
+                )} = is_win THEN w ELSE 0 END), 0) AS weighted_correct
               FROM (
-                SELECT h.predicted_win, h.is_win,
+                SELECT h.predicted_win, h.is_win, h.final_coefficient,
+                       h.factor_id, f.score_1, f.score_2, h.predicted_win_probability,
                        POWER(0.5, GREATEST(
                            EXTRACT(EPOCH FROM (%s::timestamp - h.finished_at::timestamp)) / 3600.0,
                            0
@@ -1687,6 +1699,39 @@ def _get_market_support() -> Dict[Tuple[str, int, str], int]:
     return _neurobet_market_support
 
 
+_LIVE_SCORE_KEYS = ("score_1", "score_2", "period_scores_json", "named_scores_json")
+
+
+def _live_pick_currently_winning(row: Dict[str, Any]) -> bool:
+    """True if this selection is already in the money on the current score.
+
+    ``predicted_win = 0`` means skip / no +EV, not "will lose". A П1 at 1:0
+    in minute 84 is winning on the scoreboard and must not appear in the
+    loss list just because 1.02 odds leave no edge.
+    """
+    try:
+        s1 = row.get("score_1")
+        s2 = row.get("score_2")
+        if s1 is None or s2 is None:
+            s1, s2 = parse_score_pair(row.get("score"))
+        else:
+            s1, s2 = int(s1), int(s2)
+    except (TypeError, ValueError):
+        s1, s2 = parse_score_pair(row.get("score"))
+    is_win, _is_push = resolve_outcome(
+        row.get("factor_id"),
+        row.get("label") or "",
+        row.get("parameter") or "",
+        s1,
+        s2,
+        market_prefix=row.get("market_prefix") or "",
+        sport_path=row.get("sport_path") or "",
+        period_scores=_parse_period_scores_json(row.get("period_scores_json")),
+        named_scores=_parse_named_scores_json(row.get("named_scores_json")),
+    )
+    return is_win == 1
+
+
 def get_top_neurobets(
     sport_filter: Optional[str] = None,
     sort_mode: str = "best",
@@ -1700,10 +1745,11 @@ def get_top_neurobets(
     # bet placement does (ai_service/app/neuralbet/pipeline.py never uses a heuristic
     # fallback either). A market the model hasn't scored yet just doesn't appear here
     # rather than showing a guess dressed up as a prediction.
-    # verdict controls which side of the model's own decision head shows up here (see
-    # decision_logit in ai_service/app/neuralbet/model.py): "win" (default) is the bot's
-    # real betting pool, "loss" surfaces what it expects to lose (never bet on), "all" is
-    # both — but never an unscored market (predicted_win IS NULL is excluded in every case).
+    # verdict: "win" is the bot's real betting pool (predicted_win=1, +EV). "loss" is
+    # skip / no +EV (predicted_win=0) — NOT "the model thinks this will lose", and
+    # selections already winning on the current score are dropped so a П1 at 1:0
+    # does not show up as a "loss". "all" is both. Unscored markets (predicted_win
+    # IS NULL) are excluded in every case.
     # This list used to be everything above a fixed min_confidence% cutoff; now the model
     # decides bet/no-bet itself, so this is a verdict list, not a ranked-by-EV top-N.
     # win_probability is already calibrated (ai_service calibrates before saving — see
@@ -1722,6 +1768,7 @@ def get_top_neurobets(
     query = f"""
         SELECT
             e.event_id, e.sport_path, e.match_name, e.team_1, e.team_2, e.score, e.timer,
+            e.score_1, e.score_2, e.period_scores_json, e.named_scores_json,
             l.factor_id, l.market_prefix, l.label, l.parameter, l.coefficient,
             COALESCE(l.initial_coefficient, l.coefficient) AS initial_coefficient,
             p.win_probability AS win_probability,
@@ -1751,7 +1798,9 @@ def get_top_neurobets(
     # unfiltered board, and forcing the same caps there would just hide information a
     # human might want to see, not match anything the bot actually risks money on.
     if verdict == "win":
-        band_sql, band_params = bet_band_sql("l.coefficient", "p.expected_roi")
+        band_sql, band_params = bet_band_sql(
+            "l.coefficient", "p.expected_roi", p_expr="p.win_probability",
+        )
         query += band_sql
         params.extend(band_params)
 
@@ -1796,13 +1845,39 @@ def get_top_neurobets(
             ) >= MIN_MARKET_SUPPORT
         ]
 
-    # Live-stake sport / market whitelist — same NEURALBET_LIVE_STAKE_* as ai_service
-    # placement; only on the bot's real betting pool (verdict=win).
-    if verdict == "win":
-        candidates = [c for c in candidates if in_live_stake_sport(c.get("sport_path"))]
+    for c in candidates:
+        c["will_win"] = outcome_will_win(
+            c.get("predicted_win"),
+            c.get("coefficient"),
+            factor_id=c.get("factor_id"),
+            score_1=c.get("score_1"),
+            score_2=c.get("score_2"),
+            win_probability=c.get("win_probability"),
+        )
+
+    # Skip-list (verdict=loss) is will_win=0, not "no +EV". Drop 1X2 leaders
+    # and shorts; keep currently-winning totals out of the loss list too.
+    if verdict == "loss":
         candidates = [
             c for c in candidates
-            if in_live_stake_market(factor_id=c.get("factor_id"))
+            if c.get("will_win") == 0 and not _live_pick_currently_winning(c)
+        ]
+
+    # Stake pool (verdict=win): will_win=1 AND live gates (band / EV / sport / market).
+    if verdict == "win":
+        candidates = [
+            c for c in candidates
+            if c.get("will_win") == 1
+            and in_live_stake_sport(c.get("sport_path"))
+            and in_live_stake_market(factor_id=c.get("factor_id"))
+            and passes_live_gates(
+                float(c.get("coefficient") or 0),
+                float(c.get("expected_roi") or 0),
+                sport_path=c.get("sport_path"),
+                factor_id=c.get("factor_id"),
+                win_probability=c.get("win_probability"),
+                will_win=c.get("will_win"),
+            )
         ]
 
     if sort_mode == "best":
@@ -1833,6 +1908,11 @@ def get_top_neurobets(
 
     total = len(deduped)
     page = deduped[offset: offset + limit] if limit else deduped[offset:]
+    for item in page:
+        w = item.get("will_win")
+        item["will_win"] = None if w is None else int(w)
+        for k in _LIVE_SCORE_KEYS:
+            item.pop(k, None)
 
     return {"items": page, "total": total}
 
@@ -1930,6 +2010,7 @@ def _live_pool_sql(event_alias: str, bet_alias: str, coeff_expr: str) -> Tuple[s
     band_sql, band_params = bet_band_sql(
         coeff_expr,
         f"(({bet_alias}.predicted_win_probability / 100.0) * {coeff_expr} - 1.0) * 100.0",
+        p_expr=f"{bet_alias}.predicted_win_probability",
     )
     sports, factors = universe_sql_params()
     sql = (
@@ -1954,8 +2035,9 @@ def _filter_by_market_support(rows: list, sport_key: str = "sport") -> list:
 def get_bet_type_stats() -> Dict[str, Any]:
     """
     Guess-rate breakdown by sport and bet type — same "guessed" definition as
-    get_neurobets_history/get_db_stats (predicted_win vs is_win on resolved,
-    model-scored bets), just grouped instead of listed individually.
+    get_neurobets_history/get_db_stats (outcome_will_win vs is_win on resolved,
+    model-scored bets: coeff below MIN_BET_COEFF is a win call, not a skip/loss),
+    just grouped instead of listed individually.
 
     Restricted to the live betting pool (universe + coeff band + min EV + market
     support): /stats and this API must not show sports, markets, or odds the bot
@@ -1977,7 +2059,7 @@ def get_bet_type_stats() -> Dict[str, Any]:
         SELECT TRIM(SPLIT_PART(e.sport_path, '/', 1)) AS sport,
                h.factor_id, h.label,
                COUNT(*) AS judged,
-               SUM(CASE WHEN h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct
+               SUM(CASE WHEN {outcome_will_win_sql()} = h.is_win THEN 1 ELSE 0 END) AS correct
           FROM finished_bets h
           JOIN finished_events e ON h.event_id = e.event_id
          WHERE h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
@@ -2185,13 +2267,25 @@ def get_neurobets_history(
 
     filtered_query = base_query
     if outcome_filter == "correct":
-        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win = h.is_win"
+        filtered_query += (
+            " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL"
+            f" AND {outcome_will_win_sql()} IS NOT NULL"
+            f" AND {outcome_will_win_sql()} = h.is_win"
+        )
     elif outcome_filter == "incorrect":
-        filtered_query += " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL AND h.predicted_win <> h.is_win"
+        filtered_query += (
+            " AND h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL"
+            f" AND {outcome_will_win_sql()} IS NOT NULL"
+            f" AND {outcome_will_win_sql()} <> h.is_win"
+        )
     elif outcome_filter == "push":
         filtered_query += " AND h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1"
     elif outcome_filter == "pending":
-        filtered_query += " AND (h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0 OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL))"
+        filtered_query += (
+            " AND (h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0"
+            " OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL)"
+            f" OR (h.is_win IS NOT NULL AND {outcome_will_win_sql()} IS NULL))"
+        )
 
     history_items: List[Dict[str, Any]] = []
     if limit > 0:
@@ -2203,6 +2297,7 @@ def get_neurobets_history(
                 h.id AS id, h.event_id, h.factor_id, h.market_prefix, h.label, h.parameter,
                 h.initial_coefficient, h.final_coefficient, h.score_at_time, h.is_win, h.is_push,
                 h.predicted_win, h.predicted_win_probability,
+                {outcome_will_win_sql()} AS will_win,
                 h.first_seen_at AS timestamp, h.finished_at,
                 e.sport_path, e.match_name, e.team_1, e.team_2, e.score_1, e.score_2, e.score
             {filtered_query}
@@ -2299,12 +2394,15 @@ def _compute_history_summary(
         count_query = f"""
             SELECT COUNT(*) AS total_count,
                    SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
-                                 AND h.predicted_win = h.is_win THEN 1 ELSE 0 END) AS correct_count,
+                                 AND {outcome_will_win_sql()} IS NOT NULL
+                                 AND {outcome_will_win_sql()} = h.is_win THEN 1 ELSE 0 END) AS correct_count,
                    SUM(CASE WHEN h.is_win IS NOT NULL AND h.predicted_win IS NOT NULL
-                                 AND h.predicted_win <> h.is_win THEN 1 ELSE 0 END) AS incorrect_count,
+                                 AND {outcome_will_win_sql()} IS NOT NULL
+                                 AND {outcome_will_win_sql()} <> h.is_win THEN 1 ELSE 0 END) AS incorrect_count,
                    SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 1 THEN 1 ELSE 0 END) AS push_count,
                    SUM(CASE WHEN h.is_win IS NULL AND COALESCE(h.is_push, 0) = 0
-                            OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL) THEN 1 ELSE 0 END) AS pending_count
+                            OR (h.is_win IS NOT NULL AND h.predicted_win IS NULL)
+                            OR (h.is_win IS NOT NULL AND {outcome_will_win_sql()} IS NULL) THEN 1 ELSE 0 END) AS pending_count
             {base_query}
         """
         f_cursor.execute(count_query, params)
