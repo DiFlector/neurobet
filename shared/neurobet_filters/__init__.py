@@ -52,6 +52,46 @@ TOTAL_FACTOR_IDS = TOTAL_OVER_IDS | TOTAL_UNDER_IDS
 DRAW_FACTOR_ID = 922
 ALLOWED_FACTOR_IDS = frozenset({921, DRAW_FACTOR_ID, 923} | TOTAL_FACTOR_IDS)
 
+# Coarse dashboard groups for LIVE «Активные прогнозы» chips. Training universe is
+# still П1/X/П2 + match totals; handicap / itotal IDs are classified so the chips
+# keep working if those markets later enter the board (and so label fallbacks catch
+# period-scoped rows that reuse a different factor_id).
+# Mirrors backend/database.py FACTORS_FORA* / FACTORS_ITOTAL* / FACTORS_SETS_FORA*.
+RESULT_FACTOR_IDS = frozenset({921, DRAW_FACTOR_ID, 923})
+HANDICAP_FACTOR_IDS = frozenset({
+    927, 910, 989, 1569, 1677, 1680, 937, 1672, 1683, 1686, 1689, 1692, 1723, 1845,
+    16211, 16214, 16217, 16220, 16223, 16226, 16229, 16232,
+    928, 912, 991, 1572, 1678, 1681, 938, 1675, 1684, 1687, 1690, 1718, 1724, 1846,
+    16212, 16215, 16218, 16221, 16224, 16227, 16230, 16233,
+    2422, 2424, 2427, 2430, 2433, 2436, 3262, 3265, 3244, 3247,
+    2421, 2425, 2428, 2431, 2434, 2437, 3263, 3266, 3245, 3248,
+})
+ITOTAL_FACTOR_IDS = frozenset({
+    1809, 1812, 1815, 1818, 1821, 974, 1824, 1827, 1830, 2203,
+    1810, 1813, 1816, 1819, 1822, 976, 1825, 1828, 1831, 2204,
+    1854, 1857, 1860, 1873, 1880, 978, 1883, 1886, 1893, 1896, 1899, 2209,
+    1855, 1858, 1861, 1871, 1874, 1881, 980, 1884, 1887, 1894, 1897, 1900, 2210,
+})
+DASHBOARD_MARKET_GROUPS = frozenset({
+    "all", "result", "totals", "handicap", "itotal", "other",
+})
+_MARKET_GROUP_ALIASES = {
+    "all": "all",
+    "result": "result",
+    "1x2": "result",
+    "outcomes": "result",
+    "moneyline": "result",
+    "totals": "totals",
+    "total": "totals",
+    "handicap": "handicap",
+    "fora": "handicap",
+    "handicaps": "handicap",
+    "itotal": "itotal",
+    "ind_total": "itotal",
+    "individual_total": "itotal",
+    "other": "other",
+}
+
 # Inclusive [lo, hi] on the total *line* (finished_bets.parameter / latest_odds.parameter).
 # Period/set-point junk and match-long point sums fall outside these and are dropped.
 TOTAL_LINE_RANGES: dict[str, Tuple[float, float]] = {
@@ -637,6 +677,93 @@ def in_live_stake_market(
     if family is None:
         return True
     return family in LIVE_STAKE_MARKETS
+
+
+def normalize_market_group(value: Optional[str] = None) -> str:
+    """Canonical dashboard market-group id. Unknown tokens fall back to 'all'."""
+    token = (value or "all").strip().lower()
+    return _MARKET_GROUP_ALIASES.get(token, "all") if token else "all"
+
+
+def _market_text(*parts: Optional[str]) -> str:
+    return " ".join(str(p).strip().lower() for p in parts if p and str(p).strip())
+
+
+def dashboard_market_group(
+    factor_id: Optional[int] = None,
+    label: Optional[str] = None,
+    market_prefix: Optional[str] = None,
+) -> str:
+    """Coarse LIVE-chip group: result / totals / handicap / itotal / other.
+
+    Does **not** use ``live_market_family(..., market_label=)`` — that argument is a
+    canonical family override (``w1``, ``totals``), not the human bet title.
+    """
+    text = _market_text(label, market_prefix)
+    try:
+        fid = int(factor_id) if factor_id is not None else None
+    except (TypeError, ValueError):
+        fid = None
+    if fid in RESULT_FACTOR_IDS:
+        return "result"
+    if fid in HANDICAP_FACTOR_IDS or "фора" in text:
+        return "handicap"
+    if fid in ITOTAL_FACTOR_IDS or (
+        "тотал" in text and ("инд" in text or "индивидуальн" in text)
+    ):
+        return "itotal"
+    if fid in TOTAL_FACTOR_IDS or "тотал" in text:
+        return "totals"
+    family = live_market_family(factor_id=fid)
+    if family in ("w1", "w2", "draw"):
+        return "result"
+    if family in ("total_over", "total_under"):
+        return "totals"
+    return "other"
+
+
+def market_group_sql(odds_alias: str, group: Optional[str] = None) -> Tuple[str, list]:
+    """SQL AND-clause + bind params for ``get_top_neurobets`` market chips.
+
+    Empty string / no extra params when group is ``all``. Label ILIKE is the
+    fallback for period-scoped rows whose factor_id is not in the canonical sets.
+    """
+    g = normalize_market_group(group)
+    if g == "all":
+        return "", []
+    fid = f"{odds_alias}.factor_id"
+    hay = (
+        f"LOWER(COALESCE({odds_alias}.label, '') || ' ' || "
+        f"COALESCE({odds_alias}.market_prefix, ''))"
+    )
+    result_ids = list(RESULT_FACTOR_IDS)
+    total_ids = list(TOTAL_FACTOR_IDS)
+    handicap_ids = list(HANDICAP_FACTOR_IDS)
+    itotal_ids = list(ITOTAL_FACTOR_IDS)
+    if g == "result":
+        return f" AND {fid} = ANY(%s)", [result_ids]
+    if g == "totals":
+        return (
+            f" AND ({fid} = ANY(%s) OR ({hay} LIKE %s AND {hay} NOT LIKE %s"
+            f" AND {hay} NOT LIKE %s AND {hay} NOT LIKE %s))",
+            [total_ids, "%тотал%", "%инд%", "%индивидуальн%", "%фора%"],
+        )
+    if g == "handicap":
+        return (
+            f" AND ({fid} = ANY(%s) OR {hay} LIKE %s)",
+            [handicap_ids, "%фора%"],
+        )
+    if g == "itotal":
+        return (
+            f" AND ({fid} = ANY(%s) OR ({hay} LIKE %s AND ({hay} LIKE %s OR {hay} LIKE %s)))",
+            [itotal_ids, "%тотал%", "%инд%", "%индивидуальн%"],
+        )
+    # other — everything that is not 1X2 / match total / handicap / itotal
+    return (
+        f" AND NOT ({fid} = ANY(%s) OR {fid} = ANY(%s) OR {fid} = ANY(%s) OR {fid} = ANY(%s)"
+        f" OR {hay} LIKE %s OR {hay} LIKE %s)",
+        [result_ids, total_ids, handicap_ids, itotal_ids, "%фора%", "%тотал%"],
+    )
 
 
 def live_gate_skip_reason(

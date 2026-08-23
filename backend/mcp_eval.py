@@ -293,7 +293,7 @@ TOOLS = [
         "get_top_neurobets",
         (
             "Active LIVE predictions («Нейроставки AI TOP» / «Активные LIVE Прогнозы»). "
-            "Default verdict=win — only outcomes the model wants to bet."
+            "Default verdict=win — will_win=1 (stake + «выиграет · не ставить»). "
         ),
         {
             "sport": {"type": "string", "description": "Filter by sport path."},
@@ -315,6 +315,11 @@ TOOLS = [
                 "description": "Model verdict filter. Default win.",
             },
             "search": {"type": "string", "description": "Search by team, match, or bet type."},
+            "market": {
+                "type": "string",
+                "enum": ["all", "result", "totals", "handicap", "itotal", "other"],
+                "description": "Market group: all, result (П1/X/П2), totals, handicap, itotal, other. Default all.",
+            },
         },
     ),
     _tool(
@@ -536,6 +541,7 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
             offset=_clamp_int(arguments, "offset", 0, 0, 1_000_000),
             verdict=_opt_str(arguments, "verdict") or "win",
             search=_opt_str(arguments, "search"),
+            market_group=_opt_str(arguments, "market"),
         )
         return _ok({"total": res["total"], "count": len(res["items"]), "bets": res["items"]})
 

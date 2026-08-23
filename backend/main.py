@@ -410,8 +410,12 @@ def read_neurobets_top(
     sort: str = Query("best", description="Sort mode: 'best' or 'safe'"),
     limit: int = Query(50, description="Items limit"),
     offset: int = Query(0, description="Items offset"),
-    verdict: str = Query("win", description="Filter by model verdict: 'win', 'loss', or 'all'"),
+    verdict: str = Query("win", description="win=will_win=1 (incl. don't-stake); loss=will_win=0; all=scored"),
     search: Optional[str] = Query(None, description="Search by team, match, or bet type"),
+    market: Optional[str] = Query(
+        None,
+        description="Market group: all, result (П1/X/П2), totals, handicap, itotal, other",
+    ),
 ):
     try:
         res = get_top_neurobets(
@@ -421,6 +425,7 @@ def read_neurobets_top(
             offset=offset,
             verdict=verdict,
             search=search,
+            market_group=market,
         )
         return {
             "status": "success",

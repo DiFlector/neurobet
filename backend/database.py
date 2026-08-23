@@ -26,8 +26,8 @@ from neurobet_filters import (  # noqa: E402
     bet_band_sql,
     MIN_MARKET_SUPPORT,
     is_fast_format_sport_path,
-    in_live_stake_sport,
     in_live_stake_market,
+    market_group_sql,
     outcome_will_win,
     outcome_will_win_sql,
     passes_live_gates,
@@ -1739,31 +1739,26 @@ def get_top_neurobets(
     offset: int = 0,
     verdict: str = "win",
     search: Optional[str] = None,
+    market_group: Optional[str] = None,
 ) -> Dict[str, Any]:
     # INNER JOIN ai_predictions (not LEFT JOIN + a 1/coefficient formula fallback) — this
     # list must reflect only what the trained model actually evaluated, the same as real
     # bet placement does (ai_service/app/neuralbet/pipeline.py never uses a heuristic
     # fallback either). A market the model hasn't scored yet just doesn't appear here
     # rather than showing a guess dressed up as a prediction.
-    # verdict: "win" is the bot's real betting pool (predicted_win=1, +EV). "loss" is
-    # skip / no +EV (predicted_win=0) — NOT "the model thinks this will lose", and
-    # selections already winning on the current score are dropped so a П1 at 1:0
-    # does not show up as a "loss". "all" is both. Unscored markets (predicted_win
-    # IS NULL) are excluded in every case.
-    # This list used to be everything above a fixed min_confidence% cutoff; now the model
-    # decides bet/no-bet itself, so this is a verdict list, not a ranked-by-EV top-N.
+    # verdict: "win" = outcome call will_win=1 (stake + «выиграет · не ставить»).
+    # "loss" = will_win=0 («скорее всего не победит»). "all" = every scored market.
+    # predicted_win is the EV/stake bit, not the tab filter — a 4.80 +EV longshot
+    # with p=23% is not a win call. Unscored markets (predicted_win IS NULL) are
+    # excluded in every case. will_win is computed in Python (score prior, p, steam)
+    # so SQL cannot pre-filter predicted_win=1 without hiding «выиграет · не ставить».
     # win_probability is already calibrated (ai_service calibrates before saving — see
     # ai_service/app/neuralbet/calibration.py) so it's read here as-is, no second pass.
     # l.updated_at = e.last_updated_at AND e.last_updated_at = MAX(...) is the same
     # staleness guard used everywhere else (get_live_matches, pipeline.py, bet
     # placement) — without it a market Fonbet has since pulled or replaced could still
     # show its last frozen prediction here.
-    if verdict == "loss":
-        verdict_clause = "AND p.predicted_win = 0"
-    elif verdict == "all":
-        verdict_clause = "AND p.predicted_win IS NOT NULL"
-    else:
-        verdict_clause = "AND p.predicted_win = 1"
+    verdict_clause = "AND p.predicted_win IS NOT NULL"
 
     query = f"""
         SELECT
@@ -1793,20 +1788,16 @@ def get_top_neurobets(
     sports, factors = universe_sql_params()
     params = [sports, factors]
 
-    # Coefficient cap + minimum-EV floor — only for the "win" list (the bot's real
-    # betting pool): "loss"/"all" exist to show what the network rejects or the full
-    # unfiltered board, and forcing the same caps there would just hide information a
-    # human might want to see, not match anything the bot actually risks money on.
-    if verdict == "win":
-        band_sql, band_params = bet_band_sql(
-            "l.coefficient", "p.expected_roi", p_expr="p.win_probability",
-        )
-        query += band_sql
-        params.extend(band_params)
+    # Coefficient / EV band is a stake gate, not the "win" tab. A favourite at 1.05
+    # can be will_win=1 («не ставить») and must still appear under «Выигрывающие».
 
     if sport_filter and sport_filter.lower() != "all":
         query += " AND e.sport_path ILIKE %s"
         params.append(f"%{sport_filter.lower()}%")
+
+    group_sql, group_params = market_group_sql("l", market_group)
+    query += group_sql
+    params.extend(group_params)
 
     # Free-text search across match/teams/bet-type — every whitespace-separated word must
     # appear somewhere in the combined haystack (order-independent AND), so "Команда Фора 1"
@@ -1854,6 +1845,17 @@ def get_top_neurobets(
             score_2=c.get("score_2"),
             win_probability=c.get("win_probability"),
         )
+        c["would_stake"] = int(
+            c.get("will_win") == 1
+            and passes_live_gates(
+                float(c.get("coefficient") or 0),
+                float(c.get("expected_roi") or 0),
+                sport_path=c.get("sport_path"),
+                factor_id=c.get("factor_id"),
+                win_probability=c.get("win_probability"),
+                will_win=c.get("will_win"),
+            )
+        )
 
     # Skip-list (verdict=loss) is will_win=0, not "no +EV". Drop 1X2 leaders
     # and shorts; keep currently-winning totals out of the loss list too.
@@ -1863,38 +1865,22 @@ def get_top_neurobets(
             if c.get("will_win") == 0 and not _live_pick_currently_winning(c)
         ]
 
-    # Stake pool (verdict=win): will_win=1 AND live gates (band / EV / sport / market).
+    # Outcome-win list: will_win=1 (includes «выиграет · не ставить»). Stake
+    # gates stay on would_stake / the bot, not this tab.
     if verdict == "win":
-        candidates = [
-            c for c in candidates
-            if c.get("will_win") == 1
-            and in_live_stake_sport(c.get("sport_path"))
-            and in_live_stake_market(factor_id=c.get("factor_id"))
-            and passes_live_gates(
-                float(c.get("coefficient") or 0),
-                float(c.get("expected_roi") or 0),
-                sport_path=c.get("sport_path"),
-                factor_id=c.get("factor_id"),
-                win_probability=c.get("win_probability"),
-                will_win=c.get("will_win"),
-            )
-        ]
+        candidates = [c for c in candidates if c.get("will_win") == 1]
 
     if sort_mode == "best":
         candidates.sort(key=lambda d: (d["expected_roi"], d["win_probability"]), reverse=True)
     else:
         candidates.sort(key=lambda d: (d["win_probability"], -d["coefficient"]), reverse=True)
+    # Stable: stake-eligible calls first on the win tab, then «выиграет · не ставить».
+    if verdict == "win":
+        candidates.sort(key=lambda d: d.get("would_stake") or 0, reverse=True)
 
-    # De-duplicate to at most one pick per event — not just per market — so the "win"
-    # list (the bot's real betting pool) never recommends two bets on the same match,
-    # even ones that aren't strictly mutually exclusive (e.g. "П1 wins" and "team 2's
-    # individual total over 2.5" are both individually plausible but pull against each
-    # other; see place_live_bet_candidates' occupied_events for the full reasoning —
-    # this list should show exactly what the bot would actually do). Rows arrive
-    # already sorted best-first, so keeping the first row seen per event keeps the
-    # strongest pick and discards the rest. Only applied to "win": "loss"/"all" exist to
-    # browse everything the network has an opinion on, and collapsing those to one row
-    # per match would just hide information no money is ever at risk on anyway.
+    # One pick per event on the win tab so a match with several p≥50% markets does not
+    # flood the list. Sort already prefers would_stake, then EV/p, so the kept row is
+    # the strongest outcome call (stake if any). loss/all stay uncollapsed.
     if verdict == "win":
         seen_events = set()
         deduped = []
@@ -1911,6 +1897,7 @@ def get_top_neurobets(
     for item in page:
         w = item.get("will_win")
         item["will_win"] = None if w is None else int(w)
+        item["would_stake"] = int(item.get("would_stake") or 0)
         for k in _LIVE_SCORE_KEYS:
             item.pop(k, None)
 
@@ -2004,9 +1991,9 @@ def reset_all_databases():
     logger.info("Successfully reset ALL databases (LIVE & Finished training archive), bankroll accounts, and cleared model checkpoints.")
 
 def _live_pool_sql(event_alias: str, bet_alias: str, coeff_expr: str) -> Tuple[str, list]:
-    """Universe + coefficient band + min-EV — the same live-pool SQL get_db_stats and
-    get_top_neurobets(verdict=win) already apply, so /stats never surfaces sports,
-    markets, or odds the bot would not stake."""
+    """Universe + coefficient band + min-EV — the same live-pool SQL get_db_stats
+    uses for stake KPIs, so /stats never surfaces sports, markets, or odds the
+    bot would not stake. (The win tab itself is will_win=1, including don't-stake.)"""
     band_sql, band_params = bet_band_sql(
         coeff_expr,
         f"(({bet_alias}.predicted_win_probability / 100.0) * {coeff_expr} - 1.0) * 100.0",

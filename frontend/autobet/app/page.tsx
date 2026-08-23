@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { SPORT_FILTER_OPTIONS } from "@/lib/sports"
+import { MARKET_FILTER_OPTIONS } from "@/lib/markets"
 
 interface NeuroBet {
   id: string
@@ -54,6 +55,7 @@ interface NeuroBet {
   potentialPayout: number | null // stake * coefficient — сколько получит при выигрыше
   predictedWin: number | null // 1 = EV ≥ порога (класть деньги), 0 = не ставить, null = не оценено
   willWin: number | null // 1 = исход зайдёт; 0 = скорее всего не зайдёт; null = нет вызова (скип, не проигрыш)
+  wouldStake: number // 1 = will_win и live-гейты (бот реально ставит)
 }
 
 function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: any): string {
@@ -189,6 +191,7 @@ export default function NeurobetsPage() {
   const [activeTab, setActiveTab] = useState<"live" | "history">("live")
   const [sortMode, setSortMode] = useState<"best" | "safe">("best")
   const [selectedSport, setSelectedSport] = useState<string>("all")
+  const [selectedMarket, setSelectedMarket] = useState<string>("all")
   const [stats, setStats] = useState<any>(null)
   const [headlineAccuracy, setHeadlineAccuracy] = useState<{
     guess_rate_pct: number | null
@@ -251,7 +254,7 @@ export default function NeurobetsPage() {
     liveOffsetRef.current = 0
     setLiveBets([])
     setLoading(true)
-  }, [sortMode, selectedSport, verdictFilter, searchQuery])
+  }, [sortMode, selectedSport, selectedMarket, verdictFilter, searchQuery])
 
   useEffect(() => {
     historyOffsetRef.current = 0
@@ -312,6 +315,7 @@ export default function NeurobetsPage() {
         verdict: verdictFilter
       })
       if (selectedSport !== "all") params.append("sport", selectedSport)
+      if (selectedMarket !== "all") params.append("market", selectedMarket)
       if (searchQuery) params.append("search", searchQuery)
       const res = await fetchApi(`${API_BASE}/api/neurobets/top?${params.toString()}`)
       if (res.ok) {
@@ -321,7 +325,7 @@ export default function NeurobetsPage() {
     } catch (err) {
       // Ignore — badge just keeps showing the last known count
     }
-  }, [API_BASE, sortMode, selectedSport, verdictFilter, searchQuery])
+  }, [API_BASE, sortMode, selectedSport, selectedMarket, verdictFilter, searchQuery])
 
   const fetchHistoryTotal = useCallback(async () => {
     try {
@@ -480,6 +484,7 @@ export default function NeurobetsPage() {
         verdict: verdictFilter
       })
       if (selectedSport !== "all") params.append("sport", selectedSport)
+      if (selectedMarket !== "all") params.append("market", selectedMarket)
       if (searchQuery) params.append("search", searchQuery)
 
       const res = await fetchApi(`${API_BASE}/api/neurobets/top?${params.toString()}`)
@@ -531,6 +536,7 @@ export default function NeurobetsPage() {
               potentialPayout: openBet ? openBet.stake * openBet.coefficient : null,
               predictedWin: b.predicted_win ?? null,
               willWin: b.will_win ?? null,
+              wouldStake: Number(b.would_stake) === 1 ? 1 : 0,
             }
           })
           setLiveBets((prev) => (mode === "append" ? [...prev, ...mapped] : mapped))
@@ -545,7 +551,7 @@ export default function NeurobetsPage() {
         setLoadingMoreLive(false)
       }
     }
-  }, [API_BASE, sortMode, selectedSport, verdictFilter, searchQuery])
+  }, [API_BASE, sortMode, selectedSport, selectedMarket, verdictFilter, searchQuery])
 
   const loadMoreLive = useCallback(() => {
     if (loadingMoreLive || loading) return
@@ -1234,6 +1240,25 @@ export default function NeurobetsPage() {
               </button>
             ))}
           </div>
+
+          {activeTab === "live" && (
+            <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+              {MARKET_FILTER_OPTIONS.map((market) => (
+                <button
+                  key={market.id}
+                  type="button"
+                  onClick={() => setSelectedMarket(market.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                    selectedMarket === market.id
+                      ? "bg-[#00b894] text-neutral-950 border-[#00b894] font-bold shadow-sm shadow-[#00b894]/20"
+                      : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-neutral-800/60"
+                  }`}
+                >
+                  {market.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Tab Content Section */}
@@ -1502,14 +1527,18 @@ export default function NeurobetsPage() {
               <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-12 text-center text-neutral-400 space-y-3">
                 <BrainCircuit className="w-10 h-10 text-[#fdcb6e] mx-auto opacity-80 animate-pulse" />
                 <p className="text-base font-bold text-white">
-                  {searchQuery ? "Ничего не найдено по запросу" : "Ожидание данных от парсера и нейросети..."}
+                  {searchQuery || selectedMarket !== "all"
+                    ? "Ничего не найдено по фильтру"
+                    : "Ожидание данных от парсера и нейросети..."}
                 </p>
                 <p className="text-xs text-neutral-400 max-w-md mx-auto">
-                  {searchQuery
-                    ? `По запросу «${searchQuery}» нет исходов в выбранном фильтре (${
+                  {searchQuery || selectedMarket !== "all"
+                    ? `Нет исходов в фильтре «${
+                        MARKET_FILTER_OPTIONS.find((m) => m.id === selectedMarket)?.label || selectedMarket
+                      }» / вердикт «${
                         verdictFilter === "win" ? "выигрывающие" : verdictFilter === "loss" ? "проигрывающие" : "все"
-                      }). Попробуйте другой фильтр вердикта или измените запрос.`
-                    : "Парсер Fonbet LIVE сканирует активные матчи, а LightGBM & PyTorch в реальном времени определяют вердикт по каждому исходу — выиграет он или проиграет. Данные обновляются каждые 10 секунд."}
+                      }»${searchQuery ? ` / «${searchQuery}»` : ""}. Попробуйте другой рынок или вердикт.`
+                    : "Парсер Fonbet LIVE сканирует активные матчи, а LightGBM & PyTorch в реальном времени определяют вердикт по каждому исходу — выиграет он или проиграет (в том числе «выиграет · не ставить»). Данные обновляются каждые 10 секунд."}
                 </p>
               </div>
             ) : (
@@ -1555,7 +1584,7 @@ export default function NeurobetsPage() {
                         </div>
 
                         <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono uppercase flex items-center gap-1 ${
-                          bet.predictedWin === 1
+                          bet.wouldStake === 1
                             ? "bg-[#00b894]/15 border border-[#00b894]/40 text-[#55efc4]"
                             : bet.willWin === 1
                             ? "bg-[#fdcb6e]/15 border border-[#fdcb6e]/40 text-[#ffeaa7]"
@@ -1563,7 +1592,7 @@ export default function NeurobetsPage() {
                             ? "bg-[#d63031]/15 border border-[#d63031]/40 text-[#ff7675]"
                             : "bg-neutral-800/80 border border-neutral-700 text-neutral-400"
                         }`}>
-                          {bet.predictedWin === 1 ? (
+                          {bet.wouldStake === 1 ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               Сеть ставит: выиграет
