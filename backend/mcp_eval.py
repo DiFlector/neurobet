@@ -128,7 +128,7 @@ TOOLS = [
         (
             "Everything the admin panel polls (read-only): AI settings, training health, "
             "training-run trend, backtest history, DB stats, bankroll, live bets, "
-            "recent AI logs. No destructive actions. No full latest_backtest JSON."
+            "recent AI logs, hardware. No destructive actions. No full latest_backtest JSON."
         ),
         {
             "logs_limit": _LOGS_LIMIT,
@@ -201,6 +201,13 @@ TOOLS = [
             "/ unknown, plus the individual signals (best_epoch streak, backtest Brier, "
             "ROI trend, val_loss trend) and the live quality_gate that can block virtual "
             "live bets."
+        ),
+    ),
+    _tool(
+        "get_hardware",
+        (
+            "Host hardware load for the admin cards: CPU percent + loadavg, RAM, "
+            "disk of /app/data, GPU util/VRAM if nvidia-smi or CUDA is visible."
         ),
     ),
     _tool(
@@ -444,6 +451,7 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
             "bankroll": m.get_bankroll_state(),
             "live_bets": {"total": live.get("total"), "open_count": open_count, "items": live.get("items")},
             "recent_ai_logs": (m.read_admin_ai_logs().get("logs") or [])[:logs_limit],
+            "hardware": m.get_hardware_snapshot(ai_url=m.AI_SERVICE_URL),
         })
 
     if name == "get_stats":
@@ -477,6 +485,9 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
 
     if name == "get_training_health":
         return _ok(m.admin_training_health())
+
+    if name == "get_hardware":
+        return _ok(m.get_hardware_snapshot(ai_url=m.AI_SERVICE_URL))
 
     if name == "get_training_runs":
         runs = m.admin_training_runs().get("runs") or []

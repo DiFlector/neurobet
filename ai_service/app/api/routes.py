@@ -152,6 +152,88 @@ def training_health():
     envelope's "status": "success"."""
     return {"status": "success", "health": get_training_health()}
 
+
+@router.get("/hardware")
+def hardware():
+    """GPU snapshot for the admin panel. Backend prefers nvidia-smi on its own
+    host; this is the fallback when only the AI container sees CUDA."""
+    gpus: list[dict] = []
+    source = None
+    try:
+        import subprocess
+        proc = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        if proc.returncode == 0 and (proc.stdout or "").strip():
+            source = "nvidia-smi"
+            for line in proc.stdout.strip().splitlines():
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) < 5:
+                    continue
+                try:
+                    mem_used = int(float(parts[2])) * 1024 * 1024
+                    mem_total = int(float(parts[3])) * 1024 * 1024
+                    util = float(parts[1])
+                    temp_raw = parts[4]
+                    temp = None if temp_raw in ("[N/A]", "N/A", "") else float(temp_raw)
+                except (TypeError, ValueError):
+                    continue
+                gpus.append({
+                    "name": parts[0],
+                    "util_percent": round(util, 1),
+                    "memory": {
+                        "used_bytes": mem_used,
+                        "total_bytes": mem_total,
+                        "free_bytes": max(mem_total - mem_used, 0),
+                        "percent": round((mem_used / mem_total) * 100.0, 1) if mem_total else 0.0,
+                    },
+                    "temperature_c": temp,
+                })
+    except Exception:
+        pass
+    if not gpus:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                source = "torch.cuda"
+                for i in range(torch.cuda.device_count()):
+                    free, total = torch.cuda.mem_get_info(i)
+                    used = int(total) - int(free)
+                    props = torch.cuda.get_device_properties(i)
+                    gpus.append({
+                        "name": props.name,
+                        "util_percent": None,
+                        "memory": {
+                            "used_bytes": used,
+                            "total_bytes": int(total),
+                            "free_bytes": int(free),
+                            "percent": round((used / total) * 100.0, 1) if total else 0.0,
+                        },
+                        "temperature_c": None,
+                    })
+        except Exception:
+            pass
+    if gpus:
+        return {"status": "success", "gpu": {"available": True, "source": source, "gpus": gpus}}
+    return {
+        "status": "success",
+        "gpu": {
+            "available": False,
+            "source": None,
+            "gpus": [],
+            "reason": "CUDA/nvidia-smi недоступны — обучение идёт на CPU",
+        },
+    }
+
+
 @router.get("/reset-progress")
 def reset_progress():
     """Admin poll while POST /reset-model holds the worker. Backend prefers the

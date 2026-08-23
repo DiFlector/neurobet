@@ -25,6 +25,10 @@ import {
   Download,
   FileJson,
   ShieldOff,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  CircuitBoard,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
@@ -35,6 +39,76 @@ interface AILog {
   category: string
   level: string
   message: string
+}
+
+function formatBytes(n: number | null | undefined): string {
+  const bytes = Number(n || 0)
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 Б"
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"]
+  let v = bytes
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i += 1
+  }
+  const digits = i === 0 || v >= 10 ? 0 : 1
+  return `${v.toFixed(digits)} ${units[i]}`
+}
+
+function loadTone(pct: number | null | undefined): { bar: string; text: string; border: string; bg: string } {
+  const p = Number(pct || 0)
+  if (p >= 90) {
+    return { bar: "bg-[#d63031]", text: "text-[#ff7675]", border: "border-[#d63031]/50", bg: "bg-[#d63031]/10" }
+  }
+  if (p >= 75) {
+    return { bar: "bg-[#fdcb6e]", text: "text-[#ffeaa7]", border: "border-[#fdcb6e]/40", bg: "bg-[#fdcb6e]/10" }
+  }
+  return { bar: "bg-[#00b894]", text: "text-[#55efc4]", border: "border-neutral-800", bg: "bg-neutral-900/80" }
+}
+
+function HardwareMeter({
+  icon: Icon,
+  label,
+  percent,
+  value,
+  detail,
+  unavailable,
+}: {
+  icon: any
+  label: string
+  percent: number | null
+  value: string
+  detail: string
+  unavailable?: boolean
+}) {
+  const tone = unavailable ? {
+    bar: "bg-neutral-700", text: "text-neutral-400", border: "border-neutral-800", bg: "bg-neutral-900/80",
+  } : loadTone(percent)
+  const width = Math.max(0, Math.min(100, Number(percent || 0)))
+  return (
+    <div className={`rounded-2xl border p-4 backdrop-blur-md shadow-lg ${tone.bg} ${tone.border}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${tone.border} bg-neutral-950/60`}>
+            <Icon className={`w-4 h-4 ${tone.text}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] text-neutral-500 font-mono uppercase leading-none">{label}</div>
+            <div className={`text-lg font-black font-mono mt-1 leading-none ${unavailable ? "text-neutral-500" : "text-white"}`}>
+              {value}
+            </div>
+          </div>
+        </div>
+        {!unavailable && percent != null && (
+          <div className={`text-sm font-bold font-mono ${tone.text}`}>{percent.toFixed(0)}%</div>
+        )}
+      </div>
+      <div className="mt-3 h-1.5 rounded-full bg-neutral-950/80 overflow-hidden border border-neutral-800/80">
+        <div className={`h-full rounded-full ${tone.bar}`} style={{ width: unavailable ? "0%" : `${width}%` }} />
+      </div>
+      <p className="text-[10px] text-neutral-500 font-mono mt-2 leading-snug">{detail}</p>
+    </div>
+  )
 }
 
 export default function AdminPage() {
@@ -79,6 +153,7 @@ export default function AdminPage() {
   })
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
+  const [hardware, setHardware] = useState<any>(null)
 
   // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
   // next.config.ts) instead of an absolute localhost URL.
@@ -317,6 +392,18 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchHardware = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/hardware`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setHardware(data)
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }, [API_BASE])
+
   const fetchTrainingRuns = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/training-runs`)
@@ -501,12 +588,14 @@ export default function AdminPage() {
     fetchBacktestHistory()
     fetchTrainingHealth()
     fetchTrainingRuns()
+    fetchHardware()
 
     const interval = setInterval(() => {
       fetchAILogs()
       fetchBankroll()
       fetchOpenLiveBetsCount()
       fetchTrainingHealth()
+      fetchHardware()
     }, 3000)
 
     const statsInterval = setInterval(fetchStats, 15000)
@@ -526,7 +615,7 @@ export default function AdminPage() {
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
     }
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns, fetchHardware])
 
   const toggleAISetting = async (
     key: "ai_enabled" | "training_enabled" | "quality_gate_bypass",
@@ -698,6 +787,69 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
+
+        {/* Host hardware — CPU / RAM / disk / GPU, polled every 3s with logs */}
+        {(() => {
+          const cpu = hardware?.cpu
+          const mem = hardware?.memory
+          const disk = hardware?.disk
+          const gpuWrap = hardware?.gpu
+          const gpu = Array.isArray(gpuWrap?.gpus) && gpuWrap.gpus.length > 0 ? gpuWrap.gpus[0] : null
+          const load = Array.isArray(cpu?.load_avg) ? cpu.load_avg : null
+          const cores = cpu?.cores_logical || cpu?.cores_physical
+          const gpuUnavailable = !hardware || !gpuWrap?.available || !gpu
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <HardwareMeter
+                icon={Cpu}
+                label="Процессор"
+                percent={cpu?.percent ?? null}
+                value={cpu ? `${Number(cpu.percent || 0).toFixed(0)}%` : "—"}
+                detail={
+                  cpu
+                    ? `${cores || "?"} ядер${load ? ` · load ${load.map((n: number) => n.toFixed(2)).join(" / ")}` : ""}`
+                    : "ждём снимок нагрузки…"
+                }
+              />
+              <HardwareMeter
+                icon={MemoryStick}
+                label="Оперативная память"
+                percent={mem?.percent ?? null}
+                value={mem ? formatBytes(mem.used_bytes) : "—"}
+                detail={mem ? `${formatBytes(mem.used_bytes)} из ${formatBytes(mem.total_bytes)}` : "ждём снимок памяти…"}
+              />
+              <HardwareMeter
+                icon={HardDrive}
+                label="Жёсткий диск"
+                percent={disk?.percent ?? null}
+                value={disk ? formatBytes(disk.used_bytes) : "—"}
+                detail={
+                  disk
+                    ? `${formatBytes(disk.used_bytes)} из ${formatBytes(disk.total_bytes)}${disk.path ? ` · ${disk.path}` : ""}`
+                    : "ждём снимок диска…"
+                }
+              />
+              <HardwareMeter
+                icon={CircuitBoard}
+                label="Видеокарта"
+                percent={gpuUnavailable ? null : (gpu.util_percent ?? gpu.memory?.percent ?? 0)}
+                value={
+                  gpuUnavailable
+                    ? "нет GPU"
+                    : gpu.util_percent != null
+                      ? `${Number(gpu.util_percent).toFixed(0)}%`
+                      : formatBytes(gpu.memory?.used_bytes)
+                }
+                detail={
+                  gpuUnavailable
+                    ? (gpuWrap?.reason || "CUDA/nvidia-smi не видны из контейнера")
+                    : `${gpu.name || "GPU"}${gpu.memory ? ` · VRAM ${formatBytes(gpu.memory.used_bytes)} / ${formatBytes(gpu.memory.total_bytes)}` : ""}${gpu.temperature_c != null ? ` · ${Number(gpu.temperature_c).toFixed(0)}°C` : ""}`
+                }
+                unavailable={gpuUnavailable}
+              />
+            </div>
+          )
+        })()}
 
         {/* Training Health Status Block — overfitting traffic light */}
         {(() => {

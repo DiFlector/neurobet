@@ -16,6 +16,7 @@ EXPECTED = {
     "get_ai_settings",
     "get_ai_logs",
     "get_training_health",
+    "get_hardware",
     "get_training_runs",
     "get_backtest_history",
     "get_backtest_review",

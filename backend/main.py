@@ -20,6 +20,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_neurobets_history_summary, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from hardware import get_hardware_snapshot, start_hardware_sampler
 from parser_service import FonbetParserService
 from settings import settings
 from neurobet_filters import (
@@ -321,6 +322,7 @@ def startup_event():
     )
     scheduler.start()
     logger.info(f"Scheduler started! Fonbet LIVE matches will be scraped every {interval} seconds.")
+    start_hardware_sampler()
     warm_headline_guess_rate_cache()
 
 @app.on_event("shutdown")
@@ -596,6 +598,20 @@ def read_admin_ai_logs():
     except Exception as e:
         logger.error(f"Error communicating with AI Service: {e}")
     return {"status": "success", "logs": []}
+
+@app.get("/api/admin/hardware")
+def admin_hardware():
+    """CPU / RAM / disk / GPU snapshot for the admin hardware cards.
+
+    Cheap and local (psutil + nvidia-smi). GPU falls back to ai_service /hardware
+    when the backend container cannot see the NVIDIA driver.
+    """
+    try:
+        snap = get_hardware_snapshot(ai_url=AI_SERVICE_URL)
+        return {"status": "success", **snap}
+    except Exception as e:
+        logger.error(f"Error fetching hardware snapshot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/admin/training-health")
 def admin_training_health():
