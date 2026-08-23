@@ -150,6 +150,7 @@ function AccuracyRing({ pct, known, size = 68 }: { pct: number; known: boolean; 
 }
 
 const PAGE_SIZE = 20
+const SETTLED_BOT_BETS_LIMIT = 30
 const FETCH_TIMEOUT_MS = 12_000
 
 function fetchApi(input: string, init?: RequestInit): Promise<Response> {
@@ -342,7 +343,7 @@ export default function NeurobetsPage() {
     try {
       const [openRes, settledRes] = await Promise.allSettled([
         fetchApi(`${API_BASE}/api/neurobets/live-bets?status=open&limit=50`),
-        fetchApi(`${API_BASE}/api/neurobets/live-bets?status=settled&limit=30`),
+        fetchApi(`${API_BASE}/api/neurobets/live-bets?status=settled&limit=${SETTLED_BOT_BETS_LIMIT}`),
       ])
       if (openRes.status === "fulfilled" && openRes.value.ok) {
         const data = await openRes.value.json()
@@ -745,10 +746,12 @@ export default function NeurobetsPage() {
           // only actually leaves the total once a bet settles and balance/locked update.
           const totalEquity = acc ? Number(acc.balance) + Number(acc.locked || 0) : 0
           const roiPct = acc && acc.start_balance > 0 ? ((totalEquity - acc.start_balance) / acc.start_balance) * 100 : 0
-          const settledBets = acc ? Number(acc.wins || 0) + Number(acc.losses || 0) : 0
-          const liveBetHitPct =
-            settledBets > 0 ? (Number(acc!.wins || 0) / settledBets) * 100 : 0
-          const liveBetHitKnown = settledBets > 0
+          // Hit-rate of the same window as «История ставок нейросети» (last N settled
+          // rows). Void/cancelled are skipped — they are not a model miss.
+          const recentJudged = settledBotBetsList.filter((b) => b.status === "won" || b.status === "lost")
+          const recentWins = recentJudged.filter((b) => b.status === "won").length
+          const liveBetHitKnown = recentJudged.length > 0
+          const liveBetHitPct = liveBetHitKnown ? (recentWins / recentJudged.length) * 100 : 0
           return (
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
@@ -805,8 +808,15 @@ export default function NeurobetsPage() {
                         {acc.ruin_count}
                       </div>
                     </div>
-                    <div className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800">
-                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Точность</div>
+                    <div
+                      className="bg-neutral-950/80 rounded-lg p-2 border border-neutral-800"
+                      title={
+                        liveBetHitKnown
+                          ? `${recentWins} из ${recentJudged.length} выигранных среди последних ${settledBotBetsList.length} рассчитанных ставок`
+                          : "Нет выигранных/проигранных среди последних рассчитанных ставок"
+                      }
+                    >
+                      <div className="text-[9px] text-neutral-500 font-mono uppercase">Точность · {SETTLED_BOT_BETS_LIMIT}</div>
                       <div className={`text-xs font-bold font-mono ${liveBetHitKnown ? "text-[#55efc4]" : "text-neutral-400"}`}>
                         {liveBetHitKnown ? `${liveBetHitPct.toFixed(1)}%` : "—"}
                       </div>
