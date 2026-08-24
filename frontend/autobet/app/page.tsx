@@ -19,7 +19,6 @@ import {
   Activity,
   Layers,
   BarChart3,
-  Percent,
   Database,
   Loader2,
   ChevronDown,
@@ -156,6 +155,53 @@ function AccuracyRing({ pct, known, size = 68 }: { pct: number; known: boolean; 
         <span className="font-black font-mono text-white" style={{ fontSize: Math.max(13, Math.round(size * 0.19)) }}>
           {known ? `${display.toFixed(1)}%` : "—"}
         </span>
+      </div>
+    </div>
+  )
+}
+
+function ProbabilityGauge({
+  probability,
+  errorRate,
+}: {
+  probability: number
+  errorRate?: number
+}) {
+  const pct = Number.isFinite(probability) ? Math.max(0, Math.min(100, probability)) : 0
+  const err = Number.isFinite(errorRate)
+    ? (errorRate as number)
+    : Math.max(0, 100 - pct)
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-semibold text-neutral-400">
+        Вероятность захода нейросети
+      </div>
+      <div className="flex items-center gap-2.5">
+        <div className="relative flex-1 min-w-0 bg-neutral-900 rounded-full h-2.5 overflow-hidden border border-neutral-800">
+          <div
+            className="absolute inset-0 bg-gradient-to-r from-[#d63031] to-[#00b894]"
+            aria-hidden
+          />
+          <motion.div
+            className="absolute inset-y-0 right-0 bg-neutral-900"
+            initial={false}
+            animate={{ width: `${100 - pct}%` }}
+            transition={{ type: "spring", stiffness: 120, damping: 20 }}
+          />
+        </div>
+        <span className="inline-flex items-center font-mono text-[10px] text-[#ff7675] bg-[#d63031]/15 px-2 py-0.5 rounded-md border border-[#d63031]/30 shrink-0">
+          ERR {err.toFixed(1)}%
+        </span>
+        <motion.span
+          key={pct}
+          initial={{ scale: 1.15, opacity: 0.6 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4 }}
+          className="font-mono font-black text-[#55efc4] text-base sm:text-lg shrink-0 tabular-nums"
+        >
+          {pct.toFixed(1)}%
+        </motion.span>
       </div>
     </div>
   )
@@ -1475,50 +1521,97 @@ export default function NeurobetsPage() {
                       ? "bg-[#0984e3]/10 border-[#0984e3]/50 shadow-[#0984e3]/5"
                       : "bg-neutral-800/20 border-neutral-700/60 shadow-black/5"
 
+                  const sport = item.sport_path ? String(item.sport_path).split("/")[0].trim() : "Спорт"
+                  const probability = item.predicted_win_probability != null
+                    ? Number(item.predicted_win_probability)
+                    : null
+                  const historyEv = probability != null
+                    ? (probability / 100) * coeff - 1
+                    : null
+
                   return (
                     <div
                       key={item.id || idx}
                       className={`relative overflow-hidden rounded-2xl p-5 border backdrop-blur-md transition shadow-md ${cardCls}`}
                     >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        {/* Event Details */}
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
-                              {item.sport_path || "Спорт"}
-                            </span>
-                            <span className="text-xs text-neutral-400 font-mono">
-                              Завершен в {item.finished_at || item.timestamp}
-                            </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
+                        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                          <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono uppercase flex items-center gap-1 ${
+                            status === "correct"
+                              ? "bg-[#00b894] text-neutral-950 border border-[#55efc4]"
+                              : status === "incorrect"
+                              ? "bg-[#d63031] text-white border border-[#ff7675]"
+                              : status === "push"
+                              ? "bg-[#0984e3] text-white border border-[#74b9ff]"
+                              : "bg-neutral-700 text-neutral-200 border border-neutral-600"
+                          }`}>
+                            {status === "correct" ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                                Угадано
+                              </>
+                            ) : status === "incorrect" ? (
+                              <>
+                                <AlertTriangle className="w-3.5 h-3.5" strokeWidth={1.75} />
+                                Не угадано
+                              </>
+                            ) : status === "push" ? (
+                              <>
+                                <Info className="w-3.5 h-3.5" strokeWidth={1.75} />
+                                Возврат
+                              </>
+                            ) : (
+                              <>
+                                <Info className="w-3.5 h-3.5" strokeWidth={1.75} />
+                                Не рассчитана
+                              </>
+                            )}
                           </div>
+                          <span className="text-xs text-neutral-400">
+                            <SportName sport={sport} />
+                          </span>
+                          <span className="text-xs text-neutral-500 font-mono">
+                            Завершен в {item.finished_at || item.timestamp}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                          <span className="text-xs text-neutral-400 font-mono">Счёт</span>
+                          <span className="font-mono font-black text-sm text-[#fdcb6e]">
+                            {item.score || `${item.score_1} : ${item.score_2}`}
+                          </span>
+                        </div>
+                      </div>
 
-                          <h4 className="text-base font-bold text-white tracking-tight">
+                      <div className="flex flex-col md:flex-row md:items-stretch gap-4 md:gap-0 pt-4">
+                        <div className="flex-1 min-w-0 space-y-3 md:pr-5">
+                          <h4 className="text-lg font-bold text-white tracking-tight">
                             {item.match_name || `${item.team_1} vs ${item.team_2}`}
                           </h4>
-
-                          <div className="flex items-center gap-3 text-xs text-neutral-300">
-                            <span className="font-semibold text-white">
-                              Счет: <span className="font-mono text-[#fdcb6e] font-bold">{item.score || `${item.score_1} : ${item.score_2}`}</span>
-                            </span>
-                            <span>•</span>
-                            <span>
-                              Маркет: <span className="text-neutral-200 font-medium">{item.market_prefix || "Основной"} — {item.label}</span>
-                            </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
+                              <span className="text-neutral-400">Маркет: </span>
+                              <span className="text-neutral-200 font-medium">{item.market_prefix || "Основной"}</span>
+                            </div>
+                            <div className="bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
+                              <span className="text-neutral-400">Исход: </span>
+                              <span className="text-[#ffeaa7] font-bold">{item.label}</span>
+                            </div>
                           </div>
+                          {probability != null && Number.isFinite(probability) && (
+                            <ProbabilityGauge probability={probability} />
+                          )}
                         </div>
 
-                        {/* Odds & Prediction Stats */}
-                        <div className="flex items-center gap-4 shrink-0">
-                          <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
-                            <div className="text-[10px] text-neutral-400 font-mono uppercase">Коэффициент</div>
-                            <div className="text-base font-black text-[#fdcb6e] font-mono mt-0.5">
+                        <div className="md:w-44 shrink-0 md:border-l md:border-neutral-800/80 md:pl-5 flex flex-row md:flex-col items-start justify-between md:justify-center gap-4">
+                          <div>
+                            <div className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">Коэффициент</div>
+                            <div className="text-2xl font-black text-[#fdcb6e] font-mono mt-0.5 tabular-nums">
                               {coeff.toFixed(2)}
                             </div>
                           </div>
-
-                          <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
-                            <div className="text-[10px] text-neutral-400 font-mono uppercase">Прогноз сети</div>
-                            <div className={`text-sm font-black font-mono mt-0.5 inline-flex items-center justify-center gap-1 ${
+                          <div>
+                            <div className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">Прогноз сети</div>
+                            <div className={`text-sm font-black font-mono mt-0.5 inline-flex items-center gap-1 ${
                               outcomeCall === 1 ? "text-[#55efc4]" : outcomeCall === 0 ? "text-[#ff7675]" : "text-neutral-500"
                             }`}>
                               {outcomeCall === 1 ? (
@@ -1534,47 +1627,14 @@ export default function NeurobetsPage() {
                               )}
                             </div>
                             {item.predicted_win === 0 && outcomeCall === 1 && (
-                              <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
-                                не ставить
-                              </div>
+                              <div className="text-[10px] text-neutral-500 font-mono mt-0.5">не ставить</div>
                             )}
-                            {item.predicted_win_probability != null && (
-                              <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
-                                {item.predicted_win_probability}%
+                            {historyEv != null && Number.isFinite(historyEv) && (
+                              <div className={`text-sm font-black font-mono mt-1 tabular-nums ${
+                                historyEv >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+                              }`}>
+                                {historyEv >= 0 ? "+" : ""}{(historyEv * 100).toFixed(1)}%
                               </div>
-                            )}
-                          </div>
-
-                          {/* Guess Status Badge */}
-                          <div className={`px-4 py-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-black font-mono shrink-0 shadow-md ${
-                            status === "correct"
-                              ? "bg-[#00b894] text-neutral-950 border-[#55efc4]"
-                              : status === "incorrect"
-                              ? "bg-[#d63031] text-white border-[#ff7675]"
-                              : status === "push"
-                              ? "bg-[#0984e3] text-white border-[#74b9ff]"
-                              : "bg-neutral-700 text-neutral-200 border-neutral-600"
-                          }`}>
-                            {status === "correct" ? (
-                              <>
-                                <CheckCircle2 className="w-4 h-4 text-neutral-950" />
-                                УГАДАНО
-                              </>
-                            ) : status === "incorrect" ? (
-                              <>
-                                <AlertTriangle className="w-4 h-4 text-white" />
-                                НЕ УГАДАНО
-                              </>
-                            ) : status === "push" ? (
-                              <>
-                                <Info className="w-4 h-4 text-white" />
-                                ВОЗВРАТ
-                              </>
-                            ) : (
-                              <>
-                                <Info className="w-4 h-4 text-neutral-300" />
-                                НЕ РАССЧИТАНА
-                              </>
                             )}
                           </div>
                         </div>
@@ -1644,7 +1704,7 @@ export default function NeurobetsPage() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.97 }}
                     transition={{ layout: { type: "spring", stiffness: 350, damping: 32 }, duration: 0.25 }}
-                    className={`relative overflow-hidden rounded-2xl bg-neutral-900/80 border transition-colors hover:border-neutral-700 shadow-lg p-5 md:p-6 space-y-4 ${
+                    className={`relative overflow-hidden rounded-2xl bg-neutral-900/80 border transition-colors hover:border-neutral-700 shadow-lg p-5 md:p-6 ${
                       currentRank === 1
                         ? "border-[#fdcb6e]/50 bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-[#fdcb6e]/10 shadow-[#fdcb6e]/10"
                         : currentRank === 2
@@ -1652,10 +1712,8 @@ export default function NeurobetsPage() {
                         : "border-neutral-800"
                     }`}
                   >
-                    {/* Top Bar: Rank Badge + Match Info */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-3">
-                      <div className="flex items-center gap-3">
-                        {/* Rank Medal Badge */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
+                      <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                         <div
                           className={`px-3 py-1.5 rounded-xl font-black text-xs font-mono tracking-wider uppercase flex items-center gap-1.5 shadow-md ${
                             currentRank === 1
@@ -1703,102 +1761,121 @@ export default function NeurobetsPage() {
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-neutral-400">
-                          <span className="px-2 py-0.5 bg-neutral-950 rounded border border-neutral-800 text-neutral-300 font-medium">
-                            <SportName sport={bet.sport} />
-                          </span>
-                          <span className="flex items-center gap-1 text-[#ff7675] font-mono">
-                            <Clock className="w-3.5 h-3.5" />
-                            {bet.timer}
-                          </span>
-                        </div>
+                        <span className="text-xs text-neutral-400">
+                          <SportName sport={bet.sport} />
+                        </span>
+                        <span className="flex items-center gap-1 text-xs font-mono text-[#ff7675]">
+                          <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          {bet.timer}
+                        </span>
                       </div>
 
-                      {/* Score badge */}
-                      <div className="flex items-center gap-2 bg-neutral-950 px-3 py-1 rounded-xl border border-neutral-800 self-start sm:self-auto">
-                        <span className="text-xs text-neutral-400 font-mono">Счет:</span>
+                      <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                        <span className="text-xs text-neutral-400 font-mono">Счёт</span>
                         <span className="font-mono font-black text-base text-[#fdcb6e]">
                           {bet.score}
                         </span>
                       </div>
                     </div>
 
-                    {/* Middle Section: Match Teams & Target Market */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
-                      {/* Teams & Bet Target (7 cols) */}
-                      <div className="lg:col-span-7 space-y-2">
-                        <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                    <div className="flex flex-col md:flex-row md:items-stretch gap-4 md:gap-0 pt-4">
+                      <div className="flex-1 min-w-0 space-y-3 md:pr-5">
+                        <h3 className="text-lg font-bold text-white tracking-tight">
                           {bet.team1} <span className="text-neutral-500 font-normal">vs</span> {bet.team2}
                         </h3>
 
-                        <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
                             <span className="text-neutral-400">Маркет: </span>
                             <span className="text-neutral-200 font-medium">{bet.marketName}</span>
                           </div>
-                          <div className="bg-[#fdcb6e]/15 border border-[#fdcb6e]/40 px-3 py-1.5 rounded-xl text-xs font-bold text-[#ffeaa7]">
-                            Исход: {bet.outcomeLabel}
+                          <div className="bg-neutral-950 px-3 py-1.5 rounded-xl border border-neutral-800 text-xs">
+                            <span className="text-neutral-400">Исход: </span>
+                            <span className="text-[#ffeaa7] font-bold">{bet.outcomeLabel}</span>
+                          </div>
+                        </div>
+
+                        <ProbabilityGauge
+                          probability={bet.aiProbability}
+                          errorRate={bet.aiErrorRate}
+                        />
+
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-[#fdcb6e]" />
+                            Факторы решения нейронной сети
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {bet.aiInsights.map((insight, idx) => {
+                              const InsightIcon =
+                                idx === 0
+                                  ? insight.startsWith("Падение")
+                                    ? TrendingDown
+                                    : insight.startsWith("Рост")
+                                    ? TrendingUp
+                                    : Scale
+                                  : idx === 1
+                                  ? BarChart3
+                                  : BrainCircuit
+                              return (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800/80 text-neutral-300"
+                                >
+                                  <InsightIcon className="w-3 h-3 shrink-0" strokeWidth={1.75} />
+                                  {insight}
+                                </span>
+                              )
+                            })}
                           </div>
                         </div>
                       </div>
 
-                      {/* Odds & Value Index (5 cols) — outer div only handles column
-                          placement, the background/border box sizes to its own content
-                          (not the full 5-column width) so it doesn't leave a big empty
-                          strip when right-aligned. */}
-                      <div className="lg:col-span-5 flex justify-center lg:justify-end">
-                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 bg-neutral-950/60 p-3 rounded-xl border border-neutral-800/80">
-                          {/* Coefficient display */}
-                          <div>
-                            <div className="text-[10px] text-neutral-400 font-mono">Коэффициент</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <motion.span
-                                key={bet.coefficient}
-                                initial={{ color: isRose ? "#ff7675" : isDropped ? "#55efc4" : "#ffffff" }}
-                                animate={{ color: "#ffffff" }}
-                                transition={{ duration: 0.8 }}
-                                className="text-xl font-black font-mono"
-                              >
-                                {bet.coefficient.toFixed(2)}
-                              </motion.span>
-                              {isDropped && (
-                                <span className="flex items-center text-[10px] font-mono text-[#55efc4] bg-[#00b894]/20 px-1.5 py-0.5 rounded border border-[#00b894]/30">
-                                  <ArrowDownRight className="w-3 h-3" />
-                                  {(bet.coefficient - bet.initialCoefficient).toFixed(2)}
-                                </span>
-                              )}
-                              {isRose && (
-                                <span className="flex items-center text-[10px] font-mono text-[#ff7675] bg-[#d63031]/20 px-1.5 py-0.5 rounded border border-[#d63031]/30">
-                                  <ArrowUpRight className="w-3 h-3" />
-                                  +{(bet.coefficient - bet.initialCoefficient).toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Expected ROI Index */}
-                          <div className="text-right">
-                            <div className="text-[10px] text-neutral-400 font-mono">EV (Ожидаемый ROI)</div>
-                            <motion.div
-                              key={bet.expectedRoi}
-                              initial={{ scale: 1.15, opacity: 0.6 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              transition={{ duration: 0.4 }}
-                              className="text-base font-black font-mono text-[#55efc4] mt-0.5"
+                      <div className="md:w-44 shrink-0 md:border-l md:border-neutral-800/80 md:pl-5 flex flex-row md:flex-col items-start justify-between md:justify-center gap-5">
+                        <div>
+                          <div className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">Коэффициент</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <motion.span
+                              key={bet.coefficient}
+                              initial={{ color: isRose ? "#ff7675" : isDropped ? "#55efc4" : "#ffffff" }}
+                              animate={{ color: "#ffffff" }}
+                              transition={{ duration: 0.8 }}
+                              className="text-2xl font-black font-mono tabular-nums"
                             >
-                              +{bet.expectedRoi.toFixed(1)}%
-                            </motion.div>
+                              {bet.coefficient.toFixed(2)}
+                            </motion.span>
                           </div>
+                          {isDropped && (
+                            <span className="inline-flex items-center gap-0.5 mt-1.5 text-[10px] font-mono text-[#55efc4] bg-[#00b894]/20 px-1.5 py-0.5 rounded border border-[#00b894]/30">
+                              <ArrowDownRight className="w-3 h-3" />
+                              {(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                            </span>
+                          )}
+                          {isRose && (
+                            <span className="inline-flex items-center gap-0.5 mt-1.5 text-[10px] font-mono text-[#ff7675] bg-[#d63031]/20 px-1.5 py-0.5 rounded border border-[#d63031]/30">
+                              <ArrowUpRight className="w-3 h-3" />
+                              +{(bet.coefficient - bet.initialCoefficient).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] text-neutral-400 font-mono uppercase tracking-wider">EV / ROI</div>
+                          <motion.div
+                            key={bet.expectedRoi}
+                            initial={{ scale: 1.15, opacity: 0.6 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.4 }}
+                            className="text-2xl font-black font-mono text-[#55efc4] mt-0.5 tabular-nums"
+                          >
+                            +{bet.expectedRoi.toFixed(1)}%
+                          </motion.div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Bot Stake Banner — only shown for outcomes the bot actually has an open bet on.
-                        Includes the live score right here (not just the badge up top) since that's
-                        the value the bet's actual outcome depends on — it refreshes on the same
-                        10s poll as the rest of the card. */}
                     {bet.stake !== null && (
-                      <div className="flex flex-wrap items-center gap-3 bg-[#00b894]/10 border border-[#00b894]/40 rounded-xl px-4 py-2.5">
+                      <div className="flex flex-wrap items-center gap-3 bg-[#00b894]/10 border border-[#00b894]/40 rounded-xl px-4 py-2.5 mt-4">
                         <span className="text-xs font-bold text-[#55efc4] flex items-center gap-1.5">
                           <Wallet className="w-3.5 h-3.5" strokeWidth={1.75} />
                           Бот поставил:
@@ -1833,75 +1910,6 @@ export default function NeurobetsPage() {
                         </span>
                       </div>
                     )}
-
-                    {/* AI Probability Progress Gauge & Error Metric */}
-                    <div className="space-y-1.5 bg-neutral-950/50 p-3 rounded-xl border border-neutral-800/50">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-                        <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
-                          <Activity className="w-3.5 h-3.5 text-[#00b894]" />
-                          Вероятность захода нейросети:
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {/* Error Percentage Badge */}
-                          <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#ff7675] bg-[#d63031]/15 px-2 py-0.5 rounded-md border border-[#d63031]/30">
-                            <Percent className="w-3 h-3" />
-                            Ошибка нейросети: {bet.aiErrorRate.toFixed(1)}%
-                          </span>
-
-                          {/* Probability Value */}
-                          <motion.span
-                            key={bet.aiProbability}
-                            initial={{ scale: 1.2, opacity: 0.6 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ duration: 0.4 }}
-                            className="font-mono font-black text-[#55efc4] text-sm"
-                          >
-                            {bet.aiProbability.toFixed(1)}%
-                          </motion.span>
-                        </div>
-                      </div>
-
-                      {/* Animated Gradient Bar */}
-                      <div className="w-full bg-neutral-900 rounded-full h-2.5 overflow-hidden border border-neutral-800">
-                        <motion.div
-                          className="bg-gradient-to-r from-[#00b894] via-[#55efc4] to-[#fdcb6e] h-full rounded-full shadow-sm"
-                          initial={false}
-                          animate={{ width: `${bet.aiProbability}%` }}
-                          transition={{ type: "spring", stiffness: 120, damping: 20 }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Neural Insights / Factors Breakdown */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-[#fdcb6e]" />
-                        Факторы решения нейронной сети:
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {bet.aiInsights.map((insight, idx) => {
-                          const InsightIcon =
-                            idx === 0
-                              ? insight.startsWith("Падение")
-                                ? TrendingDown
-                                : insight.startsWith("Рост")
-                                ? TrendingUp
-                                : Scale
-                              : idx === 1
-                              ? BarChart3
-                              : BrainCircuit
-                          return (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800/80 text-neutral-300"
-                          >
-                            <InsightIcon className="w-3 h-3 shrink-0" strokeWidth={1.75} />
-                            {insight}
-                          </span>
-                          )
-                        })}
-                      </div>
-                    </div>
                   </motion.div>
                 )
               })}
