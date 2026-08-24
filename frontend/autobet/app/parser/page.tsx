@@ -15,6 +15,7 @@ import {
 import { MatchCard } from "@/components/MatchCard"
 import { HeaderNav } from "@/components/HeaderNav"
 import { SPORT_FILTER_OPTIONS } from "@/lib/sports"
+import { SportName } from "@/components/SportIcon"
 
 interface MatchData {
   event_id: number
@@ -218,13 +219,13 @@ export default function Page() {
               <button
                 key={sport.id}
                 onClick={() => setSelectedSport(sport.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
                   selectedSport === sport.id
                     ? "bg-[#fdcb6e] text-neutral-950 border-[#fdcb6e] font-bold shadow-sm shadow-[#fdcb6e]/20"
                     : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-neutral-800/60"
                 }`}
               >
-                {sport.label}
+                <SportName sport={sport.id} />
               </button>
             ))}
           </div>

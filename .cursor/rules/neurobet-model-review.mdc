@@ -14,6 +14,9 @@ alwaysApply: true
 
 1. **Прочитать** [`BacktestPrompt.md`](../BacktestPrompt.md) (формат ответа + чеклист + контекст решений).
 2. **MCP `get_backtest_review`** (neurobet-eval) — первым; не отвечать по памяти.
+   Это **live**-бэктест (`enabled_sports`). Full-инструменты
+   (`get_full_backtest_review` / `run_full_backtest`) — только по явной просьбе
+   («полный», «все виды», «full»). ROI/CI full **не** использовать для `quality_gate`.
 3. **`get_training_health`** + **`get_ai_logs`** (TRAINING, BANKROLL).
 4. Детали: `get_latest_backtest`, `get_backtest_history`, `get_ensemble`, `get_filters`.
 5. Свежий прогон: `run_eval_pack` / `run_backtest` — только если веса менялись или бэктest устарел/пуст.

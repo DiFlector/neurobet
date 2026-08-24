@@ -18,13 +18,16 @@ quarter-Kelly, live band 1.1–2.0 (2.0–2.5 only if p≥90%). Stake path: **EV
 
 | Шаг | Tool | Зачем |
 | :--- | :--- | :--- |
-| 1 | **`get_backtest_review`** | `agent_review`, `quality_gate`, flags, funnel |
+| 1 | **`get_backtest_review`** | live `agent_review`, `quality_gate`, flags, funnel |
 | 2 | **`get_training_health`** | overfitting traffic light |
 | 3 | **`get_ai_logs`** | `TRAINING`, `BANKROLL`, `INFERENCE` (limit 30–50) |
-| 4 | **`get_ensemble`** + **`get_filters`** | blend/market/threshold, live gates |
-| 5 | **`get_latest_backtest`** | детали: `by_sport`, `by_market`, `walk_forward_folds` |
-| 6 | **`get_backtest_history`** | тренд ROI/Brier/accuracy |
-| 7 | **`run_eval_pack`** / **`run_backtest`** | только если веса менялись, бэктest пустой/устарел (>6 ч), или пользователь просит свежий прогон |
+| 4 | **`get_ensemble`** + **`get_filters`** | blend/market/threshold, live gates, `enabled_sports` |
+| 5 | **`get_latest_backtest`** | детали live-прогона: `by_sport`, `by_market`, `walk_forward_folds` |
+| 6 | **`get_backtest_history`** | тренд live ROI/Brier/accuracy |
+| 7 | **`run_eval_pack`** / **`run_backtest`** | только если веса менялись, бэктest пустой/устарел (>6 ч), или пользователь просит свежий **live** прогон |
+
+Walk-forward для вердикта edge — из **live** review. Full-инструменты (только по явной просьбе):
+`get_full_backtest_review`, `get_latest_full_backtest`, `get_full_backtest_history`, `run_full_backtest`.
 
 Если `get_backtest_review` вернул `no_data` или нет `agent_review` — нужен rebuild + новый бэктest.
 

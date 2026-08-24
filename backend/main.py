@@ -44,6 +44,7 @@ from neurobet_filters import (
     MARKET_SHRINK,
     effective_live_stake_sports,
     brier_stake_sports_override,
+    get_enabled_sports,
 )
 
 MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
@@ -59,6 +60,7 @@ class AISettingsRequest(BaseModel):
     ai_enabled: Optional[bool] = None
     training_enabled: Optional[bool] = None
     quality_gate_bypass: Optional[bool] = None
+    enabled_sports: Optional[List[str]] = None
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
@@ -77,12 +79,18 @@ def _fallback_ai_settings() -> dict:
             "ai_enabled": bool(saved["ai_enabled"]) if "ai_enabled" in saved else True,
             "training_enabled": bool(saved["training_enabled"]) if "training_enabled" in saved else False,
             "quality_gate_bypass": bool(saved["quality_gate_bypass"]) if "quality_gate_bypass" in saved else False,
+            "enabled_sports": (
+                list(saved["enabled_sports"])
+                if isinstance(saved.get("enabled_sports"), list)
+                else sorted(get_enabled_sports())
+            ),
         }
     except Exception:
         return {
             "ai_enabled": True,
             "training_enabled": False,
             "quality_gate_bypass": False,
+            "enabled_sports": sorted(get_enabled_sports()),
         }
 
 
@@ -356,6 +364,13 @@ def read_matches(
     except Exception as e:
         logger.error(f"Error fetching matches: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/filters")
+def public_filters():
+    """Public snapshot of live universe + gates. Homepage chips read enabled_sports."""
+    return {"status": "success", **_filters_snapshot()}
+
 
 @app.get("/api/matches/{event_id}/odds-history")
 def read_odds_history(
@@ -706,10 +721,10 @@ def admin_run_backtest(payload: Dict[str, Any] = Body(default={})):
 
 
 @app.get("/api/admin/backtest/latest")
-def admin_backtest_latest():
+def admin_backtest_latest(mode: str = Query("live")):
     try:
         with httpx.Client(timeout=30.0) as client:
-            res = client.get(f"{AI_SERVICE_URL}/backtest/latest")
+            res = client.get(f"{AI_SERVICE_URL}/backtest/latest", params={"mode": mode})
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
@@ -718,10 +733,10 @@ def admin_backtest_latest():
 
 
 @app.get("/api/admin/backtest/review")
-def admin_backtest_review():
+def admin_backtest_review(mode: str = Query("live")):
     try:
         with httpx.Client(timeout=30.0) as client:
-            res = client.get(f"{AI_SERVICE_URL}/backtest/review")
+            res = client.get(f"{AI_SERVICE_URL}/backtest/review", params={"mode": mode})
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
@@ -730,10 +745,10 @@ def admin_backtest_review():
 
 
 @app.get("/api/admin/backtest/history")
-def admin_backtest_history():
+def admin_backtest_history(mode: str = Query("live")):
     try:
         with httpx.Client(timeout=15.0) as client:
-            res = client.get(f"{AI_SERVICE_URL}/backtest/history")
+            res = client.get(f"{AI_SERVICE_URL}/backtest/history", params={"mode": mode})
             if res.status_code == 200:
                 return res.json()
     except Exception as e:
@@ -757,6 +772,7 @@ def _filters_snapshot() -> Dict[str, Any]:
     override = brier_stake_sports_override()
     return {
         "allowed_sports": sorted(ALLOWED_SPORTS),
+        "enabled_sports": sorted(get_enabled_sports()),
         "allowed_factor_ids": sorted(ALLOWED_FACTOR_IDS),
         "draw_factor_id": DRAW_FACTOR_ID,
         "total_line_ranges": {k: [lo, hi] for k, (lo, hi) in TOTAL_LINE_RANGES.items()},

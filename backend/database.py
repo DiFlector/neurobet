@@ -31,6 +31,7 @@ from neurobet_filters import (  # noqa: E402
     outcome_will_win,
     outcome_will_win_sql,
     passes_live_gates,
+    get_enabled_sports,
 )
 from neurobet_features import (  # noqa: E402
     pack_timer_entry,
@@ -1490,7 +1491,7 @@ def _compute_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
             "((h.predicted_win_probability / 100.0) * h.final_coefficient - 1.0) * 100.0",
             p_expr="h.predicted_win_probability",
         )
-        sports, factors = universe_sql_params()
+        sports, factors = universe_sql_params(get_enabled_sports())
 
         support = _get_market_support()
         allowed_sports: List[str] = []
@@ -1811,7 +1812,7 @@ def get_top_neurobets(
           AND e.last_updated_at = (SELECT MAX(last_updated_at) FROM events)
           {universe_sql("e", "l")}
     """
-    sports, factors = universe_sql_params()
+    sports, factors = universe_sql_params(get_enabled_sports())
     params = [sports, factors]
 
     # Coefficient / EV band is a stake gate, not the "win" tab. A favourite at 1.05
@@ -2032,7 +2033,7 @@ def _live_pool_sql(event_alias: str, bet_alias: str, coeff_expr: str) -> Tuple[s
         f"(({bet_alias}.predicted_win_probability / 100.0) * {coeff_expr} - 1.0) * 100.0",
         p_expr=f"{bet_alias}.predicted_win_probability",
     )
-    sports, factors = universe_sql_params()
+    sports, factors = universe_sql_params(get_enabled_sports())
     sql = (
         f" AND {bet_alias}.predicted_win_probability IS NOT NULL"
         f" AND {coeff_expr} IS NOT NULL AND {coeff_expr} > 1.0"
@@ -2267,7 +2268,7 @@ def get_neurobets_history(
         WHERE 1=1
         {universe_sql("e", "h")}
     """
-    uni_sports, uni_factors = universe_sql_params()
+    uni_sports, uni_factors = universe_sql_params(get_enabled_sports())
     params: List[Any] = [uni_sports, uni_factors]
 
     if sport_filter and sport_filter.lower() != "all":
@@ -2397,7 +2398,7 @@ def _compute_history_summary(
         WHERE 1=1
         {universe_sql("e", "h")}
     """
-    uni_sports, uni_factors = universe_sql_params()
+    uni_sports, uni_factors = universe_sql_params(get_enabled_sports())
     params: List[Any] = [uni_sports, uni_factors]
 
     if sport_filter and sport_filter.lower() != "all":

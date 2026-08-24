@@ -35,6 +35,8 @@ from app.neuralbet import bankroll
 from app.neuralbet.bankroll import allocate
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
 from neurobet_filters import (
+    ALLOWED_SPORTS,
+    get_enabled_sports,
     universe_sql,
     universe_sql_params,
     passes_live_gates,
@@ -49,6 +51,10 @@ from neurobet_filters import (
     MIN_BET_EDGE_PCT,
     update_brier_stake_sports_from_backtest,
     clear_brier_stake_sports,
+    normalize_backtest_mode,
+    backtest_file_prefix,
+    is_backtest_result_file,
+    backtest_updates_live_gate,
 )
 from neurobet_features import (
     MARKET_FAMILIES,
@@ -77,6 +83,7 @@ logger = logging.getLogger("ai_service_backtest")
 
 BACKTEST_DIR = os.path.join(MODEL_DIR, "backtests")
 HISTORY_PATH = os.path.join(BACKTEST_DIR, "history.json")
+HISTORY_FULL_PATH = os.path.join(BACKTEST_DIR, "history_full.json")
 # 50 -> 180: backtest fires automatically every hour on the hour (Moscow — see
 # ai_service/main.py) plus manual admin-panel runs. 180 ≈ 7.5 days of hourly auto-runs
 # plus headroom for manual ones, cheap either way (this is just JSON).
@@ -157,14 +164,31 @@ def now_iso() -> str:
     return datetime.now(MOSCOW_TZ).isoformat()
 
 
-def _fetch_backtest_rows(limit: int, since: Optional[str]) -> List[Any]:
+
+def _backtest_file_prefix(mode: str) -> str:
+    return backtest_file_prefix(mode)
+
+
+def _is_backtest_result_file(name: str, mode: str = "live") -> bool:
+    return is_backtest_result_file(name, mode)
+
+
+def _history_path_for_mode(mode: str) -> str:
+    return HISTORY_FULL_PATH if mode == "full" else HISTORY_PATH
+
+
+def _fetch_backtest_rows(
+    limit: int,
+    since: Optional[str],
+    sports: Optional[Any] = None,
+) -> List[Any]:
     from app.neuralbet.pipeline import _track_conn, _untrack_conn
     f_conn = _track_conn(get_finished_connection())
     try:
         f_cursor = f_conn.cursor()
         where_since = "AND h.finished_at >= %s" if since else ""
         params: List[Any] = [since] if since else []
-        sports, factors = universe_sql_params()
+        sports, factors = universe_sql_params(sports)
         f_cursor.execute(f"""
             SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
                    h.odds_seq_json, h.score_seq_json, h.score_sum_seq_json,
@@ -353,6 +377,7 @@ def _records_from_scored(
     decision_threshold: float,
     sport_decision_thresholds: Dict[str, float],
     market_support: Optional[dict],
+    apply_admin: bool = True,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     work: List[Dict[str, Any]] = []
     for m in scored:
@@ -402,6 +427,7 @@ def _records_from_scored(
                 factor_id=m["factor_id"],
                 win_probability=calibrated,
                 will_win=will_win,
+                apply_admin=apply_admin,
             )
         ) else 0
         market_prob = (
@@ -520,6 +546,7 @@ def _walk_forward_eval(
     decision_threshold: float,
     sport_decision_thresholds: Dict[str, float],
     market_support: Optional[dict],
+    apply_admin: bool = True,
 ) -> Optional[Dict[str, Any]]:
     event_ts = _event_ts_map(rows)
     event_order = sorted(event_ts.keys(), key=lambda e: str(event_ts[e]))
@@ -534,6 +561,7 @@ def _walk_forward_eval(
         fold_scored = [s for s in scored if s["event_id"] in fold_events]
         fold_records, _fold_coherence = _records_from_scored(
             fold_scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
+            apply_admin=apply_admin,
         )
         fold_groups.append({
             "fold": fold_idx,
@@ -547,7 +575,7 @@ def _walk_forward_eval(
     return rebuilt
 
 
-def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
+def _policy_would_bet(record: Dict[str, Any], policy: str, apply_admin: bool = True) -> bool:
     coeff = float(record.get("coeff") or 0)
     expected_roi = float(record.get("current_expected_roi") or 0)
     verdict = int(record.get("current_verdict") or 0)
@@ -563,13 +591,14 @@ def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
             market_label=market_label,
             win_probability=record.get("current_prob"),
             will_win=record.get("will_win"),
+            apply_admin=apply_admin,
         )
     if policy == "decision_only":
         if verdict != 1:
             return False
         if not in_bet_band(coeff):
             return False
-        if sport_path is not None and not in_live_stake_sport(sport_path):
+        if sport_path is not None and not in_live_stake_sport(sport_path, apply_admin=apply_admin):
             return False
         if market_label is not None and not in_live_stake_market(market_label=market_label):
             return False
@@ -577,21 +606,25 @@ def _policy_would_bet(record: Dict[str, Any], policy: str) -> bool:
     return False
 
 
-def _apply_policy_preds(records: List[Dict[str, Any]], policy: str) -> List[Dict[str, Any]]:
+def _apply_policy_preds(
+    records: List[Dict[str, Any]],
+    policy: str,
+    apply_admin: bool = True,
+) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for rec in records:
         clone = dict(rec)
-        clone["_policy_pred"] = 1 if _policy_would_bet(rec, policy) else 0
+        clone["_policy_pred"] = 1 if _policy_would_bet(rec, policy, apply_admin=apply_admin) else 0
         out.append(clone)
     _dedupe_one_bet_per_event(out, pred_key="_policy_pred")
     return out
 
 
-def _policy_ablation(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _policy_ablation(records: List[Dict[str, Any]], apply_admin: bool = True) -> Dict[str, Any]:
     policies = ("decision_and_ev", "ev_only", "decision_only")
     out: Dict[str, Any] = {}
     for policy in policies:
-        scoped = _apply_policy_preds(records, policy)
+        scoped = _apply_policy_preds(records, policy, apply_admin=apply_admin)
         stake = _stake_metrics(scoped, "_policy_pred")
         ci = _bootstrap_roi_ci(scoped, "_policy_pred")
         out[policy] = {**(stake or {}), **(ci or {})}
@@ -659,7 +692,11 @@ def _agg_group(records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     }
 
 
-def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = None) -> Dict[str, Any]:
+def run_backtest(
+    limit: int = BACKTEST_DEFAULT_LIMIT,
+    since: Optional[str] = None,
+    mode: str = "live",
+) -> Dict[str, Any]:
     """
     Pulls up to `limit` most-recently-resolved bets (optionally only those finished at or
     after `since`, an ISO timestamp), re-scores every one with the *current* live
@@ -694,6 +731,9 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
     )
 
     t0 = time.time()
+    mode = normalize_backtest_mode(mode)
+    apply_admin = mode == "live"
+    fetch_sports = get_enabled_sports() if apply_admin else None
     # Check before taking _engine_lock: a scheduled :00/:30 job must not queue
     # behind a 40k cold-start chunk (and then steal the lock from the next one).
     if _load_cold_start().get("active"):
@@ -730,7 +770,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 return {"status": "aborted", "samples_evaluated": 0}
             set_backtest_progress("fetch", "Loading resolved-bet archive…", 8, total=limit)
             market_support = _refresh_market_support()
-            rows = _fetch_backtest_rows(limit=limit, since=since)
+            rows = _fetch_backtest_rows(limit=limit, since=since, sports=fetch_sports)
             if not rows:
                 set_backtest_progress("error", "Not enough data for a backtest", 0, active=False)
                 return {"status": "no_data", "samples_evaluated": 0}
@@ -890,6 +930,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
 
             records, sibling_coherence = _records_from_scored(
                 scored, buckets, decision_threshold, sport_decision_thresholds, market_support,
+                apply_admin=apply_admin,
             )
 
         set_backtest_progress("aggregate", "Aggregating and filtering by match…", 88, processed=len(records), total=len(records))
@@ -934,6 +975,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
 
         walk_forward = _walk_forward_eval(
             scored, rows, decision_threshold, sport_decision_thresholds, market_support,
+            apply_admin=apply_admin,
         )
         walk_forward_by_sport: Optional[List[Dict[str, Any]]] = None
         if walk_forward:
@@ -980,6 +1022,8 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 "walk_forward_folds": WALK_FORWARD_FOLDS,
                 "lgb_disable_team_features": LGB_DISABLE_TEAM_FEATURES,
                 "bootstrap_seed": BOOTSTRAP_SEED,
+                "mode": mode,
+                "enabled_sports": sorted(fetch_sports) if fetch_sports is not None else sorted(ALLOWED_SPORTS),
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),
@@ -988,7 +1032,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
             "walk_forward_folds": (walk_forward or {}).get("folds") if walk_forward else None,
             "walk_forward_meta": walk_forward_meta,
             "walk_forward_by_sport": walk_forward_by_sport,
-            "policy_ablation_oos": _policy_ablation(oos_records) if oos_records else None,
+            "policy_ablation_oos": _policy_ablation(oos_records, apply_admin=apply_admin) if oos_records else None,
             "oos_by_market": sorted(
                 [{"market": m, **_agg_group(rs)} for m, rs in oos_by_market_groups.items()],
                 key=lambda x: -x["evaluated"],
@@ -1008,25 +1052,31 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
                 for b, rs in sorted(by_coeff.items())
             ],
         }
-        prior_history = get_backtest_history()
-        result["quality_gate"] = evaluate_quality_gate(result, history=prior_history)
+        result["mode"] = mode
+        prior_history = get_backtest_history(mode=mode)
         from app.neuralbet.review import build_agent_review
 
-        result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
+        if mode == "live":
+            result["quality_gate"] = evaluate_quality_gate(result, history=prior_history)
+            result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
+            try:
+                brier_gate = update_brier_stake_sports_from_backtest(result)
+                result["brier_sport_gate"] = brier_gate
+                names = ", ".join(brier_gate.get("sports") or []) or "none"
+                add_ai_log(
+                    "SYSTEM",
+                    f"Brier sport gate updated from {brier_gate.get('source')} "
+                    f"(margin {brier_gate.get('margin')}): {names}.",
+                )
+            except Exception as e:
+                logger.warning(f"Brier sport gate update failed: {e}")
+        else:
+            result["agent_review"] = build_agent_review(result, records=records, history=prior_history)
+            summary = (result.get("agent_review") or {}).setdefault("summary", {})
+            summary["mode"] = "full"
+            summary["quality_gate_for_live"] = False
 
-        try:
-            brier_gate = update_brier_stake_sports_from_backtest(result)
-            result["brier_sport_gate"] = brier_gate
-            names = ", ".join(brier_gate.get("sports") or []) or "none"
-            add_ai_log(
-                "SYSTEM",
-                f"Brier sport gate updated from {brier_gate.get('source')} "
-                f"(margin {brier_gate.get('margin')}): {names}.",
-            )
-        except Exception as e:
-            logger.warning(f"Brier sport gate update failed: {e}")
-
-        save_and_record(result)
+        save_and_record(result, mode=mode)
         set_backtest_progress(
             "done",
             f"Done — {len(records):,} bets in {round(time.time() - t0, 1)}s".replace(",", " "),
@@ -1041,7 +1091,7 @@ def run_backtest(limit: int = BACKTEST_DEFAULT_LIMIT, since: Optional[str] = Non
         raise
 
 
-def save_and_record(result: Dict[str, Any]) -> None:
+def save_and_record(result: Dict[str, Any], mode: str = "live") -> None:
     """Writes the full result to a timestamped file under BACKTEST_DIR, and appends a
     condensed summary (no per-sport/per-coefficient breakdown) to history.json capped at
     MAX_HISTORY_RUNS entries — the trend list the admin panel reads without having to
@@ -1053,13 +1103,16 @@ def save_and_record(result: Dict[str, Any]) -> None:
         # carry (previously assumed a hardcoded "+00:00" that broke once generated_at
         # switched to Moscow's "+03:00").
         ts_slug = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%dT%H-%M-%S-%f")
-        with open(os.path.join(BACKTEST_DIR, f"backtest_{ts_slug}.json"), "w", encoding="utf-8") as f:
+        mode = normalize_backtest_mode(mode or result.get("mode"))
+        prefix = _backtest_file_prefix(mode)
+        hist_path = _history_path_for_mode(mode)
+        with open(os.path.join(BACKTEST_DIR, f"{prefix}{ts_slug}.json"), "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
 
         history: List[Dict[str, Any]] = []
-        if os.path.exists(HISTORY_PATH):
+        if os.path.exists(hist_path):
             try:
-                with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+                with open(hist_path, "r", encoding="utf-8") as f:
                     history = json.load(f)
             except Exception:
                 history = []
@@ -1076,32 +1129,36 @@ def save_and_record(result: Dict[str, Any]) -> None:
         })
         history = history[:MAX_HISTORY_RUNS]
 
-        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+        with open(hist_path, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Error persisting backtest result: {e}")
 
 
-def get_backtest_history() -> List[Dict[str, Any]]:
-    if not os.path.exists(HISTORY_PATH):
+def get_backtest_history(mode: str = "live") -> List[Dict[str, Any]]:
+    hist_path = _history_path_for_mode(normalize_backtest_mode(mode))
+    if not os.path.exists(hist_path):
         return []
     try:
-        with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+        with open(hist_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         logger.error(f"Error reading backtest history: {e}")
         return []
 
 
-def get_latest_backtest() -> Optional[Dict[str, Any]]:
+def get_latest_backtest(mode: str = "live") -> Optional[Dict[str, Any]]:
     """Full last run (by_sport / by_coefficient), not the condensed history.json row.
-    Used by the eval-pack so an agent can judge the model without a separate download."""
+    Used by the eval-pack so an agent can judge the model without a separate download.
+    mode=live ignores backtest_full_*.json so a debug run cannot become the quality-gate latest.
+    """
+    mode = normalize_backtest_mode(mode)
     if not os.path.isdir(BACKTEST_DIR):
         return None
     files = [
         os.path.join(BACKTEST_DIR, name)
         for name in os.listdir(BACKTEST_DIR)
-        if name.startswith("backtest_") and name.endswith(".json")
+        if _is_backtest_result_file(name, mode)
     ]
     if not files:
         return None
@@ -1120,6 +1177,8 @@ def clear_backtest_history() -> None:
     try:
         if os.path.exists(HISTORY_PATH):
             os.remove(HISTORY_PATH)
+        if os.path.exists(HISTORY_FULL_PATH):
+            os.remove(HISTORY_FULL_PATH)
         if os.path.isdir(BACKTEST_DIR):
             for name in os.listdir(BACKTEST_DIR):
                 if name.startswith("backtest_") and name.endswith(".json"):

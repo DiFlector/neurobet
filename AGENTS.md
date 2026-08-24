@@ -17,7 +17,7 @@ Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds 
 
 ### Frontend (`/frontend/autobet`)
 * **Framework**: Next.js (App Router), React 19, TypeScript
-* **Styling**: Vanilla CSS / TailwindCSS with standard dark gray/black neutral palette (`bg-neutral-950`, `bg-neutral-900`, `border-neutral-800`).
+* **Styling**: Vanilla CSS / TailwindCSS with standard dark gray/black neutral palette (`bg-neutral-950`, `bg-neutral-900`, `border-neutral-800`). No emoji or dingbat glyphs in the UI — sports use lucide-react via `SportIcon` / `SportName` (`Goal` = football); actions also lucide. See `.cursor/rules/neurobet-no-emoji.mdc`.
 * **Accent Palette**: **Flat UI Colors US** palette ONLY for interactive status accents:
   * `#fdcb6e` / `#ffeaa7` (Bright Gold / Headers)
   * `#00b894` / `#55efc4` (Mint / Falling Odds - Green)
@@ -128,12 +128,16 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 | `get_ai_logs` | TRAINING / INFERENCE / BANKROLL / SYSTEM feed. Optional `category`, `limit` |
 | `get_training_health` | Overfitting traffic light (`ok` / `warning` / `danger` / `unknown`) + signals + live `quality_gate` |
 | `get_training_runs` | Per-pass metrics for TrainingTrendChart (`val_loss`, `val_guess_rate`, `best_epoch`, …) |
-| `get_backtest_history` | Condensed run trend for QualityTrendChart (not the full per-run JSON) |
-| `get_backtest_review` | **Start here for model review**: edge verdict, quality_gate, walk-forward stability, funnel, head-alignment flags, delta vs previous run |
-| `get_latest_backtest` | Full latest backtest JSON on disk (`overall`, `by_sport`, `by_market`, `walk_forward`, `agent_review`). No new run |
-| `run_backtest` | Admin «Бэктест» button: run now (default 40000), return that result only. 15–60s |
+| `get_backtest_history` | Condensed **live** run trend for QualityTrendChart (not the full per-run JSON) |
+| `get_backtest_review` | **Start here for model review (live universe)**: edge verdict, quality_gate, walk-forward stability, funnel, head-alignment flags, delta vs previous run |
+| `get_latest_backtest` | Full latest **live** backtest JSON on disk. No new run |
+| `run_backtest` | Admin «Запустить бэктест»: live universe only, updates quality_gate + Brier. Default 40000, 15–60s |
+| `get_full_backtest_review` | Same `agent_review` from `backtest_full_*`. `summary.mode=full` — **not** for unlocking live. Only if the user asks for a full / all-sports backtest |
+| `get_latest_full_backtest` | Full JSON of the debug all-sports run. Does not write live `latest` / gate / Brier |
+| `get_full_backtest_history` | Trend from `history_full.json` — do not mix with the live QualityTrendChart |
+| `run_full_backtest` | Debug backtest on all `ALLOWED_SPORTS`. Does not update quality_gate or Brier |
 | `get_ensemble` | Live weights: `blend_weight`, `market_weight`, `decision_threshold`, per-sport thresholds |
-| `get_filters` | Live betting gates: allowed sports/factors, live stake sports/markets, coeff band, min EV, min market support |
+| `get_filters` | Live betting gates + admin `enabled_sports` |
 | `get_bankroll` | Live + training accounts |
 | `get_live_bets` | Simulated live bets. Optional `status` (`open` / `won` / `lost` / `void` / `cancelled`) |
 
@@ -178,6 +182,12 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
    - **`get_eval_pack`** — всё в одном JSON (без нового бэктestа)
 5. **Свежие веса обязательны** → **`run_eval_pack`** или **`run_backtest`** (15–60 с, CPU).
    Не вызывать без запроса пользователя, если `get_backtest_review` моложе ~6 ч и веса не менялись.
+
+**Live vs full:** шаги 1–5 и снятие `quality_gate` — только live MCP (`get_backtest_review` /
+`run_backtest`). Обучение всегда на всех `ALLOWED_SPORTS`. Live-инференс, UI и live-бэктест
+режет админский `enabled_sports`. Полный бэктест (`run_full_backtest`, `get_full_backtest_review`)
+— отладка по всем видам; его ROI/CI **не** KPI гейта и не разблокирует live. Звать full только
+если пользователь явно просит «полный», «все виды», «full», «сравнить с выключенными».
 
 ### На что смотреть в `agent_review` (приоритет)
 

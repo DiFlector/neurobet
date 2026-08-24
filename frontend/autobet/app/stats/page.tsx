@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { BarChart3, RefreshCw, Loader2, Target, CheckCircle2, XCircle, Trophy, Search, ChevronDown, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { sortBySportOrder } from "@/lib/sports"
+import { SportName } from "@/components/SportIcon"
 
 // Bet-type labels are grouped into these buckets purely by label shape (resolve_factor_label()
 // in backend/parser_service.py always appends the parameter in parens for Фора/Тотал bets),
@@ -192,7 +193,7 @@ export default function StatsPage() {
                 <span>Разбивка угадывания по видам спорта и типам ставок</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-                📊 Статистика нейросети
+                Статистика нейросети
               </h2>
               <p className="text-sm text-neutral-300 leading-relaxed">
                 Только то, на что бот реально ставит: разрешённые спорты и рынки, кэф 1.1–2.0 (2.0–2.5 при p≥90%),
@@ -354,7 +355,7 @@ export default function StatsPage() {
                       : "bg-neutral-900/90 border-neutral-800 text-neutral-300 hover:border-neutral-600"
                   }`}
                 >
-                  {s.sport}
+                  <SportName sport={s.sport} />
                   <span
                     className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
                       selectedSport === s.sport ? "bg-neutral-950/20 text-neutral-950" : "bg-neutral-800 text-neutral-400"
@@ -370,7 +371,9 @@ export default function StatsPage() {
             {activeSport && (
               <div className="space-y-4">
                 <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4 md:p-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-                  <h3 className="text-base font-bold text-white">{activeSport.sport}</h3>
+                  <h3 className="text-base font-bold text-white">
+                    <SportName sport={activeSport.sport} iconClassName="w-4 h-4" />
+                  </h3>
                   <span className="text-xs text-neutral-400">
                     Оценено: <span className="text-neutral-200 font-mono font-semibold">{activeSport.judged.toLocaleString()}</span>
                   </span>
@@ -443,9 +446,15 @@ export default function StatsPage() {
                                 </div>
                                 <GuessRatioBar correct={bt.correct} incorrect={bt.incorrect} />
                                 <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400 gap-2">
-                                  <span className="text-[#55efc4]">🟢 {bt.correct.toLocaleString()}</span>
+                                  <span className="text-[#55efc4] inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" strokeWidth={1.75} />
+                                    {bt.correct.toLocaleString()}
+                                  </span>
                                   <span className="text-neutral-500 whitespace-nowrap">Всего: {bt.judged.toLocaleString()}</span>
-                                  <span className="text-[#ff7675]">🔴 {bt.incorrect.toLocaleString()}</span>
+                                  <span className="text-[#ff7675] inline-flex items-center gap-1">
+                                    <XCircle className="w-3 h-3" strokeWidth={1.75} />
+                                    {bt.incorrect.toLocaleString()}
+                                  </span>
                                 </div>
                               </div>
                             ))}

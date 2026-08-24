@@ -9,6 +9,9 @@ Two layers, on purpose:
   staking real money, the "win" LIVE list, backtest "would bet", training
   bankroll/tuner. Thin markets and 1.0–1.1 shorts stay in the gradient; they just
   never get a stake. Money band is 1.1–2.0, plus 2.0–2.5 when calibrated p ≥ 90%.
+- Admin `enabled_sports` (ai_settings.json) is a product ceiling on live inference,
+  UI, live backtest and Kelly. Training and full/debug backtest stay on all
+  ALLOWED_SPORTS. Stake = admin ∩ env ∩ Brier.
 
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
@@ -20,7 +23,7 @@ import os
 import re
 import threading
 from datetime import datetime, timezone
-from typing import Any, Optional, Tuple
+from typing import Any, Iterable, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Universe — top-level sport_path segment, exact match (so "теннис" does not
@@ -176,6 +179,98 @@ _FACTOR_TO_LIVE_MARKET = {
 
 def sport_top(sport_path: Optional[str]) -> str:
     return (sport_path or "").split("/")[0].strip().lower()
+
+
+# Admin live-universe ceiling. Same JSON the pipeline already persists on MODEL_DIR
+# (ai_enabled / training_enabled / quality_gate_bypass). Missing key → all ALLOWED.
+AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
+_ENABLED_SPORT_SENTINEL = "__none__"
+_enabled_sports_lock = threading.Lock()
+_enabled_sports_cache: tuple[float, Optional[frozenset[str]]] = (-1.0, None)
+
+
+def normalize_enabled_sports(raw: Any, *, missing_means_all: bool = True) -> frozenset[str]:
+    """Canonical subset of ALLOWED_SPORTS. Unknown names dropped. Empty list stays empty."""
+    if raw is None:
+        return frozenset(ALLOWED_SPORTS) if missing_means_all else frozenset()
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple, set, frozenset)):
+        return frozenset(ALLOWED_SPORTS) if missing_means_all else frozenset()
+    out = {sport_top(str(s)) for s in raw}
+    out.discard("")
+    return frozenset(s for s in out if s in ALLOWED_SPORTS)
+
+
+def set_enabled_sports(raw: Any) -> frozenset[str]:
+    """Warm the mtime cache after ai_settings.json is written (empty list is valid)."""
+    sports = normalize_enabled_sports(raw, missing_means_all=False)
+    with _enabled_sports_lock:
+        global _enabled_sports_cache
+        try:
+            mtime = os.path.getmtime(AI_SETTINGS_PATH)
+        except OSError:
+            mtime = 0.0
+        _enabled_sports_cache = (mtime, sports)
+    return sports
+
+
+def _read_enabled_sports_unlocked() -> frozenset[str]:
+    global _enabled_sports_cache
+    path = AI_SETTINGS_PATH
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        cached_mtime, cached = _enabled_sports_cache
+        if cached is not None and cached_mtime == 0.0:
+            return cached
+        _enabled_sports_cache = (-1.0, None)
+        return frozenset(ALLOWED_SPORTS)
+    cached_mtime, cached = _enabled_sports_cache
+    if cached_mtime == mtime and cached is not None:
+        return cached
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+        if not isinstance(payload, dict) or "enabled_sports" not in payload:
+            sports = frozenset(ALLOWED_SPORTS)
+        else:
+            sports = normalize_enabled_sports(
+                payload.get("enabled_sports"), missing_means_all=False,
+            )
+    except (OSError, json.JSONDecodeError, TypeError):
+        sports = frozenset(ALLOWED_SPORTS)
+    _enabled_sports_cache = (mtime, sports)
+    return sports
+
+
+def get_enabled_sports() -> frozenset[str]:
+    """Sports the admin left on for live inference / UI / live backtest. Default = all ALLOWED."""
+    with _enabled_sports_lock:
+        return _read_enabled_sports_unlocked()
+
+
+def normalize_backtest_mode(mode: Optional[str] = None) -> str:
+    """``live`` (default) vs ``full`` debug. Unknown values fall back to live."""
+    return "full" if str(mode or "live").strip().lower() == "full" else "live"
+
+
+def backtest_file_prefix(mode: Optional[str] = None) -> str:
+    return "backtest_full_" if normalize_backtest_mode(mode) == "full" else "backtest_"
+
+
+def is_backtest_result_file(name: str, mode: str = "live") -> bool:
+    """Live listings must not pick up ``backtest_full_*.json`` (prefix would otherwise match)."""
+    if not name.endswith(".json"):
+        return False
+    if normalize_backtest_mode(mode) == "full":
+        return name.startswith("backtest_full_")
+    return name.startswith("backtest_") and not name.startswith("backtest_full_")
+
+
+def backtest_updates_live_gate(mode: Optional[str] = None) -> bool:
+    """Only live mode writes quality_gate, Brier allowlist, and live history.json."""
+    return normalize_backtest_mode(mode) == "live"
 
 
 def parse_total_line(parameter: Optional[str]) -> Optional[float]:
@@ -668,15 +763,20 @@ def update_brier_stake_sports_from_backtest(result: dict[str, Any]) -> dict[str,
     return write_brier_stake_sports(selected, source=source, detail=detail)
 
 
-def in_live_stake_sport(sport_path: Optional[str]) -> bool:
+def in_live_stake_sport(sport_path: Optional[str], *, apply_admin: bool = True) -> bool:
     """Whether live staking / «Активные LIVE» lists include this sport.
 
-    Env `NEURALBET_LIVE_STAKE_SPORTS` is the ceiling. When the Brier gate file
-    exists, the sport must also be in that allowlist (last backtest's Brier
-    winners with positive ROI CI lo). The file is written *after* a backtest
-    scores, so that run itself still uses the previous allowlist (no leakage).
+    Intersection is admin (enabled_sports) ∩ env `NEURALBET_LIVE_STAKE_SPORTS` ∩
+    Brier allowlist. Admin is the product ceiling; pass apply_admin=False for
+    training mix / full debug backtest. Env is the next ceiling. When the Brier
+    gate file exists, the sport must also be in that allowlist (last *live*
+    backtest's Brier winners with positive ROI CI lo). The file is written
+    *after* a live backtest scores, so that run itself still uses the previous
+    allowlist (no leakage).
     """
     sport = sport_top(sport_path)
+    if apply_admin and sport not in get_enabled_sports():
+        return False
     if LIVE_STAKE_SPORTS is not None and sport not in LIVE_STAKE_SPORTS:
         return False
     override = brier_stake_sports_override()
@@ -809,6 +909,7 @@ def live_gate_skip_reason(
     market_label: Optional[str] = None,
     win_probability: Any = None,
     will_win: Any = None,
+    apply_admin: bool = True,
 ) -> Optional[str]:
     """Why this candidate is not staked, or None if it clears every live gate.
     `support_count is None` means 'don't check' (empty cache fails open).
@@ -820,7 +921,7 @@ def live_gate_skip_reason(
                 return "will_win"
         except (TypeError, ValueError):
             return "will_win"
-    if sport_path is not None and not in_live_stake_sport(sport_path):
+    if sport_path is not None and not in_live_stake_sport(sport_path, apply_admin=apply_admin):
         return "sport"
     if (factor_id is not None or market_label is not None) and not in_live_stake_market(
         factor_id=factor_id, market_label=market_label,
@@ -844,6 +945,7 @@ def passes_live_gates(
     market_label: Optional[str] = None,
     win_probability: Any = None,
     will_win: Any = None,
+    apply_admin: bool = True,
 ) -> bool:
     return live_gate_skip_reason(
         coeff,
@@ -854,12 +956,29 @@ def passes_live_gates(
         market_label=market_label,
         win_probability=win_probability,
         will_win=will_win,
+        apply_admin=apply_admin,
     ) is None
 
 
-def universe_sql_params() -> Tuple[list, list]:
-    """Bind values for the two `= ANY(%s)` placeholders in `universe_sql`."""
-    return list(ALLOWED_SPORTS), list(ALLOWED_FACTOR_IDS)
+def universe_sql_params(sports: Optional[Iterable[str]] = None) -> Tuple[list, list]:
+    """Bind values for the two `= ANY(%s)` placeholders in `universe_sql`.
+
+    ``sports=None`` → all ALLOWED_SPORTS (train / full backtest).
+    Otherwise the intersection with ALLOWED_SPORTS, preserving caller order.
+    Empty after filtering binds a sentinel that matches no sport_path.
+    """
+    if sports is None:
+        sport_list = list(ALLOWED_SPORTS)
+    else:
+        seen: list[str] = []
+        have: set[str] = set()
+        for s in sports:
+            name = sport_top(str(s))
+            if name in ALLOWED_SPORTS and name not in have:
+                have.add(name)
+                seen.append(name)
+        sport_list = seen if seen else [_ENABLED_SPORT_SENTINEL]
+    return sport_list, list(ALLOWED_FACTOR_IDS)
 
 
 def universe_line_sql(event_alias: str, bet_alias: str) -> str:

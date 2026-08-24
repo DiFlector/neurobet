@@ -5,11 +5,12 @@ import { AnimatePresence, motion, useMotionValue, animate as animateValue } from
 import {
   BrainCircuit,
   TrendingUp,
+  TrendingDown,
   ShieldCheck,
   Zap,
   Trophy,
-  Filter,
   CheckCircle2,
+  XCircle,
   AlertTriangle,
   Info,
   Clock,
@@ -25,9 +26,17 @@ import {
   Search,
   Copy,
   Check,
+  Wallet,
+  Circle,
+  Ban,
+  Target,
+  Undo2,
+  History,
+  Scale,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
-import { SPORT_FILTER_OPTIONS } from "@/lib/sports"
+import { universeSportOptions } from "@/lib/sports"
+import { SportName } from "@/components/SportIcon"
 import { MARKET_FILTER_OPTIONS } from "@/lib/markets"
 
 interface NeuroBet {
@@ -191,6 +200,7 @@ export default function NeurobetsPage() {
   const [activeTab, setActiveTab] = useState<"live" | "history">("live")
   const [sortMode, setSortMode] = useState<"best" | "safe" | "score">("best")
   const [selectedSport, setSelectedSport] = useState<string>("all")
+  const [enabledSports, setEnabledSports] = useState<string[] | null>(null)
   const [selectedMarket, setSelectedMarket] = useState<string>("all")
   const [stats, setStats] = useState<any>(null)
   const [headlineAccuracy, setHeadlineAccuracy] = useState<{
@@ -246,6 +256,23 @@ export default function NeurobetsPage() {
     const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_BASE}/api/filters`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        const list = Array.isArray(data.enabled_sports) ? data.enabled_sports.map((s: string) => String(s).toLowerCase()) : []
+        setEnabledSports(list)
+      })
+      .catch(() => {
+        if (!cancelled) setEnabledSports(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [API_BASE])
 
   // Reset the infinite-scroll window whenever the underlying result set changes shape
   // (filters/sort). Also clear the current list and show the loading state so switching
@@ -499,7 +526,7 @@ export default function NeurobetsPage() {
             const coeff = floatVal(b.coefficient)
             const initCoeff = floatVal(b.initial_coefficient) || coeff
             const diff = (initCoeff - coeff).toFixed(2)
-            const diffText = initCoeff > coeff ? `📉 Падение кэфа (-${diff})` : initCoeff < coeff ? `📈 Рост кэфа (+${Math.abs(Number(diff))})` : "⚖️ Стабильный кэф"
+            const diffText = initCoeff > coeff ? `Падение кэфа (-${diff})` : initCoeff < coeff ? `Рост кэфа (+${Math.abs(Number(diff))})` : "Стабильный кэф"
 
             const openBet = openBotBetsRef.current.get(liveBetKey(b.event_id, b.factor_id, b.parameter, b.market_prefix))
 
@@ -527,8 +554,8 @@ export default function NeurobetsPage() {
               riskLevel: b.win_probability > 90 ? "minimal" : b.win_probability > 75 ? "low" : "medium",
               aiInsights: [
                 diffText,
-                `📊 LightGBM score: ${b.lightgbm_score}`,
-                `🧠 PyTorch trajectory: ${Math.round(b.pytorch_score * 100)}/100`
+                `LightGBM score: ${b.lightgbm_score}`,
+                `PyTorch trajectory: ${Math.round(b.pytorch_score * 100)}/100`
               ],
               lightgbmScore: b.lightgbm_score,
               pytorchScore: b.pytorch_score,
@@ -600,7 +627,15 @@ export default function NeurobetsPage() {
     return () => clearInterval(interval)
   }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
 
-  const sportsList = SPORT_FILTER_OPTIONS
+  const sportsList = useMemo(() => {
+    const chips = universeSportOptions(enabledSports)
+    return [{ id: "all" }, ...chips.map((s) => ({ id: s.id }))]
+  }, [enabledSports])
+
+  useEffect(() => {
+    if (selectedSport === "all") return
+    if (!sportsList.some((s) => s.id === selectedSport)) setSelectedSport("all")
+  }, [sportsList, selectedSport])
 
   function floatVal(val: any): number {
     const p = parseFloat(val)
@@ -670,7 +705,7 @@ export default function NeurobetsPage() {
                 <span>LightGBM & PyTorch Online Model Ensemble</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-                🧠 Нейроставки — Умный Рейтинг Топ Ставок
+                Нейроставки — Умный Рейтинг Топ Ставок
               </h2>
               <p className="text-sm text-neutral-300 leading-relaxed">
                 Алгоритм непрерывно анализирует прямую трансляцию коэффициентов и движений линий Fonbet LIVE и сам определяет, выиграет исход или проиграет —
@@ -766,7 +801,8 @@ export default function NeurobetsPage() {
             <div className="relative overflow-hidden rounded-2xl bg-neutral-900/80 border border-[#fdcb6e]/40 p-5 space-y-3 shadow-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-bold text-white">
-                  💰 Банк
+                  <Wallet className="w-4 h-4 text-[#fdcb6e]" strokeWidth={1.75} />
+                  Банк
                 </div>
                 <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-neutral-950 text-neutral-400 border border-neutral-800">
                   реальные ставки бота
@@ -944,7 +980,10 @@ export default function NeurobetsPage() {
                       <div className="text-[10px] font-mono flex items-center gap-2">
                         <span className="text-[#fdcb6e] font-bold">{b.current_score || "0:0"}</span>
                         {b.match_is_live && b.current_timer && (
-                          <span className="text-neutral-500">⏱ {b.current_timer}</span>
+                          <span className="text-neutral-500 inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" strokeWidth={1.75} />
+                            {b.current_timer}
+                          </span>
                         )}
                         {!b.match_is_live && (
                           <span className="text-neutral-600">матч завершён</span>
@@ -958,7 +997,10 @@ export default function NeurobetsPage() {
                       </div>
                       {formatPlacedAt(b.placed_at) && (
                         <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
-                          🕒 {formatPlacedAt(b.placed_at)}
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" strokeWidth={1.75} />
+                            {formatPlacedAt(b.placed_at)}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1005,13 +1047,13 @@ export default function NeurobetsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 px-4 md:px-5 pb-4 md:pb-5">
               {settledBotBetsList.map((b) => {
-                const statusCfg: Record<string, { label: string; cls: string }> = {
-                  won: { label: "🟢 ВЫИГРАЛА", cls: "border-[#00b894]/50 bg-[#00b894]/10" },
-                  lost: { label: "🔴 ПРОИГРАЛА", cls: "border-[#d63031]/50 bg-[#d63031]/10" },
-                  void: { label: "⚪ АННУЛИРОВАНА", cls: "border-neutral-700 bg-neutral-800/30" },
-                  cancelled: { label: "🟠 ОТМЕНЕНА", cls: "border-[#fdcb6e]/40 bg-[#fdcb6e]/10" },
+                const statusCfg: Record<string, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
+                  won: { label: "ВЫИГРАЛА", cls: "border-[#00b894]/50 bg-[#00b894]/10", Icon: CheckCircle2 },
+                  lost: { label: "ПРОИГРАЛА", cls: "border-[#d63031]/50 bg-[#d63031]/10", Icon: XCircle },
+                  void: { label: "АННУЛИРОВАНА", cls: "border-neutral-700 bg-neutral-800/30", Icon: Circle },
+                  cancelled: { label: "ОТМЕНЕНА", cls: "border-[#fdcb6e]/40 bg-[#fdcb6e]/10", Icon: Ban },
                 }
-                const cfg = statusCfg[b.status] || { label: b.status, cls: "border-neutral-700 bg-neutral-800/30" }
+                const cfg = statusCfg[b.status] || { label: b.status, cls: "border-neutral-700 bg-neutral-800/30", Icon: Circle }
                 const profit = b.payout != null ? Number(b.payout) - Number(b.stake) : null
 
                 return (
@@ -1033,13 +1075,17 @@ export default function NeurobetsPage() {
                         Коэф. {Number(b.coefficient).toFixed(2)} · Вероятность {Number(b.win_probability).toFixed(1)}%
                       </div>
                       {formatPlacedAt(b.settled_at) && (
-                        <div className="text-[10px] text-neutral-600 font-mono">
-                          🕒 рассчитана в {formatPlacedAt(b.settled_at)}
-                        </div>
+                        <div className="text-[10px] text-neutral-600 font-mono inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" strokeWidth={1.75} />
+                            рассчитана в {formatPlacedAt(b.settled_at)}
+                          </div>
                       )}
                     </div>
                     <div className="text-right shrink-0 space-y-0.5">
-                      <div className="text-[10px] font-mono font-bold">{cfg.label}</div>
+                      <div className="text-[10px] font-mono font-bold inline-flex items-center justify-end gap-1">
+                        <cfg.Icon className="w-3 h-3" strokeWidth={1.75} />
+                        {cfg.label}
+                      </div>
                       <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
                       {profit !== null && (
                         <div className={`text-[10px] font-mono ${profit > 0 ? "text-[#55efc4]" : profit < 0 ? "text-[#ff7675]" : "text-neutral-500"}`}>
@@ -1071,7 +1117,7 @@ export default function NeurobetsPage() {
               />
             )}
             <Zap className="relative z-10 w-4 h-4" />
-            <span className="relative z-10">🔥 Активные LIVE Прогнозы ({liveTotal.toLocaleString()})</span>
+            <span className="relative z-10">Активные LIVE Прогнозы ({liveTotal.toLocaleString()})</span>
           </button>
 
           <button
@@ -1089,7 +1135,7 @@ export default function NeurobetsPage() {
               />
             )}
             <Trophy className="relative z-10 w-4 h-4" />
-            <span className="relative z-10">📜 История Прогнозов ({historySummary?.total_count || stats?.finished_odds_history_count || 0})</span>
+            <span className="relative z-10">История Прогнозов ({historySummary?.total_count || stats?.finished_odds_history_count || 0})</span>
           </button>
         </div>
 
@@ -1119,7 +1165,7 @@ export default function NeurobetsPage() {
                       />
                     )}
                     <Trophy className="relative z-10 w-3.5 h-3.5" />
-                    <span className="relative z-10">⭐ Самая лучшая (Max ROI / EV)</span>
+                    <span className="relative z-10">Самая лучшая (Max ROI / EV)</span>
                   </button>
 
                   <button
@@ -1137,7 +1183,7 @@ export default function NeurobetsPage() {
                       />
                     )}
                     <ShieldCheck className="relative z-10 w-3.5 h-3.5" />
-                    <span className="relative z-10">🛡️ Самая безопасная (Max Win %)</span>
+                    <span className="relative z-10">Самая безопасная (Max Win %)</span>
                   </button>
 
                   <button
@@ -1155,14 +1201,15 @@ export default function NeurobetsPage() {
                       />
                     )}
                     <Activity className="relative z-10 w-3.5 h-3.5" />
-                    <span className="relative z-10">🔢 По счёту</span>
+                    <span className="relative z-10">По счёту</span>
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  📜 Результаты Прогнозов Нейросети
+                  <History className="w-4 h-4" strokeWidth={1.75} />
+                  Результаты Прогнозов Нейросети
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
                     Архив завершенных матчей
                   </span>
@@ -1190,7 +1237,8 @@ export default function NeurobetsPage() {
                       transition={{ type: "spring", stiffness: 400, damping: 32 }}
                     />
                   )}
-                  <span className="relative z-10">🟢 Выигрывающие</span>
+                  <CheckCircle2 className="relative z-10 w-3.5 h-3.5" strokeWidth={1.75} />
+                  <span className="relative z-10">Выигрывающие</span>
                 </button>
                 <button
                   onClick={() => setVerdictFilter("loss")}
@@ -1206,7 +1254,8 @@ export default function NeurobetsPage() {
                       transition={{ type: "spring", stiffness: 400, damping: 32 }}
                     />
                   )}
-                  <span className="relative z-10">🔴 Проигрывающие</span>
+                  <XCircle className="relative z-10 w-3.5 h-3.5" strokeWidth={1.75} />
+                  <span className="relative z-10">Проигрывающие</span>
                 </button>
                 <button
                   onClick={() => setVerdictFilter("all")}
@@ -1222,7 +1271,8 @@ export default function NeurobetsPage() {
                       transition={{ type: "spring", stiffness: 400, damping: 32 }}
                     />
                   )}
-                  <span className="relative z-10">⚪ Все</span>
+                  <Layers className="relative z-10 w-3.5 h-3.5" strokeWidth={1.75} />
+                  <span className="relative z-10">Все</span>
                 </button>
               </div>
             )}
@@ -1248,13 +1298,13 @@ export default function NeurobetsPage() {
               <button
                 key={sport.id}
                 onClick={() => setSelectedSport(sport.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
                   selectedSport === sport.id
                     ? "bg-[#fdcb6e] text-neutral-950 border-[#fdcb6e] font-bold shadow-sm shadow-[#fdcb6e]/20"
                     : "bg-neutral-950 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-neutral-800/60"
                 }`}
               >
-                {sport.label}
+                <SportName sport={sport.id} />
               </button>
             ))}
           </div>
@@ -1310,7 +1360,9 @@ export default function NeurobetsPage() {
                     : "bg-neutral-900/90 border-[#00b894]/40 hover:border-[#00b894]/70"
                 }`}
               >
-                <div className="text-[10px] text-[#55efc4] font-mono uppercase font-bold">🟢 Угадано</div>
+                <div className="text-[10px] text-[#55efc4] font-mono uppercase font-bold inline-flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" strokeWidth={1.75} /> Угадано
+                </div>
                 <div className="text-xl font-black text-[#55efc4] font-mono mt-1">
                   {historySummary?.correct_count?.toLocaleString() || 0}
                 </div>
@@ -1326,7 +1378,9 @@ export default function NeurobetsPage() {
                     : "bg-neutral-900/90 border-[#d63031]/40 hover:border-[#d63031]/70"
                 }`}
               >
-                <div className="text-[10px] text-[#ff7675] font-mono uppercase font-bold">🔴 Не угадано</div>
+                <div className="text-[10px] text-[#ff7675] font-mono uppercase font-bold inline-flex items-center justify-center gap-1">
+                  <XCircle className="w-3 h-3" strokeWidth={1.75} /> Не угадано
+                </div>
                 <div className="text-xl font-black text-[#ff7675] font-mono mt-1">
                   {historySummary?.incorrect_count?.toLocaleString() || 0}
                 </div>
@@ -1342,7 +1396,9 @@ export default function NeurobetsPage() {
                     : "bg-neutral-900/90 border-[#0984e3]/40 hover:border-[#0984e3]/70"
                 }`}
               >
-                <div className="text-[10px] text-[#74b9ff] font-mono uppercase font-bold">🔵 Возврат</div>
+                <div className="text-[10px] text-[#74b9ff] font-mono uppercase font-bold inline-flex items-center justify-center gap-1">
+                  <Undo2 className="w-3 h-3" strokeWidth={1.75} /> Возврат
+                </div>
                 <div className="text-xl font-black text-[#74b9ff] font-mono mt-1">
                   {historySummary?.push_count?.toLocaleString() || 0}
                 </div>
@@ -1358,7 +1414,9 @@ export default function NeurobetsPage() {
                     : "bg-neutral-900/90 border-neutral-700 hover:border-neutral-500"
                 }`}
               >
-                <div className="text-[10px] text-neutral-300 font-mono uppercase font-bold">⚪ Не рассчитано</div>
+                <div className="text-[10px] text-neutral-300 font-mono uppercase font-bold inline-flex items-center justify-center gap-1">
+                  <Circle className="w-3 h-3" strokeWidth={1.75} /> Не рассчитано
+                </div>
                 <div className="text-xl font-black text-neutral-300 font-mono mt-1">
                   {historySummary?.pending_count?.toLocaleString() || 0}
                 </div>
@@ -1366,7 +1424,9 @@ export default function NeurobetsPage() {
               </button>
 
               <div className="bg-neutral-900/90 border border-[#fdcb6e]/40 rounded-2xl p-4 text-center backdrop-blur shadow-lg">
-                <div className="text-[10px] text-[#ffeaa7] font-mono uppercase font-bold">🎯 Процент угадывания</div>
+                <div className="text-[10px] text-[#ffeaa7] font-mono uppercase font-bold inline-flex items-center justify-center gap-1">
+                  <Target className="w-3 h-3" strokeWidth={1.75} /> Процент угадывания
+                </div>
                 <div className="text-xl font-black text-[#ffeaa7] font-mono mt-1">
                   {historySummary?.guess_rate_pct !== undefined ? `${historySummary.guess_rate_pct.toFixed(1)}%` : "0.0%"}
                 </div>
@@ -1458,10 +1518,20 @@ export default function NeurobetsPage() {
 
                           <div className="bg-neutral-950/80 px-3.5 py-2 rounded-xl border border-neutral-800 text-center">
                             <div className="text-[10px] text-neutral-400 font-mono uppercase">Прогноз сети</div>
-                            <div className={`text-sm font-black font-mono mt-0.5 ${
+                            <div className={`text-sm font-black font-mono mt-0.5 inline-flex items-center justify-center gap-1 ${
                               outcomeCall === 1 ? "text-[#55efc4]" : outcomeCall === 0 ? "text-[#ff7675]" : "text-neutral-500"
                             }`}>
-                              {outcomeCall === 1 ? "🟢 выиграет" : outcomeCall === 0 ? "🔴 проиграет" : "—"}
+                              {outcomeCall === 1 ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.75} /> выиграет
+                                </>
+                              ) : outcomeCall === 0 ? (
+                                <>
+                                  <XCircle className="w-3.5 h-3.5" strokeWidth={1.75} /> проиграет
+                                </>
+                              ) : (
+                                "—"
+                              )}
                             </div>
                             {item.predicted_win === 0 && outcomeCall === 1 && (
                               <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
@@ -1635,7 +1705,7 @@ export default function NeurobetsPage() {
 
                         <div className="flex items-center gap-2 text-xs text-neutral-400">
                           <span className="px-2 py-0.5 bg-neutral-950 rounded border border-neutral-800 text-neutral-300 font-medium">
-                            {bet.sport}
+                            <SportName sport={bet.sport} />
                           </span>
                           <span className="flex items-center gap-1 text-[#ff7675] font-mono">
                             <Clock className="w-3.5 h-3.5" />
@@ -1730,7 +1800,8 @@ export default function NeurobetsPage() {
                     {bet.stake !== null && (
                       <div className="flex flex-wrap items-center gap-3 bg-[#00b894]/10 border border-[#00b894]/40 rounded-xl px-4 py-2.5">
                         <span className="text-xs font-bold text-[#55efc4] flex items-center gap-1.5">
-                          💰 Бот поставил:
+                          <Wallet className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          Бот поставил:
                         </span>
                         <span className="text-sm font-black font-mono text-white">
                           {bet.stake.toFixed(1)} ₽
@@ -1808,14 +1879,27 @@ export default function NeurobetsPage() {
                         Факторы решения нейронной сети:
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {bet.aiInsights.map((insight, idx) => (
+                        {bet.aiInsights.map((insight, idx) => {
+                          const InsightIcon =
+                            idx === 0
+                              ? insight.startsWith("Падение")
+                                ? TrendingDown
+                                : insight.startsWith("Рост")
+                                ? TrendingUp
+                                : Scale
+                              : idx === 1
+                              ? BarChart3
+                              : BrainCircuit
+                          return (
                           <span
                             key={idx}
                             className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-neutral-950 border border-neutral-800/80 text-neutral-300"
                           >
+                            <InsightIcon className="w-3 h-3 shrink-0" strokeWidth={1.75} />
                             {insight}
                           </span>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   </motion.div>

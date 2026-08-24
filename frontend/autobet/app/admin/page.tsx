@@ -29,16 +29,88 @@ import {
   MemoryStick,
   HardDrive,
   CircuitBoard,
+  ChevronDown,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
 import { TrainingTrendChart } from "@/components/TrainingTrendChart"
+import { SPORT_NAME_ORDER, UNIVERSE_SPORT_IDS, universeSportOptions } from "@/lib/sports"
+import { SportName } from "@/components/SportIcon"
 
 interface AILog {
   timestamp: string
   category: string
   level: string
   message: string
+}
+
+function sortBacktestSportRows<T>(rows: T[], getName: (row: T) => string): T[] {
+  return [...rows].sort((a, b) => {
+    const ai = SPORT_NAME_ORDER.findIndex((n) => n.toLowerCase() === String(getName(a)).toLowerCase())
+    const bi = SPORT_NAME_ORDER.findIndex((n) => n.toLowerCase() === String(getName(b)).toLowerCase())
+    if (ai === -1 && bi === -1) return String(getName(a)).localeCompare(String(getName(b)), "ru")
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+}
+
+function BacktestSliceTable({
+  title,
+  rows,
+  nameHeader,
+  nameOf,
+}: {
+  title: string
+  rows: any[] | undefined
+  nameHeader: string
+  nameOf: (row: any) => string
+}) {
+  const list = sortBacktestSportRows(
+    (Array.isArray(rows) ? rows : []).filter(Boolean),
+    nameOf,
+  )
+  if (!list.length) return null
+  return (
+    <div>
+      <div className="text-[10px] text-neutral-500 uppercase font-mono mb-1.5">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono min-w-[560px]">
+          <thead>
+            <tr className="text-neutral-500 text-left border-b border-neutral-800">
+              <th className="py-1.5 pr-3 font-semibold">{nameHeader}</th>
+              <th className="py-1.5 pr-3 font-semibold">Оценено</th>
+              <th className="py-1.5 pr-3 font-semibold">Ставок</th>
+              <th className="py-1.5 pr-3 font-semibold">ROI (текущ.)</th>
+              <th className="py-1.5 pr-3 font-semibold">Brier (текущ.)</th>
+              <th className="py-1.5 pr-3 font-semibold">Brier (рынок)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((row: any, i: number) => (
+              <tr key={nameOf(row) || i} className="border-b border-neutral-900/60">
+                <td className="py-1.5 pr-3 text-neutral-200"><SportName sport={nameOf(row)} /></td>
+                <td className="py-1.5 pr-3 text-neutral-400">{row.evaluated ?? "—"}</td>
+                <td className="py-1.5 pr-3 text-neutral-400">{row.current?.bets ?? "—"}</td>
+                <td className={`py-1.5 pr-3 font-bold ${
+                  row.current?.roi_pct == null ? "text-neutral-500" : row.current.roi_pct >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+                }`}>
+                  {row.current?.roi_pct != null ? `${row.current.roi_pct}%` : "—"}
+                </td>
+                <td className="py-1.5 pr-3 text-neutral-400">{row.current?.brier ?? "—"}</td>
+                <td className={`py-1.5 pr-3 ${
+                  row.current?.brier != null && row.market_brier != null && row.current.brier >= row.market_brier
+                    ? "text-[#ff7675]" : "text-neutral-500"
+                }`}>
+                  {row.market_brier ?? "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 }
 
 function formatBytes(n: number | null | undefined): string {
@@ -122,6 +194,8 @@ export default function AdminPage() {
   const [aiEnabled, setAiEnabled] = useState(true)
   const [trainingEnabled, setTrainingEnabled] = useState(true)
   const [qualityGateBypass, setQualityGateBypass] = useState(false)
+  const [enabledSports, setEnabledSports] = useState<string[]>([...UNIVERSE_SPORT_IDS])
+  const [sportsPanelOpen, setSportsPanelOpen] = useState(false)
   const [logs, setLogs] = useState<AILog[]>([])
   const [logFilter, setLogFilter] = useState<string>("ALL")
   const [triggering, setTriggering] = useState(false)
@@ -333,6 +407,9 @@ export default function AdminPage() {
           setAiEnabled(data.settings.ai_enabled)
           setTrainingEnabled(data.settings.training_enabled)
           setQualityGateBypass(Boolean(data.settings.quality_gate_bypass))
+          if (Array.isArray(data.settings.enabled_sports)) {
+            setEnabledSports(data.settings.enabled_sports.map((s: string) => String(s).toLowerCase()))
+          }
         }
       }
     } catch (err) {
@@ -457,7 +534,7 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
-  const handleRunBacktest = async () => {
+  const handleRunBacktest = async (mode: "live" | "full" = "live") => {
     setBacktestRunning(true)
     setBacktestError(null)
     setBacktestProgress({ pct: 2, label: "Отправляю запрос…", step: "request", active: true, processed: 0, total: BACKTEST_LIMIT })
@@ -472,7 +549,7 @@ export default function AdminPage() {
         const res = await fetch(`${API_BASE}/api/admin/backtest`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: BACKTEST_LIMIT }),
+          body: JSON.stringify({ limit: BACKTEST_LIMIT, mode }),
         })
         if (res.ok) {
           postData = await res.json()
@@ -484,7 +561,7 @@ export default function AdminPage() {
       if (postData?.status === "success") {
         setBacktestResult(postData)
         setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: postData.samples_evaluated || 0, total: postData.samples_requested || BACKTEST_LIMIT })
-        fetchBacktestHistory()
+        if (mode === "live") fetchBacktestHistory()
         return
       }
       if (postData?.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
@@ -511,14 +588,14 @@ export default function AdminPage() {
       }
 
       if (latest?.step === "done" || (started && (latest?.pct ?? 0) >= 100)) {
-        const res = await fetch(`${API_BASE}/api/admin/backtest/latest`, { cache: "no-store" })
+        const res = await fetch(`${API_BASE}/api/admin/backtest/latest?mode=${mode}`, { cache: "no-store" })
         if (!res.ok) throw new Error("Бэктест завершился, но результат не удалось загрузить")
         const data = await res.json()
         const bt = data.backtest
         if (bt?.status === "success") {
           setBacktestResult(bt)
           setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: bt.samples_evaluated || 0, total: bt.samples_requested || BACKTEST_LIMIT })
-          fetchBacktestHistory()
+          if (mode === "live") fetchBacktestHistory()
           return
         }
         throw new Error("Бэктест завершился, но результат не найден")
@@ -644,6 +721,31 @@ export default function AdminPage() {
       if (key === "ai_enabled") setAiEnabled(currentValue)
       if (key === "training_enabled") setTrainingEnabled(currentValue)
       if (key === "quality_gate_bypass") setQualityGateBypass(currentValue)
+    }
+  }
+
+  const toggleSportEnabled = async (sportId: string) => {
+    const key = sportId.toLowerCase()
+    const has = enabledSports.some((s) => s.toLowerCase() === key)
+    const next = has
+      ? enabledSports.filter((s) => s.toLowerCase() !== key)
+      : [...enabledSports, key]
+    const prev = enabledSports
+    setEnabledSports(next)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/ai-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled_sports: next }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (data.status !== "success") throw new Error(data.message || "settings save failed")
+      if (Array.isArray(data.settings?.enabled_sports)) {
+        setEnabledSports(data.settings.enabled_sports.map((s: string) => String(s).toLowerCase()))
+      }
+    } catch {
+      setEnabledSports(prev)
     }
   }
 
@@ -926,27 +1028,32 @@ export default function AdminPage() {
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s1?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    best_epoch ≤ {s1?.threshold ?? "—"}: {s1?.streak ?? 0} подряд {s1?.active ? "🔴" : "✓"}
+                    best_epoch ≤ {s1?.threshold ?? "—"}: {s1?.streak ?? 0} подряд{" "}
+                    {s1?.active ? <AlertCircle className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} /> : <CheckCircle2 className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} />}
                   </span>
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s2?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    Brier ≥ рынка ({s2?.runs_checked ?? 0}/{s2?.runs_needed ?? "—"} бэктестов) {s2?.active ? "🔴" : "✓"}
+                    Brier ≥ рынка ({s2?.runs_checked ?? 0}/{s2?.runs_needed ?? "—"} бэктестов){" "}
+                    {s2?.active ? <AlertCircle className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} /> : <CheckCircle2 className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} />}
                   </span>
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s3?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    ROI не растёт ({s3?.runs_checked ?? 0}/{s3?.runs_needed ?? "—"} бэктестов) {s3?.active ? "🔴" : "✓"}
+                    ROI не растёт ({s3?.runs_checked ?? 0}/{s3?.runs_needed ?? "—"} бэктестов){" "}
+                    {s3?.active ? <AlertCircle className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} /> : <CheckCircle2 className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} />}
                   </span>
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s4?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    val_loss растёт ({s4?.runs_checked ?? 0}/{s4?.runs_needed ?? "—"} проходов) {s4?.active ? "🔴" : "✓"}
+                    val_loss растёт ({s4?.runs_checked ?? 0}/{s4?.runs_needed ?? "—"} проходов){" "}
+                    {s4?.active ? <AlertCircle className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} /> : <CheckCircle2 className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} />}
                   </span>
                   <span className={`px-2.5 py-1.5 rounded-full border ${
                     s5?.active ? "bg-[#d63031]/20 border-[#d63031]/50 text-[#ff7675]" : "bg-neutral-950 border-neutral-800 text-neutral-400"
                   }`}>
-                    checkpoint отклонён: {s5?.streak ?? 0}/{s5?.threshold ?? "—"} подряд {s5?.active ? "🔴" : "✓"}
+                    checkpoint отклонён: {s5?.streak ?? 0}/{s5?.threshold ?? "—"} подряд{" "}
+                    {s5?.active ? <AlertCircle className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} /> : <CheckCircle2 className="w-3 h-3 inline-block align-[-2px]" strokeWidth={1.75} />}
                   </span>
                 </div>
                 )}
@@ -1125,7 +1232,7 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-neutral-950 px-4 py-2 rounded-xl border border-neutral-800 text-center">
-              <div className="text-[10px] text-neutral-400 font-mono uppercase">Не рассчитано (⚪)</div>
+              <div className="text-[10px] text-neutral-400 font-mono uppercase">Не рассчитано</div>
               <div className="text-sm font-black text-neutral-300 font-mono mt-0.5">
                 {stats?.unresolved_bets_count?.toLocaleString() || 0}
               </div>
@@ -1254,12 +1361,21 @@ export default function AdminPage() {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={handleRunBacktest}
+                onClick={() => handleRunBacktest("live")}
                 disabled={backtestRunning || evalPackLoading}
                 className="flex items-center gap-1.5 bg-[#a29bfe] hover:opacity-90 text-neutral-950 font-bold px-3.5 py-2 rounded-xl transition text-xs shadow-md shadow-[#a29bfe]/20 disabled:opacity-50"
               >
                 <FlaskConical className={`w-3.5 h-3.5 ${backtestRunning ? "animate-pulse" : ""}`} />
                 {backtestRunning ? "Считаю..." : "Запустить бэктест"}
+              </button>
+              <button
+                onClick={() => handleRunBacktest("full")}
+                disabled={backtestRunning || evalPackLoading}
+                className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 disabled:opacity-50"
+                title="Отладка по всем ALLOWED_SPORTS. Не обновляет quality gate и Brier."
+              >
+                <FlaskConical className="w-3.5 h-3.5 text-neutral-400" />
+                Полный бэктест (все виды)
               </button>
 
               {backtestResult && (
@@ -1282,6 +1398,10 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+          <p className="text-[11px] text-neutral-500 leading-relaxed">
+            «Запустить бэктест» считает только включённые виды и обновляет quality gate / Brier.
+            «Полный бэктест» — отладка по всем видам, гейт не трогает.
+          </p>
 
           {evalPackError && (
             <div className="bg-[#d63031]/15 border border-[#d63031]/40 rounded-xl p-3 text-xs text-[#ff7675] flex items-center gap-2">
@@ -1320,6 +1440,7 @@ export default function AdminPage() {
           {backtestResult && (
             <div className="space-y-4">
               <div className="text-[11px] text-neutral-500 font-mono">
+                {backtestResult.mode === "full" ? "полный · " : backtestResult.mode === "live" ? "live · " : ""}
                 {backtestResult.samples_evaluated?.toLocaleString()} ставок · {backtestResult.date_range?.from} → {backtestResult.date_range?.to} · заняло {backtestResult.duration_seconds}с ·
                 {" "}blend_weight {backtestResult.config?.blend_weight} · market_weight {backtestResult.config?.market_weight} · порог {backtestResult.config?.decision_threshold} · макс. кэф {backtestResult.config?.max_bet_coeff}
               </div>
@@ -1445,7 +1566,21 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              <BacktestSliceTable
+                title="По видам спорта"
+                rows={backtestResult.by_sport}
+                nameHeader="Вид"
+                nameOf={(row) => String(row.sport || "")}
+              />
+              <BacktestSliceTable
+                title="Walk-forward по видам (OOS)"
+                rows={backtestResult.walk_forward_by_sport}
+                nameHeader="Вид"
+                nameOf={(row) => String(row.sport || "")}
+              />
+
               <div className="overflow-x-auto">
+                <div className="text-[10px] text-neutral-500 uppercase font-mono mb-1.5">По коэффициенту</div>
                 <table className="w-full text-xs font-mono min-w-[560px]">
                   <thead>
                     <tr className="text-neutral-500 text-left border-b border-neutral-800">
@@ -1656,6 +1791,47 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
+          <div className="mt-4 bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSportsPanelOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
+            >
+              <div>
+                <h3 className="text-sm font-bold text-white">Виды спорта (live)</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Потолок для инференса, UI и live-бэктеста. Обучение всегда на всех 5 видах.
+                </p>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${sportsPanelOpen ? "rotate-180" : ""}`} />
+            </button>
+            {sportsPanelOpen && (
+              <div className="px-5 pb-5 space-y-2 border-t border-neutral-800 pt-3">
+                {universeSportOptions([...UNIVERSE_SPORT_IDS]).map((sport) => {
+                  const on = enabledSports.some((s) => s.toLowerCase() === sport.id.toLowerCase())
+                  return (
+                    <div key={sport.id} className="flex items-center justify-between gap-3 py-1.5">
+                      <span className="text-sm text-neutral-200">
+                        <SportName sport={sport.id} />
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleSportEnabled(sport.id)}
+                        className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
+                          on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
+                        }`}
+                      >
+                        <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                          on ? "translate-x-5" : "translate-x-0"
+                        }`} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Live AI Logs Console */}
@@ -1789,7 +1965,7 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-[#d63031]/10 border border-[#d63031]/30 rounded-xl p-3 text-xs text-[#ff7675] font-semibold text-center">
-              ⚠️ Данное действие необратимо! Вы уверены?
+              Данное действие необратимо! Вы уверены?
             </div>
 
             {resetType === "reset-model" && resetLoading && (

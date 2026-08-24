@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Trophy, Clock, ChevronRight, Activity } from "lucide-react"
+import { Clock, ChevronRight, Activity } from "lucide-react"
 import { OddsButton } from "./OddsButton"
 import { SubMarketsDrawer } from "./SubMarketsDrawer"
+import { SportIcon } from "./SportIcon"
 
 interface OddItem {
   factor_id: number
@@ -96,7 +97,7 @@ export function MatchCard({
         <div>
           <div className="flex flex-wrap items-center justify-between gap-y-1.5 gap-x-2 mb-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-neutral-400 truncate max-w-[150px] bg-neutral-950/60 border border-neutral-800/80 px-2 py-1 rounded-full">
-              <Trophy className="w-3.5 h-3.5 text-[#0984e3] shrink-0" />
+              <SportIcon sport={sportPath.split("/")[0].trim()} className="text-[#0984e3]" />
               <span className="truncate">{sportPath}</span>
             </span>
             <div className="flex items-center gap-1.5 shrink-0">

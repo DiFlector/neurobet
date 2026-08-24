@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Query
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("ai_service_routes")
@@ -96,10 +96,12 @@ def write_settings(payload: Dict[str, Any] = Body(...)):
     ai_enabled = payload.get("ai_enabled")
     training_enabled = payload.get("training_enabled")
     quality_gate_bypass = payload.get("quality_gate_bypass")
+    enabled_sports = payload.get("enabled_sports")
     new_settings = update_ai_settings(
         ai_enabled=ai_enabled,
         training_enabled=training_enabled,
         quality_gate_bypass=quality_gate_bypass,
+        enabled_sports=enabled_sports,
     )
     return {"status": "success", "settings": new_settings}
 
@@ -260,8 +262,8 @@ def backtest_progress():
 
 
 @router.get("/backtest/latest")
-def backtest_latest():
-    latest = get_latest_backtest()
+def backtest_latest(mode: str = Query("live")):
+    latest = get_latest_backtest(mode=mode)
     return {"status": "success", "backtest": latest}
 
 
@@ -274,25 +276,33 @@ def backtest(payload: Dict[str, Any] = Body(default={})):
     train_online() pass; on a large --limit this can take from several seconds up to
     roughly a minute, which is why the admin panel calls this through a proxy with a
     generous timeout rather than the default request timeout.
+
+    ``mode=live`` (default) uses enabled_sports and updates quality_gate / Brier.
+    ``mode=full`` scores all ALLOWED_SPORTS and writes backtest_full_* only.
     """
     limit = int(payload.get("limit") or BACKTEST_DEFAULT_LIMIT)
     limit = max(100, min(limit, BACKTEST_MAX_LIMIT))
     since = payload.get("since")
+    mode = payload.get("mode") or "live"
     try:
-        result = run_backtest(limit=limit, since=since)
+        result = run_backtest(limit=limit, since=since, mode=mode)
         return result
     except Exception as e:
         add_ai_log("SYSTEM", f"Backtest error: {e}", level="WARNING")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/backtest/review")
-def backtest_review():
+def backtest_review(mode: str = Query("live")):
     """Agent-oriented condensed review of the latest backtest on disk."""
     from app.neuralbet.review import build_review_from_latest
 
-    latest = get_latest_backtest()
-    history = get_backtest_history()
+    latest = get_latest_backtest(mode=mode)
+    history = get_backtest_history(mode=mode)
     review = build_review_from_latest(latest, history)
+    if review and str(mode).strip().lower() == "full":
+        summary = review.setdefault("summary", {})
+        summary["mode"] = "full"
+        summary["quality_gate_for_live"] = False
     return {
         "status": "success" if review else "no_data",
         "review": review,
@@ -301,8 +311,8 @@ def backtest_review():
 
 
 @router.get("/backtest/history")
-def backtest_history():
-    return {"status": "success", "runs": get_backtest_history()}
+def backtest_history(mode: str = Query("live")):
+    return {"status": "success", "runs": get_backtest_history(mode=mode)}
 
 @router.get("/training-runs")
 def training_runs():

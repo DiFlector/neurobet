@@ -123,10 +123,10 @@ class BrierSportGateTests(unittest.TestCase):
                     brier_stake_sports_override(),
                     frozenset({"футбол", "баскетбол"}),
                 )
-                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ"))
-                self.assertTrue(in_live_stake_sport("Баскетбол / NBA"))
-                self.assertFalse(in_live_stake_sport("Теннис / ATP"))
-                self.assertFalse(in_live_stake_sport("Настольный теннис / Лига Про"))
+                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ", apply_admin=False))
+                self.assertTrue(in_live_stake_sport("Баскетбол / NBA", apply_admin=False))
+                self.assertFalse(in_live_stake_sport("Теннис / ATP", apply_admin=False))
+                self.assertFalse(in_live_stake_sport("Настольный теннис / Лига Про", apply_admin=False))
             finally:
                 clear_brier_stake_sports()
                 filters.LIVE_BRIER_SPORTS_PATH = old_path
@@ -144,7 +144,7 @@ class BrierSportGateTests(unittest.TestCase):
             try:
                 write_brier_stake_sports([], source="test")
                 self.assertIsNone(brier_stake_sports_override())
-                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ"))
+                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ", apply_admin=False))
             finally:
                 clear_brier_stake_sports()
                 filters.LIVE_BRIER_SPORTS_PATH = old_path

@@ -1,0 +1,29 @@
+---
+description: NeuroBet UI uses Lucide line icons, never emoji or dingbat glyphs
+globs: frontend/**/*.{ts,tsx,css}
+alwaysApply: true
+---
+
+# NeuroBet — иконки, не эмодзи
+
+В интерфейсе **нельзя** ставить emoji (⚽ 🎾 🎮 🔥 ✅) и Unicode-значки вроде
+`● ◆ ▣`. На тёмной теме они выглядят чужеродно и по-разному на системах.
+
+## Что использовать
+
+- Виды спорта: lucide-react через `<SportIcon sport="Футбол" />` /
+  `<SportName sport="Футбол" />` (`frontend/autobet/components/SportIcon.tsx`).
+  Имя иконки — поле `icon` в `lib/sports.ts` (футбол = `Goal`).
+- Действия и статусы: lucide-react (`w-3.5 h-3.5` / `w-4 h-4`), `strokeWidth={1.75}`.
+- Цвет — `currentColor` (наследует текст чипа/кнопки). Акценты — Flat UI Colors US.
+
+```tsx
+// BAD
+<span>⚽ Футбол</span>
+<span>● Футбол</span>
+
+// GOOD
+<SportName sport="Футбол" />
+```
+
+Новый вид — новая строка в `SPORT_ORDER` с lucide-именем. Не добавлять `emoji` / `symbol`.

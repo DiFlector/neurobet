@@ -50,6 +50,8 @@ from neurobet_filters import (
     MIN_MARKET_SUPPORT,
     FAST_FORMAT_SPORT_SQL,
     effective_live_stake_sports,
+    get_enabled_sports,
+    set_enabled_sports,
 )
 from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
@@ -442,11 +444,13 @@ def _persist_ai_settings() -> None:
             "ai_enabled": bool(AI_SETTINGS["ai_enabled"]),
             "training_enabled": bool(AI_SETTINGS["training_enabled"]),
             "quality_gate_bypass": bool(AI_SETTINGS.get("quality_gate_bypass")),
+            "enabled_sports": sorted(get_enabled_sports()),
         }
         tmp_path = AI_SETTINGS_PATH + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, AI_SETTINGS_PATH)
+        set_enabled_sports(payload["enabled_sports"])
     except Exception as e:
         logger.error(f"Error persisting AI settings: {e}")
 
@@ -464,12 +468,16 @@ def _restore_ai_settings() -> None:
         ):
             if key in saved and saved[key] is not None:
                 AI_SETTINGS[key] = bool(saved[key])
+        if "enabled_sports" in saved:
+            set_enabled_sports(saved.get("enabled_sports"))
+        enabled = ", ".join(sorted(get_enabled_sports())) or "(none)"
         add_ai_log(
             "SYSTEM",
             "AI settings restored from disk: "
             f"inference={'ENABLED' if AI_SETTINGS['ai_enabled'] else 'DISABLED'}, "
             f"training={'ENABLED' if AI_SETTINGS['training_enabled'] else 'DISABLED'}, "
-            f"quality_gate_bypass={'ON' if AI_SETTINGS.get('quality_gate_bypass') else 'OFF'}.",
+            f"quality_gate_bypass={'ON' if AI_SETTINGS.get('quality_gate_bypass') else 'OFF'}, "
+            f"enabled_sports=[{enabled}].",
         )
     except Exception as e:
         logger.error(f"Error loading AI settings: {e}")
@@ -482,7 +490,10 @@ _abort_cycle.clear()
 
 
 def get_ai_settings() -> dict[str, Any]:
-    return AI_SETTINGS
+    return {
+        **AI_SETTINGS,
+        "enabled_sports": sorted(get_enabled_sports()),
+    }
 
 
 def reset_neural_network() -> dict[str, Any]:
@@ -592,6 +603,7 @@ def update_ai_settings(
     ai_enabled: bool | None = None,
     training_enabled: bool | None = None,
     quality_gate_bypass: bool | None = None,
+    enabled_sports: list[str] | None = None,
 ) -> dict[str, Any]:
     changed = False
     if ai_enabled is not None:
@@ -618,9 +630,14 @@ def update_ai_settings(
             level="WARNING" if AI_SETTINGS["quality_gate_bypass"] else "INFO",
         )
         changed = True
+    if enabled_sports is not None:
+        sports = set_enabled_sports(enabled_sports)
+        names = ", ".join(sorted(sports)) or "(none)"
+        add_ai_log("SYSTEM", f"Live sports toggled: {names}.")
+        changed = True
     if changed:
         _persist_ai_settings()
-    return AI_SETTINGS
+    return get_ai_settings()
 
 
 def get_ai_logs() -> list[dict[str, Any]]:
@@ -2272,7 +2289,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     # list either lags (combat) or the match finishes faster than a scrape (2K),
     # so we would settle against a frozen mid-game score. Defense-in-depth in case
     # such an event was already stored before the parser-level skip took effect.
-    sports, factors = universe_sql_params()
+    sports, factors = universe_sql_params(get_enabled_sports())
     cursor.execute(
         f"""
         SELECT

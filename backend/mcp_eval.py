@@ -184,7 +184,7 @@ TOOLS = [
     _tool(
         "get_ai_settings",
         "Whether inference (ai_enabled), online training (training_enabled), "
-        "and quality_gate_bypass are on.",
+        "quality_gate_bypass, and admin enabled_sports toggles are on.",
     ),
     _tool(
         "get_ai_logs",
@@ -229,9 +229,10 @@ TOOLS = [
     _tool(
         "get_backtest_review",
         (
-            "Agent review of the latest backtest: edge verdict, quality_gate, walk-forward "
-            "stability, live funnel, head-alignment, flags, delta vs previous run. "
-            "Prefer this over parsing the full backtest JSON manually."
+            "Agent review of the latest LIVE backtest (enabled sports): edge verdict, "
+            "quality_gate, walk-forward stability, live funnel, head-alignment, flags, "
+            "delta vs previous run. Prefer this over parsing the full JSON. "
+            "Do not use full-backtest ROI/CI for quality_gate."
         ),
     ),
     _tool(
@@ -245,8 +246,41 @@ TOOLS = [
     _tool(
         "run_backtest",
         (
-            "Run a fresh backtest only (admin «Бэктест» button) and return that result. "
-            "Does not assemble the rest of the eval pack. 15–60s. Default 40000 samples."
+            "Run a fresh LIVE backtest (enabled sports only; admin «Запустить бэктест»). "
+            "Updates quality_gate and Brier. Does not assemble the rest of the eval pack. "
+            "15–60s. Default 40000 samples."
+        ),
+        {"limit": _LIMIT},
+    ),
+    _tool(
+        "get_full_backtest_review",
+        (
+            "Same agent_review shape as get_backtest_review, but from latest_full.json "
+            "(all ALLOWED_SPORTS). summary.mode=full — quality_gate is NOT for unlocking live. "
+            "Use only when the user explicitly asks for a full/all-sports backtest."
+        ),
+    ),
+    _tool(
+        "get_latest_full_backtest",
+        (
+            "Full JSON of the latest debug backtest over all ALLOWED_SPORTS "
+            "(backtest_full_*.json). Does not start a new run. Not the live quality-gate file."
+        ),
+    ),
+    _tool(
+        "get_full_backtest_history",
+        (
+            "Condensed trend from history_full.json. Do not mix with the live QualityTrendChart "
+            "or quality_gate consecutive counts."
+        ),
+        {"limit": _BACKTEST_RUNS},
+    ),
+    _tool(
+        "run_full_backtest",
+        (
+            "Run a debug backtest on all ALLOWED_SPORTS (does not write live latest.json, "
+            "does not update quality_gate or Brier). 15–60s. Default 40000 samples. "
+            "Call only when the user asks for a full / all-sports backtest."
         ),
         {"limit": _LIMIT},
     ),
@@ -260,8 +294,9 @@ TOOLS = [
     _tool(
         "get_filters",
         (
-            "Live betting gates: allowed sports / factor IDs, live stake sports/markets, "
-            "total-line ranges, min/max coefficient, min EV, min market support."
+            "Live betting gates: allowed sports / factor IDs, admin enabled_sports, "
+            "live stake sports/markets, total-line ranges, min/max coefficient, min EV, "
+            "min market support."
         ),
     ),
     _tool(
@@ -514,6 +549,21 @@ def _call_tool(name: str, arguments: Optional[dict]) -> dict:
     if name == "run_backtest":
         limit = _clamp_int(arguments, "limit", 80000, 100, 100000)
         return _ok(m.admin_run_backtest({"limit": limit}))
+
+    if name == "get_full_backtest_review":
+        return _ok(m.admin_backtest_review(mode="full"))
+
+    if name == "get_latest_full_backtest":
+        return _ok(m.admin_backtest_latest(mode="full"))
+
+    if name == "get_full_backtest_history":
+        runs = m.admin_backtest_history(mode="full").get("runs") or []
+        limit = _opt_int(arguments, "limit")
+        return _ok({"runs": runs if limit is None else runs[: max(0, min(limit, 50))]})
+
+    if name == "run_full_backtest":
+        limit = _clamp_int(arguments, "limit", 80000, 100, 100000)
+        return _ok(m.admin_run_backtest({"limit": limit, "mode": "full"}))
 
     if name == "get_ensemble":
         snap = m._ai_eval_snapshot(training_runs_limit=0, logs_limit=0, backtest_runs=0)
