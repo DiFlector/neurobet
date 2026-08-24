@@ -3,6 +3,13 @@
 Floor is applied to the *attempted* Brier only. If incoming weights have already
 drifted above last-accepted + tolerance, a probe that beats incoming (and clears
 the min best_epoch) is allowed through so catch-up cannot deadlock.
+
+Recovery is *same-pin only*. A val-pin refresh changes the Brier yardstick
+(incoming jumps because the held-out slice changed, not because the GRU
+drifted). Comparing that incoming to a last-accepted floor from the previous
+pin looks like "already over floor" and would accept a worse model. Callers
+must pass same_val_pin=False on a pin change; the gate then rejects so the
+caller can rebase the floor onto the current weights' Brier on the new pin.
 """
 from __future__ import annotations
 
@@ -20,7 +27,14 @@ def decide_online_checkpoint(
     best_epoch: Optional[int],
     attempted_win_bce: Optional[float] = None,
     incoming_win_bce: Optional[float] = None,
+    same_val_pin: bool = True,
 ) -> Tuple[bool, Optional[str]]:
+    # Pin change is not model drift — check before best_epoch so a refresh pass
+    # that also memorized the batch still rebases the floor instead of falling
+    # through to recovery on the next pass.
+    if not same_val_pin:
+        return False, "val_pin_refresh"
+
     if (
         min_best_epoch > 0
         and best_epoch is not None

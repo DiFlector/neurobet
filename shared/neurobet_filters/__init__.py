@@ -9,9 +9,9 @@ Two layers, on purpose:
   staking real money, the "win" LIVE list, backtest "would bet", training
   bankroll/tuner. Thin markets and 1.0–1.1 shorts stay in the gradient; they just
   never get a stake. Money band is 1.1–2.0, plus 2.0–2.5 when calibrated p ≥ 90%.
-- Admin `enabled_sports` (ai_settings.json) is a product ceiling on live inference,
-  UI, live backtest and Kelly. Training and full/debug backtest stay on all
-  ALLOWED_SPORTS. Stake = admin ∩ env ∩ Brier.
+- Admin `enabled_sports` / `enabled_markets` (ai_settings.json) are product ceilings
+  on live inference, UI, live backtest and Kelly. Training and full/debug backtest
+  stay on all ALLOWED_SPORTS / ALLOWED_MARKET_FAMILIES. Stake = admin ∩ env ∩ Brier.
 
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
@@ -176,6 +176,26 @@ _FACTOR_TO_LIVE_MARKET = {
     **{fid: "total_under" for fid in TOTAL_UNDER_IDS},
 }
 
+# Canonical families the admin panel can toggle. Same ids as backtest by_market.
+ALLOWED_MARKET_FAMILIES = frozenset({"w1", "w2", "draw", "total_over", "total_under"})
+_MARKET_FAMILY_ALIASES = {
+    "п1": "w1",
+    "p1": "w1",
+    "1": "w1",
+    "п2": "w2",
+    "p2": "w2",
+    "2": "w2",
+    "x": "draw",
+    "ничья": "draw",
+    "тотал больше": "total_over",
+    "тотал меньше": "total_under",
+    "over": "total_over",
+    "under": "total_under",
+    # Feature vocab / backtest market_label uses these names.
+    "total_over": "total_over",
+    "total_under": "total_under",
+}
+
 
 def sport_top(sport_path: Optional[str]) -> str:
     return (sport_path or "").split("/")[0].strip().lower()
@@ -185,8 +205,11 @@ def sport_top(sport_path: Optional[str]) -> str:
 # (ai_enabled / training_enabled / quality_gate_bypass). Missing key → all ALLOWED.
 AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _ENABLED_SPORT_SENTINEL = "__none__"
+_ENABLED_FACTOR_SENTINEL = -1
 _enabled_sports_lock = threading.Lock()
 _enabled_sports_cache: tuple[float, Optional[frozenset[str]]] = (-1.0, None)
+_enabled_markets_lock = threading.Lock()
+_enabled_markets_cache: tuple[float, Optional[frozenset[str]]] = (-1.0, None)
 
 
 def normalize_enabled_sports(raw: Any, *, missing_means_all: bool = True) -> frozenset[str]:
@@ -248,6 +271,90 @@ def get_enabled_sports() -> frozenset[str]:
     """Sports the admin left on for live inference / UI / live backtest. Default = all ALLOWED."""
     with _enabled_sports_lock:
         return _read_enabled_sports_unlocked()
+
+
+def canonicalize_market_family(raw: Any) -> Optional[str]:
+    token = str(raw or "").strip().lower()
+    if not token:
+        return None
+    token = _MARKET_FAMILY_ALIASES.get(token, token)
+    return token if token in ALLOWED_MARKET_FAMILIES else None
+
+
+def normalize_enabled_markets(raw: Any, *, missing_means_all: bool = True) -> frozenset[str]:
+    """Canonical subset of ALLOWED_MARKET_FAMILIES. Empty list stays empty."""
+    if raw is None:
+        return frozenset(ALLOWED_MARKET_FAMILIES) if missing_means_all else frozenset()
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, (list, tuple, set, frozenset)):
+        return frozenset(ALLOWED_MARKET_FAMILIES) if missing_means_all else frozenset()
+    out = {canonicalize_market_family(s) for s in raw}
+    out.discard(None)
+    return frozenset(out)  # type: ignore[arg-type]
+
+
+def set_enabled_markets(raw: Any) -> frozenset[str]:
+    markets = normalize_enabled_markets(raw, missing_means_all=False)
+    with _enabled_markets_lock:
+        global _enabled_markets_cache
+        try:
+            mtime = os.path.getmtime(AI_SETTINGS_PATH)
+        except OSError:
+            mtime = 0.0
+        _enabled_markets_cache = (mtime, markets)
+    return markets
+
+
+def _read_enabled_markets_unlocked() -> frozenset[str]:
+    global _enabled_markets_cache
+    path = AI_SETTINGS_PATH
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        cached_mtime, cached = _enabled_markets_cache
+        if cached is not None and cached_mtime == 0.0:
+            return cached
+        _enabled_markets_cache = (-1.0, None)
+        return frozenset(ALLOWED_MARKET_FAMILIES)
+    cached_mtime, cached = _enabled_markets_cache
+    if cached_mtime == mtime and cached is not None:
+        return cached
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+        if not isinstance(payload, dict) or "enabled_markets" not in payload:
+            markets = frozenset(ALLOWED_MARKET_FAMILIES)
+        else:
+            markets = normalize_enabled_markets(
+                payload.get("enabled_markets"), missing_means_all=False,
+            )
+    except (OSError, json.JSONDecodeError, TypeError):
+        markets = frozenset(ALLOWED_MARKET_FAMILIES)
+    _enabled_markets_cache = (mtime, markets)
+    return markets
+
+
+def get_enabled_markets() -> frozenset[str]:
+    """Market families the admin left on for live inference / UI / live backtest."""
+    with _enabled_markets_lock:
+        return _read_enabled_markets_unlocked()
+
+
+def factor_ids_for_markets(markets: Optional[Iterable[str]] = None) -> list[int]:
+    """Factor IDs belonging to the given families. ``None`` → all ALLOWED_FACTOR_IDS."""
+    if markets is None:
+        return list(ALLOWED_FACTOR_IDS)
+    wanted = normalize_enabled_markets(list(markets), missing_means_all=False)
+    return sorted(
+        fid for fid, family in _FACTOR_TO_LIVE_MARKET.items()
+        if family in wanted and fid in ALLOWED_FACTOR_IDS
+    )
+
+
+def live_universe_sql_params() -> Tuple[list, list]:
+    """Sports + factors for live inference / UI / live backtest (admin ceilings)."""
+    return universe_sql_params(get_enabled_sports(), get_enabled_markets())
 
 
 def normalize_backtest_mode(mode: Optional[str] = None) -> str:
@@ -789,25 +896,41 @@ def live_market_family(
     factor_id: Optional[int] = None,
     market_label: Optional[str] = None,
 ) -> Optional[str]:
-    """Canonical live-market family name, or None if unknown."""
-    if market_label:
-        label = str(market_label).strip().lower()
-        if label:
-            return label
+    """Canonical live-market family name, or None if unknown.
+
+    ``market_label`` is a family id / alias (``w1``, ``total_over``), not the
+    human bet title. Vocab names ``total_over`` / ``total_under`` map onto
+    admin ids ``total_over`` / ``total_under``.
+    """
+    if market_label is not None:
+        canon = canonicalize_market_family(market_label)
+        if canon:
+            return canon
     if factor_id is None:
         return None
-    return _FACTOR_TO_LIVE_MARKET.get(int(factor_id))
+    try:
+        return _FACTOR_TO_LIVE_MARKET.get(int(factor_id))
+    except (TypeError, ValueError):
+        return None
 
 
 def in_live_stake_market(
     factor_id: Optional[int] = None,
     market_label: Optional[str] = None,
+    *,
+    apply_admin: bool = True,
 ) -> bool:
-    """Whether live staking includes this market family. Unknown factor fails open
-    when no label is given (same spirit as empty market-support cache)."""
+    """Whether live staking includes this market family.
+
+    Admin ``enabled_markets`` is the product ceiling (pass apply_admin=False for
+    training / full backtest). Env ``NEURALBET_LIVE_STAKE_MARKETS`` is the next
+    ceiling. Unknown factor fails open when no label is given.
+    """
+    family = live_market_family(factor_id=factor_id, market_label=market_label)
+    if apply_admin and family is not None and family not in get_enabled_markets():
+        return False
     if LIVE_STAKE_MARKETS is None:
         return True
-    family = live_market_family(factor_id=factor_id, market_label=market_label)
     if family is None:
         return True
     return family in LIVE_STAKE_MARKETS
@@ -924,7 +1047,7 @@ def live_gate_skip_reason(
     if sport_path is not None and not in_live_stake_sport(sport_path, apply_admin=apply_admin):
         return "sport"
     if (factor_id is not None or market_label is not None) and not in_live_stake_market(
-        factor_id=factor_id, market_label=market_label,
+        factor_id=factor_id, market_label=market_label, apply_admin=apply_admin,
     ):
         return "market"
     if not coeff_ok_for_stake(coeff, win_probability):
@@ -960,12 +1083,15 @@ def passes_live_gates(
     ) is None
 
 
-def universe_sql_params(sports: Optional[Iterable[str]] = None) -> Tuple[list, list]:
+def universe_sql_params(
+    sports: Optional[Iterable[str]] = None,
+    markets: Optional[Iterable[str]] = None,
+) -> Tuple[list, list]:
     """Bind values for the two `= ANY(%s)` placeholders in `universe_sql`.
 
-    ``sports=None`` → all ALLOWED_SPORTS (train / full backtest).
-    Otherwise the intersection with ALLOWED_SPORTS, preserving caller order.
-    Empty after filtering binds a sentinel that matches no sport_path.
+    ``sports=None`` / ``markets=None`` → full ALLOWED universe (train / full backtest).
+    Otherwise the intersection with ALLOWED_*, preserving caller order.
+    Empty after filtering binds a sentinel that matches nothing.
     """
     if sports is None:
         sport_list = list(ALLOWED_SPORTS)
@@ -978,7 +1104,13 @@ def universe_sql_params(sports: Optional[Iterable[str]] = None) -> Tuple[list, l
                 have.add(name)
                 seen.append(name)
         sport_list = seen if seen else [_ENABLED_SPORT_SENTINEL]
-    return sport_list, list(ALLOWED_FACTOR_IDS)
+    if markets is None:
+        factor_list = list(ALLOWED_FACTOR_IDS)
+    else:
+        factor_list = factor_ids_for_markets(markets)
+        if not factor_list:
+            factor_list = [_ENABLED_FACTOR_SENTINEL]
+    return sport_list, factor_list
 
 
 def universe_line_sql(event_alias: str, bet_alias: str) -> str:

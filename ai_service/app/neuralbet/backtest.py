@@ -36,7 +36,9 @@ from app.neuralbet.bankroll import allocate
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
 from neurobet_filters import (
     ALLOWED_SPORTS,
+    ALLOWED_MARKET_FAMILIES,
     get_enabled_sports,
+    get_enabled_markets,
     universe_sql,
     universe_sql_params,
     passes_live_gates,
@@ -181,6 +183,7 @@ def _fetch_backtest_rows(
     limit: int,
     since: Optional[str],
     sports: Optional[Any] = None,
+    markets: Optional[Any] = None,
 ) -> List[Any]:
     from app.neuralbet.pipeline import _track_conn, _untrack_conn
     f_conn = _track_conn(get_finished_connection())
@@ -188,7 +191,7 @@ def _fetch_backtest_rows(
         f_cursor = f_conn.cursor()
         where_since = "AND h.finished_at >= %s" if since else ""
         params: List[Any] = [since] if since else []
-        sports, factors = universe_sql_params(sports)
+        sports, factors = universe_sql_params(sports, markets)
         f_cursor.execute(f"""
             SELECT h.event_id, h.factor_id, h.label, h.parameter, h.market_prefix, h.is_win,
                    h.odds_seq_json, h.score_seq_json, h.score_sum_seq_json,
@@ -600,7 +603,9 @@ def _policy_would_bet(record: Dict[str, Any], policy: str, apply_admin: bool = T
             return False
         if sport_path is not None and not in_live_stake_sport(sport_path, apply_admin=apply_admin):
             return False
-        if market_label is not None and not in_live_stake_market(market_label=market_label):
+        if market_label is not None and not in_live_stake_market(
+            market_label=market_label, apply_admin=apply_admin,
+        ):
             return False
         return True
     return False
@@ -734,6 +739,7 @@ def run_backtest(
     mode = normalize_backtest_mode(mode)
     apply_admin = mode == "live"
     fetch_sports = get_enabled_sports() if apply_admin else None
+    fetch_markets = get_enabled_markets() if apply_admin else None
     # Check before taking _engine_lock: a scheduled :00/:30 job must not queue
     # behind a 40k cold-start chunk (and then steal the lock from the next one).
     if _load_cold_start().get("active"):
@@ -770,7 +776,9 @@ def run_backtest(
                 return {"status": "aborted", "samples_evaluated": 0}
             set_backtest_progress("fetch", "Loading resolved-bet archive…", 8, total=limit)
             market_support = _refresh_market_support()
-            rows = _fetch_backtest_rows(limit=limit, since=since, sports=fetch_sports)
+            rows = _fetch_backtest_rows(
+                limit=limit, since=since, sports=fetch_sports, markets=fetch_markets,
+            )
             if not rows:
                 set_backtest_progress("error", "Not enough data for a backtest", 0, active=False)
                 return {"status": "no_data", "samples_evaluated": 0}
@@ -1024,6 +1032,7 @@ def run_backtest(
                 "bootstrap_seed": BOOTSTRAP_SEED,
                 "mode": mode,
                 "enabled_sports": sorted(fetch_sports) if fetch_sports is not None else sorted(ALLOWED_SPORTS),
+                "enabled_markets": sorted(fetch_markets) if fetch_markets is not None else sorted(ALLOWED_MARKET_FAMILIES),
             },
             "overall": _agg_group(records),
             "in_sample": _agg_group(in_sample_records),

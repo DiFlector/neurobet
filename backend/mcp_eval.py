@@ -184,7 +184,7 @@ TOOLS = [
     _tool(
         "get_ai_settings",
         "Whether inference (ai_enabled), online training (training_enabled), "
-        "quality_gate_bypass, and admin enabled_sports toggles are on.",
+        "quality_gate_bypass, and admin enabled_sports / enabled_markets toggles are on.",
     ),
     _tool(
         "get_ai_logs",
@@ -294,7 +294,7 @@ TOOLS = [
     _tool(
         "get_filters",
         (
-            "Live betting gates: allowed sports / factor IDs, admin enabled_sports, "
+            "Live betting gates: allowed sports / factor IDs, admin enabled_sports / enabled_markets, "
             "live stake sports/markets, total-line ranges, min/max coefficient, min EV, "
             "min market support."
         ),

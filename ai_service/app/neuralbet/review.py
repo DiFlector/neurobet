@@ -202,6 +202,7 @@ def _compact_by_sport(result: Dict[str, Any]) -> List[Dict[str, Any]]:
             "bets": stake.get("bets"),
             "roi_pct": stake.get("roi_pct"),
             "roi_pct_lo": stake.get("roi_pct_lo"),
+            "win_rate_pct": stake.get("win_rate_pct"),
             "brier": prob.get("brier"),
             "market_brier": row.get("market_brier"),
             "brier_beats_market": (
@@ -224,6 +225,7 @@ def _compact_by_market(result: Dict[str, Any]) -> List[Dict[str, Any]]:
             "bets": stake.get("bets"),
             "roi_pct": stake.get("roi_pct"),
             "roi_pct_lo": stake.get("roi_pct_lo"),
+            "win_rate_pct": stake.get("win_rate_pct"),
             "brier": prob.get("brier"),
         })
     return sorted(rows, key=lambda x: -(x.get("bets") or 0))

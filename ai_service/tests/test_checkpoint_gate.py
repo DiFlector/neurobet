@@ -88,6 +88,41 @@ class CheckpointGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "incoming")
 
+    def test_pin_refresh_blocks_stale_floor_recovery(self):
+        """Production 24 Aug 2026: last_accepted 0.202 on the old pin, incoming
+        0.2877 on the new pin. Without same_val_pin=False this took the recovery
+        path and accepted attempted 0.2709 — a worse model on a new yardstick."""
+        ok, reason = _call(
+            last_accepted=0.202,
+            incoming_brier=0.2877,
+            attempted_brier=0.2709,
+            best_epoch=12,
+            same_val_pin=False,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(reason, "val_pin_refresh")
+
+    def test_pin_refresh_checked_before_best_epoch(self):
+        ok, reason = _call(
+            best_epoch=1,
+            attempted_brier=0.18,
+            incoming_brier=0.24,
+            same_val_pin=False,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(reason, "val_pin_refresh")
+
+    def test_same_pin_still_allows_recovery(self):
+        ok, reason = _call(
+            last_accepted=0.19,
+            incoming_brier=0.240,
+            attempted_brier=0.235,
+            best_epoch=5,
+            same_val_pin=True,
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
 
 if __name__ == "__main__":
     unittest.main()

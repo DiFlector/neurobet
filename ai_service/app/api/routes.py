@@ -97,11 +97,13 @@ def write_settings(payload: Dict[str, Any] = Body(...)):
     training_enabled = payload.get("training_enabled")
     quality_gate_bypass = payload.get("quality_gate_bypass")
     enabled_sports = payload.get("enabled_sports")
+    enabled_markets = payload.get("enabled_markets")
     new_settings = update_ai_settings(
         ai_enabled=ai_enabled,
         training_enabled=training_enabled,
         quality_gate_bypass=quality_gate_bypass,
         enabled_sports=enabled_sports,
+        enabled_markets=enabled_markets,
     )
     return {"status": "success", "settings": new_settings}
 
@@ -277,7 +279,7 @@ def backtest(payload: Dict[str, Any] = Body(default={})):
     roughly a minute, which is why the admin panel calls this through a proxy with a
     generous timeout rather than the default request timeout.
 
-    ``mode=live`` (default) uses enabled_sports and updates quality_gate / Brier.
+    ``mode=live`` (default) uses enabled_sports / enabled_markets and updates quality_gate / Brier.
     ``mode=full`` scores all ALLOWED_SPORTS and writes backtest_full_* only.
     """
     limit = int(payload.get("limit") or BACKTEST_DEFAULT_LIMIT)

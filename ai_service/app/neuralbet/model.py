@@ -337,6 +337,9 @@ class NeuralBetEnsemble:
         # Last *accepted* in-band val Brier — floor gate compares against this.
         # Field name kept for checkpoint JSON compatibility (was win-BCE historically).
         self.last_accepted_val_loss: Optional[float] = None
+        # Identity of the val pin that last_accepted_val_loss was measured on.
+        # Recovery across a pin refresh is invalid (different yardstick).
+        self.last_accepted_val_pin_id: Optional[str] = None
         # Cold-start streams many chunks as one global epoch. This snapshot is the
         # epoch-start baseline; chunks update the in-memory model without gating, and
         # only the complete archive pass is accepted/restored as one checkpoint.
@@ -422,6 +425,8 @@ class NeuralBetEnsemble:
                 payload.update(extra)
             if self.last_accepted_val_loss is not None:
                 payload["last_accepted_val_loss"] = self.last_accepted_val_loss
+            if self.last_accepted_val_pin_id is not None:
+                payload["last_accepted_val_pin_id"] = self.last_accepted_val_pin_id
             torch.save(payload, PYTORCH_WEIGHTS_PATH)
             logger.info(f"Saved PyTorch model weights checkpoint to {PYTORCH_WEIGHTS_PATH}")
         except Exception as e:
@@ -468,6 +473,55 @@ class NeuralBetEnsemble:
         except Exception as e:
             logger.error(f"Error saving ensemble weights: {e}")
             return False
+
+    def _persist_checkpoint_meta(self) -> None:
+        """Write last-accepted floor + val-pin id without replacing GRU weights."""
+        if not os.path.exists(PYTORCH_WEIGHTS_PATH):
+            return
+        try:
+            blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
+            if not isinstance(blob, dict) or "model_state" not in blob:
+                return
+            if self.last_accepted_val_loss is not None:
+                blob["last_accepted_val_loss"] = self.last_accepted_val_loss
+            if self.last_accepted_val_pin_id is not None:
+                blob["last_accepted_val_pin_id"] = self.last_accepted_val_pin_id
+            tmp_path = PYTORCH_WEIGHTS_PATH + ".tmp"
+            torch.save(blob, tmp_path)
+            os.replace(tmp_path, PYTORCH_WEIGHTS_PATH)
+        except Exception as e:
+            logger.error(f"Error persisting checkpoint floor meta: {e}")
+
+    def _same_val_pin(
+        self, val_pin_id: Optional[str], val_pin_changed: bool,
+    ) -> bool:
+        if val_pin_changed:
+            return False
+        if not val_pin_id or not self.last_accepted_val_pin_id:
+            return True
+        return val_pin_id == self.last_accepted_val_pin_id
+
+    def _rebase_val_pin_floor(
+        self, incoming_brier: Optional[float], val_pin_id: Optional[str],
+    ) -> None:
+        old = self.last_accepted_val_loss
+        if incoming_brier is not None:
+            self.last_accepted_val_loss = float(incoming_brier)
+        if val_pin_id:
+            self.last_accepted_val_pin_id = val_pin_id
+        self._persist_checkpoint_meta()
+        logger.info(
+            "Val pin changed — last-accepted Brier floor rebased "
+            f"{None if old is None else f'{old:.4f}'} → "
+            f"{None if self.last_accepted_val_loss is None else f'{self.last_accepted_val_loss:.4f}'} "
+            f"on pin {val_pin_id}; weights unchanged."
+        )
+
+    def _bind_val_pin_id(self, val_pin_id: Optional[str]) -> None:
+        if not val_pin_id or self.last_accepted_val_pin_id is not None:
+            return
+        self.last_accepted_val_pin_id = val_pin_id
+        self._persist_checkpoint_meta()
 
     def _snapshot_train_state(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         return (
@@ -519,6 +573,8 @@ class NeuralBetEnsemble:
         val_data: List[Dict[str, Any]],
         *,
         best_epoch: Optional[int] = None,
+        val_pin_id: Optional[str] = None,
+        val_pin_changed: bool = False,
     ) -> Dict[str, Any]:
         """Gate a complete streaming epoch against its pinned incoming baseline.
 
@@ -558,21 +614,36 @@ class NeuralBetEnsemble:
                 "checkpoint_saved": False,
             }
         val_attempted, val_guess, attempted_bce = self._forward_metrics(prepared_val)
+        same_val_pin = self._same_val_pin(val_pin_id, val_pin_changed)
         accepted, reject_reason = self._checkpoint_gate_decision(
             attempted_brier=val_attempted,
             incoming_brier=val_incoming,
             attempted_win_bce=attempted_bce,
             incoming_win_bce=incoming_bce,
             best_epoch=best_epoch,
+            same_val_pin=same_val_pin,
         )
 
         if accepted:
-            self.last_accepted_val_loss = float(val_attempted)
+            self._apply_val_pin_after_gate(
+                accepted=True,
+                incoming_brier=val_incoming,
+                attempted_brier=val_attempted,
+                val_pin_id=val_pin_id,
+                same_val_pin=same_val_pin,
+            )
             self.save_checkpoints(
                 extra={"best_epoch": best_epoch, "cold_start_epoch": True}
             )
         else:
             self._restore_train_state(*baseline_state)
+            self._apply_val_pin_after_gate(
+                accepted=False,
+                incoming_brier=val_incoming,
+                attempted_brier=val_attempted,
+                val_pin_id=val_pin_id,
+                same_val_pin=same_val_pin,
+            )
             logger.info(
                 "Cold-start epoch checkpoint rejected "
                 f"({reject_reason}): attempted Brier {val_attempted:.4f}, "
@@ -610,12 +681,14 @@ class NeuralBetEnsemble:
         attempted_win_bce: Optional[float] = None,
         incoming_win_bce: Optional[float] = None,
         best_epoch: Optional[int] = None,
+        same_val_pin: bool = True,
     ) -> Tuple[bool, Optional[str]]:
         """
         Accept attempted weights when in-band val Brier improves vs incoming
         (primary). Floor vs last accepted applies to *attempted* only: if incoming
         has already drifted over the floor, a probe that beats incoming (and
         clears CHECKPOINT_MIN_BEST_EPOCH) is allowed so catch-up cannot deadlock.
+        Recovery is disabled when same_val_pin is False (val-pin refresh).
         """
         return decide_online_checkpoint(
             attempted_brier=attempted_brier,
@@ -627,7 +700,33 @@ class NeuralBetEnsemble:
             best_epoch=best_epoch,
             attempted_win_bce=attempted_win_bce,
             incoming_win_bce=incoming_win_bce,
+            same_val_pin=same_val_pin,
         )
+
+    def _apply_val_pin_after_gate(
+        self,
+        *,
+        accepted: bool,
+        incoming_brier: Optional[float],
+        attempted_brier: Optional[float],
+        val_pin_id: Optional[str],
+        same_val_pin: bool,
+    ) -> None:
+        """Keep last-accepted floor and pin id on the same yardstick.
+
+        Pin refresh: rebase the floor to incoming Brier of the *current* (restored)
+        weights on the new pin. Same pin: bind pin id on legacy checkpoints.
+        """
+        if accepted:
+            if attempted_brier is not None:
+                self.last_accepted_val_loss = float(attempted_brier)
+            if val_pin_id:
+                self.last_accepted_val_pin_id = val_pin_id
+            return
+        if not same_val_pin:
+            self._rebase_val_pin_floor(incoming_brier, val_pin_id)
+            return
+        self._bind_val_pin_id(val_pin_id)
 
     def _load_model_state_soft(self, state_dict: Dict[str, Any]) -> bool:
         """
@@ -707,6 +806,9 @@ class NeuralBetEnsemble:
                     lav = blob.get("last_accepted_val_loss")
                     if lav is not None:
                         self.last_accepted_val_loss = float(lav)
+                    pin_id = blob.get("last_accepted_val_pin_id")
+                    if pin_id:
+                        self.last_accepted_val_pin_id = str(pin_id)
                 # AdamW's load_state_dict() stores per-parameter momentum buffers
                 # *positionally*, with no shape check against the live model — a mismatch
                 # only blows up later, inside optimizer.step()'s elementwise ops against
@@ -1751,6 +1853,8 @@ class NeuralBetEnsemble:
         rebalance_classes: bool = True,
         use_bankroll_loss: bool = True,
         should_abort: Optional[Any] = None,
+        val_pin_id: Optional[str] = None,
+        val_pin_changed: bool = False,
     ) -> Dict[str, Any]:
         """
         Online-training pass: mini-batch AdamW over resolved bets.
@@ -1943,6 +2047,7 @@ class NeuralBetEnsemble:
         checkpoint_accepted = True
         checkpoint_reject_reason = None
         val_loss_attempted = final_val_loss
+        same_val_pin = self._same_val_pin(val_pin_id, val_pin_changed)
         if (
             not skip_checkpoint_gate
             and incoming_state is not None
@@ -1955,6 +2060,7 @@ class NeuralBetEnsemble:
                 attempted_win_bce=final_val_bce,
                 incoming_win_bce=val_incoming_bce,
                 best_epoch=best_epoch,
+                same_val_pin=same_val_pin,
             )
             if not checkpoint_accepted:
                 self._restore_train_state(*incoming_state)
@@ -1968,10 +2074,17 @@ class NeuralBetEnsemble:
                     )
                     + "; restored previous weights, checkpoint file unchanged."
                 )
+            self._apply_val_pin_after_gate(
+                accepted=checkpoint_accepted,
+                incoming_brier=val_incoming,
+                attempted_brier=final_val_loss,
+                val_pin_id=val_pin_id,
+                same_val_pin=same_val_pin,
+            )
+        elif val_pin_id and self.last_accepted_val_pin_id is None:
+            self._bind_val_pin_id(val_pin_id)
 
         if checkpoint_accepted and save_checkpoint:
-            if final_val_loss is not None:
-                self.last_accepted_val_loss = float(final_val_loss)
             self.save_checkpoints(extra={"best_epoch": best_epoch})
         elif not checkpoint_accepted:
             save_checkpoint = False

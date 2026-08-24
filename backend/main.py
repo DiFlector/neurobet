@@ -26,6 +26,7 @@ from settings import settings
 from neurobet_filters import (
     ALLOWED_SPORTS,
     ALLOWED_FACTOR_IDS,
+    ALLOWED_MARKET_FAMILIES,
     DRAW_FACTOR_ID,
     TOTAL_LINE_RANGES,
     MIN_BET_COEFF,
@@ -45,6 +46,7 @@ from neurobet_filters import (
     effective_live_stake_sports,
     brier_stake_sports_override,
     get_enabled_sports,
+    get_enabled_markets,
 )
 
 MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
@@ -61,6 +63,7 @@ class AISettingsRequest(BaseModel):
     training_enabled: Optional[bool] = None
     quality_gate_bypass: Optional[bool] = None
     enabled_sports: Optional[List[str]] = None
+    enabled_markets: Optional[List[str]] = None
 
 _AI_SETTINGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_settings.json")
 _AI_LOGS_PATH = os.path.join(os.getenv("MODEL_DIR", "/app/data/models"), "ai_logs.json")
@@ -84,6 +87,11 @@ def _fallback_ai_settings() -> dict:
                 if isinstance(saved.get("enabled_sports"), list)
                 else sorted(get_enabled_sports())
             ),
+            "enabled_markets": (
+                list(saved["enabled_markets"])
+                if isinstance(saved.get("enabled_markets"), list)
+                else sorted(get_enabled_markets())
+            ),
         }
     except Exception:
         return {
@@ -91,6 +99,7 @@ def _fallback_ai_settings() -> dict:
             "training_enabled": False,
             "quality_gate_bypass": False,
             "enabled_sports": sorted(get_enabled_sports()),
+            "enabled_markets": sorted(get_enabled_markets()),
         }
 
 
@@ -368,7 +377,7 @@ def read_matches(
 
 @app.get("/api/filters")
 def public_filters():
-    """Public snapshot of live universe + gates. Homepage chips read enabled_sports."""
+    """Public snapshot of live universe + gates. Homepage chips read enabled_sports / enabled_markets."""
     return {"status": "success", **_filters_snapshot()}
 
 
@@ -773,6 +782,8 @@ def _filters_snapshot() -> Dict[str, Any]:
     return {
         "allowed_sports": sorted(ALLOWED_SPORTS),
         "enabled_sports": sorted(get_enabled_sports()),
+        "allowed_market_families": sorted(ALLOWED_MARKET_FAMILIES),
+        "enabled_markets": sorted(get_enabled_markets()),
         "allowed_factor_ids": sorted(ALLOWED_FACTOR_IDS),
         "draw_factor_id": DRAW_FACTOR_ID,
         "total_line_ranges": {k: [lo, hi] for k, (lo, hi) in TOTAL_LINE_RANGES.items()},

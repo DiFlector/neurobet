@@ -52,6 +52,9 @@ from neurobet_filters import (
     effective_live_stake_sports,
     get_enabled_sports,
     set_enabled_sports,
+    get_enabled_markets,
+    set_enabled_markets,
+    live_universe_sql_params,
 )
 from app.config import MODEL_DIR
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
@@ -445,12 +448,15 @@ def _persist_ai_settings() -> None:
             "training_enabled": bool(AI_SETTINGS["training_enabled"]),
             "quality_gate_bypass": bool(AI_SETTINGS.get("quality_gate_bypass")),
             "enabled_sports": sorted(get_enabled_sports()),
+            "enabled_markets": sorted(get_enabled_markets()),
         }
         tmp_path = AI_SETTINGS_PATH + ".tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, AI_SETTINGS_PATH)
         set_enabled_sports(payload["enabled_sports"])
+        if "enabled_markets" in payload:
+            set_enabled_markets(payload["enabled_markets"])
     except Exception as e:
         logger.error(f"Error persisting AI settings: {e}")
 
@@ -470,14 +476,18 @@ def _restore_ai_settings() -> None:
                 AI_SETTINGS[key] = bool(saved[key])
         if "enabled_sports" in saved:
             set_enabled_sports(saved.get("enabled_sports"))
+        if "enabled_markets" in saved:
+            set_enabled_markets(saved.get("enabled_markets"))
         enabled = ", ".join(sorted(get_enabled_sports())) or "(none)"
+        markets = ", ".join(sorted(get_enabled_markets())) or "(none)"
         add_ai_log(
             "SYSTEM",
             "AI settings restored from disk: "
             f"inference={'ENABLED' if AI_SETTINGS['ai_enabled'] else 'DISABLED'}, "
             f"training={'ENABLED' if AI_SETTINGS['training_enabled'] else 'DISABLED'}, "
             f"quality_gate_bypass={'ON' if AI_SETTINGS.get('quality_gate_bypass') else 'OFF'}, "
-            f"enabled_sports=[{enabled}].",
+            f"enabled_sports=[{enabled}], "
+            f"enabled_markets=[{markets}].",
         )
     except Exception as e:
         logger.error(f"Error loading AI settings: {e}")
@@ -493,6 +503,7 @@ def get_ai_settings() -> dict[str, Any]:
     return {
         **AI_SETTINGS,
         "enabled_sports": sorted(get_enabled_sports()),
+        "enabled_markets": sorted(get_enabled_markets()),
     }
 
 
@@ -604,6 +615,7 @@ def update_ai_settings(
     training_enabled: bool | None = None,
     quality_gate_bypass: bool | None = None,
     enabled_sports: list[str] | None = None,
+    enabled_markets: list[str] | None = None,
 ) -> dict[str, Any]:
     changed = False
     if ai_enabled is not None:
@@ -634,6 +646,11 @@ def update_ai_settings(
         sports = set_enabled_sports(enabled_sports)
         names = ", ".join(sorted(sports)) or "(none)"
         add_ai_log("SYSTEM", f"Live sports toggled: {names}.")
+        changed = True
+    if enabled_markets is not None:
+        markets = set_enabled_markets(enabled_markets)
+        mnames = ", ".join(sorted(markets)) or "(none)"
+        add_ai_log("SYSTEM", f"Live markets toggled: {mnames}.")
         changed = True
     if changed:
         _persist_ai_settings()
@@ -713,10 +730,11 @@ def _invalidate_archive_coverage() -> None:
 def _reset_training_caches() -> None:
     """Reset only on model reset, never after an ordinary trained_count update."""
     global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
-    global _online_pass_count
+    global _online_pass_count, _val_pin_refreshed_this_fetch
     _pinned_val_samples = None
     _pinned_val_loaded_at = 0.0
     _pinned_val_event_ids = None
+    _val_pin_refreshed_this_fetch = False
     _online_pass_count = 0
     set_team_form_cache(None)
     set_team_stats_cache(None)
@@ -1742,6 +1760,13 @@ def _fetch_val_batch_raw(f_cursor, val_event_ids: set | None) -> list[dict[str, 
 _pinned_val_samples: list[dict[str, Any]] | None = None
 _pinned_val_loaded_at = 0.0
 _pinned_val_event_ids: set | None = None
+_val_pin_refreshed_this_fetch = False
+
+
+def _current_val_pin_id() -> str | None:
+    if _pinned_val_loaded_at and _pinned_val_loaded_at > 0:
+        return f"{_pinned_val_loaded_at:.3f}"
+    return None
 
 
 def _load_val_pin_from_disk() -> list[dict[str, Any]] | None:
@@ -1761,8 +1786,9 @@ def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -
     global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
     try:
         os.makedirs(MODEL_DIR, exist_ok=True)
+        pinned_at = time.time()
         payload = {
-            "pinned_at": time.time(),
+            "pinned_at": pinned_at,
             "event_ids": list(val_event_ids or []),
             "samples": samples,
         }
@@ -1771,7 +1797,7 @@ def _persist_val_pin(samples: list[dict[str, Any]], val_event_ids: set | None) -
             json.dump(payload, f, ensure_ascii=False, default=str)
         os.replace(tmp, VAL_PIN_PATH)
         _pinned_val_samples = samples
-        _pinned_val_loaded_at = time.time()
+        _pinned_val_loaded_at = pinned_at
         _pinned_val_event_ids = set(val_event_ids or [])
         _invalidate_archive_coverage()
     except Exception as e:
@@ -1819,6 +1845,8 @@ def _load_training_health_snapshot() -> dict[str, Any] | None:
 def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]]:
     """Pinned held-out slice — same rows and deterministic cutoffs between passes."""
     global _pinned_val_samples, _pinned_val_loaded_at, _pinned_val_event_ids
+    global _val_pin_refreshed_this_fetch
+    _val_pin_refreshed_this_fetch = False
     now = time.time()
     ids = val_event_ids or set()
     if (
@@ -1855,10 +1883,12 @@ def _fetch_val_batch(f_cursor, val_event_ids: set | None) -> list[dict[str, Any]
             pass
     samples = _fetch_val_batch_raw(f_cursor, val_event_ids)
     _persist_val_pin(samples, val_event_ids)
+    _val_pin_refreshed_this_fetch = True
     add_ai_log(
         "TRAINING",
         f"Val pin refreshed — {len(samples)} samples / {len(ids)} events "
         f"(hold for {VAL_PIN_REFRESH_SECONDS / 3600.0:.0f}h). "
+        f"Checkpoint floor will rebase; this pass cannot accept via recovery. "
         f"Fixed-val tuner ROI on this slice is not walk-forward OOS.",
     )
     return samples
@@ -2289,7 +2319,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     # list either lags (combat) or the match finishes faster than a scrape (2K),
     # so we would settle against a frozen mid-game score. Defense-in-depth in case
     # such an event was already stored before the parser-level skip took effect.
-    sports, factors = universe_sql_params(get_enabled_sports())
+    sports, factors = live_universe_sql_params()
     cursor.execute(
         f"""
         SELECT
@@ -3092,6 +3122,8 @@ def _run_neuralbet_inference_and_training_locked(
                     epoch_gate = ensemble_engine.finish_checkpoint_window(
                         val_samples,
                         best_epoch=cs_epoch,
+                        val_pin_id=_current_val_pin_id(),
+                        val_pin_changed=_val_pin_refreshed_this_fetch,
                     )
                     metrics.update(epoch_gate)
                     metrics["best_epoch"] = cs_epoch
@@ -3112,6 +3144,8 @@ def _run_neuralbet_inference_and_training_locked(
                     epochs=MAX_EPOCHS,
                     use_bankroll_loss=use_bankroll,
                     should_abort=cycle_aborted,
+                    val_pin_id=_current_val_pin_id(),
+                    val_pin_changed=_val_pin_refreshed_this_fetch,
                 )
             if metrics.get("samples_used", 0) > 0:
                 _online_pass_count += 1

@@ -36,6 +36,11 @@ import { QualityTrendChart } from "@/components/QualityTrendChart"
 import { TrainingTrendChart } from "@/components/TrainingTrendChart"
 import { SPORT_NAME_ORDER, UNIVERSE_SPORT_IDS, universeSportOptions } from "@/lib/sports"
 import { SportName } from "@/components/SportIcon"
+import {
+  MARKET_BACKTEST_ALIASES,
+  UNIVERSE_MARKET_IDS,
+  UNIVERSE_MARKET_OPTIONS,
+} from "@/lib/markets"
 
 interface AILog {
   timestamp: string
@@ -109,6 +114,89 @@ function BacktestSliceTable({
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+type SliceKpis = {
+  roi: number | null
+  ciLo: number | null
+  wr: number | null
+  bets: number | null
+  source: "live" | "full" | null
+}
+
+function asFiniteNumber(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function stakeCurrentOf(row: any): any {
+  if (!row) return {}
+  return row.stake_policy?.current || row.current || row
+}
+
+function kpisFromBacktestRow(row: any): Omit<SliceKpis, "source"> {
+  const s = stakeCurrentOf(row)
+  return {
+    roi: asFiniteNumber(s.roi_pct),
+    ciLo: asFiniteNumber(s.roi_pct_lo ?? s.roi_ci_lo),
+    wr: asFiniteNumber(s.win_rate_pct),
+    bets: asFiniteNumber(s.bets),
+  }
+}
+
+function findNamedBacktestRow(rows: any[] | undefined, aliases: string[], nameKeys: string[]) {
+  const want = new Set(aliases.map((a) => a.toLowerCase()))
+  return (Array.isArray(rows) ? rows : []).find((row) => {
+    const name = nameKeys.map((k) => row?.[k]).find((v) => v != null && String(v).trim() !== "")
+    return want.has(String(name || "").toLowerCase())
+  })
+}
+
+function firstBacktestRow(bt: any, listKeys: string[], aliases: string[], nameKeys: string[]) {
+  if (!bt) return null
+  for (const listKey of listKeys) {
+    const row = findNamedBacktestRow(bt[listKey], aliases, nameKeys)
+    if (row) return row
+  }
+  return null
+}
+
+function resolveSliceKpis(
+  liveBt: any,
+  fullBt: any,
+  aliases: string[],
+  listKeys: string[],
+  nameKeys: string[],
+): SliceKpis {
+  const liveRow = firstBacktestRow(liveBt, listKeys, aliases, nameKeys)
+  if (liveRow) return { ...kpisFromBacktestRow(liveRow), source: "live" }
+  const fullRow = firstBacktestRow(fullBt, listKeys, aliases, nameKeys)
+  if (fullRow) return { ...kpisFromBacktestRow(fullRow), source: "full" }
+  return { roi: null, ciLo: null, wr: null, bets: null, source: null }
+}
+
+function formatSignedPct(v: number | null): string {
+  if (v == null) return "—"
+  const sign = v > 0 ? "+" : ""
+  return `${sign}${v.toFixed(1)}%`
+}
+
+function SliceKpiLine({ kpis }: { kpis: SliceKpis }) {
+  if (!kpis.source && kpis.roi == null && kpis.wr == null) {
+    return <div className="text-[10px] font-mono text-neutral-600 mt-0.5">нет данных бэктеста</div>
+  }
+  const roiCls = kpis.roi == null ? "text-neutral-500" : kpis.roi >= 0 ? "text-[#55efc4]" : "text-[#ff7675]"
+  const ciCls = kpis.ciLo == null ? "text-neutral-500" : kpis.ciLo > 0 ? "text-[#55efc4]" : "text-neutral-400"
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] font-mono mt-0.5">
+      <span className={roiCls}>ROI {formatSignedPct(kpis.roi)}</span>
+      <span className={ciCls} title="Нижняя граница 95% CI ROI">CI {formatSignedPct(kpis.ciLo)}</span>
+      <span className="text-neutral-400">WR {kpis.wr == null ? "—" : `${kpis.wr.toFixed(1)}%`}</span>
+      {kpis.source === "full" && (
+        <span className="text-neutral-600" title="Среза нет в live-бэктесте — цифры из полного прогона">полный</span>
+      )}
     </div>
   )
 }
@@ -196,6 +284,10 @@ export default function AdminPage() {
   const [qualityGateBypass, setQualityGateBypass] = useState(false)
   const [enabledSports, setEnabledSports] = useState<string[]>([...UNIVERSE_SPORT_IDS])
   const [sportsPanelOpen, setSportsPanelOpen] = useState(false)
+  const [enabledMarkets, setEnabledMarkets] = useState<string[]>([...UNIVERSE_MARKET_IDS])
+  const [marketsPanelOpen, setMarketsPanelOpen] = useState(false)
+  const [liveBacktestSnap, setLiveBacktestSnap] = useState<any>(null)
+  const [fullBacktestSnap, setFullBacktestSnap] = useState<any>(null)
   const [logs, setLogs] = useState<AILog[]>([])
   const [logFilter, setLogFilter] = useState<string>("ALL")
   const [triggering, setTriggering] = useState(false)
@@ -410,6 +502,9 @@ export default function AdminPage() {
           if (Array.isArray(data.settings.enabled_sports)) {
             setEnabledSports(data.settings.enabled_sports.map((s: string) => String(s).toLowerCase()))
           }
+          if (Array.isArray(data.settings.enabled_markets)) {
+            setEnabledMarkets(data.settings.enabled_markets.map((m: string) => String(m).toLowerCase()))
+          }
         }
       }
     } catch (err) {
@@ -534,6 +629,22 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchBacktestSlices = useCallback(async () => {
+    const load = async (mode: "live" | "full") => {
+      const res = await fetch(`${API_BASE}/api/admin/backtest/latest?mode=${mode}`, { cache: "no-store" })
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.backtest || null
+    }
+    try {
+      const [live, full] = await Promise.all([load("live"), load("full")])
+      if (live) setLiveBacktestSnap(live)
+      if (full) setFullBacktestSnap(full)
+    } catch {
+      // Keep last snapshot
+    }
+  }, [API_BASE])
+
   const handleRunBacktest = async (mode: "live" | "full" = "live") => {
     setBacktestRunning(true)
     setBacktestError(null)
@@ -562,6 +673,7 @@ export default function AdminPage() {
         setBacktestResult(postData)
         setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: postData.samples_evaluated || 0, total: postData.samples_requested || BACKTEST_LIMIT })
         if (mode === "live") fetchBacktestHistory()
+        fetchBacktestSlices()
         return
       }
       if (postData?.status === "no_data") throw new Error("Недостаточно завершённых ставок для бэктеста")
@@ -596,6 +708,7 @@ export default function AdminPage() {
           setBacktestResult(bt)
           setBacktestProgress({ pct: 100, label: "Готово", step: "done", active: false, processed: bt.samples_evaluated || 0, total: bt.samples_requested || BACKTEST_LIMIT })
           if (mode === "live") fetchBacktestHistory()
+          fetchBacktestSlices()
           return
         }
         throw new Error("Бэктест завершился, но результат не найден")
@@ -637,6 +750,7 @@ export default function AdminPage() {
       if (data.latest_backtest?.status === "success") {
         setBacktestResult(data.latest_backtest)
         fetchBacktestHistory()
+        fetchBacktestSlices()
       }
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
@@ -663,6 +777,7 @@ export default function AdminPage() {
     fetchBankroll()
     fetchOpenLiveBetsCount()
     fetchBacktestHistory()
+    fetchBacktestSlices()
     fetchTrainingHealth()
     fetchTrainingRuns()
     fetchHardware()
@@ -680,7 +795,10 @@ export default function AdminPage() {
     // Backtest history changes less often than logs (scheduled every 30 min, plus
     // occasional manual runs) — a separate, slower interval instead of piling it
     // into the 3s one above avoids re-fetching an unchanged JSON file on every tick.
-    const backtestInterval = setInterval(fetchBacktestHistory, 30000)
+    const backtestInterval = setInterval(() => {
+      fetchBacktestHistory()
+      fetchBacktestSlices()
+    }, 30000)
 
     // Training passes fire more often than backtests (every couple of minutes when
     // data allows) but far less often than logs/stats — a middle-ground interval.
@@ -692,7 +810,7 @@ export default function AdminPage() {
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
     }
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchTrainingHealth, fetchTrainingRuns, fetchHardware])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchBacktestSlices, fetchTrainingHealth, fetchTrainingRuns, fetchHardware])
 
   const toggleAISetting = async (
     key: "ai_enabled" | "training_enabled" | "quality_gate_bypass",
@@ -746,6 +864,31 @@ export default function AdminPage() {
       }
     } catch {
       setEnabledSports(prev)
+    }
+  }
+
+  const toggleMarketEnabled = async (marketId: string) => {
+    const key = marketId.toLowerCase()
+    const has = enabledMarkets.some((m) => m.toLowerCase() === key)
+    const next = has
+      ? enabledMarkets.filter((m) => m.toLowerCase() !== key)
+      : [...enabledMarkets, key]
+    const prev = enabledMarkets
+    setEnabledMarkets(next)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/ai-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled_markets: next }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (data.status !== "success") throw new Error(data.message || "settings save failed")
+      if (Array.isArray(data.settings?.enabled_markets)) {
+        setEnabledMarkets(data.settings.enabled_markets.map((m: string) => String(m).toLowerCase()))
+      }
+    } catch {
+      setEnabledMarkets(prev)
     }
   }
 
@@ -1802,6 +1945,7 @@ export default function AdminPage() {
                 <h3 className="text-sm font-bold text-white">Виды спорта (live)</h3>
                 <p className="text-xs text-neutral-400 mt-0.5">
                   Потолок для инференса, UI и live-бэктеста. Обучение всегда на всех 5 видах.
+                  ROI / CI / WR — из последнего live-прогона; если вида нет в live (выключен) — из полного бэктеста.
                 </p>
               </div>
               <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${sportsPanelOpen ? "rotate-180" : ""}`} />
@@ -1810,14 +1954,74 @@ export default function AdminPage() {
               <div className="px-5 pb-5 space-y-2 border-t border-neutral-800 pt-3">
                 {universeSportOptions([...UNIVERSE_SPORT_IDS]).map((sport) => {
                   const on = enabledSports.some((s) => s.toLowerCase() === sport.id.toLowerCase())
+                  const kpis = resolveSliceKpis(
+                    liveBacktestSnap,
+                    fullBacktestSnap,
+                    [sport.id],
+                    ["walk_forward_by_sport", "by_sport"],
+                    ["sport"],
+                  )
                   return (
                     <div key={sport.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <span className="text-sm text-neutral-200">
-                        <SportName sport={sport.id} />
-                      </span>
+                      <div className="min-w-0">
+                        <span className="text-sm text-neutral-200">
+                          <SportName sport={sport.id} />
+                        </span>
+                        <SliceKpiLine kpis={kpis} />
+                      </div>
                       <button
                         type="button"
                         onClick={() => toggleSportEnabled(sport.id)}
+                        className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
+                          on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
+                        }`}
+                      >
+                        <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                          on ? "translate-x-5" : "translate-x-0"
+                        }`} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMarketsPanelOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
+            >
+              <div>
+                <h3 className="text-sm font-bold text-white">Рынки (live)</h3>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Потолок для инференса, UI и live-бэктеста. Обучение и полный бэктест всегда на всех рынках вселенной.
+                  ROI / CI / WR — из последнего live-прогона; если рынка нет в live (выключен) — из полного бэктеста.
+                </p>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${marketsPanelOpen ? "rotate-180" : ""}`} />
+            </button>
+            {marketsPanelOpen && (
+              <div className="px-5 pb-5 space-y-2 border-t border-neutral-800 pt-3">
+                {UNIVERSE_MARKET_OPTIONS.map((market) => {
+                  const on = enabledMarkets.some((m) => m.toLowerCase() === market.id.toLowerCase())
+                  const kpis = resolveSliceKpis(
+                    liveBacktestSnap,
+                    fullBacktestSnap,
+                    MARKET_BACKTEST_ALIASES[market.id] || [market.id],
+                    ["oos_by_market", "by_market"],
+                    ["market"],
+                  )
+                  return (
+                    <div key={market.id} className="flex items-center justify-between gap-3 py-1.5">
+                      <div className="min-w-0">
+                        <span className="text-sm text-neutral-200">{market.label}</span>
+                        <SliceKpiLine kpis={kpis} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleMarketEnabled(market.id)}
                         className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
                           on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
                         }`}
