@@ -34,6 +34,7 @@ from neurobet_filters import (
     MAX_BET_COEFF_HIGH_P,
     HIGH_P_STAKE,
     MIN_BET_EDGE_PCT,
+    MIN_STAKE_P,
     MIN_MARKET_SUPPORT,
     LIVE_STAKE_SPORTS,
     LIVE_STAKE_MARKETS,
@@ -792,6 +793,7 @@ def _filters_snapshot() -> Dict[str, Any]:
         "max_bet_coeff_high_p": MAX_BET_COEFF_HIGH_P,
         "high_p_stake": HIGH_P_STAKE,
         "min_bet_edge_pct": MIN_BET_EDGE_PCT,
+        "min_stake_p": MIN_STAKE_P,
         "market_shrink": MARKET_SHRINK,
         "min_market_support": MIN_MARKET_SUPPORT,
         "live_stake_sports": (

@@ -47,6 +47,7 @@ from neurobet_filters import (
     MAX_BET_COEFF_HIGH_P,
     HIGH_P_STAKE,
     MIN_BET_EDGE_PCT,
+    MIN_STAKE_P,
     MIN_MARKET_SUPPORT,
     FAST_FORMAT_SPORT_SQL,
     effective_live_stake_sports,
@@ -2465,6 +2466,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     skipped_low_edge = 0
     skipped_low_support = 0
     skipped_coeff = 0
+    skipped_prob = 0
     skipped_sport = 0
     skipped_market = 0
     skipped_will_win = 0
@@ -2564,6 +2566,8 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         )
         if reason == "will_win":
             skipped_will_win += 1
+        elif reason == "prob":
+            skipped_prob += 1
         elif reason == "coeff":
             skipped_coeff += 1
         elif reason == "edge":
@@ -2599,6 +2603,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         skipped_low_edge
         or skipped_low_support
         or skipped_coeff
+        or skipped_prob
         or skipped_sport
         or skipped_market
         or skipped_will_win
@@ -2614,6 +2619,11 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             if skipped_market
             else ""
         )
+        prob_part = (
+            f", {skipped_prob} — calibrated p below {MIN_STAKE_P:.0%}"
+            if skipped_prob
+            else ""
+        )
         add_ai_log(
             "BANKROLL",
             f"Bet candidates filtered: {skipped_will_win} — not will_win, "
@@ -2622,7 +2632,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             f"(or {MAX_BET_COEFF:.1f}–{MAX_BET_COEFF_HIGH_P:.1f} with p<{HIGH_P_STAKE:.0%}), "
             f"{skipped_low_edge} — EV below {MIN_BET_EDGE_PCT:.0f}%, "
             f"{skipped_low_support} — market has fewer than {MIN_MARKET_SUPPORT} resolved archive outcomes"
-            f"{sport_part}{market_part}. "
+            f"{prob_part}{sport_part}{market_part}. "
             f"Remaining {len(live_candidates)}.",
         )
 

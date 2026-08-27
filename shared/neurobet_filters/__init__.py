@@ -5,10 +5,11 @@ Two layers, on purpose:
 
 - Universe (sport / factor_id / total line) — training, live inference, backtest
   fetch, UI, and stats. Win-head still sees every row inside this universe.
-- Live gates (coefficient band, min EV, min market support, live sports / markets) —
-  staking real money, the "win" LIVE list, backtest "would bet", training
+- Live gates (coefficient band, min calibrated p, min EV, min market support,
+  live sports / markets) — staking real money, backtest "would bet", training
   bankroll/tuner. Thin markets and 1.0–1.1 shorts stay in the gradient; they just
   never get a stake. Money band is 1.1–2.0, plus 2.0–2.5 when calibrated p ≥ 90%.
+  Default stake floor: calibrated p ≥ 70% (`NEURALBET_MIN_STAKE_P`).
 - Admin `enabled_sports` / `enabled_markets` (ai_settings.json) are product ceilings
   on live inference, UI, live backtest and Kelly. Training and full/debug backtest
   stay on all ALLOWED_SPORTS / ALLOWED_MARKET_FAMILIES. Stake = admin ∩ env ∩ Brier.
@@ -16,7 +17,7 @@ Two layers, on purpose:
 Add a sport or total-line window here and SQL + Python pick it up everywhere.
 Add a "don't stake if …" condition in `passes_live_gates` / `bet_band_sql`.
 Env: `NEURALBET_LIVE_STAKE_SPORTS`, `NEURALBET_LIVE_STAKE_MARKETS`,
-`NEURALBET_MIN_BET_EDGE_PCT`, `NEURALBET_BRIER_SPORT_GATE`.
+`NEURALBET_MIN_STAKE_P`, `NEURALBET_MIN_BET_EDGE_PCT`, `NEURALBET_BRIER_SPORT_GATE`.
 """
 import json
 import os
@@ -117,6 +118,9 @@ HIGH_P_STAKE = float(os.getenv("NEURALBET_HIGH_P_STAKE", "0.90"))
 # 0 = off. 0.15 ≈ +1.5pp when the price shortens 10%.
 COEFF_MOVE_P_WEIGHT = float(os.getenv("NEURALBET_COEFF_MOVE_P_WEIGHT", "0.15"))
 MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "5.0"))
+# Stake only when calibrated p ≥ this (0–1). 0 = off. UI «Выигрывающие» still shows
+# will_win=1 below the floor as «выиграет · не ставить»; bot / Kelly / backtest skip.
+MIN_STAKE_P = float(os.getenv("NEURALBET_MIN_STAKE_P", "0.70"))
 W1_FACTOR_ID = 921
 W2_FACTOR_ID = 923
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
@@ -1036,7 +1040,8 @@ def live_gate_skip_reason(
 ) -> Optional[str]:
     """Why this candidate is not staked, or None if it clears every live gate.
     `support_count is None` means 'don't check' (empty cache fails open).
-    Stake only from will_win=1; coeff 1.1–2.0 or 2.0–2.5 with p ≥ HIGH_P_STAKE.
+    Stake only from will_win=1; calibrated p ≥ MIN_STAKE_P; coeff 1.1–2.0 or
+    2.0–2.5 with p ≥ HIGH_P_STAKE.
     """
     if will_win is not None:
         try:
@@ -1050,6 +1055,10 @@ def live_gate_skip_reason(
         factor_id=factor_id, market_label=market_label, apply_admin=apply_admin,
     ):
         return "market"
+    if MIN_STAKE_P > 0:
+        p = _prob_01(win_probability)
+        if p is None or p < MIN_STAKE_P:
+            return "prob"
     if not coeff_ok_for_stake(coeff, win_probability):
         return "coeff"
     if expected_roi < MIN_BET_EDGE_PCT:
@@ -1153,9 +1162,10 @@ def bet_band_sql(
     roi_expr: Optional[str] = None,
     p_expr: Optional[str] = None,
 ) -> Tuple[str, list]:
-    """SQL fragment + bind params for the money band and optional min-EV gate.
+    """SQL fragment + bind params for the money band and optional min-EV / min-p gates.
 
-    With ``p_expr`` (0–1 or 0–100): also allow MAX < coeff ≤ MAX_HIGH_P when p ≥ HIGH_P.
+    With ``p_expr`` (0–1 or 0–100): also allow MAX < coeff ≤ MAX_HIGH_P when p ≥ HIGH_P,
+    and require calibrated p ≥ MIN_STAKE_P when that floor is on.
     """
     if p_expr:
         p01 = f"(CASE WHEN {p_expr} > 1 THEN {p_expr} / 100.0 ELSE {p_expr} END)"
@@ -1167,6 +1177,9 @@ def bet_band_sql(
             MIN_BET_COEFF, MAX_BET_COEFF,
             MAX_BET_COEFF, MAX_BET_COEFF_HIGH_P, HIGH_P_STAKE,
         ]
+        if MIN_STAKE_P > 0:
+            sql += f" AND {p01} >= %s"
+            params.append(MIN_STAKE_P)
     else:
         sql = f" AND {coeff_expr} >= %s AND {coeff_expr} <= %s"
         params = [MIN_BET_COEFF, MAX_BET_COEFF]
