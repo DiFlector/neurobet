@@ -293,9 +293,8 @@ export default function AdminPage() {
   const [trainingEnabled, setTrainingEnabled] = useState(true)
   const [qualityGateBypass, setQualityGateBypass] = useState(false)
   const [enabledSports, setEnabledSports] = useState<string[]>([...UNIVERSE_SPORT_IDS])
-  const [sportsPanelOpen, setSportsPanelOpen] = useState(false)
   const [enabledMarkets, setEnabledMarkets] = useState<string[]>([...UNIVERSE_MARKET_IDS])
-  const [marketsPanelOpen, setMarketsPanelOpen] = useState(false)
+  const [liveSlicesOpen, setLiveSlicesOpen] = useState(false)
   const [liveBacktestSnap, setLiveBacktestSnap] = useState<any>(null)
   const [fullBacktestSnap, setFullBacktestSnap] = useState<any>(null)
   const [logs, setLogs] = useState<AILog[]>([])
@@ -2308,7 +2307,7 @@ export default function AdminPage() {
         )}
 
         {/* Toggle Switches Controls */}
-        <div className={`grid grid-cols-1 gap-4 ${isDevMode ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+        <div className={`grid grid-cols-1 gap-4 ${isDevMode ? "lg:grid-cols-3" : ""}`}>
           {/* AI Inference Toggle */}
           <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             aiEnabled ? "bg-neutral-900/90 border-[#00b894]/40" : "bg-neutral-900/50 border-[#d63031]/40"
@@ -2431,107 +2430,104 @@ export default function AdminPage() {
           </div>
           )}
 
-          <div className="mt-4 bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setSportsPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
-            >
-              <div>
-                <h3 className="text-sm font-bold text-white">Виды спорта (live)</h3>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                  Потолок для инференса, UI и live-бэктеста. Обучение всегда на всех 5 видах.
-                  ROI / CI / WR — из последнего live-прогона; если вида нет в live (выключен) — из полного бэктеста.
-                </p>
-              </div>
-              <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${sportsPanelOpen ? "rotate-180" : ""}`} />
-            </button>
-            {sportsPanelOpen && (
-              <div className="px-5 pb-5 space-y-2 border-t border-neutral-800 pt-3">
-                {universeSportOptions([...UNIVERSE_SPORT_IDS]).map((sport) => {
-                  const on = enabledSports.some((s) => s.toLowerCase() === sport.id.toLowerCase())
-                  const kpis = resolveSliceKpis(
-                    liveBacktestSnap,
-                    fullBacktestSnap,
-                    [sport.id],
-                    ["walk_forward_by_sport", "by_sport"],
-                    ["sport"],
-                  )
-                  return (
-                    <div key={sport.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <div className="min-w-0">
-                        <span className="text-sm text-neutral-200">
-                          <SportName sport={sport.id} />
-                        </span>
-                        <SliceKpiLine kpis={kpis} />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleSportEnabled(sport.id)}
-                        className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
-                          on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
-                        }`}
-                      >
-                        <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                          on ? "translate-x-5" : "translate-x-0"
-                        }`} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+        </div>
 
-          <div className="mt-4 bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setMarketsPanelOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
-            >
-              <div>
-                <h3 className="text-sm font-bold text-white">Рынки (live)</h3>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                  Потолок для инференса, UI и live-бэктеста. Обучение и полный бэктест всегда на всех рынках вселенной.
-                  ROI / CI / WR — из последнего live-прогона; если рынка нет в live (выключен) — из полного бэктеста.
-                </p>
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden backdrop-blur-md shadow-lg">
+          <button
+            type="button"
+            onClick={() => setLiveSlicesOpen((v) => !v)}
+            className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-neutral-800/40 transition-colors"
+          >
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-white">Виды спорта и рынки (live)</h3>
+              <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
+                Потолок для инференса, UI и live-бэктеста. Обучение и полный бэктест — на всей вселенной.
+                ROI / CI / WR из live-прогона; если срез выключен в live — из полного бэктеста.
+              </p>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 mt-0.5 transition-transform duration-200 ${liveSlicesOpen ? "rotate-180" : ""}`} />
+          </button>
+          {liveSlicesOpen && (
+            <div className="border-t border-neutral-800 px-5 pb-5 pt-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">
+                    Виды спорта
+                  </h4>
+                  <div className="space-y-1">
+                    {universeSportOptions([...UNIVERSE_SPORT_IDS]).map((sport) => {
+                      const on = enabledSports.some((s) => s.toLowerCase() === sport.id.toLowerCase())
+                      const kpis = resolveSliceKpis(
+                        liveBacktestSnap,
+                        fullBacktestSnap,
+                        [sport.id],
+                        ["walk_forward_by_sport", "by_sport"],
+                        ["sport"],
+                      )
+                      return (
+                        <div key={sport.id} className="flex items-center justify-between gap-3 min-h-[52px] py-1">
+                          <div className="min-w-0">
+                            <span className="text-sm text-neutral-200 leading-tight block">
+                              <SportName sport={sport.id} />
+                            </span>
+                            <SliceKpiLine kpis={kpis} />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleSportEnabled(sport.id)}
+                            className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
+                              on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
+                            }`}
+                          >
+                            <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                              on ? "translate-x-5" : "translate-x-0"
+                            }`} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="lg:border-l lg:border-neutral-800 lg:pl-6">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">
+                    Рынки
+                  </h4>
+                  <div className="space-y-1">
+                    {UNIVERSE_MARKET_OPTIONS.map((market) => {
+                      const on = enabledMarkets.some((m) => m.toLowerCase() === market.id.toLowerCase())
+                      const kpis = resolveSliceKpis(
+                        liveBacktestSnap,
+                        fullBacktestSnap,
+                        MARKET_BACKTEST_ALIASES[market.id] || [market.id],
+                        ["oos_by_market", "by_market"],
+                        ["market"],
+                      )
+                      return (
+                        <div key={market.id} className="flex items-center justify-between gap-3 min-h-[52px] py-1">
+                          <div className="min-w-0">
+                            <span className="text-sm text-neutral-200 leading-tight block">{market.label}</span>
+                            <SliceKpiLine kpis={kpis} />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleMarketEnabled(market.id)}
+                            className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
+                              on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
+                            }`}
+                          >
+                            <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
+                              on ? "translate-x-5" : "translate-x-0"
+                            }`} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
-              <ChevronDown className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform ${marketsPanelOpen ? "rotate-180" : ""}`} />
-            </button>
-            {marketsPanelOpen && (
-              <div className="px-5 pb-5 space-y-2 border-t border-neutral-800 pt-3">
-                {UNIVERSE_MARKET_OPTIONS.map((market) => {
-                  const on = enabledMarkets.some((m) => m.toLowerCase() === market.id.toLowerCase())
-                  const kpis = resolveSliceKpis(
-                    liveBacktestSnap,
-                    fullBacktestSnap,
-                    MARKET_BACKTEST_ALIASES[market.id] || [market.id],
-                    ["oos_by_market", "by_market"],
-                    ["market"],
-                  )
-                  return (
-                    <div key={market.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <div className="min-w-0">
-                        <span className="text-sm text-neutral-200">{market.label}</span>
-                        <SliceKpiLine kpis={kpis} />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleMarketEnabled(market.id)}
-                        className={`relative w-12 h-7 rounded-full transition-colors duration-300 p-0.5 flex items-center shrink-0 ${
-                          on ? "bg-[#00b894]" : "bg-neutral-800 border border-neutral-700"
-                        }`}
-                      >
-                        <div className={`size-6 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                          on ? "translate-x-5" : "translate-x-0"
-                        }`} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Live AI Logs Console */}
