@@ -11,11 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY ai_service/requirements.txt .
 
-# GTX 1050 Ti is Pascal (sm_61). Official cu128+ wheels dropped it; cu124 still has kernels.
-# Install deps first without the CPU torch from PyPI, then the CUDA 12.4 wheel.
+# TORCH_VARIANT=cpu (default, docker-compose.yml) — PyPI CPU wheel, no NVIDIA libs.
+# TORCH_VARIANT=cuda (docker-compose-cuda.yml) — cu124 wheel for Pascal+ (sm_61 / GTX 1050 Ti).
+ARG TORCH_VARIANT=cpu
 RUN grep -vE '^torch([=<>]|[[:space:]]*$)' requirements.txt > /tmp/requirements-notorch.txt \
     && uv pip install --system --no-cache -r /tmp/requirements-notorch.txt \
-    && uv pip install --system --no-cache --index-url https://download.pytorch.org/whl/cu124 torch==2.6.0
+    && if [ "$TORCH_VARIANT" = "cuda" ]; then \
+         uv pip install --system --no-cache --index-url https://download.pytorch.org/whl/cu124 torch==2.6.0; \
+       else \
+         uv pip install --system --no-cache --index-url https://download.pytorch.org/whl/cpu torch==2.6.0; \
+       fi
 
 COPY shared/neurobet_filters /app/neurobet_filters
 COPY shared/neurobet_features /app/neurobet_features

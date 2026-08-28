@@ -261,6 +261,9 @@ export default function NeurobetsPage() {
     guess_rate_pct: number | null
     miss_rate_pct: number | null
   } | null>(null)
+  const [activeModelName, setActiveModelName] = useState<string | null>(null)
+  const [activeModelRuntime, setActiveModelRuntime] = useState(false)
+  const [activeModelLoaded, setActiveModelLoaded] = useState(false)
   const [bankroll, setBankroll] = useState<any>(null)
   const [openBetsCount, setOpenBetsCount] = useState(0)
   const [openBotBetsList, setOpenBotBetsList] = useState<any[]>([])
@@ -365,6 +368,23 @@ export default function NeurobetsPage() {
 
   // The ring must not rely on /api/stats alone — ad blockers often silently block
   // URLs containing "stats" while /api/neurobets/* still works (bankroll, top, etc.).
+  const fetchActiveModel = useCallback(async () => {
+    try {
+      const res = await fetchApi(`${API_BASE}/api/neurobets/active-model`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        const model = data?.model
+        const name = model?.name || model?.slug
+        setActiveModelName(typeof name === "string" && name.trim() ? name.trim() : null)
+        setActiveModelRuntime(Boolean(model?.runtime))
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setActiveModelLoaded(true)
+    }
+  }, [API_BASE])
+
   const fetchHeadlineAccuracy = useCallback(async () => {
     try {
       const res = await fetchApi(`${API_BASE}/api/neurobets/headline-accuracy`, { cache: "no-store" })
@@ -677,6 +697,7 @@ export default function NeurobetsPage() {
     fetchOpenBotBets()
     fetchStats()
     fetchHeadlineAccuracy()
+    fetchActiveModel()
     fetchBankroll()
     if (activeTab === "live") {
       fetchNeurobets(0, PAGE_SIZE, "replace")
@@ -699,6 +720,7 @@ export default function NeurobetsPage() {
     const interval = setInterval(() => {
       fetchStats()
       fetchHeadlineAccuracy()
+      fetchActiveModel()
       fetchBankroll()
       fetchOpenBotBets()
       if (activeTab === "live") {
@@ -712,7 +734,7 @@ export default function NeurobetsPage() {
       }
     }, 10000)
     return () => clearInterval(interval)
-  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
+  }, [activeTab, fetchNeurobets, fetchHistory, fetchStats, fetchHeadlineAccuracy, fetchActiveModel, fetchBankroll, fetchOpenBotBets, fetchLiveTotal, fetchHistoryTotal, autoRefresh])
 
   const sportsList = useMemo(() => {
     const chips = universeSportOptions(enabledSports)
@@ -794,6 +816,17 @@ export default function NeurobetsPage() {
               <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">
                 Нейроставки — Умный Рейтинг Топ Ставок
               </h2>
+              <p className="text-sm text-neutral-400">
+                Активная модель:{" "}
+                <span className="text-[#fdcb6e] font-semibold">
+                  {!activeModelLoaded
+                    ? "загрузка…"
+                    : activeModelName ?? "не задана"}
+                </span>
+                {activeModelLoaded && activeModelRuntime && activeModelName && (
+                  <span className="text-neutral-500"> · в памяти / обучение</span>
+                )}
+              </p>
               <p className="text-sm text-neutral-300 leading-relaxed">
                 Алгоритм непрерывно анализирует прямую трансляцию коэффициентов и движений линий Fonbet LIVE и сам определяет, выиграет исход или проиграет —
                 своим собственным обученным вердиктом, а не по внешнему порогу вероятности. По умолчанию показаны только исходы с вердиктом «выиграет» —

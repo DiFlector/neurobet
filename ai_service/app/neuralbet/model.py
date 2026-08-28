@@ -289,6 +289,11 @@ class NeuralBetEnsemble:
         else:
             logger.info("PyTorch GRU on CPU (CUDA not visible)")
 
+    def reload_checkpoints(self) -> None:
+        """Hot-reload weights from MODEL_DIR after admin activates a registry model."""
+        self._reset_state()
+        self.load_checkpoints()
+
     def _reset_state(self):
         """
         Everything that makes this a "fresh, never-trained" ensemble — shared by
@@ -429,6 +434,11 @@ class NeuralBetEnsemble:
                 payload["last_accepted_val_pin_id"] = self.last_accepted_val_pin_id
             torch.save(payload, PYTORCH_WEIGHTS_PATH)
             logger.info(f"Saved PyTorch model weights checkpoint to {PYTORCH_WEIGHTS_PATH}")
+            try:
+                from app.neuralbet import model_registry
+                model_registry.bootstrap_legacy_if_needed()
+            except Exception as bootstrap_err:
+                logger.warning("Registry bootstrap after checkpoint save failed: %s", bootstrap_err)
         except Exception as e:
             logger.error(f"Error saving model weights: {e}")
 

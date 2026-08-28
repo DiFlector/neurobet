@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 
 from app.config import MODEL_DIR
-from app.core.database import get_finished_connection, release_connection
+from app.core.database import get_archive_connection, release_connection
 from app.neuralbet import bankroll
 from app.neuralbet.bankroll import allocate
 from app.neuralbet.calibration import calibrate_probability, coeff_bucket_index, get_calibration_buckets
@@ -186,7 +186,7 @@ def _fetch_backtest_rows(
     markets: Optional[Any] = None,
 ) -> List[Any]:
     from app.neuralbet.pipeline import _track_conn, _untrack_conn
-    f_conn = _track_conn(get_finished_connection())
+    f_conn = _track_conn(get_archive_connection())
     try:
         f_cursor = f_conn.cursor()
         where_since = "AND h.finished_at >= %s" if since else ""

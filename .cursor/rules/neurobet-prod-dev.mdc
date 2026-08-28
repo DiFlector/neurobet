@@ -1,0 +1,67 @@
+---
+description: NeuroBet prod/dev stacks, model registry, deploy commands
+alwaysApply: true
+---
+
+# NeuroBet — prod vs dev
+
+Два параллельных Docker-стека на сервере `/srv/neurobet`:
+
+| | Prod | Dev |
+|---|------|-----|
+| URL | `https://necrolich.ru/diflector/neurobet` | `https://necrolich.ru/diflector/dev/neurobet` |
+| Env | `.env` (`NEUROBET_DEPLOY_MODE=prod`) | `.env.dev` |
+| Data | `./data` | `./data-dev` |
+| Контейнеры | `neurobet_*` | `neurobet_dev_*` |
+
+**Prod:** live-парсинг, инференс, мониторинг, реестр моделей (upload + activate). Обучение/backtest/reset — **запрещены** (API 403 + UI скрыт).
+
+**Dev:** полный функционал (обучение, бэктest, reset) + экспорт `.nbmodel.zip`.
+
+## Команды (на сервере)
+
+```bash
+cd /srv/neurobet
+
+# Prod CPU
+docker compose up --build -d
+
+# Prod CUDA
+docker compose -f docker-compose.yml -f docker-compose-cuda.yml up --build -d
+
+# Dev CPU (параллельно)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  -p neurobet-dev --env-file .env.dev up --build -d
+
+# Dev CUDA
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose-cuda.yml \
+  -p neurobet-dev --env-file .env.dev up --build -d
+
+# Логи / restart
+docker compose logs -f ai
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -p neurobet-dev logs -f ai
+```
+
+После `git pull`: те же `up --build -d`. Новые ключи — в `.env` и `.env.dev`. Смена `NEXT_PUBLIC_*` — `--build frontend`.
+
+Nginx dev location: `infrastructure/nginx-dev-location.snippet` → `/srv/nginx-master/nginx/snippets/diflector-locations.conf`, `client_max_body_size 128m` на prod location.
+
+## Перенос моделей
+
+Только через **`.nbmodel.zip`** (не копировать `./data/models/` между volume):
+
+1. Dev `/admin` → **Экспорт текущей** → имя
+2. Prod `/admin` → **Загрузить .nbmodel.zip**
+3. Prod → **Активировать** (hot-reload без рестарта)
+
+## MCP
+
+- **Prod MCP** (`/diflector/neurobet/api/mcp`) — мониторинг, read-only eval
+- **Dev MCP** (`/diflector/dev/neurobet/api/mcp`) — `run_backtest`, `run_eval_pack`, ревью модели
+
+## Типичные ошибки агента
+
+- Не включать training на prod
+- Не бэктestить через prod MCP/API
+- Не путать basePath при сборке frontend (prod vs dev — разные build args)
+- Не `docker compose down -v` на prod

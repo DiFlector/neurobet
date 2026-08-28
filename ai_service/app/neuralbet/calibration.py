@@ -9,7 +9,7 @@ was saved.
 """
 from typing import Any, Dict, Optional, Tuple
 
-from app.core.database import get_finished_connection, release_connection
+from app.core.database import get_archive_connection, release_connection
 
 # How strongly the empirical bucket win-rate pulls the raw model probability towards
 # itself — a bucket with many resolved bets dominates; one with only a couple barely
@@ -82,7 +82,7 @@ def get_calibration_buckets(*, before: Optional[str] = None) -> Dict[CoeffBucket
     `sport` is the top-level segment of sport_path — the same split
     get_bet_type_stats/the frontend use to group by sport.
     """
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     f_cursor = f_conn.cursor()
     before_clause = "AND h.finished_at < %s" if before else ""
     params: list[Any] = []

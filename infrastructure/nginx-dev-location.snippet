@@ -1,0 +1,10 @@
+# Add to /srv/nginx-master/nginx/snippets/diflector-locations.conf
+# and set client_max_body_size 128m on the prod /diflector/neurobet location.
+
+location /diflector/dev/neurobet {
+    set $neurobet_dev_frontend http://neurobet_dev_frontend:3000;
+    proxy_pass $neurobet_dev_frontend;
+    include /etc/nginx/snippets/proxy-common.conf;
+    proxy_read_timeout  300s;
+    client_max_body_size 128m;
+}

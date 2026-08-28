@@ -1,6 +1,12 @@
-# Schema is managed by Alembic (see db/), not auto-applied on container start.
-# First-time setup / after adding a new revision:
-#   docker compose run --rm --no-deps -v ./db:/db -w /db backend alembic upgrade head
+# Schema: Alembic migrations in db/ run automatically on backend start/restart
+# (see backend/docker-entrypoint.sh). Manual run is rarely needed:
+#   docker compose exec backend sh -c 'cd /db && alembic upgrade head'
+#
+# CPU (default, no NVIDIA libs in the ai image):
+#   docker compose up --build -d
+#
+# CUDA (cu124 PyTorch + host GPU passthrough):
+#   docker compose -f docker-compose.yml -f docker-compose-cuda.yml up --build -d
 #
 # Host Docker injects HTTP_PROXY=127.0.0.1:3128 (gost). Inside a container that
 # address is the container itself, so backend→ai HTTP gets connection refused
@@ -49,17 +55,19 @@ services:
     environment:
       <<: *no-container-proxy
       DATABASE_URL: ${DATABASE_URL}
-      AI_SERVICE_URL: http://ai:8001
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    gpus: all
+      AI_SERVICE_URL: http://neurobet_ai:8001
+      NEUROBET_DEPLOY_MODE: ${NEUROBET_DEPLOY_MODE:-prod}
     volumes:
       - ./data:/app/data
     depends_on:
-      ai:
-        condition: service_started
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/stats >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
 
   ai:
@@ -67,6 +75,8 @@ services:
       context: .
       dockerfile: ai_service/Dockerfile
       network: host
+      args:
+        TORCH_VARIANT: cpu
     container_name: neurobet_ai
     expose:
       - "8001"
@@ -78,15 +88,15 @@ services:
       # Internal Docker network address of the backend service — used so ai_service
       # can read its live-account balance and propose bet candidates over HTTP instead
       # of writing bankroll_accounts/live_bets directly (backend is the sole writer).
-      BACKEND_URL: http://backend:8000
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      NEURALBET_DEVICE: ${NEURALBET_DEVICE:-auto}
-    gpus: all
+      BACKEND_URL: http://neurobet_backend:8000
+      NEUROBET_DEPLOY_MODE: ${NEUROBET_DEPLOY_MODE:-prod}
+      NEURALBET_DEVICE: ${NEURALBET_DEVICE:-cpu}
     volumes:
       - ./data:/app/data
     depends_on:
       postgres:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     restart: unless-stopped
 
@@ -96,11 +106,12 @@ services:
       dockerfile: Dockerfile
       network: host
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/neurobet}
-        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/neurobet}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/diflector/neurobet}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/diflector/neurobet}
+        NEXT_PUBLIC_DEPLOY_MODE: ${NEXT_PUBLIC_DEPLOY_MODE:-prod}
         # Must match BACKEND_INTERNAL_URL below — next.config.ts's rewrites() destination
         # is baked in at `next build` time, so the runtime-only env var isn't enough.
-        BACKEND_INTERNAL_URL: http://backend:8000
+        BACKEND_INTERNAL_URL: http://neurobet_backend:8000
     container_name: neurobet_frontend
     expose:
       - "3000"
@@ -108,21 +119,24 @@ services:
       - .env
     environment:
       <<: *no-container-proxy
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/neurobet}
-      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/neurobet}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/diflector/neurobet}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/diflector/neurobet}
+      NEXT_PUBLIC_DEPLOY_MODE: ${NEXT_PUBLIC_DEPLOY_MODE:-prod}
+      NEUROBET_DEPLOY_MODE: ${NEUROBET_DEPLOY_MODE:-prod}
       # Internal Docker network address of the backend service — used only by the
       # Next.js server to proxy /api/* (see next.config.ts). Plain env var (no
       # NEXT_PUBLIC_ prefix), so this is read fresh at container start, no rebuild
       # needed if it ever changes.
-      BACKEND_INTERNAL_URL: http://backend:8000
+      BACKEND_INTERNAL_URL: http://neurobet_backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - default
       - nginx-master-network
 
-# Public: https://diflector.ru/neurobet via host nginx (do not bind :80/:443).
+# Public: https://necrolich.ru/diflector/neurobet via host nginx (do not bind :80/:443).
 networks:
   nginx-master-network:
     external: true

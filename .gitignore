@@ -12,11 +12,13 @@ node_modules/
 
 # SQLite Database
 data/
+data-dev/
 *.db
 *.sqlite
 
 # Environment variables
 .env
+.env.dev
 .env*.local
 
 # Logs

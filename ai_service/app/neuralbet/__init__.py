@@ -6,8 +6,10 @@ from .pipeline import (
     get_ai_logs,
     add_ai_log,
     reset_neural_network,
+    create_new_model_and_cold_start,
     get_reset_progress,
     get_training_health,
+    reload_ensemble_checkpoints,
 )
 from .backtest import (
     run_backtest,
@@ -27,8 +29,10 @@ __all__ = [
     "get_ai_logs",
     "add_ai_log",
     "reset_neural_network",
+    "create_new_model_and_cold_start",
     "get_reset_progress",
     "get_training_health",
+    "reload_ensemble_checkpoints",
     "run_backtest",
     "get_backtest_history",
     "get_latest_backtest",

@@ -11,9 +11,9 @@ import httpx
 _shared = Path(__file__).resolve().parent.parent / "shared"
 if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
     sys.path.insert(0, str(_shared))
-from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, Body, Header, Depends
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, Body, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
@@ -229,6 +229,29 @@ scheduler = AsyncIOScheduler(
 )
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai:8001")
+DEPLOY_MODE = os.getenv("NEUROBET_DEPLOY_MODE", "prod").strip().lower()
+IS_PROD_DEPLOY = DEPLOY_MODE != "dev"
+
+
+def _deploy_capabilities() -> dict:
+    return {
+        "deploy_mode": "dev" if DEPLOY_MODE == "dev" else "prod",
+        "training_allowed": not IS_PROD_DEPLOY,
+        "backtest_allowed": not IS_PROD_DEPLOY,
+        "reset_model_allowed": not IS_PROD_DEPLOY,
+        "db_reset_allowed": not IS_PROD_DEPLOY,
+        "model_export_allowed": not IS_PROD_DEPLOY,
+        "model_upload_allowed": True,
+        "model_activate_allowed": True,
+        "model_create_allowed": not IS_PROD_DEPLOY,
+        "archive_export_allowed": True,
+        "archive_import_allowed": True,
+    }
+
+
+def _require_dev_feature(feature: str) -> None:
+    if IS_PROD_DEPLOY:
+        raise HTTPException(status_code=403, detail=f"{feature} is not available on prod deploy mode")
 
 # Guards against piling up overlapping /predict-and-train calls. ai_service is a single
 # Uvicorn worker running synchronous CPU-bound torch training inside the request handler
@@ -481,6 +504,19 @@ def read_bet_type_stats():
         logger.error(f"Error fetching bet-type stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/neurobets/active-model")
+def read_neurobets_active_model():
+    """Active inference model name for the public neurobets dashboard."""
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/active-model")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching active model: {e}")
+    raise HTTPException(status_code=502, detail="AI service unreachable")
+
+
 @app.get("/api/neurobets/headline-accuracy")
 def read_headline_accuracy():
     """Recency-weighted «Точность модели» for the dashboard ring.
@@ -581,6 +617,8 @@ def read_live_bets(
 def admin_reset_bankroll(req: BankrollResetRequest):
     if req.account not in ("training", "live"):
         raise HTTPException(status_code=400, detail="account must be 'training' or 'live'")
+    if req.account == "training" and IS_PROD_DEPLOY:
+        _require_dev_feature("training bankroll reset")
     if req.account == "live":
         # backend is the sole writer of the live account now — no need to hop to ai_service.
         acc = reset_live_account(start_balance=req.start_balance)
@@ -625,6 +663,8 @@ def read_admin_ai_settings():
 
 @app.post("/api/admin/ai-settings")
 def update_admin_ai_settings(req: AISettingsRequest):
+    if IS_PROD_DEPLOY and req.training_enabled is True:
+        raise HTTPException(status_code=403, detail="training_enabled cannot be enabled on prod")
     try:
         with httpx.Client(timeout=5.0) as client:
             res = client.post(f"{AI_SERVICE_URL}/settings", json=req.dict(exclude_none=True))
@@ -634,16 +674,25 @@ def update_admin_ai_settings(req: AISettingsRequest):
         logger.error(f"Error communicating with AI Service: {e}")
     raise HTTPException(status_code=502, detail="AI service unreachable — settings not saved")
 
+def _filter_ai_logs_for_deploy(logs: list) -> list:
+    if not IS_PROD_DEPLOY:
+        return logs
+    return [e for e in logs if isinstance(e, dict) and e.get("category") != "TRAINING"]
+
+
 @app.get("/api/admin/ai-logs")
 def read_admin_ai_logs():
     logs = _read_ai_logs_file()
     if logs is not None:
-        return {"status": "success", "logs": logs}
+        return {"status": "success", "logs": _filter_ai_logs_for_deploy(logs)}
     try:
         with httpx.Client(timeout=5.0) as client:
             res = client.get(f"{AI_SERVICE_URL}/logs")
             if res.status_code == 200:
-                return res.json()
+                data = res.json()
+                if isinstance(data.get("logs"), list):
+                    data["logs"] = _filter_ai_logs_for_deploy(data["logs"])
+                return data
     except Exception as e:
         logger.error(f"Error communicating with AI Service: {e}")
     return {"status": "success", "logs": []}
@@ -661,6 +710,186 @@ def admin_hardware():
     except Exception as e:
         logger.error(f"Error fetching hardware snapshot: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/capabilities")
+def admin_capabilities():
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/capabilities")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching capabilities from AI Service: {e}")
+    return {"status": "success", **_deploy_capabilities()}
+
+
+@app.get("/api/admin/models")
+def admin_list_models(_: None = Depends(_require_admin_token)):
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/models")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+    raise HTTPException(status_code=502, detail="AI service unreachable")
+
+
+@app.post("/api/admin/models/upload")
+async def admin_upload_model(
+    file: UploadFile = File(...),
+    _: None = Depends(_require_admin_token),
+):
+    try:
+        data = await file.read()
+        with httpx.Client(timeout=120.0) as client:
+            res = client.post(
+                f"{AI_SERVICE_URL}/models/upload",
+                files={"file": (file.filename or "model.nbmodel.zip", data, "application/zip")},
+            )
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class CreateNewModelRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/admin/models/new")
+def admin_create_new_model(req: CreateNewModelRequest, _: None = Depends(_require_admin_token)):
+    _require_dev_feature("new model")
+    try:
+        with httpx.Client(timeout=180.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/models/new", json=req.dict())
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating new model via AI Service: {e}")
+        raise HTTPException(status_code=502, detail="Failed to reach AI service for new model")
+
+
+@app.post("/api/admin/models/{slug}/activate")
+def admin_activate_model(slug: str, _: None = Depends(_require_admin_token)):
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/models/{slug}/activate")
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error activating model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.delete("/api/admin/models/{slug}")
+def admin_delete_model(slug: str, _: None = Depends(_require_admin_token)):
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.delete(f"{AI_SERVICE_URL}/models/{slug}")
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/api/admin/models/export")
+def admin_export_model(slug: Optional[str] = Query(None), _: None = Depends(_require_admin_token)):
+    _require_dev_feature("model export")
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/models/export", params={"slug": slug} if slug else None)
+            if res.status_code == 200:
+                disp = res.headers.get("content-disposition", 'attachment; filename="model.nbmodel.zip"')
+                return Response(content=res.content, media_type="application/zip", headers={"Content-Disposition": disp})
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class ExportCurrentModelRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/admin/models/export-current")
+def admin_export_current_model(req: ExportCurrentModelRequest, _: None = Depends(_require_admin_token)):
+    _require_dev_feature("model export")
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/models/export-current", json=req.dict())
+            if res.status_code == 200:
+                disp = res.headers.get("content-disposition", 'attachment; filename="model.nbmodel.zip"')
+                return Response(content=res.content, media_type="application/zip", headers={"Content-Disposition": disp})
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting current model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+def _reload_ai_team_stats(force_db: bool = True) -> None:
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            client.post(
+                f"{AI_SERVICE_URL}/internal/reload-team-stats",
+                json={"force_db": force_db},
+            )
+    except Exception as e:
+        logger.error(f"Failed to reload AI team stats cache: {e}")
+
+
+@app.get("/api/admin/archive/export")
+def admin_export_archive(_: None = Depends(_require_admin_token)):
+    from archive_transfer import export_archive_zip
+
+    try:
+        data, filename = export_archive_zip()
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        logger.error(f"Archive export failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/archive/import")
+async def admin_import_archive(
+    file: UploadFile = File(...),
+    _: None = Depends(_require_admin_token),
+):
+    from archive_transfer import import_archive_zip
+
+    try:
+        raw = await file.read()
+        result = import_archive_zip(raw)
+        _reload_ai_team_stats(force_db=True)
+        return {"status": "success", **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Archive import failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/admin/training-health")
 def admin_training_health():
@@ -696,6 +925,7 @@ def admin_reset_progress():
 
 @app.post("/api/admin/reset-model")
 def admin_reset_model():
+    _require_dev_feature("reset-model")
     # The UPDATE on finished_bets (clearing trained_count across potentially 100k+ rows)
     # plus the model wipe should both be quick, but this gets a longer budget than the
     # 5-10s used by the simple toggle proxies below just in case the archive is large.
@@ -728,6 +958,7 @@ def admin_backtest_progress():
 
 @app.post("/api/admin/backtest")
 def admin_run_backtest(payload: Dict[str, Any] = Body(default={})):
+    _require_dev_feature("backtest")
     # A large --limit backtest can take several minutes of CPU-bound torch/LightGBM
     # inference on ai_service's side. The admin UI polls backtest_progress.json on the
     # shared volume if this proxy times out — the run still finishes server-side.
@@ -1041,6 +1272,7 @@ def admin_settle_live_bet(
 
 @app.post("/api/admin/reset-db/live")
 def admin_reset_live_db():
+    _require_dev_feature("db reset")
     try:
         reset_live_database()
         return {"status": "success", "message": "LIVE база данных успешно обнулена."}
@@ -1050,6 +1282,7 @@ def admin_reset_live_db():
 
 @app.post("/api/admin/reset-db/all")
 def admin_reset_all_db():
+    _require_dev_feature("db reset")
     try:
         reset_all_databases()
         return {"status": "success", "message": "ВСЕ базы данных и чекпоинты модели успешно обнулены."}

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # App Information
     APP_NAME: str = "NeuroBet Fonbet LIVE Parser"
     DEBUG: bool = False
+    NEUROBET_DEPLOY_MODE: str = "prod"
 
     # Database Settings
     DATABASE_URL: str = "postgresql://autobet:autobet@postgres:5432/autobet"

@@ -2,9 +2,11 @@ fastapi==0.115.8
 uvicorn==0.34.0
 httpx==0.28.1
 pydantic==2.10.6
+python-multipart
 apscheduler==3.11.0
-# PyTorch CUDA 12.4 wheel is installed in ai_service/Dockerfile (Pascal sm_61 / GTX 1050 Ti).
-# A plain `torch` from PyPI is CPU-only and would ignore the GPU.
+# PyTorch is installed in ai_service/Dockerfile:
+#   TORCH_VARIANT=cpu  — PyPI CPU wheel (docker-compose.yml)
+#   TORCH_VARIANT=cuda — cu124 wheel (docker-compose-cuda.yml overlay)
 lightgbm
 numpy
 psycopg2-binary==2.9.10

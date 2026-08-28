@@ -7,7 +7,7 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, ARCHIVE_DATABASE_URL
 
 # Admin/MCP polls (coverage COUNT, bankroll) run outside _engine_lock and used to
 # stampede this pool while a cold-start fetch already held a connection — every
@@ -16,6 +16,11 @@ from app.config import DATABASE_URL
 _POOL_MIN = 2
 _POOL_MAX = 32
 _pg_pool = psycopg2.pool.ThreadedConnectionPool(_POOL_MIN, _POOL_MAX, dsn=DATABASE_URL)
+_archive_pg_pool = (
+    _pg_pool
+    if ARCHIVE_DATABASE_URL == DATABASE_URL
+    else psycopg2.pool.ThreadedConnectionPool(_POOL_MIN, 16, dsn=ARCHIVE_DATABASE_URL)
+)
 
 
 class _SafeConn:
@@ -79,26 +84,43 @@ def _checkout():
     ) from last
 
 
-def _wrap(raw, schema: str):
+def _wrap(raw, schema: str, pg_pool):
     try:
         raw.cursor_factory = RealDictCursor
         with raw.cursor() as cur:
             cur.execute(f"SET search_path TO {schema}, public")
-        return _SafeConn(raw, _pg_pool)
+        return _SafeConn(raw, pg_pool)
     except Exception:
         try:
-            _pg_pool.putconn(raw)
+            pg_pool.putconn(raw)
         except Exception:
             pass
         raise
 
 
-def get_connection():
-    return _wrap(_checkout(), "live")
-
-
 def get_finished_connection():
-    return _wrap(_checkout(), "finished")
+    return _wrap(_checkout_pool(_pg_pool), "finished", _pg_pool)
+
+
+def get_archive_connection():
+    return _wrap(_checkout_pool(_archive_pg_pool), "finished", _archive_pg_pool)
+
+
+def _checkout_pool(pg_pool):
+    last = None
+    for _ in range(20):
+        try:
+            return pg_pool.getconn()
+        except pool.PoolError as e:
+            last = e
+            time.sleep(0.05)
+    raise pool.PoolError(
+        f"connection pool exhausted ({_pool_status()})"
+    ) from last
+
+
+def get_connection():
+    return _wrap(_checkout_pool(_pg_pool), "live", _pg_pool)
 
 
 def release_connection(conn):
@@ -110,7 +132,12 @@ def release_connection(conn):
 
 @contextmanager
 def db_connection(schema="live"):
-    conn = get_finished_connection() if schema == "finished" else get_connection()
+    if schema == "archive":
+        conn = get_archive_connection()
+    elif schema == "finished":
+        conn = get_finished_connection()
+    else:
+        conn = get_connection()
     try:
         yield conn
     except Exception:

@@ -1,0 +1,19 @@
+# CUDA overlay for NeuroBet — merge with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose-cuda.yml up --build -d
+#
+# Pulls the cu124 PyTorch wheel (~2.5 GiB of NVIDIA libs) and passes host GPUs into
+# backend (nvidia-smi for the admin panel) and ai (GRU training/inference).
+services:
+  backend:
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    gpus: all
+
+  ai:
+    build:
+      args:
+        TORCH_VARIANT: cuda
+    environment:
+      NEURALBET_DEVICE: ${NEURALBET_DEVICE:-auto}
+    gpus: all

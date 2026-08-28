@@ -1,7 +1,8 @@
 import logging
 import threading
 
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Body, Query, UploadFile, File
+from fastapi.responses import Response
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("ai_service_routes")
@@ -9,6 +10,7 @@ logger = logging.getLogger("ai_service_routes")
 _cycle_lock = threading.Lock()
 _cycle_in_flight = False
 
+from app.config import get_capabilities, IS_PROD, IS_DEV
 from app.neuralbet import (
     run_neuralbet_inference_and_training,
     get_ai_settings,
@@ -16,6 +18,7 @@ from app.neuralbet import (
     get_ai_logs,
     add_ai_log,
     reset_neural_network,
+    create_new_model_and_cold_start,
     get_reset_progress,
     get_training_health,
     run_backtest,
@@ -25,14 +28,39 @@ from app.neuralbet import (
     BACKTEST_DEFAULT_LIMIT,
     BACKTEST_MAX_LIMIT,
     get_training_history,
+    reload_ensemble_checkpoints,
 )
 from app.neuralbet import bankroll
+from app.neuralbet import model_registry
 
 router = APIRouter()
+
+
+def _require_dev(feature: str) -> None:
+    if IS_PROD:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{feature} is not available on prod deploy mode",
+        )
+
+
+@router.get("/capabilities")
+def read_capabilities():
+    return {"status": "success", **get_capabilities()}
 
 @router.get("/health")
 def health_check():
     return {"status": "ok", "service": "neurobet-ai-microservice", "port": 8001}
+
+
+@router.post("/internal/reload-team-stats")
+def reload_team_stats_route(payload: Dict[str, Any] = Body(default={})):
+    from app.neuralbet.pipeline import reload_team_stats_cache
+
+    force_db = bool(payload.get("force_db"))
+    info = reload_team_stats_cache(force_db=force_db)
+    return {"status": "success", **info}
+
 
 @router.post("/predict-and-train")
 def predict_and_train(payload: Dict[str, Any] = Body(default={})):
@@ -93,6 +121,8 @@ def read_settings():
 
 @router.post("/settings")
 def write_settings(payload: Dict[str, Any] = Body(...)):
+    if IS_PROD and payload.get("training_enabled") is True:
+        raise HTTPException(status_code=403, detail="training_enabled cannot be enabled on prod")
     ai_enabled = payload.get("ai_enabled")
     training_enabled = payload.get("training_enabled")
     quality_gate_bypass = payload.get("quality_gate_bypass")
@@ -246,6 +276,7 @@ def reset_progress():
 
 @router.post("/reset-model")
 def reset_model():
+    _require_dev("reset-model")
     """Wipes the live model's weights/booster/blend state, training/backtest charts,
     and both bankroll accounts, then clears trained_count on the resolved-bet archive
     so training restarts from that same history — see reset_neural_network."""
@@ -271,6 +302,7 @@ def backtest_latest(mode: str = Query("live")):
 
 @router.post("/backtest")
 def backtest(payload: Dict[str, Any] = Body(default={})):
+    _require_dev("backtest")
     """
     Read-only evaluation of the current live ensemble against historical resolved bets
     — see app/neuralbet/backtest.py's module docstring. Runs under the same
@@ -354,4 +386,111 @@ def eval_snapshot(
             },
         },
     }
+
+
+@router.get("/active-model")
+def read_active_model():
+    """Public read-only: name of the model used for live inference."""
+    model = model_registry.get_public_active_model()
+    return {"status": "success", "model": model}
+
+
+@router.get("/models")
+def list_registered_models():
+    model_registry.bootstrap_legacy_if_needed()
+    active = model_registry.get_active_model()
+    return {
+        "status": "success",
+        "models": model_registry.list_models(),
+        "active": active,
+    }
+
+
+@router.post("/models/new")
+def create_new_model_route(payload: Dict[str, Any] = Body(default={})):
+    _require_dev("new model")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        result = create_new_model_and_cold_start(name)
+        return {"status": "success", **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("New model failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/upload")
+async def upload_model(file: UploadFile = File(...)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        manifest = model_registry.import_nbmodel_zip(data)
+        add_ai_log("SYSTEM", f"Model imported: {manifest.get('name')} ({manifest.get('slug')})")
+        return {"status": "success", "model": manifest}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Model upload failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/{slug}/activate")
+def activate_registered_model(slug: str):
+    try:
+        result = model_registry.activate_model(slug, reload_ensemble_checkpoints)
+        add_ai_log("SYSTEM", f"Active model switched to {result.get('name')} ({slug})")
+        return {"status": "success", "model": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Model activate failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/models/{slug}")
+def delete_registered_model(slug: str):
+    try:
+        model_registry.delete_model(slug)
+        add_ai_log("SYSTEM", f"Model removed from registry: {slug}")
+        return {"status": "success", "slug": slug}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/models/export")
+def export_model(slug: Optional[str] = Query(None)):
+    _require_dev("model export")
+    try:
+        data, filename = model_registry.export_nbmodel_zip(slug=slug)
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/models/export-current")
+def export_current_model_route(payload: Dict[str, Any] = Body(default={})):
+    _require_dev("model export")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        data, filename = model_registry.export_current_model(name)
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Export current model failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 

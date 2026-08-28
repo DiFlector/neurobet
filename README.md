@@ -30,60 +30,154 @@
 
 ```
 neurobet/
-├── backend/                  # FastAPI сервис (Python 3.11 + uv)
-│   ├── database.py           # Таблицы events, odds_history, latest_odds, py_lower
-│   ├── parser_service.py     # Парсер Fonbet LIVE (ротация CDN и каталогов)
-│   ├── main.py               # REST API и планировщик парсинга каждые 60с
-│   └── Dockerfile
-├── frontend/
-│   └── autobet/              # Next.js 15 UI (React 19 + TypeScript)
-│       ├── app/              # Дашборд, фильтры, шапка со статистикой
-│       ├── components/       # MatchCard, OddsButton, OddsHistoryGraph, SubMarketsDrawer
-│       └── Dockerfile
-├── data/                     # Монтируемый том Docker для базы данных SQLite
-└── docker-compose.yml        # Оркестрация контейнеров (порты 8000 и 3000)
+├── backend/                  # FastAPI (парсинг, admin proxy, MCP)
+├── ai_service/               # PyTorch GRU + LightGBM, обучение/инференс
+│   └── app/neuralbet/model_registry.py  # реестр моделей, .nbmodel.zip
+├── frontend/autobet/         # Next.js UI + админка
+├── shared/                   # neurobet_features, neurobet_filters
+├── data/                     # prod: postgres + models
+├── data-dev/                 # dev: отдельная БД и модели
+├── docker-compose.yml        # prod stack
+├── docker-compose.dev.yml    # dev overlay (параллельно с prod)
+├── docker-compose-cuda.yml   # GPU overlay (prod или dev)
+├── .env.example              # prod template
+├── .env.dev.example          # dev template
+└── infrastructure/nginx-dev-location.snippet
 ```
 
 ---
 
-## 🚀 Быстрый запуск (Docker Compose)
+## Prod vs Dev
 
-Убедитесь, что у вас установлены [Docker](https://www.docker.com/) и `docker compose`.
+| | Prod | Dev |
+|---|------|-----|
+| URL | `https://necrolich.ru/diflector/neurobet` | `https://necrolich.ru/diflector/dev/neurobet` |
+| Env | `.env` | `.env.dev` |
+| Data | `./data` | `./data-dev` |
+| Обучение | нет | да |
+| Модели | upload + activate | upload + export `.nbmodel.zip` |
 
-### 1. Клонирование репозитория и запуск
+---
+
+## Как запускать
+
+Рабочая директория на сервере: `/srv/neurobet`
+
+### Первичная настройка
 
 ```bash
-git clone https://github.com/DiFlector/autobet.git
-cd autobet
+cd /srv/neurobet
+cp .env.example .env          # prod
+cp .env.dev.example .env.dev  # dev — отдельный POSTGRES_DB
 
-# Запуск приложения в Docker
-docker compose up --build -d
+# Nginx: добавить location из infrastructure/nginx-dev-location.snippet
+# в /srv/nginx-master/nginx/snippets/diflector-locations.conf
+# client_max_body_size 128m на prod location /diflector/neurobet
+docker exec nginx_master nginx -t && docker exec nginx_master nginx -s reload
 ```
 
-### 2. Доступ к интерфейсу
+### Prod
 
-* **Frontend UI**: [http://localhost:3000](http://localhost:3000)
-* **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+| Действие | CPU | CUDA |
+|----------|-----|------|
+| Запуск / rebuild | `docker compose up --build -d` | `+ -f docker-compose-cuda.yml` |
+| Логи | `docker compose logs -f` | |
+| Остановка | `docker compose down` | |
+
+Админка: `/admin` · MCP: `/api/mcp`
+
+### Dev (параллельно с prod)
+
+Префикс: `docker compose -f docker-compose.yml -f docker-compose.dev.yml -p neurobet-dev --env-file .env.dev`
+
+| Действие | Команда |
+|----------|---------|
+| Запуск | `{prefix} up --build -d` |
+| CUDA | добавить `-f docker-compose-cuda.yml` |
+| Логи | `{prefix} logs -f` |
+| Остановка | `{prefix} down` |
+
+### После изменений в коде
+
+| Изменили | Действие |
+|----------|----------|
+| backend / ai | `docker compose up -d --build backend ai` |
+| frontend / NEXT_PUBLIC_* | `docker compose up -d --build frontend` |
+| `.env` (не NEXT_PUBLIC) | `docker compose restart backend ai` |
+
+### Перенос модели dev → prod
+
+1. Dev `/admin` → **Экспорт текущей** → имя → скачать `*.nbmodel.zip`
+2. Prod `/admin` → **Загрузить .nbmodel.zip**
+3. Prod → **Активировать**
+4. Проверка: `docker compose logs -f ai`
+
+**Не копируйте** `./data/models/` между prod и dev — только `.nbmodel.zip`.
+
+### Перенос архива обучения (finished + team_stats)
+
+Общий архив `finished_events` / `finished_bets` живёт в **prod Postgres** (`ARCHIVE_DATABASE_URL` на dev указывает на `neurobet_postgres`). Live-данные dev — в отдельной БД `autobet_dev`.
+
+**Банкрол и live_bets** (симулированные ставки) всегда локальны для каждого стека — dev не делит боевой банкрол с prod.
+
+1. `/admin` → **Архив обучения** → **Экспорт .nbarchive.zip** (на любом сервере)
+2. На целевом сервере → **Импорт .nbarchive.zip** (заменяет finished-таблицы и `team_stats.json`)
+3. После импорта AI автоматически перечитывает кэш команд
+
+Формат: `manifest.json`, `finished_data.sql`, опционально `team_stats.json`.
+
+**Импорт полностью заменяет** данные в `finished.finished_events`, `finished.finished_bets`, `finished.finished_odds_history` и `team_stats.json` на новом сервере (TRUNCATE + загрузка). Live-матчи (`live.*`) и банкрол (`finished.live_bets`, `bankroll_*`) **не** входят в архив.
+
+### Экспорт архива из Postgres (CLI)
+
+На сервере с neurobet (старый одно-стековый или текущий prod):
+
+```bash
+cd /srv/neurobet
+./scripts/export_nbarchive_pg.sh
+```
+
+Создаёт `neurobet-archive-YYYYMMDD-HHMMSS.nbarchive.zip` в каталоге `neurobet` (или путь из аргумента).
+
+Импорт на целевом сервере: админка → **Архив обучения** → **Импорт** (полностью заменяет `finished_events`, `finished_bets`, `finished_odds_history` и `team_stats.json`).
 
 ---
 
-## 📡 API Эндпоинты
+## CPU / CUDA
+
+Оба стека (prod и dev) могут работать на CPU или GPU — overlay `docker-compose-cuda.yml` подключается независимо.
+
+```bash
+# Prod CUDA
+docker compose -f docker-compose.yml -f docker-compose-cuda.yml up --build -d
+
+# Dev CUDA
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose-cuda.yml \
+  -p neurobet-dev --env-file .env.dev up --build -d
+```
+
+---
+
+## 📡 API (кратко)
 
 | Метод | Эндпоинт | Описание |
 | :--- | :--- | :--- |
-| `GET` | `/api/matches` | Получение LIVE матчей с фильтрацией по виду спорта и поиску |
-| `GET` | `/api/matches/{event_id}/odds-history` | История коэффициентов для конкретного исхода |
-| `GET` | `/api/stats` | Статистика (активные матчи, всего записей истории, размер БД) |
-| `POST` | `/api/trigger-scrape` | Ручной запуск парсинга вне расписания |
+| `GET` | `/api/matches` | LIVE матчи |
+| `GET` | `/api/stats` | Статистика |
+| `GET` | `/api/admin/models` | Реестр моделей |
+| `POST` | `/api/admin/models/upload` | Загрузка `.nbmodel.zip` |
+| `POST` | `/api/admin/models/{slug}/activate` | Активация модели |
+| `GET` | `/api/admin/archive/export` | Экспорт `.nbarchive.zip` |
+| `POST` | `/api/admin/archive/import` | Импорт `.nbarchive.zip` |
 
 ---
 
 ## 🛠 Управление контейнерами
 
 ```bash
-# Просмотр логов
 docker compose logs -f
-
-# Остановка контейнеров
 docker compose down
+
+# Dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -p neurobet-dev --env-file .env.dev logs -f
 ```

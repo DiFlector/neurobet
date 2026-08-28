@@ -2,7 +2,31 @@
 
 Welcome to **NeuroBet** — a modern, containerized Fonbet LIVE parser and odds tracking platform built with FastAPI, Postgres, Next.js, and a PyTorch GRU + LightGBM ensemble.
 
-**Public URL on this host:** `https://diflector.ru/neurobet` (and `/admin`, `/stats`, …). The frontend joins Docker network `nginx-master-network`; host nginx in `/home/diflector/nginx` proxies `/neurobet` to `neurobet_frontend:3000`. Do not publish `:80`/`:443` from this compose. See `/home/diflector/nginx/AGENTS.md`.
+**Public URLs on this host:**
+
+| Stack | URL | MCP |
+|-------|-----|-----|
+| **Prod** | `https://necrolich.ru/diflector/neurobet` | `.../api/mcp` (read-only eval, мониторинг) |
+| **Dev** | `https://necrolich.ru/diflector/dev/neurobet` | `.../api/mcp` (backtest, run_eval_pack) |
+
+Frontend joins Docker network `nginx-master-network`; host nginx in `/srv/nginx-master` proxies paths to `neurobet_frontend:3000` (prod) and `neurobet_dev_frontend:3000` (dev). Do not publish `:80`/`:443` from this compose. See `infrastructure/nginx-dev-location.snippet`.
+
+---
+
+## Prod vs Dev (`NEUROBET_DEPLOY_MODE`)
+
+| Capability | prod | dev |
+|------------|------|-----|
+| Inference | yes | yes |
+| Online training | **no** | yes |
+| Backtest / eval-pack | **no** | yes |
+| Reset model / DB | **no** | yes |
+| Model upload / activate | yes | yes |
+| Model export `.nbmodel.zip` | **no** | yes |
+
+**Model transfer:** dev export → prod upload → prod activate. Never copy `./data/models/` between volumes.
+
+Registry: `data/models/registry/`, API `/api/admin/models/*`, format `.nbmodel.zip` (`pytorch_gru.pt`, `lightgbm_model.txt`, optional `lightgbm_meta.json`, `manifest.json`).
 
 ---
 
@@ -93,12 +117,12 @@ autobet/
 
 Cursor connects as the **client**; NeuroBet is the **server**. Production endpoint is Streamable HTTP — no extra port, it rides the existing `/api` rewrite:
 
-* URL: `https://diflector.ru/neurobet/api/mcp` (local: `POST /api/mcp` on the backend)
+* URL: `https://necrolich.ru/diflector/neurobet/api/mcp` (dev: `.../diflector/dev/neurobet/api/mcp`)
 * Cursor config: `.cursor/mcp.json` (`neurobet-eval`, `"type": "http"`)
 * Implementation: `backend/mcp_eval.py` (source of truth for the tool list)
 * Stdio fallback for offline/dev: `mcp/neurobet_eval.py` — forwards JSON-RPC to `{NEUROBET_API_URL}/api/mcp`
 
-All tools are **read-only** except running a backtest (CPU, 15–60s, does not mutate the model). Destructive admin actions are **not** exposed: reset DB / model / bankroll, cancel live bets, toggle inference/training.
+All tools are **read-only** except running a backtest (CPU, 15–60s, does not mutate the model). On **prod** deploy mode, `run_backtest` / `run_eval_pack` return 403 — use **dev** MCP URL for model review and fresh backtests.
 
 Prefer a **granular** tool when you only need one slice. Use a composite when reviewing the whole picture.
 
@@ -180,7 +204,7 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
    - **`get_latest_backtest`** — полный JSON (`by_sport`, `by_market`, `walk_forward_folds`, …)
    - **`get_backtest_history`** — тренд последних прогонов
    - **`get_eval_pack`** — всё в одном JSON (без нового бэктestа)
-5. **Свежие веса обязательны** → **`run_eval_pack`** или **`run_backtest`** (15–60 с, CPU).
+5. **Свежие веса обязательны** → **`run_eval_pack`** or **`run_backtest`** (15–60 с, CPU) on **dev** MCP only.
    Не вызывать без запроса пользователя, если `get_backtest_review` моложе ~6 ч и веса не менялись.
 
 **Live vs full:** шаги 1–5 и снятие `quality_gate` — только live MCP (`get_backtest_review` /
@@ -236,10 +260,41 @@ Prefer a **granular** tool when you only need one slice. Use a composite when re
 
 ---
 
-## 💻 Commands
+## Operations / Commands
+
+Рабочая директория: `/srv/neurobet`. Агент **не** запускает compose без явной просьбы.
+
+### Prod
 
 ```bash
-# Start container stack
+cd /srv/neurobet && git pull
+docker compose up --build -d
+# CUDA: docker compose -f docker-compose.yml -f docker-compose-cuda.yml up --build -d
+docker compose logs -f ai
+docker compose restart backend ai   # после .env (не NEXT_PUBLIC_*)
+docker compose up -d --build frontend   # после NEXT_PUBLIC_* / basePath
+```
+
+### Dev (parallel)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  -p neurobet-dev --env-file .env.dev up --build -d
+# + -f docker-compose-cuda.yml for GPU
+```
+
+### Model deploy workflow
+
+1. Train/review on **dev** (`/admin`, dev MCP)
+2. Dev `/admin` → Export current → `.nbmodel.zip`
+3. Prod `/admin` → Upload → Activate
+
+---
+
+## 💻 Commands (legacy local)
+
+```bash
+# Start container stack (prod on server)
 docker compose up --build -d
 
 # View container logs

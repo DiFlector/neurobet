@@ -46,7 +46,13 @@ from neurobet_features import (  # noqa: E402
 
 logger = logging.getLogger("database")
 
+_ARCHIVE_DSN = os.getenv("ARCHIVE_DATABASE_URL") or settings.DATABASE_URL
 _pg_pool = psycopg2.pool.ThreadedConnectionPool(2, 40, dsn=settings.DATABASE_URL)
+_archive_pg_pool = (
+    _pg_pool
+    if _ARCHIVE_DSN == settings.DATABASE_URL
+    else psycopg2.pool.ThreadedConnectionPool(2, 20, dsn=_ARCHIVE_DSN)
+)
 
 import threading
 
@@ -96,11 +102,22 @@ def get_connection():
     return _SafeConn(conn, _pg_pool)
 
 def get_finished_connection():
+    """Per-stack finished schema: bankroll accounts and simulated live_bets."""
     conn = _pg_pool.getconn()
     conn.cursor_factory = RealDictCursor
     with conn.cursor() as cur:
         cur.execute("SET search_path TO finished, public")
     return _SafeConn(conn, _pg_pool)
+
+
+def get_archive_connection():
+    """Shared training archive: finished_events and finished_bets."""
+    pool = _archive_pg_pool
+    conn = pool.getconn()
+    conn.cursor_factory = RealDictCursor
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO finished, public")
+    return _SafeConn(conn, pool)
 
 def release_connection(conn):
     if isinstance(conn, _SafeConn):
@@ -123,7 +140,9 @@ DASHBOARD_STATEMENT_TIMEOUT_MS = int(os.getenv("NEUROBET_DASHBOARD_STATEMENT_TIM
 @contextmanager
 def db_connection(schema="live"):
     """Контекстный менеджер для безопасного получения/возврата соединения из пула."""
-    if schema == "finished":
+    if schema == "archive":
+        conn = get_archive_connection()
+    elif schema == "finished":
         conn = get_finished_connection()
     else:
         conn = get_connection()
@@ -144,7 +163,13 @@ def dashboard_db(schema: str = "live", timeout_ms: Optional[int] = None):
     reused from the same pool.
     """
     ms = DASHBOARD_STATEMENT_TIMEOUT_MS if timeout_ms is None else int(timeout_ms)
-    conn = get_finished_connection() if schema == "finished" else get_connection()
+    conn = (
+        get_archive_connection()
+        if schema == "archive"
+        else get_finished_connection()
+        if schema == "finished"
+        else get_connection()
+    )
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT set_config('statement_timeout', %s, true)", (str(max(ms, 0)),))
@@ -662,7 +687,7 @@ def archive_finished_events(
 
     logger.info(f"Archiving {len(ready)} finished event(s) into the training archive...")
     archive_started = time.time()
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     try:
         f_cursor = f_conn.cursor()
 
@@ -1301,7 +1326,7 @@ def _compute_db_stats_core() -> Dict[str, Any]:
     finished_history_count = 0
     unresolved_bets_count = 0
     try:
-        f_conn = get_finished_connection()
+        f_conn = get_archive_connection()
         f_cursor = f_conn.cursor()
         finished_count = _approx_pg_row_count(f_cursor, "finished", "finished_events")
         finished_history_count = _approx_pg_row_count(f_cursor, "finished", "finished_bets")
@@ -1547,7 +1572,7 @@ def _compute_headline_guess_rate() -> Tuple[Optional[float], Optional[float]]:
             """
             support_params = [allowed_sports, allowed_factors, allowed_labels]
 
-        f_conn = get_finished_connection()
+        f_conn = get_archive_connection()
         f_cursor = f_conn.cursor()
         f_cursor.execute(
             f"""
@@ -1676,7 +1701,7 @@ def warm_headline_guess_rate_cache() -> None:
 
 
 def _compute_market_support() -> Dict[Tuple[str, int, str], int]:
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     try:
         f_cursor = f_conn.cursor()
         f_cursor.execute("""
@@ -2025,9 +2050,6 @@ def reset_all_databases():
 
     f_conn = get_finished_connection()
     f_cursor = f_conn.cursor()
-    f_cursor.execute("DELETE FROM finished_events;")
-    f_cursor.execute("DELETE FROM finished_bets;")
-    f_cursor.execute("DELETE FROM finished_odds_history;")
     f_cursor.execute("DELETE FROM live_bets;")
     f_cursor.execute("DELETE FROM bankroll_ledger;")
     f_cursor.execute("""
@@ -2038,8 +2060,23 @@ def reset_all_databases():
             updated_at = now();
     """)
     f_conn.commit()
-    # See reset_live_database's comment — no explicit VACUUM under Postgres.
     release_connection(f_conn)
+
+    if _ARCHIVE_DSN == settings.DATABASE_URL:
+        a_conn = get_archive_connection()
+        a_cursor = a_conn.cursor()
+        a_cursor.execute("DELETE FROM finished_events;")
+        a_cursor.execute("DELETE FROM finished_bets;")
+        a_cursor.execute("DELETE FROM finished_odds_history;")
+        a_conn.commit()
+        release_connection(a_conn)
+    else:
+        logger.info(
+            "reset_all_databases: skipped shared training archive "
+            "(ARCHIVE_DATABASE_URL points to another Postgres)"
+        )
+
+    # See reset_live_database's comment — no explicit VACUUM under Postgres.
 
     # Both model checkpoints must go — leaving lightgbm_model.txt behind after a "full
     # reset" would keep serving predictions from a booster trained on data that's now gone.
@@ -2103,7 +2140,7 @@ def get_bet_type_stats() -> Dict[str, Any]:
     (sport_path.split("/")[0] in neurobets/page.tsx) so e.g. "П1" in football and "П1"
     in basketball are never lumped into one bar.
     """
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     f_cursor = f_conn.cursor()
     pool_sql, pool_params = _live_pool_sql("e", "h", "h.final_coefficient")
     f_cursor.execute(f"""
@@ -2207,7 +2244,7 @@ def get_roi_stats() -> Dict[str, Any]:
       If the model's Brier isn't below this, it isn't adding anything the raw odds
       didn't already say for free.
     """
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     f_cursor = f_conn.cursor()
     pool_sql, pool_params = _live_pool_sql("e", "h", "h.final_coefficient")
     f_cursor.execute(f"""
@@ -2355,7 +2392,7 @@ def get_neurobets_history(
             ORDER BY h.id DESC
             LIMIT %s OFFSET %s
         """
-        with dashboard_db("finished") as f_conn:
+        with dashboard_db("archive") as f_conn:
             f_cursor = f_conn.cursor()
             f_cursor.execute(data_query, params + [limit, offset])
             history_items = [dict(r) for r in f_cursor.fetchall()]
@@ -2440,7 +2477,7 @@ def _compute_history_summary(
         s = f"%{search.lower()}%"
         params.extend([s, s, s])
 
-    with dashboard_db("finished", timeout_ms=15000) as f_conn:
+    with dashboard_db("archive", timeout_ms=15000) as f_conn:
         f_cursor = f_conn.cursor()
         count_query = f"""
             SELECT COUNT(*) AS total_count,
@@ -2653,7 +2690,7 @@ def get_live_bets(
     missing_ids = [eid for eid in event_ids if eid not in live_info]
     finished_info: Dict[int, Dict[str, Any]] = {}
     if missing_ids:
-        with dashboard_db("finished") as f_conn:
+        with dashboard_db("archive") as f_conn:
             f_cursor = f_conn.cursor()
             f_cursor.execute(
                 "SELECT event_id, score, score_1, score_2, sport_path FROM finished_events WHERE event_id = ANY(%s)",
@@ -3243,7 +3280,7 @@ def _load_event_grading_state(event_id: int) -> Optional[Dict[str, Any]]:
     finally:
         release_connection(conn)
 
-    f_conn = get_finished_connection()
+    f_conn = get_archive_connection()
     try:
         f_cursor = f_conn.cursor()
         f_cursor.execute(
@@ -3344,20 +3381,65 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         release_connection(f_conn)
         return {"settled": 0, "won": 0, "lost": 0, "void": 0, "messages": []}
 
+    a_conn = get_archive_connection()
+    a_cursor = a_conn.cursor()
+
     won = lost = void = 0
     messages: List[Dict[str, str]] = []
 
-    for b in open_bets:
-        f_cursor.execute("""
-            SELECT is_win, is_push FROM finished_bets
-            WHERE event_id = %s AND factor_id = %s AND COALESCE(parameter,'') = COALESCE(%s,'')
-              AND COALESCE(market_prefix,'') = COALESCE(%s,'')
-        """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"]))
-        row = f_cursor.fetchone()
-        if row is not None:
-            outcome, msgs = _apply_bet_settlement(
-                f_cursor, b, row["is_win"], bool(row["is_push"]),
-            )
+    try:
+        for b in open_bets:
+            a_cursor.execute("""
+                SELECT is_win, is_push FROM finished_bets
+                WHERE event_id = %s AND factor_id = %s AND COALESCE(parameter,'') = COALESCE(%s,'')
+                  AND COALESCE(market_prefix,'') = COALESCE(%s,'')
+            """, (b["event_id"], b["factor_id"], b["parameter"], b["market_prefix"]))
+            row = a_cursor.fetchone()
+            if row is not None:
+                outcome, msgs = _apply_bet_settlement(
+                    f_cursor, b, row["is_win"], bool(row["is_push"]),
+                )
+                messages.extend(msgs)
+                if outcome == "win":
+                    won += 1
+                elif outcome == "loss":
+                    lost += 1
+                else:
+                    void += 1
+                continue
+
+            # Event finalized (is_live=0) but not archived yet — grade from live DB scores
+            # instead of waiting for finished_bets (can lag minutes behind results API).
+            state = _load_event_grading_state(b["event_id"])
+            if state is None or not state.get("finalized"):
+                continue
+
+            prefix = (b["market_prefix"] or "").strip()
+            ordinal = _parse_period_ordinal(prefix) if prefix and prefix != MAIN_MARKET_PREFIX else None
+            start_ts = state.get("missing_since") or state.get("last_updated_at")
+            # Main-match bets need the official-results wait — interim scores (1:1 on П1)
+            # must not settle as a loss during a line recalc / premature finalize.
+            if ordinal is None and not _stale_past_results_wait(start_ts, timestamp_str):
+                continue
+
+            period_ready = True
+            if ordinal is not None:
+                period_ready = _period_ready_for_settlement(
+                    False, ordinal, state["period_scores"], state["sport_path"],
+                    match_db_live=not bool(state.get("finalized")),
+                )
+            if not period_ready:
+                # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
+                # After the official-results wait, void rather than grade 10-6 as a final
+                # or leave the stake locked forever.
+                if not _stale_past_grace_only(start_ts, timestamp_str):
+                    continue
+                is_win, is_push = None, False
+            else:
+                is_win, is_push = _grade_live_bet(b, state)
+                if is_win is None and not is_push:
+                    continue
+            outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
             messages.extend(msgs)
             if outcome == "win":
                 won += 1
@@ -3365,47 +3447,8 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
                 lost += 1
             else:
                 void += 1
-            continue
-
-        # Event finalized (is_live=0) but not archived yet — grade from live DB scores
-        # instead of waiting for finished_bets (can lag minutes behind results API).
-        state = _load_event_grading_state(b["event_id"])
-        if state is None or not state.get("finalized"):
-            continue
-
-        prefix = (b["market_prefix"] or "").strip()
-        ordinal = _parse_period_ordinal(prefix) if prefix and prefix != MAIN_MARKET_PREFIX else None
-        start_ts = state.get("missing_since") or state.get("last_updated_at")
-        # Main-match bets need the official-results wait — interim scores (1:1 on П1)
-        # must not settle as a loss during a line recalc / premature finalize.
-        if ordinal is None and not _stale_past_results_wait(start_ts, timestamp_str):
-            continue
-
-        period_ready = True
-        if ordinal is not None:
-            period_ready = _period_ready_for_settlement(
-                False, ordinal, state["period_scores"], state["sport_path"],
-                match_db_live=not bool(state.get("finalized")),
-            )
-        if not period_ready:
-            # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
-            # After the official-results wait, void rather than grade 10-6 as a final
-            # or leave the stake locked forever.
-            if not _stale_past_grace_only(start_ts, timestamp_str):
-                continue
-            is_win, is_push = None, False
-        else:
-            is_win, is_push = _grade_live_bet(b, state)
-            if is_win is None and not is_push:
-                continue
-        outcome, msgs = _apply_bet_settlement(f_cursor, b, is_win, is_push)
-        messages.extend(msgs)
-        if outcome == "win":
-            won += 1
-        elif outcome == "loss":
-            lost += 1
-        else:
-            void += 1
+    finally:
+        release_connection(a_conn)
 
     settled = won + lost + void
     if settled:

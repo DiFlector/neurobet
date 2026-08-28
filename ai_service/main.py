@@ -92,24 +92,29 @@ def run_scheduled_backtest():
 
 @app.on_event("startup")
 def startup_event():
-    scheduler.add_job(
-        run_scheduled_backtest,
-        CronTrigger(
-            hour=SCHEDULED_BACKTEST_CRON_HOURS,
-            minute=SCHEDULED_BACKTEST_CRON_MINUTES,
-            timezone=MOSCOW_TZ,
-        ),
-        id="scheduled_backtest",
-        misfire_grace_time=1800,
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.start()
-    logger.info(
-        "Scheduler started! Backtest will run automatically every 3h "
-        f"(cron hour={SCHEDULED_BACKTEST_CRON_HOURS!r} minute={SCHEDULED_BACKTEST_CRON_MINUTES!r} "
-        "Moscow time)."
-    )
+    from app.config import IS_DEV
+
+    if IS_DEV:
+        scheduler.add_job(
+            run_scheduled_backtest,
+            CronTrigger(
+                hour=SCHEDULED_BACKTEST_CRON_HOURS,
+                minute=SCHEDULED_BACKTEST_CRON_MINUTES,
+                timezone=MOSCOW_TZ,
+            ),
+            id="scheduled_backtest",
+            misfire_grace_time=1800,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.start()
+        logger.info(
+            "Scheduler started! Backtest will run automatically every 3h "
+            f"(cron hour={SCHEDULED_BACKTEST_CRON_HOURS!r} minute={SCHEDULED_BACKTEST_CRON_MINUTES!r} "
+            "Moscow time)."
+        )
+    else:
+        logger.info("Prod deploy mode — scheduled backtest disabled.")
     add_ai_log(
         "SYSTEM",
         "AI worker ready — inference/training cycles run in background threads.",

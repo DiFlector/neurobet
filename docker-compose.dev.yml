@@ -1,0 +1,64 @@
+# Dev overlay — parallel stack on the same VPS as prod.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     -p neurobet-dev --env-file .env.dev up --build -d
+#
+# Public URL: https://necrolich.ru/diflector/dev/neurobet
+# Data: ./data-dev (separate Postgres + models from prod ./data)
+
+services:
+  postgres:
+    container_name: neurobet_dev_postgres
+    volumes:
+      - ./data-dev/postgres:/var/lib/postgresql/data
+
+  # Dev backend/ai join neurobet_default only to reach neurobet_postgres (archive).
+  # Never use service names backend/ai on that network — prod and dev stacks collide;
+  # use container_name URLs (neurobet_backend, neurobet_dev_backend, …).
+  backend:
+    container_name: neurobet_dev_backend
+    environment:
+      NEUROBET_DEPLOY_MODE: dev
+      AI_SERVICE_URL: http://neurobet_dev_ai:8001
+      ARCHIVE_DATABASE_URL: ${ARCHIVE_DATABASE_URL:-postgresql://autobet:autobet@neurobet_postgres:5432/autobet}
+    volumes:
+      - ./data-dev:/app/data
+    networks:
+      - default
+      - neurobet_default
+
+  ai:
+    container_name: neurobet_dev_ai
+    environment:
+      NEUROBET_DEPLOY_MODE: dev
+      BACKEND_URL: http://neurobet_dev_backend:8000
+      ARCHIVE_DATABASE_URL: ${ARCHIVE_DATABASE_URL:-postgresql://autobet:autobet@neurobet_postgres:5432/autobet}
+    volumes:
+      - ./data-dev:/app/data
+    networks:
+      - default
+      - neurobet_default
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/diflector/dev/neurobet}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/diflector/dev/neurobet}
+        NEXT_PUBLIC_DEPLOY_MODE: dev
+        BACKEND_INTERNAL_URL: http://neurobet_dev_backend:8000
+    container_name: neurobet_dev_frontend
+    environment:
+      NEUROBET_DEPLOY_MODE: dev
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/diflector/dev/neurobet}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/diflector/dev/neurobet}
+      NEXT_PUBLIC_DEPLOY_MODE: dev
+      BACKEND_INTERNAL_URL: http://neurobet_dev_backend:8000
+    networks:
+      - default
+      - nginx-master-network
+
+# Dev: https://necrolich.ru/diflector/dev/neurobet via nginx-master → neurobet_dev_frontend:3000
+
+networks:
+  neurobet_default:
+    external: true
+    name: neurobet_default

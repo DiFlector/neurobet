@@ -12,7 +12,7 @@ import torch
 
 from app.core.database import (
     get_connection,
-    get_finished_connection,
+    get_archive_connection,
     release_connection,
     save_ai_predictions,
 )
@@ -57,7 +57,7 @@ from neurobet_filters import (
     set_enabled_markets,
     live_universe_sql_params,
 )
-from app.config import MODEL_DIR
+from app.config import MODEL_DIR, IS_PROD
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
 from app.neuralbet.training_history import record_training_run, get_training_history, clear_training_history
 
@@ -89,6 +89,11 @@ _tracked_conns: list = []
 
 def cycle_aborted() -> bool:
     return _abort_cycle.is_set()
+
+
+def reload_ensemble_checkpoints() -> None:
+    with _engine_lock:
+        ensemble_engine.reload_checkpoints()
 
 
 def _track_conn(conn):
@@ -419,6 +424,8 @@ def _restore_ai_logs() -> None:
 
 
 def add_ai_log(category: str, message: str, level: str = "INFO"):
+    if IS_PROD and category == "TRAINING":
+        return
     timestamp_str = now_moscow().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "timestamp": timestamp_str,
@@ -495,6 +502,17 @@ def _restore_ai_settings() -> None:
 
 
 _restore_ai_settings()
+if IS_PROD and AI_SETTINGS.get("training_enabled"):
+    AI_SETTINGS["training_enabled"] = False
+    _persist_ai_settings()
+    add_ai_log("SYSTEM", "Prod deploy mode — online training forced OFF.", level="WARNING")
+
+try:
+    from app.neuralbet.model_registry import bootstrap_legacy_if_needed
+    bootstrap_legacy_if_needed()
+except Exception as e:
+    logger.warning("Model registry bootstrap failed: %s", e)
+
 # Survive a failed admin reset without requiring another redeploy — a stuck abort flag
 # otherwise makes every cycle return "skipped" with no INFERENCE/TRAINING lines.
 _abort_cycle.clear()
@@ -554,7 +572,7 @@ def reset_neural_network() -> dict[str, Any]:
                 clear_backtest_history()
 
                 set_reset_progress("archive", "Обнуляю trained_count в архиве…", 65)
-                f_conn = get_finished_connection()
+                f_conn = get_archive_connection()
                 f_cursor = f_conn.cursor()
                 f_cursor.execute(
                     "UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0"
@@ -611,6 +629,86 @@ def reset_neural_network() -> dict[str, Any]:
         _abort_cycle.clear()
 
 
+def create_new_model_and_cold_start(name: str) -> dict[str, Any]:
+    """
+    Dev-only: fresh random weights → new registry entry → cold-start on shared archive.
+    Unlike reset_neural_network, does not wipe bankrolls or live_bets.
+    """
+    global _cycle_count, _low_epoch_streak, _checkpoint_reject_streak, _online_pass_count
+    from app.neuralbet.backtest import clear_backtest_history
+
+    display_name = (name or "").strip()
+    if not display_name:
+        raise ValueError("name is required")
+
+    reset_rows = 0
+    try:
+        set_reset_progress("starting", f"Создаю модель «{display_name}»…", 1, active=True)
+        add_ai_log(
+            "SYSTEM",
+            f"New model requested: «{display_name}» — fresh weights + cold-start.",
+            level="WARNING",
+        )
+        _abort_cycle.clear()
+        abort_in_flight_cycle()
+        _invalidate_archive_coverage()
+        set_reset_progress("waiting_lock", "Жду завершения текущего цикла…", 15)
+        with _engine_lock:
+            try:
+                set_reset_progress("wiping", "Инициализирую веса…", 35)
+                ensemble_engine.reset()
+                ensemble_engine.save_checkpoints()
+                _reset_training_caches()
+
+                set_reset_progress("registry", "Регистрирую модель…", 50)
+                from app.neuralbet import model_registry
+                manifest = model_registry.create_new_model_from_runtime(display_name)
+
+                set_reset_progress("charts", "Чищу графики обучения и бэктеста…", 62)
+                clear_training_history()
+                clear_backtest_history()
+
+                if not AI_SETTINGS["training_enabled"]:
+                    AI_SETTINGS["training_enabled"] = True
+                    _persist_ai_settings()
+                    add_ai_log("SYSTEM", "Training auto-enabled for new model cold-start.")
+
+                set_reset_progress("archive", "Обнуляю trained_count в архиве…", 78)
+                f_conn = get_archive_connection()
+                f_cursor = f_conn.cursor()
+                f_cursor.execute(
+                    "UPDATE finished_bets SET trained_count = 0 WHERE trained_count != 0"
+                )
+                reset_rows = f_cursor.rowcount
+                set_reset_progress(
+                    "cold_start",
+                    f"Запускаю cold-start на {_cold_start_archive_fraction():.0%} старейших событий…",
+                    92,
+                )
+                _begin_cold_start(f_cursor)
+                release_connection(f_conn)
+
+                _cycle_count = 0
+                _low_epoch_streak = 0
+                _checkpoint_reject_streak = 0
+            finally:
+                _release_tracked_conns()
+
+        add_ai_log(
+            "SYSTEM",
+            f"New model «{manifest.get('name')}» ({manifest.get('slug')}): cold-start started, "
+            f"trained_count cleared on {reset_rows} bet(s). Bankrolls unchanged.",
+            level="WARNING",
+        )
+        set_reset_progress("done", "Готово", 100, active=False)
+        return {"model": manifest, "reset_rows": reset_rows, "cold_start": True}
+    except Exception:
+        set_reset_progress("error", "Ошибка при создании модели", 0, active=False)
+        raise
+    finally:
+        _abort_cycle.clear()
+
+
 def update_ai_settings(
     ai_enabled: bool | None = None,
     training_enabled: bool | None = None,
@@ -625,24 +723,38 @@ def update_ai_settings(
         add_ai_log("SYSTEM", f"AI Inference toggle changed: {status_str}")
         changed = True
     if training_enabled is not None:
-        AI_SETTINGS["training_enabled"] = bool(training_enabled)
-        status_str = "ENABLED" if AI_SETTINGS["training_enabled"] else "DISABLED"
-        add_ai_log("SYSTEM", f"Online Training toggle changed: {status_str}")
-        changed = True
+        if IS_PROD and bool(training_enabled):
+            add_ai_log(
+                "SYSTEM",
+                "Online training cannot be enabled on prod deploy mode.",
+                level="WARNING",
+            )
+        else:
+            AI_SETTINGS["training_enabled"] = bool(training_enabled)
+            status_str = "ENABLED" if AI_SETTINGS["training_enabled"] else "DISABLED"
+            add_ai_log("SYSTEM", f"Online Training toggle changed: {status_str}")
+            changed = True
     if quality_gate_bypass is not None:
-        AI_SETTINGS["quality_gate_bypass"] = bool(quality_gate_bypass)
-        status_str = "ON" if AI_SETTINGS["quality_gate_bypass"] else "OFF"
-        add_ai_log(
-            "SYSTEM",
-            f"Quality gate bypass changed: {status_str}"
-            + (
-                " — live bets ignore backtest gate."
-                if AI_SETTINGS["quality_gate_bypass"]
-                else "."
-            ),
-            level="WARNING" if AI_SETTINGS["quality_gate_bypass"] else "INFO",
-        )
-        changed = True
+        if IS_PROD:
+            add_ai_log(
+                "SYSTEM",
+                "Quality gate bypass is not available on prod deploy mode.",
+                level="WARNING",
+            )
+        else:
+            AI_SETTINGS["quality_gate_bypass"] = bool(quality_gate_bypass)
+            status_str = "ON" if AI_SETTINGS["quality_gate_bypass"] else "OFF"
+            add_ai_log(
+                "SYSTEM",
+                f"Quality gate bypass changed: {status_str}"
+                + (
+                    " — live bets ignore backtest gate."
+                    if AI_SETTINGS["quality_gate_bypass"]
+                    else "."
+                ),
+                level="WARNING" if AI_SETTINGS["quality_gate_bypass"] else "INFO",
+            )
+            changed = True
     if enabled_sports is not None:
         sports = set_enabled_sports(enabled_sports)
         names = ", ".join(sorted(sports)) or "(none)"
@@ -660,6 +772,8 @@ def update_ai_settings(
 
 def get_ai_logs() -> list[dict[str, Any]]:
     with _logs_lock:
+        if IS_PROD:
+            return [e for e in AI_LOGS if e.get("category") != "TRAINING"]
         return list(AI_LOGS)
 
 
@@ -1040,7 +1154,7 @@ def get_archive_training_coverage(force: bool = False) -> dict[str, Any]:
         holdout: set | None = None
         f_conn = None
         try:
-            f_conn = get_finished_connection()
+            f_conn = get_archive_connection()
             f_cursor = f_conn.cursor()
             sports, factors = universe_sql_params()
             holdout = _holdout_event_ids()
@@ -1155,6 +1269,8 @@ def get_live_quality_gate() -> dict[str, Any]:
 
 def _live_quality_skip_reason() -> str | None:
     """Block new virtual live bets until the latest backtest shows an edge on OOS."""
+    if IS_PROD:
+        return None
     if AI_SETTINGS.get("quality_gate_bypass"):
         return None
     gate = get_live_quality_gate()
@@ -2085,6 +2201,21 @@ def _ensure_team_stats_cache(f_cursor=None) -> None:
         _refresh_team_stats_cache(f_cursor)
 
 
+def reload_team_stats_cache(force_db: bool = False) -> dict[str, Any]:
+    """Reload in-memory team stats from disk or rebuild from shared finished archive."""
+    if not force_db:
+        _ensure_team_stats_cache()
+        if os.path.exists(TEAM_STATS_PATH):
+            return {"source": "disk", "path": TEAM_STATS_PATH}
+    conn = get_archive_connection()
+    try:
+        _refresh_team_stats_cache(conn.cursor())
+    finally:
+        release_connection(conn)
+    _invalidate_archive_coverage()
+    return {"source": "database", "path": TEAM_STATS_PATH}
+
+
 def _mark_trained(f_cursor, keys: list[tuple]):
     for eid, fid, param, prefix in keys:
         f_cursor.execute(
@@ -2122,7 +2253,7 @@ def _refresh_market_support() -> dict[tuple, int]:
         return _market_support
     f_conn = None
     try:
-        f_conn = _track_conn(get_finished_connection())
+        f_conn = _track_conn(get_archive_connection())
         f_cursor = f_conn.cursor()
         f_cursor.execute("""
             SELECT TRIM(SPLIT_PART(f.sport_path, '/', 1)) AS sport, h.factor_id, h.label, COUNT(*) AS c
@@ -2281,7 +2412,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     """Live odds -> calibrated predictions -> Kelly. Skipped during cold-start."""
     # Refresh team-stats KB before live views (same finished_events path as LGB).
     try:
-        stats_conn = _track_conn(get_finished_connection())
+        stats_conn = _track_conn(get_archive_connection())
         try:
             _refresh_team_stats_cache(stats_conn.cursor())
         finally:
@@ -2787,12 +2918,19 @@ def _run_neuralbet_inference_and_training_locked(
             "finished_samples_trained": 0,
         }
 
-    if not AI_SETTINGS["training_enabled"]:
-        add_ai_log(
-            "TRAINING",
-            "Online Retraining skipped (Disabled by Admin).",
-            level="WARNING",
-        )
+    if not AI_SETTINGS["training_enabled"] or IS_PROD:
+        if IS_PROD:
+            add_ai_log(
+                "TRAINING",
+                "Online Retraining skipped (prod deploy mode).",
+                level="WARNING",
+            )
+        else:
+            add_ai_log(
+                "TRAINING",
+                "Online Retraining skipped (Disabled by Admin).",
+                level="WARNING",
+            )
         return {"predictions_count": len(predictions), "finished_samples_trained": 0}
 
     # Force cycle 1 too (cold start — otherwise every one of these stays at its
@@ -2873,7 +3011,7 @@ def _run_neuralbet_inference_and_training_locked(
     lgb_rows: list[dict[str, Any]] = []
     lgb_val_rows: list[dict[str, Any]] = []
     try:
-        f_conn = _track_conn(get_finished_connection())
+        f_conn = _track_conn(get_archive_connection())
         f_cursor = f_conn.cursor()
 
         candidate_val_event_ids = _get_val_event_ids(f_cursor)
@@ -3192,7 +3330,7 @@ def _run_neuralbet_inference_and_training_locked(
             # archive coverage (deferred chunks + epoch gate) so a reject cannot
             # trap the final chunk in an infinite loop.
             if accepted or cold_start_active:
-                f_conn2 = get_finished_connection()
+                f_conn2 = get_archive_connection()
                 f_cursor2 = f_conn2.cursor()
                 _mark_trained(f_cursor2, train_keys)
                 f_conn2.commit()

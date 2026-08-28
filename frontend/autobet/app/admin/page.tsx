@@ -30,6 +30,8 @@ import {
   HardDrive,
   CircuitBoard,
   ChevronDown,
+  Package,
+  Upload,
 } from "lucide-react"
 import { HeaderNav } from "@/components/HeaderNav"
 import { QualityTrendChart } from "@/components/QualityTrendChart"
@@ -48,6 +50,7 @@ import {
   migrateAdminSessionStorage,
   setAdminSession,
 } from "@/lib/adminAuth"
+import { DEFAULT_CAPABILITIES, type DeployCapabilities, isDevDeploy } from "@/lib/deployMode"
 
 interface AILog {
   timestamp: string
@@ -327,8 +330,18 @@ export default function AdminPage() {
   const [evalPackLoading, setEvalPackLoading] = useState(false)
   const [evalPackError, setEvalPackError] = useState<string | null>(null)
   const [hardware, setHardware] = useState<any>(null)
+  const [capabilities, setCapabilities] = useState<DeployCapabilities>(DEFAULT_CAPABILITIES)
+  const [models, setModels] = useState<any[]>([])
+  const [activeModel, setActiveModel] = useState<any>(null)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelActionError, setModelActionError] = useState<string | null>(null)
+  const [modelUploading, setModelUploading] = useState(false)
+  const [modelCreating, setModelCreating] = useState(false)
+  const [archiveActionError, setArchiveActionError] = useState<string | null>(null)
+  const [archiveImporting, setArchiveImporting] = useState(false)
+  const [archiveExporting, setArchiveExporting] = useState(false)
 
-  // See app/neurobets/page.tsx for why this defaults to "" (same-origin, proxied by
+  const isDevMode = isDevDeploy(capabilities)
   // next.config.ts) instead of an absolute localhost URL.
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
 
@@ -586,6 +599,274 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
+  const fetchCapabilities = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/capabilities`, { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setCapabilities({
+          deploy_mode: data.deploy_mode === "dev" ? "dev" : "prod",
+          training_allowed: Boolean(data.training_allowed),
+          backtest_allowed: Boolean(data.backtest_allowed),
+          reset_model_allowed: Boolean(data.reset_model_allowed),
+          db_reset_allowed: Boolean(data.db_reset_allowed),
+          model_export_allowed: Boolean(data.model_export_allowed),
+          model_upload_allowed: data.model_upload_allowed !== false,
+          model_activate_allowed: data.model_activate_allowed !== false,
+          model_create_allowed: data.model_create_allowed !== false,
+          archive_export_allowed: data.archive_export_allowed !== false,
+          archive_import_allowed: data.archive_import_allowed !== false,
+        })
+      }
+    } catch {
+      // keep build-time default
+    }
+  }, [API_BASE])
+
+  const fetchModels = useCallback(async () => {
+    try {
+      setModelsLoading(true)
+      const res = await fetch(`${API_BASE}/api/admin/models`, {
+        cache: "no-store",
+        headers: adminAuthHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setModels(Array.isArray(data.models) ? data.models : [])
+        setActiveModel(data.active || null)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [API_BASE])
+
+  const handleActivateModel = async (slug: string) => {
+    setModelActionError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/${encodeURIComponent(slug)}/activate`, {
+        method: "POST",
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось активировать модель")
+      }
+      await fetchModels()
+      setResetSuccessMsg(`Активна модель: ${slug}`)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка активации")
+    }
+  }
+
+  const handleDeleteModel = async (slug: string) => {
+    if (!confirm(`Удалить модель ${slug} из реестра?`)) return
+    setModelActionError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось удалить модель")
+      }
+      await fetchModels()
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка удаления")
+    }
+  }
+
+  const handleNewModel = async () => {
+    const name = prompt("Имя новой модели:", "my-model")
+    if (!name?.trim()) return
+    if (
+      !confirm(
+        `Создать модель «${name.trim()}» с нуля и запустить cold-start?\n\nОбнуляется trained_count в архиве и графики обучения. Банкрол не сбрасывается.`
+      )
+    ) {
+      return
+    }
+    setModelCreating(true)
+    setModelActionError(null)
+    setResetProgress({ pct: 1, label: "Создаю модель…", step: "starting", active: true })
+    let poll = 0
+    try {
+      poll = window.setInterval(() => {
+        fetchResetProgress().catch(() => {})
+      }, 400)
+      const res = await fetch(`${API_BASE}/api/admin/models/new`, {
+        method: "POST",
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось создать модель")
+      }
+      const data = await res.json()
+      const slug = data.model?.slug || name.trim()
+      await fetchModels()
+      setResetProgress({ pct: 100, label: "Готово", step: "done", active: false })
+      setResetSuccessMsg(
+        `Модель «${name.trim()}» создана, cold-start запущен. Активна: ${slug}.`
+      )
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка создания модели")
+      setResetProgress({ pct: 0, label: err.message || "Ошибка", step: "error", active: false })
+    } finally {
+      window.clearInterval(poll)
+      setModelCreating(false)
+    }
+  }
+
+  const handleUploadModel = async (file: File | null) => {
+    if (!file) return
+    setModelUploading(true)
+    setModelActionError(null)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`${API_BASE}/api/admin/models/upload`, {
+        method: "POST",
+        headers: adminAuthHeaders(),
+        body: form,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось загрузить модель")
+      }
+      await fetchModels()
+      setResetSuccessMsg(`Модель загружена: ${file.name}`)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка загрузки")
+    } finally {
+      setModelUploading(false)
+    }
+  }
+
+  const handleExportCurrentModel = async () => {
+    const name = prompt("Имя модели для экспорта (.nbmodel.zip):", "my-model")
+    if (!name?.trim()) return
+    setModelActionError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/export-current`, {
+        method: "POST",
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось экспортировать модель")
+      }
+      const blob = await res.blob()
+      const disp = res.headers.get("content-disposition") || ""
+      const match = disp.match(/filename="([^"]+)"/)
+      const filename = match?.[1] || `${name.trim()}.nbmodel.zip`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка экспорта")
+    }
+  }
+
+  const handleExportRegistryModel = async (slug: string) => {
+    setModelActionError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/export?slug=${encodeURIComponent(slug)}`, {
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось экспортировать модель")
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${slug}.nbmodel.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка экспорта")
+    }
+  }
+
+  const handleExportArchive = async () => {
+    setArchiveActionError(null)
+    setArchiveExporting(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/archive/export`, {
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось экспортировать архив")
+      }
+      const blob = await res.blob()
+      const disp = res.headers.get("content-disposition") || ""
+      const match = disp.match(/filename="([^"]+)"/)
+      const filename = match?.[1] || "neurobet-archive.nbarchive.zip"
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setResetSuccessMsg(`Архив экспортирован: ${filename}`)
+    } catch (err: any) {
+      setArchiveActionError(err.message || "Ошибка экспорта архива")
+    } finally {
+      setArchiveExporting(false)
+    }
+  }
+
+  const handleImportArchive = async (file: File | null) => {
+    if (!file) return
+    if (
+      !confirm(
+        "Импорт заменит все finished_events и finished_bets в общем архиве и обновит team_stats.json. Продолжить?"
+      )
+    ) {
+      return
+    }
+    setArchiveImporting(true)
+    setArchiveActionError(null)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`${API_BASE}/api/admin/archive/import`, {
+        method: "POST",
+        headers: adminAuthHeaders(),
+        body: form,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось импортировать архив")
+      }
+      const data = await res.json()
+      const counts = data.counts || {}
+      setResetSuccessMsg(
+        `Архив импортирован: events ${counts.finished_events ?? "—"}, bets ${counts.finished_bets ?? "—"}`
+      )
+    } catch (err: any) {
+      setArchiveActionError(err.message || "Ошибка импорта архива")
+    } finally {
+      setArchiveImporting(false)
+    }
+  }
+
   const fetchTrainingRuns = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/training-runs`)
@@ -791,6 +1072,8 @@ export default function AdminPage() {
     fetchTrainingHealth()
     fetchTrainingRuns()
     fetchHardware()
+    fetchCapabilities()
+    fetchModels()
 
     const interval = setInterval(() => {
       fetchAILogs()
@@ -820,7 +1103,7 @@ export default function AdminPage() {
       clearInterval(backtestInterval)
       clearInterval(trainingRunsInterval)
     }
-  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchBacktestSlices, fetchTrainingHealth, fetchTrainingRuns, fetchHardware])
+  }, [isAuthenticated, fetchAISettings, fetchAILogs, fetchStats, fetchBankroll, fetchOpenLiveBetsCount, fetchBacktestHistory, fetchBacktestSlices, fetchTrainingHealth, fetchTrainingRuns, fetchHardware, fetchCapabilities, fetchModels])
 
   const toggleAISetting = async (
     key: "ai_enabled" | "training_enabled" | "quality_gate_bypass",
@@ -917,9 +1200,18 @@ export default function AdminPage() {
   }
 
   const filteredLogs = useMemo(() => {
-    if (logFilter === "ALL") return logs
-    return logs.filter((l) => l.category === logFilter)
-  }, [logs, logFilter])
+    const base = isDevMode ? logs : logs.filter((l) => l.category !== "TRAINING")
+    if (logFilter === "ALL") return base
+    return base.filter((l) => l.category === logFilter)
+  }, [logs, logFilter, isDevMode])
+
+  const logFilterOptions = useMemo(
+    () =>
+      isDevMode
+        ? (["ALL", "INFERENCE", "TRAINING", "BANKROLL", "SYSTEM"] as const)
+        : (["ALL", "INFERENCE", "BANKROLL", "SYSTEM"] as const),
+    [isDevMode]
+  )
 
   // Login View
   if (!isAuthenticated) {
@@ -1106,8 +1398,190 @@ export default function AdminPage() {
           )
         })()}
 
-        {/* Training Health Status Block — overfitting traffic light */}
-        {(() => {
+        {/* Model registry */}
+        <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#74b9ff]/15 border border-[#74b9ff]/30 flex items-center justify-center text-[#74b9ff] shrink-0">
+                <Package className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Модели</h3>
+                <p className="text-xs text-neutral-400 max-w-xl">
+                  Реестр весов GRU + LightGBM. {isDevMode ? "Экспорт на dev, загрузка и активация на prod." : "Загрузите .nbmodel.zip с dev и выберите активную модель для live-инференса."}
+                  {" "}Режим: <span className="font-mono text-neutral-300">{capabilities.deploy_mode}</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {isDevMode && capabilities.model_create_allowed && (
+                <button
+                  onClick={handleNewModel}
+                  disabled={modelCreating}
+                  className="flex items-center gap-1.5 bg-[#00b894]/20 hover:bg-[#00b894]/30 text-[#55efc4] border border-[#00b894]/40 font-bold px-3 py-2 rounded-xl transition text-xs disabled:opacity-50"
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  {modelCreating ? "Создание…" : "Новая модель"}
+                </button>
+              )}
+              <label className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                {modelUploading ? "Загрузка…" : "Загрузить .nbmodel.zip"}
+                <input
+                  type="file"
+                  accept=".zip,.nbmodel.zip"
+                  className="hidden"
+                  disabled={modelUploading}
+                  onChange={(e) => {
+                    handleUploadModel(e.target.files?.[0] || null)
+                    e.target.value = ""
+                  }}
+                />
+              </label>
+              {isDevMode && (
+                <button
+                  onClick={handleExportCurrentModel}
+                  className="flex items-center gap-1.5 bg-[#74b9ff]/20 hover:bg-[#74b9ff]/30 text-[#74b9ff] border border-[#74b9ff]/40 font-bold px-3 py-2 rounded-xl transition text-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Экспорт текущей
+                </button>
+              )}
+            </div>
+          </div>
+
+          {modelActionError && (
+            <div className="text-xs text-[#ff7675] font-mono">{modelActionError}</div>
+          )}
+
+          {activeModel && (
+            <div className="text-xs text-[#55efc4] font-mono">
+              Активна: {activeModel.name || activeModel.slug}
+              {activeModel.activated_at ? ` · ${activeModel.activated_at}` : ""}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-mono">
+              <thead>
+                <tr className="text-neutral-500 border-b border-neutral-800">
+                  <th className="text-left py-2 pr-2">Имя</th>
+                  <th className="text-left py-2 pr-2">Slug</th>
+                  <th className="text-left py-2 pr-2">Метрики</th>
+                  <th className="text-right py-2">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modelsLoading && (
+                  <tr><td colSpan={4} className="py-4 text-neutral-500">Загрузка…</td></tr>
+                )}
+                {!modelsLoading && models.length === 0 && (
+                  <tr><td colSpan={4} className="py-4 text-neutral-500">Реестр пуст — загрузите .nbmodel.zip или обучите модель на dev.</td></tr>
+                )}
+                {models.map((m) => {
+                  const slug = m.slug || m.name
+                  const metrics = m.metrics || {}
+                  const metricStr = [
+                    metrics.val_brier != null ? `Brier ${Number(metrics.val_brier).toFixed(3)}` : null,
+                    metrics.backtest_roi_pct != null ? `ROI ${metrics.backtest_roi_pct}%` : null,
+                  ].filter(Boolean).join(" · ") || "—"
+                  return (
+                    <tr key={slug} className="border-b border-neutral-800/60">
+                      <td className="py-2 pr-2 text-white">
+                        {m.name || slug}
+                        {m.active ? (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">активна</span>
+                        ) : null}
+                      </td>
+                      <td className="py-2 pr-2 text-neutral-400">{slug}</td>
+                      <td className="py-2 pr-2 text-neutral-500">{metricStr}</td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        {!m.active && (
+                          <button
+                            onClick={() => handleActivateModel(slug)}
+                            className="text-[#55efc4] hover:underline mr-2"
+                          >
+                            Активировать
+                          </button>
+                        )}
+                        {isDevMode && (
+                          <button
+                            onClick={() => handleExportRegistryModel(slug)}
+                            className="text-[#74b9ff] hover:underline mr-2"
+                          >
+                            Экспорт
+                          </button>
+                        )}
+                        {!m.active && (
+                          <button
+                            onClick={() => handleDeleteModel(slug)}
+                            className="text-[#ff7675] hover:underline"
+                          >
+                            Удалить
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Shared finished archive + team stats */}
+        {(capabilities.archive_export_allowed || capabilities.archive_import_allowed) && (
+          <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#a29bfe]/15 border border-[#a29bfe]/30 flex items-center justify-center text-[#a29bfe] shrink-0">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Архив обучения</h3>
+                  <p className="text-xs text-neutral-400 max-w-xl">
+                    Общий finished_events + finished_bets (prod и dev) и снимок team_stats.json.
+                    Экспортируйте .nbarchive.zip на одном сервере и импортируйте на другом для полного переноса истории.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {capabilities.archive_import_allowed && (
+                  <label className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    {archiveImporting ? "Импорт…" : "Импорт .nbarchive.zip"}
+                    <input
+                      type="file"
+                      accept=".zip,.nbarchive.zip"
+                      className="hidden"
+                      disabled={archiveImporting}
+                      onChange={(e) => {
+                        handleImportArchive(e.target.files?.[0] || null)
+                        e.target.value = ""
+                      }}
+                    />
+                  </label>
+                )}
+                {capabilities.archive_export_allowed && (
+                  <button
+                    onClick={handleExportArchive}
+                    disabled={archiveExporting}
+                    className="flex items-center gap-1.5 bg-[#a29bfe]/20 hover:bg-[#a29bfe]/30 text-[#a29bfe] border border-[#a29bfe]/40 font-bold px-3 py-2 rounded-xl transition text-xs disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {archiveExporting ? "Экспорт…" : "Экспорт .nbarchive.zip"}
+                  </button>
+                )}
+              </div>
+            </div>
+            {archiveActionError && (
+              <div className="text-xs text-[#ff7675] font-mono">{archiveActionError}</div>
+            )}
+          </div>
+        )}
+
+        {/* Training Health Status Block — overfitting traffic light (dev only) */}
+        {isDevMode && (() => {
           const health = trainingHealth?.status || "unknown"
           const signals = trainingHealth?.signals || {}
           const cfg: Record<string, { bg: string; border: string; text: string; icon: any; title: string; blink: boolean }> = {
@@ -1224,8 +1698,8 @@ export default function AdminPage() {
           )
         })()}
 
-        {/* Live quality gate — always visible, not only after an in-page backtest */}
-        {(() => {
+        {/* Live quality gate (dev only) */}
+        {isDevMode && (() => {
           const gate = trainingHealth?.quality_gate
           if (!gate) {
             return (
@@ -1401,6 +1875,7 @@ export default function AdminPage() {
         </div>
 
         {/* DB Reset Control Panel */}
+        {capabilities.db_reset_allowed && (
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#d63031]/20 border border-[#d63031]/30 flex items-center justify-center text-[#ff7675]">
@@ -1433,6 +1908,7 @@ export default function AdminPage() {
               Обнулить ВСЕ БД (Полный Сброс)
             </button>
 
+            {capabilities.reset_model_allowed && (
             <button
               onClick={() => handleOpenResetModal("reset-model")}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-[#a29bfe]/15 hover:bg-[#a29bfe]/25 text-[#a29bfe] border border-[#a29bfe]/40 font-bold px-4 py-2.5 rounded-xl transition text-xs shadow-md"
@@ -1440,8 +1916,10 @@ export default function AdminPage() {
               <BrainCircuit className="w-3.5 h-3.5 text-[#a29bfe]" />
               Обнулить Нейросеть
             </button>
+            )}
           </div>
         </div>
+        )}
 
         {/* Bankroll Control Panel */}
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
@@ -1450,10 +1928,11 @@ export default function AdminPage() {
               <Wallet className="w-5 h-5" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-bold text-white">Банкроллы Нейросети</h3>
+              <h3 className="text-sm font-bold text-white">Банкролл Нейросети</h3>
               <p className="text-xs text-neutral-400">
-                Боевой банк — реальные симулированные ставки бота. Обучающий банк — влияет только на процесс обучения, к реальным ставкам отношения не имеет.
-                Оба банка автоматически сбрасываются на 1000 ₽ при обнулении.
+                {isDevMode
+                  ? "Боевой банк — реальные симулированные ставки бота. Обучающий банк — влияет только на процесс обучения, к реальным ставкам отношения не имеет. Оба банка автоматически сбрасываются на 1000 ₽ при обнулении."
+                  : "Боевой банк — реальные симулированные ставки бота. Сбрасывается на 1000 ₽ при обнулении нейросети."}
               </p>
             </div>
 
@@ -1467,8 +1946,8 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {(["live", "training"] as const).map((key) => {
+          <div className={`grid gap-3 ${isDevMode ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+            {(isDevMode ? (["live", "training"] as const) : (["live"] as const)).map((key) => {
               const acc = bankroll?.accounts?.[key]
               return (
                 <div key={key} className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-3">
@@ -1485,7 +1964,8 @@ export default function AdminPage() {
                   </div>
                   <button
                     onClick={() => handleOpenResetModal(key === "live" ? "bankroll-live" : "bankroll-training")}
-                    className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 shrink-0"
+                    disabled={key === "training" && !isDevMode}
+                    className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className="w-3.5 h-3.5 text-[#fdcb6e]" />
                     Сбросить
@@ -1497,6 +1977,7 @@ export default function AdminPage() {
         </div>
 
         {/* Backtest Panel */}
+        {isDevMode && (
         <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-5 backdrop-blur-md shadow-lg space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -1817,6 +2298,7 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        )}
 
         {resetSuccessMsg && (
           <div className="bg-[#00b894]/15 border border-[#00b894]/40 rounded-xl p-3.5 text-xs text-[#55efc4] flex items-center gap-2 animate-in fade-in">
@@ -1826,7 +2308,7 @@ export default function AdminPage() {
         )}
 
         {/* Toggle Switches Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isDevMode ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
           {/* AI Inference Toggle */}
           <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             aiEnabled ? "bg-neutral-900/90 border-[#00b894]/40" : "bg-neutral-900/50 border-[#d63031]/40"
@@ -1866,6 +2348,7 @@ export default function AdminPage() {
           </div>
 
           {/* AI Retraining Toggle */}
+          {isDevMode && (
           <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             trainingEnabled ? "bg-neutral-900/90 border-[#fdcb6e]/40" : "bg-neutral-900/50 border-[#d63031]/40"
           }`}>
@@ -1902,8 +2385,10 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+          )}
 
-          {/* Quality gate bypass */}
+          {/* Quality gate bypass (dev only) */}
+          {isDevMode && (
           <div className={`p-5 rounded-2xl border transition shadow-lg backdrop-blur-md overflow-hidden ${
             qualityGateBypass ? "bg-neutral-900/90 border-[#fdcb6e]/40" : "bg-neutral-900/50 border-neutral-800"
           }`}>
@@ -1944,6 +2429,7 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+          )}
 
           <div className="mt-4 bg-neutral-900/90 border border-neutral-800 rounded-2xl overflow-hidden">
             <button
@@ -2064,7 +2550,7 @@ export default function AdminPage() {
             {/* Filter Tabs — segmented control with a sliding indicator, same language used
                 across the other pages' filter/sort toggles */}
             <div className="inline-flex flex-wrap items-center gap-1 bg-neutral-950 p-1 rounded-xl border border-neutral-800">
-              {["ALL", "INFERENCE", "TRAINING", "BANKROLL", "SYSTEM"].map((f) => (
+              {logFilterOptions.map((f) => (
                 <button
                   key={f}
                   onClick={() => setLogFilter(f)}
