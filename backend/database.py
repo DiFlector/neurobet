@@ -547,6 +547,36 @@ def _period_looks_finished(sport_path: str, s1: int, s2: int) -> bool:
     return True
 
 
+def _period_scores_quality(sport_path: str, periods: List[Tuple[int, int]]) -> Tuple[int, int]:
+    sport = (sport_path or "").lower()
+    if any(s in sport for s in PERIODIC_POINT_SPORTS):
+        finished = sum(1 for a, b in periods if _period_looks_finished(sport_path, a, b))
+        return (finished, len(periods))
+    # Goal/clock sports: Fonbet named_scores often pre-lists "2-й тайм":[0,0] while
+    # the 1st half is still running. Counting those zeros as "finished" let a bogus
+    # [(0,0),(0,0)] beat a real [[1,1]] in _best_period_scores.
+    real = sum(1 for a, b in periods if (a, b) != (0, 0))
+    return (real, len(periods))
+
+
+def _live_started_period_count(period_scores: List[Tuple[int, int]], sport_path: str = "") -> int:
+    """How many periods have genuinely started for *live* early settlement.
+
+    Point-set sports: a new set at 0:0 is a real start — use raw length.
+    Goal/clock sports: Fonbet pre-lists the next half as [0,0] mid-period
+    (confirmed Iberia–Jagiellonia: period_scores [[1,1],[0,0]] at 38' of the 1st
+    half; 1H X settled as won). Trailing all-zero slots are ignored until they
+    get a real score (or the match leaves the live feed).
+    """
+    n = len(period_scores)
+    sport = (sport_path or "").lower()
+    if any(s in sport for s in PERIODIC_POINT_SPORTS):
+        return n
+    while n > 0 and period_scores[n - 1] == (0, 0):
+        n -= 1
+    return n
+
+
 def _drop_incomplete_last_period(sport_path: str, period_scores: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
     if not period_scores:
         return period_scores
@@ -2708,6 +2738,35 @@ def cancel_open_live_bets() -> Dict[str, Any]:
     return {"cancelled": len(open_bets), "refunded": total_refunded, "messages": messages}
 
 
+def settle_live_bet_manually(bet_id: int, outcome: str) -> Dict[str, Any]:
+    """Admin early settlement — force won or lost on one open live bet."""
+    outcome_norm = (outcome or "").strip().lower()
+    if outcome_norm not in ("won", "lost"):
+        return {"status": "invalid_outcome"}
+
+    f_conn = get_finished_connection()
+    f_cursor = f_conn.cursor()
+    f_cursor.execute("SELECT * FROM live_bets WHERE id = %s", (bet_id,))
+    row = f_cursor.fetchone()
+    if row is None:
+        release_connection(f_conn)
+        return {"status": "not_found"}
+    if row["status"] != "open":
+        release_connection(f_conn)
+        return {"status": "not_open", "current_status": row["status"]}
+
+    is_win = 1 if outcome_norm == "won" else 0
+    settled, messages = _apply_bet_settlement(f_cursor, dict(row), is_win, False)
+    f_conn.commit()
+    release_connection(f_conn)
+    return {
+        "status": "success",
+        "bet_id": bet_id,
+        "settlement": settled,
+        "messages": messages,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Live betting execution — backend is the sole writer of live_bets /
 # bankroll_accounts / bankroll_ledger. ai_service (the neural net) only reads its
@@ -2730,11 +2789,9 @@ LIVE_RUIN_THRESHOLD = 0.01
 # peak_balance so unbounded compounding across settlements can't drift the DOUBLE
 # PRECISION balance toward float overflow (inf/NaN, which the NOT NULL column rejects).
 LIVE_MAX_BALANCE = float(os.getenv("BANKROLL_MAX_BALANCE", "1000000000000.0"))
-# Hard cap on concurrently open live bets, enforced here (not just via ai_service's
-# per-round MAX_POSITIONS) since positions accumulate across multiple rounds — a round
-# staying under its own per-round cap doesn't stop the *total* open count from growing
-# past it over several cycles.
-MAX_OPEN_LIVE_POSITIONS = int(os.getenv("BANKROLL_MAX_OPEN_POSITIONS", "6"))
+# Hard cap on concurrently open live bets across cycles. 0 = unlimited (still one
+# open bet per event). Env mirrors ai_service BANKROLL_MAX_POSITIONS intent.
+MAX_OPEN_LIVE_POSITIONS = int(os.getenv("BANKROLL_MAX_OPEN_POSITIONS", "0"))
 
 
 def _outcome_desc(match_name: str, market_prefix: str, label: str, parameter: Any) -> str:
@@ -2815,13 +2872,16 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     cursor = conn.cursor()
 
     account = get_live_account()
-    available = account["balance"]
+    available = float(account["balance"] or 0.0)
+    # Equity = spendable + money already in open bets. Stake fractions are of equity,
+    # so a 10% floor stays meaningful while capital is locked in other positions.
+    equity = available + float(account.get("locked") or 0.0)
 
     placed: List[Dict[str, Any]] = []
     skipped: List[Dict[str, Any]] = []
     messages: List[Dict[str, str]] = []
 
-    if available <= 0:
+    if available <= 0 or equity <= 0:
         release_connection(conn)
         return {
             "placed": placed,
@@ -2834,7 +2894,11 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
 
     f_cursor.execute("SELECT COUNT(*) AS c FROM live_bets WHERE status = 'open'")
     open_count = f_cursor.fetchone()["c"]
-    slots_left = MAX_OPEN_LIVE_POSITIONS - open_count
+    # None = unlimited open positions (still one bet per event below).
+    slots_left = (
+        None if MAX_OPEN_LIVE_POSITIONS <= 0
+        else MAX_OPEN_LIVE_POSITIONS - open_count
+    )
 
     # At most one open bot bet per event, full stop — not just per market. Two markets
     # on the same match are routinely correlated even when they aren't strictly
@@ -2860,7 +2924,7 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
             skipped.append({"candidate": c, "reason": "market_outside_live_list"})
             continue
 
-        if slots_left <= 0:
+        if slots_left is not None and slots_left <= 0:
             skipped.append({"candidate": c, "reason": "max_positions_reached"})
             continue
 
@@ -2872,9 +2936,12 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
             skipped.append({"candidate": c, "reason": "event_already_has_open_bet"})
             continue
 
-        stake = available * c["stake_fraction"]
+        stake = equity * float(c["stake_fraction"])
         if stake <= 0:
             skipped.append({"candidate": c, "reason": "zero_stake"})
+            continue
+        if stake > available:
+            skipped.append({"candidate": c, "reason": "insufficient_balance"})
             continue
 
         f_cursor.execute("""
@@ -2900,15 +2967,17 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
             WHERE account = 'live'
         """, (stake, stake, stake, _now_iso()))
 
-        available -= stake  # keep this batch from over-committing the same balance
-        slots_left -= 1
+        available -= stake  # keep this batch from over-committing spendable cash
+        # Equity unchanged within the batch (balance→locked); next stakes still use it.
+        if slots_left is not None:
+            slots_left -= 1
         placed.append({**c, "stake": stake})
         messages.append({
             "category": "BANKROLL",
             "level": "INFO",
             "message": (
                 f"Bet opened: {_outcome_desc(c.get('match_name',''), market_prefix, c.get('label',''), parameter)} "
-                f"@ {c['coefficient']:.2f} — {stake:.1f} ₽ ({c['stake_fraction']*100.0:.1f}% of bank), "
+                f"@ {c['coefficient']:.2f} — {stake:.1f} ₽ ({c['stake_fraction']*100.0:.1f}% of equity), "
                 f"win probability {c['win_probability']:.1f}%, potential payout {stake * c['coefficient']:.1f} ₽."
             ),
         })
@@ -3061,11 +3130,6 @@ def _period_scores_from_named(
     if any(i not in by_ord for i in range(1, max_o + 1)):
         return []
     return [by_ord[i] for i in range(1, max_o + 1)]
-
-
-def _period_scores_quality(sport_path: str, periods: List[Tuple[int, int]]) -> Tuple[int, int]:
-    finished = sum(1 for a, b in periods if _period_looks_finished(sport_path, a, b))
-    return (finished, len(periods))
 
 
 def _best_period_scores(
@@ -3233,18 +3297,32 @@ def _period_ready_for_settlement(
     ordinal: int,
     period_scores: List[Tuple[int, int]],
     sport_path: str = "",
+    *,
+    match_db_live: bool = True,
 ) -> bool:
-    """Period N is gradable once period N+1 starts (live), or once the match is off-feed.
+    """Period N is gradable once a later period has genuinely started, or the match
+    has left the live board entirely.
 
-    Incomplete last-set snapshots (10-6 in table tennis) are not treated as finals.
+    Goal/clock sports ignore trailing (0,0) placeholders (Fonbet pre-lists the next
+    half mid-period). A single missed scrape must not flip to the off-feed branch and
+    settle on those placeholders — pass match_db_live=events.is_live so a still-live
+    row stays blocked even when feed_active is briefly False.
     """
     n = len(period_scores)
     if n < ordinal:
         return False
     target = period_scores[ordinal - 1]
+
+    if _live_started_period_count(period_scores, sport_path) > ordinal:
+        return True
+
+    # No genuine later period yet. Keep waiting while the match is still marked live
+    # in our DB (or this scrape still sees it) — injury time / HT with a pre-listed
+    # 2H [0,0] must not settle.
+    if match_db_live or is_live:
+        return False
+
     later_period_started = n > ordinal
-    if is_live:
-        return later_period_started
     if later_period_started:
         return True
     return _period_looks_finished(sport_path, target[0], target[1])
@@ -3307,6 +3385,7 @@ def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:
         if ordinal is not None:
             period_ready = _period_ready_for_settlement(
                 False, ordinal, state["period_scores"], state["sport_path"],
+                match_db_live=not bool(state.get("finalized")),
             )
         if not period_ready:
             # Frozen last set on a dead feed (Liga Pro «за 3 место» at 10*-6 for hours).
@@ -3342,11 +3421,11 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
     Settles open live_bets on period-scoped markets (e.g. "1-й тайм", "2-й период") the
     moment their own period ends — without waiting for the whole match to finish.
 
-    Safe because a period is only ever treated as "over" once period_scores has an entry
-    for period N+1 — proof the next period has actually started, not just Fonbet
-    pre-populating a 0:0 placeholder for it (confirmed: the raw feed shows a 2nd-half
-    entry the instant halftime begins, before a single second-half event has happened).
-    "An entry exists for period N" alone doesn't mean period N is finished.
+    Safe because a period is only treated as "over" once a *later* period has genuinely
+    started. For point-set sports a new 0:0 set is enough; for goal/clock sports a
+    trailing [0,0] placeholder is ignored (Fonbet pre-lists the next half mid-period —
+    confirmed: Iberia–Jagiellonia 1H X was settled won at ~38' with period_scores
+    [[1,1],[0,0]] while the 1st half was still running).
 
     Deliberately does not settle the *last* period while the match is still live — its end
     is the match's end, and the existing short grace period settles that quickly once
@@ -3389,7 +3468,8 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
 
         if latest_scrape_ts is None:
             latest_scrape_ts = _latest_live_scrape_ts(cursor)
-        feed_active = _feed_active(bool(ev["is_live"]), ev.get("last_updated_at"), latest_scrape_ts)
+        db_live = bool(ev["is_live"])
+        feed_active = _feed_active(db_live, ev.get("last_updated_at"), latest_scrape_ts)
         named = _parse_named_scores_json(ev.get("named_scores_json"))
         period_scores = _best_period_scores(
             _parse_period_scores_json(ev["period_scores_json"]),
@@ -3399,9 +3479,12 @@ def settle_completed_period_bets(timestamp_str: str) -> Dict[str, Any]:
         )
         if not _period_ready_for_settlement(
             feed_active, ordinal, period_scores, sport_path,
+            match_db_live=db_live,
         ):
             start_ts = ev.get("missing_since") or ev.get("last_updated_at")
-            if feed_active or not _stale_past_grace_only(start_ts, timestamp_str):
+            # Only void-stuck after grace when the match has left the live board —
+            # a still-live row waiting on a real 2H score must not be voided.
+            if db_live or feed_active or not _stale_past_grace_only(start_ts, timestamp_str):
                 continue
             is_win, is_push = None, False
         else:

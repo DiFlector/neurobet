@@ -32,27 +32,26 @@ from app.config import BACKEND_URL
 
 # ---- Tunable knobs (env-overridable so they can be tuned without a code change) ----
 START_BALANCE = float(os.getenv("BANKROLL_START_BALANCE", "1000.0"))
-# Position sizing is fractional-Kelly now (see allocate()), not "stake the whole bank
-# every round" — MIN_STAKE_FRACTION is just the floor below which a position isn't
-# worth placing (dust), and MAX_POSITION_FRACTION is the hard per-position ceiling. Both
-# lowered from the old 0.10-of-bank floor since a single position no longer needs to be
-# a meaningful slice of the *whole* bank to be worth taking.
-MIN_STAKE_FRACTION = float(os.getenv("BANKROLL_MIN_STAKE_FRACTION", "0.01"))
-MAX_POSITION_FRACTION = float(os.getenv("BANKROLL_MAX_POSITION_FRACTION", "0.05"))
+# Fractional-Kelly sizing (see allocate()). Fractions are of *equity*
+# (spendable balance + locked-in-open-bets), not of unlocked cash alone.
+# MIN is a hard floor on any placed stake; MAX is the per-position ceiling so
+# strong edges can size above the floor. MAX_POSITIONS <= 0 = no per-round cap.
+MIN_STAKE_FRACTION = float(os.getenv("BANKROLL_MIN_STAKE_FRACTION", "0.10"))
+MAX_POSITION_FRACTION = float(os.getenv("BANKROLL_MAX_POSITION_FRACTION", "0.25"))
 # Fraction of full Kelly actually staked. Full Kelly (bet exactly your edge) is
 # provably too aggressive the moment the true edge is even slightly overestimated —
 # and a model still mid-training overestimates its edge constantly. Quarter-Kelly is
 # the standard conservative compromise: roughly half the variance of full Kelly for a
 # small growth-rate cost.
 KELLY_FRACTION = float(os.getenv("BANKROLL_KELLY_FRACTION", "0.25"))
-MAX_POSITIONS = int(os.getenv("BANKROLL_MAX_POSITIONS", "6"))
+MAX_POSITIONS = int(os.getenv("BANKROLL_MAX_POSITIONS", "0"))
 RUIN_PENALTY = float(os.getenv("BANKROLL_RUIN_PENALTY", "5.0"))
 BANKROLL_LOSS_WEIGHT = float(os.getenv("BANKROLL_LOSS_WEIGHT", "0.35"))
 BANKROLL_LOSS_CLIP = float(os.getenv("BANKROLL_LOSS_CLIP", "3.0"))
 BANKROLL_LOSS_DISABLED_PASSES = int(os.getenv("BANKROLL_LOSS_DISABLED_PASSES", "0"))
 
-# A balance that's technically > 0 but too small to ever clear the 10%-of-bank minimum
-# stake again is functionally ruined — without this floor, float rounding can strand an
+# A balance that's technically > 0 but too small to ever clear the min-equity stake
+# again is functionally ruined — without this floor, float rounding can strand an
 # account at e.g. 1e-6 forever (never exactly <= 0, so the auto-reset below never fires).
 RUIN_THRESHOLD = 0.01
 
@@ -250,14 +249,22 @@ def get_ledger(account: str, limit: int = 200) -> List[Dict[str, Any]]:
 # replaced can otherwise sit "live" in a stale local view indefinitely).
 # ---------------------------------------------------------------------------
 
-def fetch_live_balance() -> float:
+def fetch_live_bankroll() -> Dict[str, float]:
+    """Spendable balance, locked-in-open-bets, and equity (= balance + locked)."""
     try:
         with httpx.Client(timeout=10.0) as client:
             res = client.get(f"{BACKEND_URL}/api/internal/live-bankroll")
             res.raise_for_status()
-            return float(res.json()["account"]["balance"])
+            acc = res.json()["account"]
+            balance = float(acc.get("balance") or 0.0)
+            locked = float(acc.get("locked") or 0.0)
+            return {"balance": balance, "locked": locked, "equity": balance + locked}
     except Exception:
-        return 0.0
+        return {"balance": 0.0, "locked": 0.0, "equity": 0.0}
+
+
+def fetch_live_balance() -> float:
+    return fetch_live_bankroll()["balance"]
 
 
 def submit_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -282,33 +289,31 @@ def submit_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, An
 
 def allocate(win_probs: torch.Tensor, coefficients: torch.Tensor, stake_logits: torch.Tensor) -> torch.Tensor:
     """
-    Turns a round's candidates into independent fractions-of-bank to risk on each —
-    fractional-Kelly sizing, not the old "always stake the entire bank, split by
-    softmax" allocator. Each candidate's edge implies a full-Kelly fraction
-    f* = (p*c - 1) / (c - 1) (0 if there's no edge); we stake KELLY_FRACTION of that,
-    hard-capped at MAX_POSITION_FRACTION of the bank per position regardless of how
-    large the computed edge is — a model that's still learning routinely overestimates
-    its edge, and full Kelly on an overestimated edge is a fast way to ruin. Unlike the
-    old allocator, positions don't have to sum to 1: a round can leave most of the bank
-    un-staked, and total exposure is bounded by MAX_POSITIONS * MAX_POSITION_FRACTION,
-    never the whole balance.
-    `stake_logits` (the network's own stake head, squashed to [0, 1] via sigmoid) scales
-    each position *down* from its capped-Kelly size — the network can still learn to be
-    more cautious than the formula on a given candidate, it just can't bid a fraction up
-    past the cap anymore.
-    The MIN_STAKE_FRACTION/MAX_POSITIONS cuts are computed on detached values (a hard
-    keep/drop decision has no useful gradient), but the mask multiplies the
-    *differentiable* fraction, so gradient still flows into which candidates end up
-    favored and how large their capped-Kelly scale is.
+    Turns a round's candidates into independent fractions-of-equity to risk on each.
+    Full Kelly f* = (p*c - 1) / (c - 1); we take KELLY_FRACTION of that, capped at
+    MAX_POSITION_FRACTION, then map strength into [MIN_STAKE_FRACTION, MAX_POSITION_FRACTION]
+    so every placed stake is at least the equity floor and stronger edges size up toward
+    the ceiling. Stake-head sigmoid only scales within that band (cannot go below the floor).
+    MAX_POSITIONS <= 0 disables the per-round count cap.
     """
     edge = win_probs * coefficients - 1.0
     denom = torch.clamp(coefficients - 1.0, min=1e-6)
     full_kelly = torch.clamp(edge / denom, min=0.0)
     capped_kelly = torch.clamp(KELLY_FRACTION * full_kelly, max=MAX_POSITION_FRACTION)
-    fractions = capped_kelly * torch.sigmoid(stake_logits)
 
-    keep = fractions.detach() >= MIN_STAKE_FRACTION
-    if keep.sum().item() > MAX_POSITIONS:
+    has_edge = full_kelly.detach() > 0
+    # Strength in [0, 1]: how far capped-Kelly sits toward the ceiling, times stake head.
+    kelly_unit = capped_kelly / max(MAX_POSITION_FRACTION, 1e-6)
+    strength = torch.clamp(kelly_unit, 0.0, 1.0) * torch.sigmoid(stake_logits)
+    span = max(MAX_POSITION_FRACTION - MIN_STAKE_FRACTION, 0.0)
+    fractions = torch.where(
+        has_edge,
+        MIN_STAKE_FRACTION + span * strength,
+        torch.zeros_like(capped_kelly),
+    )
+
+    keep = has_edge
+    if MAX_POSITIONS > 0 and int(keep.sum().item()) > MAX_POSITIONS:
         topk = torch.topk(fractions.detach(), MAX_POSITIONS).indices
         mask = torch.zeros_like(fractions, dtype=torch.bool)
         mask[topk] = True

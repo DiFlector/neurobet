@@ -11,7 +11,7 @@ import httpx
 _shared = Path(__file__).resolve().parent.parent / "shared"
 if (_shared / "neurobet_filters").is_dir() and str(_shared) not in sys.path:
     sys.path.insert(0, str(_shared))
-from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, Body
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, Body, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -19,7 +19,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
-from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_neurobets_history_summary, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets
+from database import init_db, save_parsed_events, archive_and_settle, get_live_matches, get_odds_history, get_db_stats, get_headline_guess_rate, warm_headline_guess_rate_cache, get_top_neurobets, get_neurobets_history, get_neurobets_history_summary, get_bet_type_stats, get_roi_stats, reset_live_database, reset_all_databases, get_bankroll_state, get_live_bets, get_live_account, place_live_bet_candidates, reset_live_account, cancel_open_live_bets, settle_live_bet_manually
 from hardware import get_hardware_snapshot, start_hardware_sampler
 from parser_service import FonbetParserService
 from settings import settings
@@ -58,6 +58,16 @@ def now_moscow() -> datetime.datetime:
 class AdminLoginRequest(BaseModel):
     username: str
     password: str
+
+class AdminSettleBetRequest(BaseModel):
+    outcome: str  # "won" | "lost"
+
+ADMIN_TOKEN = "diflector-admin-secret-token"
+
+
+def _require_admin_token(x_admin_token: Optional[str] = Header(None)) -> None:
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Требуется вход администратора")
 
 class AISettingsRequest(BaseModel):
     ai_enabled: Optional[bool] = None
@@ -595,8 +605,12 @@ def trigger_scrape(background_tasks: BackgroundTasks):
 @app.post("/api/admin/login")
 def admin_login(req: AdminLoginRequest):
     if req.username == "diflector" and req.password == "!Zz128500246315":
-        return {"status": "success", "token": "diflector-admin-secret-token", "username": "diflector"}
+        return {"status": "success", "token": ADMIN_TOKEN, "username": "diflector"}
     raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
+
+@app.get("/api/admin/session")
+def admin_session(x_admin_token: Optional[str] = Header(None)):
+    return {"authenticated": x_admin_token == ADMIN_TOKEN}
 
 @app.get("/api/admin/ai-settings")
 def read_admin_ai_settings():
@@ -976,7 +990,7 @@ def read_ai_overview(
     }
 
 @app.post("/api/admin/live-bets/cancel-all")
-def admin_cancel_live_bets():
+def admin_cancel_live_bets(_: None = Depends(_require_admin_token)):
     try:
         result = cancel_open_live_bets()
         push_ai_logs(result.get("messages", []))
@@ -989,6 +1003,40 @@ def admin_cancel_live_bets():
         }
     except Exception as e:
         logger.error(f"Error cancelling live bets: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/admin/live-bets/{bet_id}/settle")
+def admin_settle_live_bet(
+    bet_id: int,
+    req: AdminSettleBetRequest,
+    _: None = Depends(_require_admin_token),
+):
+    outcome = (req.outcome or "").strip().lower()
+    if outcome not in ("won", "lost"):
+        raise HTTPException(status_code=400, detail="outcome must be 'won' or 'lost'")
+    try:
+        result = settle_live_bet_manually(bet_id, outcome)
+        if result.get("status") == "not_found":
+            raise HTTPException(status_code=404, detail="Ставка не найдена")
+        if result.get("status") == "not_open":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ставка уже рассчитана ({result.get('current_status')})",
+            )
+        if result.get("status") != "success":
+            raise HTTPException(status_code=400, detail="Не удалось рассчитать ставку")
+        push_ai_logs(result.get("messages", []))
+        settlement = result.get("settlement") or outcome
+        return {
+            "status": "success",
+            "bet_id": bet_id,
+            "outcome": settlement,
+            "message": "Ставка рассчитана как выигрыш" if settlement == "win" else "Ставка рассчитана как проигрыш",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error settling live bet {bet_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/admin/reset-db/live")

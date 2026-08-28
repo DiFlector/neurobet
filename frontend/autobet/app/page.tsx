@@ -37,6 +37,14 @@ import { HeaderNav } from "@/components/HeaderNav"
 import { universeSportOptions } from "@/lib/sports"
 import { SportName } from "@/components/SportIcon"
 import { MARKET_FILTER_OPTIONS } from "@/lib/markets"
+import {
+  adminAuthHeaders,
+  clearAdminSession,
+  isAdminLoggedIn,
+  migrateAdminSessionStorage,
+  setAdminSession,
+  subscribeAdminAuth,
+} from "@/lib/adminAuth"
 
 interface NeuroBet {
   id: string
@@ -260,6 +268,8 @@ export default function NeurobetsPage() {
   const [settledBotBetsList, setSettledBotBetsList] = useState<any[]>([])
   const [botBetsLoaded, setBotBetsLoaded] = useState(false)
   const [historyExpanded, setHistoryExpanded] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [settlingBetId, setSettlingBetId] = useState<number | null>(null)
   const [liveBets, setLiveBets] = useState<NeuroBet[]>([])
   const [liveTotal, setLiveTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -302,6 +312,12 @@ export default function NeurobetsPage() {
     const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  useEffect(() => {
+    migrateAdminSessionStorage()
+    setIsAdmin(isAdminLoggedIn())
+    return subscribeAdminAuth(() => setIsAdmin(isAdminLoggedIn()))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -447,6 +463,31 @@ export default function NeurobetsPage() {
       setBotBetsLoaded(true)
     }
   }, [API_BASE])
+
+  const settleOpenBotBet = useCallback(
+    async (betId: number, outcome: "won" | "lost", matchName: string) => {
+      const label = outcome === "won" ? "выигрыш" : "проигрыш"
+      if (!window.confirm(`Досрочно рассчитать «${matchName}» как ${label}?`)) return
+      setSettlingBetId(betId)
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/live-bets/${betId}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+          body: JSON.stringify({ outcome }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || "Не удалось рассчитать ставку")
+        }
+        await Promise.all([fetchOpenBotBets(), fetchBankroll()])
+      } catch (err: any) {
+        window.alert(err.message || "Ошибка расчёта ставки")
+      } finally {
+        setSettlingBetId(null)
+      }
+    },
+    [API_BASE, fetchOpenBotBets, fetchBankroll],
+  )
 
   const fetchHistory = useCallback(async (offset: number, limit: number, mode: "replace" | "append") => {
     if (mode === "append") setLoadingMoreHistory(true)
@@ -1036,7 +1077,33 @@ export default function NeurobetsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
+                    <div className="text-right shrink-0 space-y-1">
+                      {isAdmin && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            title="Досрочно: выиграла"
+                            disabled={settlingBetId === b.id}
+                            onClick={() => settleOpenBotBet(b.id, "won", b.match_name)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#00b894]/50 bg-[#00b894]/15 text-[#55efc4] hover:bg-[#00b894]/25 disabled:opacity-40 transition"
+                          >
+                            {settlingBetId === b.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Check className="w-4 h-4" strokeWidth={1.75} />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            title="Досрочно: проиграла"
+                            disabled={settlingBetId === b.id}
+                            onClick={() => settleOpenBotBet(b.id, "lost", b.match_name)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#d63031]/50 bg-[#d63031]/15 text-[#ff7675] hover:bg-[#d63031]/25 disabled:opacity-40 transition"
+                          >
+                            <XCircle className="w-4 h-4" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      )}
                       <div className="text-sm font-black font-mono text-white">{Number(b.stake).toFixed(1)} ₽</div>
                       <div className="text-[10px] font-mono text-[#55efc4]">
                         → {(Number(b.stake) * Number(b.coefficient)).toFixed(1)} ₽

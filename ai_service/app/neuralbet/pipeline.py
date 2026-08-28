@@ -2159,18 +2159,19 @@ def _place_live_bets(candidates: list[dict[str, Any]]):
     Opens new live_bets from this cycle's predicted-win outcomes (the model's own
     decision-head verdict — see decision_logit in OddsTrajectoryGRU; outcomes it expects
     to lose never make it into `candidates` at all, see the caller), sized by the same
-    fractional-Kelly allocate() the training loss uses — capped-Kelly fraction per
-    candidate (bankroll.MAX_POSITION_FRACTION ceiling), scaled by the network's own
-    stake head, at most bankroll.MAX_POSITIONS positions and at least
-    bankroll.MIN_STAKE_FRACTION of the *available* (unlocked) live balance per position.
-    If the live account can't cover even one minimum stake, no bets are placed this
-    cycle.
+    fractional-Kelly allocate() the training loss uses — capped-Kelly fraction of
+    *equity* (balance + locked) per candidate, floored at bankroll.MIN_STAKE_FRACTION
+    and capped at bankroll.MAX_POSITION_FRACTION. Spendable cash must cover the stake;
+    if it can't cover even one minimum equity stake, no bets are placed this cycle.
     """
     if not candidates:
         return {"placed": 0, "reason": "no_predicted_win_candidates", "candidates": 0}
 
-    available = bankroll.fetch_live_balance()
-    if available <= 0:
+    live = bankroll.fetch_live_bankroll()
+    available = live["balance"]
+    equity = live["equity"]
+    min_stake = equity * bankroll.MIN_STAKE_FRACTION
+    if available <= 0 or equity <= 0 or available < min_stake:
         return {
             "placed": 0,
             "reason": "insufficient_available_balance",
@@ -2197,7 +2198,7 @@ def _place_live_bets(candidates: list[dict[str, Any]]):
     with torch.no_grad():
         fractions = bankroll.allocate(win_probs, coeffs_t, stake_logits)
 
-    # Sizing (which candidates, how much of the bank) stays a model decision made here.
+    # Sizing (which candidates, how much of equity) stays a model decision made here.
     # Execution (does this market still exist, does it actually get written, at what
     # exact stake given the balance backend sees right now) belongs to backend — see
     # database.place_live_bet_candidates, which re-validates freshness before writing.
@@ -2218,11 +2219,8 @@ def _place_live_bets(candidates: list[dict[str, Any]]):
     ]
 
     if not to_submit:
-        # allocate() found candidates but every fraction fell below the 10%-of-bank
-        # floor (bankroll.MIN_STAKE_FRACTION) — usually because the stake head hasn't
-        # learned to concentrate exposure on a favorite yet, so softmax spreads it too
-        # thin across the candidate pool. Surface the actual numbers so this is
-        # diagnosable from the admin log instead of silently doing nothing.
+        # allocate() found candidates but none cleared the equity floor — usually no
+        # positive Kelly edge after gates (or stake head zeroed everything).
         best_frac = max(fractions.tolist()) if len(fractions) else 0.0
         return {
             "placed": 0,
@@ -2711,7 +2709,8 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         elif reason == "insufficient_available_balance":
             add_ai_log(
                 "BANKROLL",
-                "Live bankroll: 0 bets — available balance is 0 (all locked or ruined).",
+                "Live bankroll: 0 bets — spendable balance can't cover one min equity stake "
+                "(all locked, ruined, or too little free cash).",
                 level="WARNING",
             )
         elif reason == "all_fractions_below_min_stake":
@@ -2719,8 +2718,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
                 "BANKROLL",
                 f"Live bankroll: 0 bets — {place_result['candidates']} predicted-win candidate(s) found, "
                 f"but the allocator's best fraction was only {place_result['best_fraction_pct']}% "
-                f"of bank (needs >= {bankroll.MIN_STAKE_FRACTION * 100:.0f}%). "
-                "Stake head hasn't concentrated exposure on a favorite yet — expected while undertrained.",
+                f"of equity (needs >= {bankroll.MIN_STAKE_FRACTION * 100:.0f}%).",
                 level="WARNING",
             )
         elif reason == "quality_gate":

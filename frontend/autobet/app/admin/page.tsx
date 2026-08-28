@@ -41,6 +41,13 @@ import {
   UNIVERSE_MARKET_IDS,
   UNIVERSE_MARKET_OPTIONS,
 } from "@/lib/markets"
+import {
+  adminAuthHeaders,
+  clearAdminSession,
+  isAdminLoggedIn,
+  migrateAdminSessionStorage,
+  setAdminSession,
+} from "@/lib/adminAuth"
 
 interface AILog {
   timestamp: string
@@ -353,7 +360,10 @@ export default function AdminPage() {
 
     try {
       if (resetType === "cancel-bets") {
-        const res = await fetch(`${API_BASE}/api/admin/live-bets/cancel-all`, { method: "POST" })
+        const res = await fetch(`${API_BASE}/api/admin/live-bets/cancel-all`, {
+          method: "POST",
+          headers: adminAuthHeaders(),
+        })
         if (!res.ok) throw new Error("Ошибка при отмене ставок")
         const data = await res.json()
         setResetSuccessMsg(data.message || "Ставки отменены")
@@ -451,10 +461,10 @@ export default function AdminPage() {
     }
   }
 
-  // Check existing session
+  // Check existing session (persists in localStorage across browser restarts)
   useEffect(() => {
-    const token = sessionStorage.getItem("admin_token")
-    if (token === "diflector-admin-secret-token") {
+    migrateAdminSessionStorage()
+    if (isAdminLoggedIn()) {
       setIsAuthenticated(true)
     }
   }, [])
@@ -476,7 +486,7 @@ export default function AdminPage() {
         throw new Error(data.detail || "Ошибка авторизации")
       }
 
-      sessionStorage.setItem("admin_token", "diflector-admin-secret-token")
+      setAdminSession()
       setIsAuthenticated(true)
     } catch (err: any) {
       setLoginError(err.message || "Неверное имя пользователя или пароль")
@@ -486,7 +496,7 @@ export default function AdminPage() {
   }
 
   const handleLogout = () => {
-    sessionStorage.removeItem("admin_token")
+    clearAdminSession()
     setIsAuthenticated(false)
   }
 

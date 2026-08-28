@@ -41,17 +41,20 @@ MOSCOW_TZ = timezone(timedelta(hours=3))
 # frontend/autobet/app/admin/page.tsx) — the automatic runs and manual ones should
 # cover a comparably representative slice of the archive unless deliberately overridden.
 SCHEDULED_BACKTEST_LIMIT = int(os.getenv("NEURALBET_SCHEDULED_BACKTEST_LIMIT", "80000"))
-# Cron minute field (Moscow). Default every half hour on the clock (:00 and :30).
+# Cron fields (Moscow). Default: every 3 hours on the hour.
 SCHEDULED_BACKTEST_CRON_MINUTES = os.getenv(
-    "NEURALBET_SCHEDULED_BACKTEST_CRON_MINUTES", "0,30"
-).strip() or "0,30"
+    "NEURALBET_SCHEDULED_BACKTEST_CRON_MINUTES", "0"
+).strip() or "0"
+SCHEDULED_BACKTEST_CRON_HOURS = os.getenv(
+    "NEURALBET_SCHEDULED_BACKTEST_CRON_HOURS", "*/3"
+).strip() or "*/3"
 
 scheduler = BackgroundScheduler(timezone=MOSCOW_TZ)
 
 
 def run_scheduled_backtest():
     """
-    Fires on the cron minutes below (default :00 and :30 Moscow) via the job in
+    Fires on the cron below (default every 3h at :00 Moscow) via the job in
     startup_event. Calls run_backtest() directly in-process rather than over HTTP —
     the admin panel's manual button has to go through backend's proxy
     (browser -> backend -> ai_service), which is a real request with a timeout on both
@@ -91,7 +94,11 @@ def run_scheduled_backtest():
 def startup_event():
     scheduler.add_job(
         run_scheduled_backtest,
-        CronTrigger(minute=SCHEDULED_BACKTEST_CRON_MINUTES, timezone=MOSCOW_TZ),
+        CronTrigger(
+            hour=SCHEDULED_BACKTEST_CRON_HOURS,
+            minute=SCHEDULED_BACKTEST_CRON_MINUTES,
+            timezone=MOSCOW_TZ,
+        ),
         id="scheduled_backtest",
         misfire_grace_time=1800,
         max_instances=1,
@@ -99,8 +106,9 @@ def startup_event():
     )
     scheduler.start()
     logger.info(
-        "Scheduler started! Backtest will run automatically every 30 min "
-        f"(cron minutes={SCHEDULED_BACKTEST_CRON_MINUTES!r} Moscow time)."
+        "Scheduler started! Backtest will run automatically every 3h "
+        f"(cron hour={SCHEDULED_BACKTEST_CRON_HOURS!r} minute={SCHEDULED_BACKTEST_CRON_MINUTES!r} "
+        "Moscow time)."
     )
     add_ai_log(
         "SYSTEM",
