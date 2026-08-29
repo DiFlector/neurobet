@@ -24,6 +24,7 @@ RUN grep -vE '^torch([=<>]|[[:space:]]*$)' requirements.txt > /tmp/requirements-
 
 COPY shared/neurobet_filters /app/neurobet_filters
 COPY shared/neurobet_features /app/neurobet_features
+COPY shared/neurobet_time /app/neurobet_time
 COPY ai_service/ .
 
 EXPOSE 8001

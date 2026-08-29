@@ -5,7 +5,7 @@ import os
 import random
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from neurobet_time import now_moscow, parse_iso_datetime
 from typing import Any
 
 import torch
@@ -63,12 +63,7 @@ from app.neuralbet.training_history import record_training_run, get_training_his
 
 logger = logging.getLogger("ai_service_pipeline")
 
-MOSCOW_TZ = timezone(timedelta(hours=3))
-
-
-def now_moscow() -> datetime:
-    return datetime.now(MOSCOW_TZ)
-
+from neurobet_time import MOSCOW_TZ, now_moscow, parse_iso_datetime
 
 ensemble_engine = NeuralBetEnsemble()
 
@@ -2049,26 +2044,13 @@ def get_last_tune() -> dict[str, Any] | None:
         return None
 
 
-def _parse_lgb_ts(raw: Any) -> datetime | None:
-    if raw is None:
-        return None
-    try:
-        text = str(raw).replace("Z", "+00:00")
-        dt = datetime.fromisoformat(text)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        return None
-
-
 def _lgb_should_refit(f_cursor) -> tuple[bool, str]:
     """Skip a full 40k refit unless the archive moved or the booster is stale."""
     if not ensemble_engine.lgb_trained:
         return True, "no booster on disk"
-    accepted = _parse_lgb_ts(ensemble_engine.lgb_last_accepted_at)
-    now = datetime.now(timezone.utc)
-    age_h = ((now - accepted.astimezone(timezone.utc)).total_seconds() / 3600.0) if accepted else 999.0
+    accepted = parse_iso_datetime(ensemble_engine.lgb_last_accepted_at)
+    now = now_moscow()
+    age_h = ((now - accepted).total_seconds() / 3600.0) if accepted else 999.0
     last_ts = ensemble_engine.lgb_newest_finished_at
     new_count = 0
     if last_ts:
@@ -2341,6 +2323,7 @@ def _place_live_bets(candidates: list[dict[str, Any]]):
             "parameter": c["parameter"],
             "label": c.get("label", ""),
             "match_name": c.get("match_name", ""),
+            "sport_path": c.get("sport_path") or "",
             "coefficient": c["coeff"],
             "stake_fraction": frac,
             "win_probability": c["win_probability"],
@@ -2568,6 +2551,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
                 "label": row["label"] or "",
                 "match_name": row["match_name"] or "",
                 "sport": (row["sport_path"] or "").split("/")[0].strip() or None,
+                "sport_path": row["sport_path"] or "",
                 "team_1": row["team_1"] or "",
                 "team_2": row["team_2"] or "",
                 "score": f"{s1}:{s2}",
@@ -2718,6 +2702,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
                         "label": row["label"] or "",
                         "match_name": row["match_name"] or "",
                         "sport": row.get("sport"),
+                        "sport_path": row.get("sport_path") or "",
                         "team_1": row["team_1"] or "",
                         "team_2": row["team_2"] or "",
                         "score": row["score"],

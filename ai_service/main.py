@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-from datetime import timedelta, timezone
 from pathlib import Path
 
 # Docker copies neurobet_filters onto /app; locally it's under repo/shared.
@@ -32,10 +31,7 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Fixed +3 offset — same MOSCOW_TZ every other module in this service already uses
-# (pipeline.py, backtest.py), not a tzdata-based zone name, so this needs no extra
-# timezone-database dependency.
-MOSCOW_TZ = timezone(timedelta(hours=3))
+from neurobet_time import MOSCOW_TZ
 
 # Same default the admin panel's manual "Запустить бэктест" button uses (see
 # frontend/autobet/app/admin/page.tsx) — the automatic runs and manual ones should

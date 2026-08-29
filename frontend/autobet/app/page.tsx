@@ -78,7 +78,7 @@ function liveBetKey(eventId: any, factorId: any, parameter: any, marketPrefix: a
   return `${eventId}-${factorId}-${parameter}-${marketPrefix}`
 }
 
-// b.placed_at is an ISO timestamp (UTC) — render it in the viewer's local time, HH:MM:SS.
+// b.placed_at — Moscow local time (ISO +03:00 or YYYY-MM-DD HH:MM:SS).
 function formatPlacedAt(iso: string | null | undefined): string | null {
   if (!iso) return null
   const d = new Date(iso)

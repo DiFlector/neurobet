@@ -9,8 +9,7 @@ import re
 import shutil
 import unicodedata
 import zipfile
-from datetime import datetime, timezone
-from typing import Any, Optional
+from neurobet_time import now_moscow_iso
 
 from app.config import (
     ACTIVE_MODEL_PATH,
@@ -34,7 +33,7 @@ _CYRILLIC = {
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return now_moscow_iso()
 
 
 def slugify(name: str) -> str:

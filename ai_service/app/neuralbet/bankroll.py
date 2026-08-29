@@ -21,8 +21,9 @@ itself is never refunded, win or lose (a win pays stake*coefficient, which alrea
 includes the stake back; a loss returns nothing).
 """
 import os
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
+from neurobet_time import now_moscow_iso
 
 import httpx
 import torch
@@ -65,7 +66,7 @@ MAX_BALANCE = float(os.getenv("BANKROLL_MAX_BALANCE", "1000000000000.0"))
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return now_moscow_iso()
 
 
 # ---------------------------------------------------------------------------

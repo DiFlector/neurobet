@@ -46,11 +46,27 @@ import {
 import {
   adminAuthHeaders,
   clearAdminSession,
+  getAdminToken,
   isAdminLoggedIn,
   migrateAdminSessionStorage,
   setAdminSession,
 } from "@/lib/adminAuth"
 import { DEFAULT_CAPABILITIES, type DeployCapabilities, isDevDeploy } from "@/lib/deployMode"
+
+function apiErrorDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback
+  const detail = (data as { detail?: unknown }).detail
+  if (typeof detail === "string" && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") return item
+      if (item && typeof item === "object" && "msg" in item) return String((item as { msg: string }).msg)
+      return JSON.stringify(item)
+    })
+    if (parts.length) return parts.join("; ")
+  }
+  return fallback
+}
 
 interface AILog {
   timestamp: string
@@ -339,6 +355,42 @@ export default function AdminPage() {
   const [archiveActionError, setArchiveActionError] = useState<string | null>(null)
   const [archiveImporting, setArchiveImporting] = useState(false)
   const [archiveExporting, setArchiveExporting] = useState(false)
+  const [archiveProgress, setArchiveProgress] = useState<{
+    active: boolean
+    mode: "export" | "import" | null
+    pct: number
+    label: string
+    bytes: number
+    total: number
+  }>({
+    active: false,
+    mode: null,
+    pct: 0,
+    label: "",
+    bytes: 0,
+    total: 0,
+  })
+
+  const formatArchiveBytes = (n: number) => {
+    if (!n || n < 0) return "—"
+    if (n >= 1073741824) return `${(n / 1073741824).toFixed(1)} GB`
+    if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`
+    if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`
+    return `${n} B`
+  }
+
+  const finishArchiveProgress = () => {
+    window.setTimeout(() => {
+      setArchiveProgress({
+        active: false,
+        mode: null,
+        pct: 0,
+        label: "",
+        bytes: 0,
+        total: 0,
+      })
+    }, 1500)
+  }
 
   const isDevMode = isDevDeploy(capabilities)
   // next.config.ts) instead of an absolute localhost URL.
@@ -803,18 +855,74 @@ export default function AdminPage() {
   const handleExportArchive = async () => {
     setArchiveActionError(null)
     setArchiveExporting(true)
+    setArchiveProgress({
+      active: true,
+      mode: "export",
+      pct: 2,
+      label: "Запрос архива…",
+      bytes: 0,
+      total: 0,
+    })
     try {
       const res = await fetch(`${API_BASE}/api/admin/archive/export`, {
         headers: adminAuthHeaders(),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || "Не удалось экспортировать архив")
+        throw new Error(apiErrorDetail(data, "Не удалось экспортировать архив"))
       }
-      const blob = await res.blob()
+
+      const total = Number(res.headers.get("Content-Length") || 0)
+      const reader = res.body?.getReader()
+      let blob: Blob
+
+      if (reader) {
+        const chunks: Uint8Array[] = []
+        let received = 0
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value) {
+            chunks.push(value)
+            received += value.length
+          }
+          const pct =
+            total > 0
+              ? Math.min(99, Math.round((received / total) * 100))
+              : Math.min(92, 8 + Math.round(received / 5242880))
+          setArchiveProgress({
+            active: true,
+            mode: "export",
+            pct,
+            label: "Получение данных…",
+            bytes: received,
+            total: total || received,
+          })
+        }
+        blob = new Blob(chunks as BlobPart[])
+      } else {
+        blob = await res.blob()
+        setArchiveProgress({
+          active: true,
+          mode: "export",
+          pct: 95,
+          label: "Получение данных…",
+          bytes: blob.size,
+          total: blob.size,
+        })
+      }
+
       const disp = res.headers.get("content-disposition") || ""
       const match = disp.match(/filename="([^"]+)"/)
       const filename = match?.[1] || "neurobet-archive.nbarchive.zip"
+      setArchiveProgress({
+        active: true,
+        mode: "export",
+        pct: 100,
+        label: "Сохранение файла…",
+        bytes: blob.size,
+        total: blob.size,
+      })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -826,8 +934,57 @@ export default function AdminPage() {
       setResetSuccessMsg(`Архив экспортирован: ${filename}`)
     } catch (err: any) {
       setArchiveActionError(err.message || "Ошибка экспорта архива")
+      setArchiveProgress((p) => ({ ...p, active: false, mode: null }))
     } finally {
       setArchiveExporting(false)
+      finishArchiveProgress()
+    }
+  }
+
+  const pollArchiveImportStatus = async (fileSize: number) => {
+    const started = Date.now()
+    const token = getAdminToken()
+    while (true) {
+      const res = await fetch(`${API_BASE}/api/admin/archive/import-status`, {
+        headers: token ? { "X-Admin-Token": token } : undefined,
+      })
+      if (!res.ok) {
+        throw new Error(`Не удалось получить статус импорта (HTTP ${res.status})`)
+      }
+      const data = await res.json()
+      const elapsedMin = Math.floor((Date.now() - started) / 60000)
+      const pct = Math.min(98, 72 + Math.floor((Date.now() - started) / 15000))
+      setArchiveProgress({
+        active: true,
+        mode: "import",
+        pct,
+        label:
+          elapsedMin > 0
+            ? `Импорт в Postgres… ${elapsedMin} мин (SQL ~3 GB — до 30+ мин)`
+            : "Импорт в Postgres… (SQL большой — может занять до 30+ мин)",
+        bytes: fileSize,
+        total: fileSize,
+      })
+      if (data.running) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        continue
+      }
+      if (data.phase === "error" || data.error) {
+        throw new Error(data.error || "Импорт архива не удался")
+      }
+      const counts = (data.result && data.result.counts) || {}
+      setArchiveProgress({
+        active: true,
+        mode: "import",
+        pct: 100,
+        label: "Готово",
+        bytes: fileSize,
+        total: fileSize,
+      })
+      setResetSuccessMsg(
+        `Архив импортирован: events ${counts.finished_events ?? "—"}, bets ${counts.finished_bets ?? "—"}`
+      )
+      return
     }
   }
 
@@ -842,27 +999,128 @@ export default function AdminPage() {
     }
     setArchiveImporting(true)
     setArchiveActionError(null)
+    setArchiveProgress({
+      active: true,
+      mode: "import",
+      pct: 1,
+      label: "Подготовка…",
+      bytes: 0,
+      total: file.size,
+    })
+
     try {
-      const form = new FormData()
-      form.append("file", file)
-      const res = await fetch(`${API_BASE}/api/admin/archive/import`, {
-        method: "POST",
-        headers: adminAuthHeaders(),
-        body: form,
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open("POST", `${API_BASE}/api/admin/archive/import`)
+        const token = getAdminToken()
+        if (token) xhr.setRequestHeader("X-Admin-Token", token)
+
+        let serverPhase = false
+        let serverTick: ReturnType<typeof setInterval> | null = null
+
+        const clearServerTick = () => {
+          if (serverTick !== null) {
+            clearInterval(serverTick)
+            serverTick = null
+          }
+        }
+
+        const startServerPhase = () => {
+          if (serverPhase) return
+          serverPhase = true
+          clearServerTick()
+          setArchiveProgress({
+            active: true,
+            mode: "import",
+            pct: 72,
+            label: "Импорт в Postgres… (SQL большой — может занять до 30+ мин)",
+            bytes: file.size,
+            total: file.size,
+          })
+        }
+
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return
+          const ratio = e.total > 0 ? e.loaded / e.total : 0
+          if (ratio >= 1) {
+            startServerPhase()
+            return
+          }
+          const uploadPct = Math.min(70, Math.round(ratio * 70))
+          setArchiveProgress({
+            active: true,
+            mode: "import",
+            pct: Math.max(2, uploadPct),
+            label: "Загрузка на сервер…",
+            bytes: e.loaded,
+            total: e.total,
+          })
+        }
+
+        xhr.upload.onload = () => startServerPhase()
+
+        xhr.onload = () => {
+          clearServerTick()
+          if (xhr.status === 202) {
+            resolve()
+            return
+          }
+          const text = xhr.responseText || ""
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = text ? JSON.parse(text) : {}
+              const counts = data.counts || {}
+              setArchiveProgress({
+                active: true,
+                mode: "import",
+                pct: 100,
+                label: "Готово",
+                bytes: file.size,
+                total: file.size,
+              })
+              setResetSuccessMsg(
+                `Архив импортирован: events ${counts.finished_events ?? "—"}, bets ${counts.finished_bets ?? "—"}`
+              )
+              resolve()
+            } catch {
+              reject(new Error("Некорректный ответ сервера"))
+            }
+            return
+          }
+          let data: unknown = null
+          try {
+            data = text ? JSON.parse(text) : null
+          } catch {
+            data = null
+          }
+          const detail = apiErrorDetail(data, "")
+          reject(
+            new Error(
+              detail || text.trim().slice(0, 800) || `Ошибка HTTP ${xhr.status} при импорте архива`
+            )
+          )
+        }
+
+        xhr.onerror = () => {
+          clearServerTick()
+          reject(new Error("Сетевая ошибка при импорте архива"))
+        }
+        xhr.onabort = () => {
+          clearServerTick()
+          reject(new Error("Импорт отменён"))
+        }
+
+        const form = new FormData()
+        form.append("file", file)
+        xhr.send(form)
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || "Не удалось импортировать архив")
-      }
-      const data = await res.json()
-      const counts = data.counts || {}
-      setResetSuccessMsg(
-        `Архив импортирован: events ${counts.finished_events ?? "—"}, bets ${counts.finished_bets ?? "—"}`
-      )
+      await pollArchiveImportStatus(file.size)
     } catch (err: any) {
       setArchiveActionError(err.message || "Ошибка импорта архива")
+      setArchiveProgress((p) => ({ ...p, active: false, mode: null }))
     } finally {
       setArchiveImporting(false)
+      finishArchiveProgress()
     }
   }
 
@@ -1573,6 +1831,27 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
+            {archiveProgress.active && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 text-[10px] font-mono uppercase tracking-wide text-neutral-400">
+                  <span className="truncate text-left">
+                    {archiveProgress.mode === "import" ? "Импорт" : "Экспорт"} · {archiveProgress.label}
+                  </span>
+                  <span className="shrink-0 text-[#a29bfe]">{archiveProgress.pct}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#a29bfe] transition-all duration-300"
+                    style={{ width: `${archiveProgress.pct}%` }}
+                  />
+                </div>
+                {archiveProgress.total > 0 && (
+                  <div className="text-[10px] text-neutral-500 font-mono">
+                    {formatArchiveBytes(archiveProgress.bytes)} / {formatArchiveBytes(archiveProgress.total)}
+                  </div>
+                )}
+              </div>
+            )}
             {archiveActionError && (
               <div className="text-xs text-[#ff7675] font-mono">{archiveActionError}</div>
             )}

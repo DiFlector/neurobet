@@ -43,6 +43,7 @@ from neurobet_features import (  # noqa: E402
     parse_ts_epoch as _parse_ts_epoch,
     overround_at_latest,
 )
+from neurobet_time import MOSCOW_TZ, now_moscow_naive, now_moscow_iso  # noqa: E402
 
 logger = logging.getLogger("database")
 
@@ -546,12 +547,20 @@ def _minutes_since(start_raw: Any, timestamp_str: str) -> Optional[float]:
     return max(b - a, 0.0) / 60.0
 
 
-def _period_looks_finished(sport_path: str, s1: int, s2: int) -> bool:
+def _period_looks_finished(
+    sport_path: str, s1: int, s2: int, period_index: Optional[int] = None,
+) -> bool:
     """True when this period's point score looks like a completed set/map.
 
     Incomplete last-set snapshots (8:10 in table tennis, still needing 11 and a
     2-point lead) must not be treated as finals. Sports we don't have a rule for
     return True so we don't strip data we can't judge.
+
+    Indoor volleyball sets 1–4 need at least 25 and a 2-point lead (no cap:
+    25-24 and 26-25 stay live, 27-25 / 30-28 are valid finishes). Only the
+    5th is to 15, same win-by-2. Treating any 15+ / lead-of-2 as finished
+    made live 16:20 / 17:19 first sets settle the moment Fonbet pre-listed
+    the next set as 0:0.
     """
     sport = (sport_path or "").lower()
     try:
@@ -563,8 +572,12 @@ def _period_looks_finished(sport_path: str, s1: int, s2: int) -> bool:
         return hi >= 11 and hi - lo >= 2
     if "бадминтон" in sport:
         return hi >= 21 and hi - lo >= 2
+    if "пляжный волейбол" in sport:
+        target = 15 if period_index is not None and period_index >= 3 else 21
+        return hi >= target and hi - lo >= 2
     if "волейбол" in sport:
-        return hi >= 15 and hi - lo >= 2
+        target = 15 if period_index is not None and period_index >= 5 else 25
+        return hi >= target and hi - lo >= 2
     if "counter-strike" in sport:
         return hi >= 13
     if "теннис" in sport:
@@ -575,7 +588,10 @@ def _period_looks_finished(sport_path: str, s1: int, s2: int) -> bool:
 def _period_scores_quality(sport_path: str, periods: List[Tuple[int, int]]) -> Tuple[int, int]:
     sport = (sport_path or "").lower()
     if any(s in sport for s in PERIODIC_POINT_SPORTS):
-        finished = sum(1 for a, b in periods if _period_looks_finished(sport_path, a, b))
+        finished = sum(
+            1 for i, (a, b) in enumerate(periods)
+            if _period_looks_finished(sport_path, a, b, period_index=i + 1)
+        )
         return (finished, len(periods))
     # Goal/clock sports: Fonbet named_scores often pre-lists "2-й тайм":[0,0] while
     # the 1st half is still running. Counting those zeros as "finished" let a bogus
@@ -587,7 +603,12 @@ def _period_scores_quality(sport_path: str, periods: List[Tuple[int, int]]) -> T
 def _live_started_period_count(period_scores: List[Tuple[int, int]], sport_path: str = "") -> int:
     """How many periods have genuinely started for *live* early settlement.
 
-    Point-set sports: a new set at 0:0 is a real start — use raw length.
+    Point-set sports: a new set at 0:0 is a real start once the *previous* set
+    looks finished — but Fonbet also pre-lists the next set as [0,0] while the
+    current set is still in progress (volleyball 10:12 with 2nd set 0:0; confirmed
+    live). Those placeholders must not count as a later period until the prior set
+    is complete.
+
     Goal/clock sports: Fonbet pre-lists the next half as [0,0] mid-period
     (confirmed Iberia–Jagiellonia: period_scores [[1,1],[0,0]] at 38' of the 1st
     half; 1H X settled as won). Trailing all-zero slots are ignored until they
@@ -596,6 +617,14 @@ def _live_started_period_count(period_scores: List[Tuple[int, int]], sport_path:
     n = len(period_scores)
     sport = (sport_path or "").lower()
     if any(s in sport for s in PERIODIC_POINT_SPORTS):
+        while n > 1 and period_scores[n - 1] == (0, 0):
+            prev = period_scores[n - 2]
+            if not _period_looks_finished(
+                sport_path, prev[0], prev[1], period_index=n - 1,
+            ):
+                n -= 1
+            else:
+                break
         return n
     while n > 0 and period_scores[n - 1] == (0, 0):
         n -= 1
@@ -606,7 +635,9 @@ def _drop_incomplete_last_period(sport_path: str, period_scores: List[Tuple[int,
     if not period_scores:
         return period_scores
     last = period_scores[-1]
-    if _period_looks_finished(sport_path, last[0], last[1]):
+    if _period_looks_finished(
+        sport_path, last[0], last[1], period_index=len(period_scores),
+    ):
         return period_scores
     return period_scores[:-1]
 
@@ -1460,15 +1491,9 @@ _neurobet_market_support_refreshing = False
 GUESS_RATE_HALF_LIFE_HOURS = float(os.getenv("NEUROBET_GUESS_RATE_HALF_LIFE_HOURS", "24.0"))
 GUESS_RATE_LOOKBACK_DAYS = int(os.getenv("NEUROBET_GUESS_RATE_LOOKBACK_DAYS", "7"))
 
-MOSCOW_TZ = timezone(timedelta(hours=3))
-
 
 def _now_moscow_naive() -> datetime:
-    """Moscow wall-clock time with no tzinfo — matches the format finished_at is stored
-    in (a TEXT "YYYY-MM-DD HH:MM:SS" written from Moscow-local now(), see
-    backend/main.py's now_moscow/now_str), so subtracting a parsed finished_at from this
-    gives the correct elapsed wall-clock time without any timezone-offset ambiguity."""
-    return datetime.now(MOSCOW_TZ).replace(tzinfo=None)
+    return now_moscow_naive()
 
 
 def _parse_finished_at_naive(raw: Any) -> Optional[datetime]:
@@ -2646,20 +2671,25 @@ def get_live_bets(
     current_odds: Dict[tuple, float] = {}
     current_preds: Dict[tuple, Dict[str, Any]] = {}
     latest_scrape_ts = None
-    if open_ids:
-        with dashboard_db("live") as conn:
-            cursor = conn.cursor()
+    # sport_path used to be joined only for *open* bets. Period markets
+    # ("1-я четверть", "1-й сет") settle while the parent match is still in
+    # live.events — not yet in finished_events — so history cards lost the sport
+    # badge. Look up every event_id in the live table; odds/predictions stay
+    # open-only.
+    with dashboard_db("live") as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id = ANY(%s)",
+            (event_ids,),
+        )
+        live_info = {r["event_id"]: dict(r) for r in cursor.fetchall()}
+        if open_ids:
             # An event stuck in the grace period after vanishing from Fonbet's feed still has
             # is_live=1 with its score/timer/coefficients frozen — comparing last_updated_at to
             # the latest successful scrape cycle's timestamp (not just to itself) is what
             # actually tells "genuinely live right now" apart from "hasn't been finalized yet".
             cursor.execute("SELECT MAX(last_updated_at) AS max FROM events")
             latest_scrape_ts = cursor.fetchone()["max"]
-            cursor.execute(
-                "SELECT event_id, score, score_1, score_2, timer, is_live, last_updated_at, sport_path FROM events WHERE event_id = ANY(%s)",
-                (open_ids,),
-            )
-            live_info = {r["event_id"]: dict(r) for r in cursor.fetchall()}
             cursor.execute(
                 """SELECT l.event_id, l.factor_id, l.parameter, l.market_prefix, l.coefficient
                     FROM latest_odds l
@@ -2700,6 +2730,7 @@ def get_live_bets(
 
     for b in rows:
         eid = b["event_id"]
+        stored_sport_path = b.get("sport_path") or None
         odds_key = (eid, b["factor_id"], b["parameter"] or "", b["market_prefix"] or "")
         if eid in live_info:
             info = live_info[eid]
@@ -2707,7 +2738,7 @@ def get_live_bets(
             b["current_timer"] = info["timer"]
             b["match_is_live"] = bool(info["is_live"]) and info["last_updated_at"] == latest_scrape_ts
             b["current_coefficient"] = current_odds.get(odds_key)
-            b["sport_path"] = info["sport_path"]
+            b["sport_path"] = info["sport_path"] or stored_sport_path
             pred = current_preds.get(odds_key)
             b["current_predicted_win"] = None if pred is None else pred.get("predicted_win")
             b["current_expected_roi"] = None if pred is None else pred.get("expected_roi")
@@ -2717,7 +2748,7 @@ def get_live_bets(
             b["current_timer"] = None
             b["match_is_live"] = False
             b["current_coefficient"] = None
-            b["sport_path"] = info["sport_path"] if info else None
+            b["sport_path"] = (info["sport_path"] if info else None) or stored_sport_path
             b["current_predicted_win"] = None
             b["current_expected_roi"] = None
 
@@ -2815,7 +2846,8 @@ def settle_live_bet_manually(bet_id: int, outcome: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return now_moscow_iso()
+
 
 LIVE_START_BALANCE = float(os.getenv("BANKROLL_START_BALANCE", "1000.0"))
 # See ai_service/app/neuralbet/bankroll.py's RUIN_THRESHOLD docstring: a balance that's
@@ -2950,6 +2982,15 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
     f_cursor.execute("SELECT DISTINCT event_id FROM live_bets WHERE status = 'open'")
     occupied_events = {r["event_id"] for r in f_cursor.fetchall()}
 
+    sport_by_event: Dict[int, str] = {}
+    candidate_eids = list({c["event_id"] for c in candidates})
+    if candidate_eids:
+        cursor.execute(
+            "SELECT event_id, sport_path FROM events WHERE event_id = ANY(%s)",
+            (candidate_eids,),
+        )
+        sport_by_event = {r["event_id"]: r["sport_path"] or "" for r in cursor.fetchall()}
+
     for c in candidates:
         event_id, factor_id = c["event_id"], c["factor_id"]
         parameter = c.get("parameter") or ""
@@ -2984,11 +3025,12 @@ def place_live_bet_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any
         f_cursor.execute("""
             INSERT INTO live_bets (
                 event_id, factor_id, market_prefix, parameter, label, match_name,
-                coefficient, stake, stake_fraction, win_probability, status, placed_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s)
+                sport_path, coefficient, stake, stake_fraction, win_probability, status, placed_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s)
             ON CONFLICT(event_id, factor_id, parameter, market_prefix) DO NOTHING;
         """, (
             event_id, factor_id, market_prefix, parameter, c.get("label", ""), c.get("match_name", ""),
+            sport_by_event.get(event_id) or c.get("sport_path") or "",
             c["coefficient"], stake, c["stake_fraction"], c["win_probability"], _now_iso(),
         ))
         if f_cursor.rowcount == 0:
@@ -3362,7 +3404,9 @@ def _period_ready_for_settlement(
     later_period_started = n > ordinal
     if later_period_started:
         return True
-    return _period_looks_finished(sport_path, target[0], target[1])
+    return _period_looks_finished(
+        sport_path, target[0], target[1], period_index=ordinal,
+    )
 
 
 def settle_live_bets(timestamp_str: str) -> Dict[str, Any]:

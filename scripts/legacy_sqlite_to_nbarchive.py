@@ -19,8 +19,16 @@ import argparse
 import json
 import sqlite3
 import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
+
+_root = Path(__file__).resolve().parent.parent
+_shared = _root / "shared"
+if (_shared / "neurobet_time").is_dir():
+    import sys
+    if str(_shared) not in sys.path:
+        sys.path.insert(0, str(_shared))
+
+from neurobet_time import now_moscow_iso
 
 NBARCHIVE_FORMAT_VERSION = 1
 ARCHIVE_SQL_NAME = "finished_data.sql"
@@ -118,7 +126,7 @@ def build_nbarchive(
 
     manifest = {
         "format_version": NBARCHIVE_FORMAT_VERSION,
-        "exported_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "exported_at": now_moscow_iso(),
         "source": "legacy-sqlite",
         "counts": {
             "finished_events": counts.get("finished_events", 0),

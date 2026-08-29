@@ -19,7 +19,10 @@ const nextConfig: NextConfig = {
   // is too short and the admin UI reports "Ошибка при обнулении" while the wipe
   // still finishes server-side.
   experimental: {
-    proxyTimeout: 180_000,
+    // Archive import can run a long psql COPY on multi-GB finished_data.sql.
+    proxyTimeout: 600_000,
+    // Default proxy buffer is 10MB — truncates .nbarchive.zip before backend sees it.
+    proxyClientMaxBodySize: "1024mb",
   },
   // Иначе /neurobet/ ↔ /neurobet даёт петлю с прокси
   skipTrailingSlashRedirect: true,

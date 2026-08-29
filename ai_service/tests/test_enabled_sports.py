@@ -29,6 +29,8 @@ from neurobet_filters import (  # noqa: E402
     factor_ids_for_markets,
     write_brier_stake_sports,
     clear_brier_stake_sports,
+    brier_stake_sports_override,
+    sync_brier_allowlist_with_enabled_sports,
     normalize_backtest_mode,
     backtest_file_prefix,
     is_backtest_result_file,
@@ -98,6 +100,98 @@ class EnabledSportsTests(unittest.TestCase):
                 self.assertFalse(in_live_stake_sport("Баскетбол / NBA"))
                 self.assertFalse(in_live_stake_sport("Теннис / ATP"))
                 # Basketball is in env ∩ Brier but toggled off in admin.
+                self.assertTrue(
+                    in_live_stake_sport("Баскетбол / NBA", apply_admin=False),
+                )
+            finally:
+                clear_brier_stake_sports()
+                filters.LIVE_BRIER_SPORTS_PATH = old_brier
+                filters.BRIER_SPORT_GATE = old_gate
+                filters.LIVE_STAKE_SPORTS = old_env
+                filters.AI_SETTINGS_PATH = old_settings
+                filters._brier_sports_cache = (-1.0, None)
+                filters._enabled_sports_cache = (-1.0, None)
+
+    def test_stale_brier_allowlist_does_not_block_new_enabled_sports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brier_path = os.path.join(tmp, "brier.json")
+            old_brier = filters.LIVE_BRIER_SPORTS_PATH
+            old_gate = filters.BRIER_SPORT_GATE
+            old_env = filters.LIVE_STAKE_SPORTS
+            old_settings = filters.AI_SETTINGS_PATH
+            filters.LIVE_BRIER_SPORTS_PATH = brier_path
+            filters.BRIER_SPORT_GATE = True
+            filters.LIVE_STAKE_SPORTS = frozenset(
+                {"футбол", "баскетбол", "теннис", "волейбол"},
+            )
+            filters._brier_sports_cache = (-1.0, None)
+            filters.AI_SETTINGS_PATH = os.path.join(tmp, "none.json")
+            filters._enabled_sports_cache = (-1.0, None)
+            try:
+                write_brier_stake_sports(["футбол"], source="prior_backtest")
+                set_enabled_sports(["баскетбол", "теннис", "волейбол"])
+                self.assertIsNone(brier_stake_sports_override())
+                self.assertTrue(in_live_stake_sport("Баскетбол / NBA"))
+                self.assertTrue(in_live_stake_sport("Теннис / ATP"))
+                self.assertFalse(in_live_stake_sport("Футбол / РФПЛ"))
+            finally:
+                clear_brier_stake_sports()
+                filters.LIVE_BRIER_SPORTS_PATH = old_brier
+                filters.BRIER_SPORT_GATE = old_gate
+                filters.LIVE_STAKE_SPORTS = old_env
+                filters.AI_SETTINGS_PATH = old_settings
+                filters._brier_sports_cache = (-1.0, None)
+                filters._enabled_sports_cache = (-1.0, None)
+
+    def test_sync_clears_brier_allowlist_when_no_enabled_overlap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brier_path = os.path.join(tmp, "brier.json")
+            old_brier = filters.LIVE_BRIER_SPORTS_PATH
+            old_gate = filters.BRIER_SPORT_GATE
+            old_settings = filters.AI_SETTINGS_PATH
+            filters.LIVE_BRIER_SPORTS_PATH = brier_path
+            filters.BRIER_SPORT_GATE = True
+            filters._brier_sports_cache = (-1.0, None)
+            filters.AI_SETTINGS_PATH = os.path.join(tmp, "none.json")
+            filters._enabled_sports_cache = (-1.0, None)
+            try:
+                write_brier_stake_sports(["футбол"], source="test")
+                filters._enabled_sports_cache = (
+                    0.0, frozenset({"баскетбол", "теннис"}),
+                )
+                out = sync_brier_allowlist_with_enabled_sports()
+                self.assertTrue(out and out.get("cleared"))
+                self.assertIsNone(brier_stake_sports_override())
+            finally:
+                clear_brier_stake_sports()
+                filters.LIVE_BRIER_SPORTS_PATH = old_brier
+                filters.BRIER_SPORT_GATE = old_gate
+                filters.AI_SETTINGS_PATH = old_settings
+                filters._brier_sports_cache = (-1.0, None)
+                filters._enabled_sports_cache = (-1.0, None)
+
+    def test_partial_brier_overlap_keeps_file_for_full_backtest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brier_path = os.path.join(tmp, "brier.json")
+            old_brier = filters.LIVE_BRIER_SPORTS_PATH
+            old_gate = filters.BRIER_SPORT_GATE
+            old_env = filters.LIVE_STAKE_SPORTS
+            old_settings = filters.AI_SETTINGS_PATH
+            filters.LIVE_BRIER_SPORTS_PATH = brier_path
+            filters.BRIER_SPORT_GATE = True
+            filters.LIVE_STAKE_SPORTS = frozenset({"футбол", "баскетбол", "теннис"})
+            filters._brier_sports_cache = (-1.0, None)
+            filters.AI_SETTINGS_PATH = os.path.join(tmp, "none.json")
+            filters._enabled_sports_cache = (-1.0, None)
+            try:
+                write_brier_stake_sports(["футбол", "баскетбол"], source="test")
+                set_enabled_sports(["футбол", "теннис"])
+                self.assertEqual(
+                    brier_stake_sports_override(),
+                    frozenset({"футбол", "баскетбол"}),
+                )
+                self.assertTrue(in_live_stake_sport("Футбол / РФПЛ"))
+                self.assertFalse(in_live_stake_sport("Баскетбол / NBA"))
                 self.assertTrue(
                     in_live_stake_sport("Баскетбол / NBA", apply_admin=False),
                 )

@@ -72,7 +72,7 @@ cp .env.dev.example .env.dev  # dev — отдельный POSTGRES_DB
 
 # Nginx: добавить location из infrastructure/nginx-dev-location.snippet
 # в /srv/nginx-master/nginx/snippets/diflector-locations.conf
-# client_max_body_size 128m на prod location /diflector/neurobet
+# client_max_body_size 1024m на /diflector/neurobet и /diflector/dev/neurobet (nginx-master)
 docker exec nginx_master nginx -t && docker exec nginx_master nginx -s reload
 ```
 
@@ -122,6 +122,14 @@ docker exec nginx_master nginx -t && docker exec nginx_master nginx -s reload
 
 1. `/admin` → **Архив обучения** → **Экспорт .nbarchive.zip** (на любом сервере)
 2. На целевом сервере → **Импорт .nbarchive.zip** (заменяет finished-таблицы и `team_stats.json`)
+
+   Если архив **> 1 GB** или nginx отвечает `413`, импортируйте с сервера без браузера:
+
+   ```bash
+   cd /srv/neurobet
+   ./scripts/import_nbarchive.sh --dev /path/to/neurobet-archive.nbarchive.zip
+   # или --prod для prod backend
+   ```
 3. После импорта AI автоматически перечитывает кэш команд
 
 Формат: `manifest.json`, `finished_data.sql`, опционально `team_stats.json`.

@@ -16,6 +16,7 @@ RUN uv pip install --system --no-cache -r requirements.txt
 
 COPY shared/neurobet_filters /app/neurobet_filters
 COPY shared/neurobet_features /app/neurobet_features
+COPY shared/neurobet_time /app/neurobet_time
 COPY db/ /db/
 COPY backend/ .
 

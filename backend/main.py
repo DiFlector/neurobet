@@ -3,6 +3,8 @@ import logging
 import datetime
 import os
 import sys
+import asyncio
+import tempfile
 import threading
 from pathlib import Path
 import httpx
@@ -50,10 +52,7 @@ from neurobet_filters import (
     get_enabled_markets,
 )
 
-MOSCOW_TZ = datetime.timezone(datetime.timedelta(hours=3))
-
-def now_moscow() -> datetime.datetime:
-    return datetime.datetime.now(MOSCOW_TZ)
+from neurobet_time import MOSCOW_TZ, now_moscow
 
 class AdminLoginRequest(BaseModel):
     username: str
@@ -872,22 +871,116 @@ def admin_export_archive(_: None = Depends(_require_admin_token)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_archive_import_lock = threading.Lock()
+_archive_import_state: dict[str, Any] = {
+    "running": False,
+    "phase": "idle",
+    "error": None,
+    "result": None,
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+def _archive_import_snapshot() -> dict[str, Any]:
+    with _archive_import_lock:
+        return dict(_archive_import_state)
+
+
+def _run_archive_import_job(zip_path: str) -> None:
+    from archive_transfer import import_archive_zip_file
+
+    with _archive_import_lock:
+        _archive_import_state.update(
+            running=True,
+            phase="importing",
+            error=None,
+            result=None,
+            started_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            finished_at=None,
+        )
+    try:
+        result = import_archive_zip_file(zip_path)
+        _reload_ai_team_stats(force_db=True)
+        with _archive_import_lock:
+            _archive_import_state["result"] = result
+            _archive_import_state["phase"] = "done"
+    except Exception as e:
+        logger.error("Archive import failed: %s", e, exc_info=True)
+        with _archive_import_lock:
+            _archive_import_state["error"] = str(e)
+            _archive_import_state["phase"] = "error"
+    finally:
+        with _archive_import_lock:
+            _archive_import_state["running"] = False
+            _archive_import_state["finished_at"] = datetime.datetime.now(
+                datetime.timezone.utc
+            ).isoformat()
+        try:
+            os.unlink(zip_path)
+        except OSError:
+            pass
+
+
+@app.get("/api/admin/archive/import-status")
+def admin_import_archive_status(_: None = Depends(_require_admin_token)):
+    return _archive_import_snapshot()
+
+
 @app.post("/api/admin/archive/import")
 async def admin_import_archive(
     file: UploadFile = File(...),
     _: None = Depends(_require_admin_token),
 ):
-    from archive_transfer import import_archive_zip
+    from archive_transfer import MODEL_DIR
 
+    with _archive_import_lock:
+        if _archive_import_state["running"]:
+            raise HTTPException(status_code=409, detail="Импорт архива уже выполняется")
+
+    staging_root = os.path.dirname(MODEL_DIR) or MODEL_DIR
+    zip_tmp = tempfile.NamedTemporaryFile(
+        prefix="nbarchive-upload-",
+        suffix=".nbarchive.zip",
+        delete=False,
+        dir=staging_root,
+    )
+    zip_path = zip_tmp.name
+    uploaded = 0
     try:
-        raw = await file.read()
-        result = import_archive_zip(raw)
-        _reload_ai_team_stats(force_db=True)
-        return {"status": "success", **result}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            zip_tmp.write(chunk)
+            uploaded += len(chunk)
+        zip_tmp.close()
+        logger.info(
+            "Archive import upload: name=%s size=%d bytes path=%s",
+            file.filename or "",
+            uploaded,
+            zip_path,
+        )
+        threading.Thread(
+            target=_run_archive_import_job,
+            args=(zip_path,),
+            daemon=True,
+        ).start()
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "accepted",
+                "message": "Импорт запущен в фоне; проверьте /api/admin/archive/import-status",
+            },
+        )
     except Exception as e:
-        logger.error(f"Archive import failed: {e}", exc_info=True)
+        try:
+            os.unlink(zip_path)
+        except OSError:
+            pass
+        if isinstance(e, HTTPException):
+            raise
+        logger.error(f"Archive import upload failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -3,7 +3,7 @@ import json
 import random
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
 import torch
@@ -19,6 +19,7 @@ from app.neuralbet.context import (
     TEAM_HASH_BUCKETS, team_index,
 )
 from neurobet_filters import MIN_BET_COEFF, MAX_BET_COEFF, MIN_BET_EDGE_PCT, in_bet_band
+from neurobet_time import MOSCOW_TZ, now_moscow_iso
 from .checkpoint_gate import decide_online_checkpoint
 from neurobet_features import (
     OVERROUND_EXPECTED_SIZE,
@@ -993,7 +994,7 @@ class NeuralBetEnsemble:
         self.lgb_last_accepted_at = meta.get("accepted_at")
         self.lgb_newest_finished_at = meta.get("newest_finished_at")
         if self.lgb_trained and not self.lgb_last_accepted_at and os.path.exists(LIGHTGBM_MODEL_PATH):
-            ts = datetime.fromtimestamp(os.path.getmtime(LIGHTGBM_MODEL_PATH), tz=timezone.utc)
+            ts = datetime.fromtimestamp(os.path.getmtime(LIGHTGBM_MODEL_PATH), tz=MOSCOW_TZ)
             self.lgb_last_accepted_at = ts.isoformat()
             if not self.lgb_newest_finished_at:
                 self.lgb_newest_finished_at = self.lgb_last_accepted_at
@@ -1149,7 +1150,7 @@ class NeuralBetEnsemble:
         self.lgb_model = booster
         self.lgb_trained = True
         self.lgb_last_val_brier = new_brier
-        self.lgb_last_accepted_at = datetime.now(timezone.utc).isoformat()
+        self.lgb_last_accepted_at = now_moscow_iso()
         if newest_finished_at:
             self.lgb_newest_finished_at = str(newest_finished_at)
 

@@ -10,7 +10,7 @@ than backtests, so this caps at more entries.
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from neurobet_time import now_moscow_iso
 from typing import Any, Dict, List, Optional
 
 from app.config import MODEL_DIR
@@ -23,11 +23,9 @@ TRAINING_HISTORY_PATH = os.path.join(MODEL_DIR, "training_runs.json")
 # fastest realistic cadence, and this is cheap either way (just JSON on disk).
 MAX_TRAINING_HISTORY = 1000
 
-MOSCOW_TZ = timezone(timedelta(hours=3))
-
 
 def now_iso() -> str:
-    return datetime.now(MOSCOW_TZ).isoformat()
+    return now_moscow_iso()
 
 
 # Chart fields: on reject, copy from last accepted so the admin trend chart

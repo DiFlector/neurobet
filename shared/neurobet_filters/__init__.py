@@ -23,7 +23,7 @@ import json
 import os
 import re
 import threading
-from datetime import datetime, timezone
+from neurobet_time import now_moscow_iso
 from typing import Any, Iterable, Optional, Tuple
 
 # ---------------------------------------------------------------------------
@@ -239,6 +239,7 @@ def set_enabled_sports(raw: Any) -> frozenset[str]:
         except OSError:
             mtime = 0.0
         _enabled_sports_cache = (mtime, sports)
+    sync_brier_allowlist_with_enabled_sports()
     return sports
 
 
@@ -787,16 +788,60 @@ def brier_stake_sports_override() -> Optional[frozenset[str]]:
         return _read_brier_allowlist_unlocked()
 
 
+def _brier_allowlist_for_live(*, apply_admin: bool) -> Optional[frozenset[str]]:
+    """Brier allowlist after admin sport toggles. None = no extra Brier restriction."""
+    override = brier_stake_sports_override()
+    if override is None:
+        return None
+    if not apply_admin:
+        return override
+    effective = override & get_enabled_sports()
+    if not effective:
+        # Stale file from a previous sport mix (e.g. allowlist still has football
+        # after admin switched to basketball) — do not block the new enabled set.
+        return None
+    return effective
+
+
+def sync_brier_allowlist_with_enabled_sports() -> Optional[dict[str, Any]]:
+    """Clear a stale Brier allowlist when admin toggles sports in the UI.
+
+    If the on-disk allowlist shares no sports with the current admin selection
+    (e.g. file still says football after admin switched to basketball), remove
+    the file so live staking is not frozen at 0 bets. Partial overlap is left
+    intact — live reads intersect admin ∩ file at check time.
+    """
+    if not BRIER_SPORT_GATE:
+        return None
+    with _brier_sports_lock:
+        override = _read_brier_allowlist_unlocked()
+    if override is None:
+        return None
+    enabled = get_enabled_sports()
+    overlap = override & enabled
+    if overlap:
+        return {
+            "skipped": True,
+            "reason": "partial_overlap",
+            "sports": sorted(overlap),
+        }
+    clear_brier_stake_sports()
+    return {"cleared": True, "reason": "no_overlap_with_enabled_sports"}
+
+
 def effective_live_stake_sports() -> Optional[frozenset[str]]:
     """Sports that currently pass the live sport gate. None = no sport restriction."""
-    override = brier_stake_sports_override()
-    if LIVE_STAKE_SPORTS is None and override is None:
-        return None
+    enabled = get_enabled_sports()
     if LIVE_STAKE_SPORTS is None:
-        return override
-    if override is None:
-        return LIVE_STAKE_SPORTS
-    return LIVE_STAKE_SPORTS & override
+        pool: frozenset[str] = enabled
+    else:
+        pool = LIVE_STAKE_SPORTS & enabled
+    if not pool:
+        return frozenset()
+    brier = _brier_allowlist_for_live(apply_admin=True)
+    if brier is None:
+        return pool
+    return pool & brier
 
 
 def write_brier_stake_sports(
@@ -807,7 +852,7 @@ def write_brier_stake_sports(
 ) -> dict[str, Any]:
     global _brier_sports_cache
     payload = {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": now_moscow_iso(),
         "source": source,
         "min_evaluated": BRIER_SPORT_MIN_EVALUATED,
         "min_bets": BRIER_SPORT_MIN_BETS,
@@ -878,22 +923,22 @@ def in_live_stake_sport(sport_path: Optional[str], *, apply_admin: bool = True) 
     """Whether live staking / «Активные LIVE» lists include this sport.
 
     Intersection is admin (enabled_sports) ∩ env `NEURALBET_LIVE_STAKE_SPORTS` ∩
-    Brier allowlist. Admin is the product ceiling; pass apply_admin=False for
-    training mix / full debug backtest. Env is the next ceiling. When the Brier
-    gate file exists, the sport must also be in that allowlist (last *live*
-    backtest's Brier winners with positive ROI CI lo). The file is written
-    *after* a live backtest scores, so that run itself still uses the previous
-    allowlist (no leakage).
+    Brier allowlist (pruned to admin on read; cleared on sport toggle when stale).
+    Admin is the product ceiling; pass apply_admin=False for training mix / full
+    debug backtest. Env is the next ceiling. When the Brier gate file exists, the
+    sport must also be in that allowlist (last *live* backtest's Brier winners with
+    positive ROI CI lo), intersected with admin. If the file only lists sports the
+    admin turned off, it is ignored until the next backtest refreshes it.
     """
     sport = sport_top(sport_path)
     if apply_admin and sport not in get_enabled_sports():
         return False
     if LIVE_STAKE_SPORTS is not None and sport not in LIVE_STAKE_SPORTS:
         return False
-    override = brier_stake_sports_override()
-    if override is None:
+    effective = _brier_allowlist_for_live(apply_admin=apply_admin)
+    if effective is None:
         return True
-    return sport in override
+    return sport in effective
 
 
 def live_market_family(

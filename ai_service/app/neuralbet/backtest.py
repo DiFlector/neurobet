@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from neurobet_time import now_moscow, now_moscow_iso
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -155,16 +155,8 @@ def get_backtest_progress() -> dict[str, Any]:
     with _backtest_progress_lock:
         return dict(_backtest_progress)
 
-# Same fixed +3 offset pipeline.py's now_moscow() uses — "generated_at" (and the
-# filename slug derived from it, see save_and_record) is what the admin panel's
-# "История запусков" table and the on-disk backtest_*.json filenames show, and both
-# were showing UTC, off by 3 hours from every other timestamp in the app.
-MOSCOW_TZ = timezone(timedelta(hours=3))
-
-
 def now_iso() -> str:
-    return datetime.now(MOSCOW_TZ).isoformat()
-
+    return now_moscow_iso()
 
 
 def _backtest_file_prefix(mode: str) -> str:
@@ -1111,7 +1103,7 @@ def save_and_record(result: Dict[str, Any], mode: str = "live") -> None:
         # decouples the filename from whatever UTC-offset suffix that string happens to
         # carry (previously assumed a hardcoded "+00:00" that broke once generated_at
         # switched to Moscow's "+03:00").
-        ts_slug = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%dT%H-%M-%S-%f")
+        ts_slug = now_moscow().strftime("%Y-%m-%dT%H-%M-%S-%f")
         mode = normalize_backtest_mode(mode or result.get("mode"))
         prefix = _backtest_file_prefix(mode)
         hist_path = _history_path_for_mode(mode)

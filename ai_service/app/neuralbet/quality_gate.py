@@ -5,10 +5,7 @@ Kept free of torch / DB so unit tests can import this module directly.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
-
-MOSCOW_TZ = timezone(timedelta(hours=3))
+from neurobet_time import MOSCOW_TZ
 
 BACKTEST_DEFAULT_LIMIT = int(os.getenv("NEURALBET_BACKTEST_DEFAULT_LIMIT", "80000"))
 LIVE_QUALITY_GATE = os.getenv("NEURALBET_LIVE_QUALITY_GATE", "1").strip().lower() not in (
