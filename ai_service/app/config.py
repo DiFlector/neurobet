@@ -9,6 +9,8 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
 
 REGISTRY_DIR = os.path.join(MODEL_DIR, "registry")
 ACTIVE_MODEL_PATH = os.path.join(MODEL_DIR, "active_model.json")
+ACTIVE_MODELS_PATH = os.path.join(MODEL_DIR, "active_models.json")
+SLOT2_RUNTIME_DIR = os.path.join(MODEL_DIR, "slot2")
 
 _DEPLOY_RAW = os.getenv("NEUROBET_DEPLOY_MODE", "prod").strip().lower()
 DEPLOY_MODE = _DEPLOY_RAW if _DEPLOY_RAW in ("prod", "dev") else "prod"

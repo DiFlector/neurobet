@@ -348,9 +348,14 @@ export default function AdminPage() {
   const [capabilities, setCapabilities] = useState<DeployCapabilities>(DEFAULT_CAPABILITIES)
   const [models, setModels] = useState<any[]>([])
   const [activeModel, setActiveModel] = useState<any>(null)
+  const [activeModels, setActiveModels] = useState<any>(null)
+  const [groupName, setGroupName] = useState("")
+  const [groupNameSaving, setGroupNameSaving] = useState(false)
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelActionError, setModelActionError] = useState<string | null>(null)
   const [modelUploading, setModelUploading] = useState(false)
+  const [modelGroupUploading, setModelGroupUploading] = useState(false)
+  const [modelGroupExporting, setModelGroupExporting] = useState(false)
   const [modelCreating, setModelCreating] = useState(false)
   const [archiveActionError, setArchiveActionError] = useState<string | null>(null)
   const [archiveImporting, setArchiveImporting] = useState(false)
@@ -685,6 +690,8 @@ export default function AdminPage() {
         const data = await res.json()
         setModels(Array.isArray(data.models) ? data.models : [])
         setActiveModel(data.active || null)
+        setActiveModels(data.active_models || null)
+        setGroupName(String(data.active_models?.group_name || ""))
       }
     } catch {
       // ignore
@@ -693,21 +700,117 @@ export default function AdminPage() {
     }
   }, [API_BASE])
 
-  const handleActivateModel = async (slug: string) => {
+  const handleActivateModel = async (slug: string, slot: 1 | 2 = 1) => {
     setModelActionError(null)
     try {
       const res = await fetch(`${API_BASE}/api/admin/models/${encodeURIComponent(slug)}/activate`, {
         method: "POST",
-        headers: adminAuthHeaders(),
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ slot }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || "Не удалось активировать модель")
       }
       await fetchModels()
-      setResetSuccessMsg(`Активна модель: ${slug}`)
+      setResetSuccessMsg(`Активна модель (слот ${slot}): ${slug}`)
     } catch (err: any) {
       setModelActionError(err.message || "Ошибка активации")
+    }
+  }
+
+  const handleDeactivateSlot2 = async () => {
+    if (!confirm("Отключить второй слот (каскадный фильтр)?")) return
+    setModelActionError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/slot/2/deactivate`, {
+        method: "POST",
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось отключить слот 2")
+      }
+      await fetchModels()
+      setResetSuccessMsg("Слот 2 отключён")
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка отключения слота 2")
+    }
+  }
+
+  const handleSaveGroupName = async () => {
+    setModelActionError(null)
+    setGroupNameSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/active/group-name`, {
+        method: "PATCH",
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ group_name: groupName.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось сохранить имя группы")
+      }
+      await fetchModels()
+      setResetSuccessMsg("Имя группы сохранено")
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка сохранения имени группы")
+    } finally {
+      setGroupNameSaving(false)
+    }
+  }
+
+  const handleExportModelGroup = async () => {
+    setModelActionError(null)
+    setModelGroupExporting(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/models/export-group`, {
+        headers: adminAuthHeaders(),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось экспортировать группу")
+      }
+      const blob = await res.blob()
+      const disp = res.headers.get("content-disposition") || ""
+      const match = disp.match(/filename="?([^";]+)"?/)
+      const filename = match?.[1] || `${groupName.trim() || "model-group"}.nbmodelgroup.zip`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      setResetSuccessMsg(`Группа экспортирована: ${filename}`)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка экспорта группы")
+    } finally {
+      setModelGroupExporting(false)
+    }
+  }
+
+  const handleUploadModelGroup = async (file: File | null) => {
+    if (!file) return
+    setModelActionError(null)
+    setModelGroupUploading(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`${API_BASE}/api/admin/models/upload-group`, {
+        method: "POST",
+        headers: adminAuthHeaders(),
+        body: form,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось импортировать группу")
+      }
+      await fetchModels()
+      setResetSuccessMsg(`Группа импортирована: ${file.name}`)
+    } catch (err: any) {
+      setModelActionError(err.message || "Ошибка импорта группы")
+    } finally {
+      setModelGroupUploading(false)
     }
   }
 
@@ -1665,7 +1768,8 @@ export default function AdminPage() {
               <div>
                 <h3 className="text-sm font-bold text-white">Модели</h3>
                 <p className="text-xs text-neutral-400 max-w-xl">
-                  Реестр весов GRU + LightGBM. {isDevMode ? "Экспорт на dev, загрузка и активация на prod." : "Загрузите .nbmodel.zip с dev и выберите активную модель для live-инференса."}
+                  Реестр весов GRU + LightGBM. Два слота: слот 1 — основная модель (обучение на dev), слот 2 — каскадный фильтр на prod.
+                  {isDevMode ? " Экспорт на dev, загрузка и активация на prod." : " Загрузите .nbmodel.zip или группу .nbmodelgroup.zip с dev."}
                   {" "}Режим: <span className="font-mono text-neutral-300">{capabilities.deploy_mode}</span>
                 </p>
               </div>
@@ -1695,6 +1799,20 @@ export default function AdminPage() {
                   }}
                 />
               </label>
+              <label className="flex items-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-bold px-3 py-2 rounded-xl transition text-xs border border-neutral-700 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                {modelGroupUploading ? "Импорт группы…" : "Импорт группы"}
+                <input
+                  type="file"
+                  accept=".zip,.nbmodelgroup.zip"
+                  className="hidden"
+                  disabled={modelGroupUploading}
+                  onChange={(e) => {
+                    handleUploadModelGroup(e.target.files?.[0] || null)
+                    e.target.value = ""
+                  }}
+                />
+              </label>
               {isDevMode && (
                 <button
                   onClick={handleExportCurrentModel}
@@ -1712,9 +1830,55 @@ export default function AdminPage() {
           )}
 
           {activeModel && (
-            <div className="text-xs text-[#55efc4] font-mono">
-              Активна: {activeModel.name || activeModel.slug}
-              {activeModel.activated_at ? ` · ${activeModel.activated_at}` : ""}
+            <div className="text-xs text-[#55efc4] font-mono space-y-1">
+              <div>
+                Слот 1: {activeModel.name || activeModel.slug}
+                {activeModel.activated_at ? ` · ${activeModel.activated_at}` : ""}
+              </div>
+              {activeModels?.slots?.find((s: any) => Number(s.slot) === 2) && (
+                <div>
+                  Слот 2: {activeModels.slots.find((s: any) => Number(s.slot) === 2)?.name}
+                  {activeModels.dual_active ? " · каскадный фильтр включён" : ""}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeModels?.dual_active && (
+            <div className="flex flex-col sm:flex-row sm:items-end gap-2 p-3 rounded-xl bg-neutral-950/60 border border-neutral-800">
+              <div className="flex-1">
+                <label className="text-[10px] uppercase tracking-wide text-neutral-500 font-bold">
+                  Имя группы (для отображения на странице нейроставок)
+                </label>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Например: Mimir Cascade"
+                  className="mt-1 w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                />
+              </div>
+              <button
+                onClick={handleSaveGroupName}
+                disabled={groupNameSaving || !groupName.trim()}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-[#74b9ff]/20 text-[#74b9ff] border border-[#74b9ff]/40 disabled:opacity-50"
+              >
+                {groupNameSaving ? "Сохранение…" : "Сохранить имя"}
+              </button>
+              <button
+                onClick={handleExportModelGroup}
+                disabled={modelGroupExporting || !groupName.trim()}
+                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/40 disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {modelGroupExporting ? "Экспорт…" : "Скачать группу"}
+              </button>
+              <button
+                onClick={handleDeactivateSlot2}
+                className="text-xs font-bold px-3 py-2 rounded-lg bg-[#ff7675]/10 text-[#ff7675] border border-[#ff7675]/30"
+              >
+                Отключить слот 2
+              </button>
             </div>
           )}
 
@@ -1724,16 +1888,17 @@ export default function AdminPage() {
                 <tr className="text-neutral-500 border-b border-neutral-800">
                   <th className="text-left py-2 pr-2">Имя</th>
                   <th className="text-left py-2 pr-2">Slug</th>
+                  <th className="text-left py-2 pr-2">Слот</th>
                   <th className="text-left py-2 pr-2">Метрики</th>
                   <th className="text-right py-2">Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {modelsLoading && (
-                  <tr><td colSpan={4} className="py-4 text-neutral-500">Загрузка…</td></tr>
+                  <tr><td colSpan={5} className="py-4 text-neutral-500">Загрузка…</td></tr>
                 )}
                 {!modelsLoading && models.length === 0 && (
-                  <tr><td colSpan={4} className="py-4 text-neutral-500">Реестр пуст — загрузите .nbmodel.zip или обучите модель на dev.</td></tr>
+                  <tr><td colSpan={5} className="py-4 text-neutral-500">Реестр пуст — загрузите .nbmodel.zip или обучите модель на dev.</td></tr>
                 )}
                 {models.map((m) => {
                   const slug = m.slug || m.name
@@ -1747,18 +1912,31 @@ export default function AdminPage() {
                       <td className="py-2 pr-2 text-white">
                         {m.name || slug}
                         {m.active ? (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">активна</span>
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#00b894]/20 text-[#55efc4] border border-[#00b894]/30">
+                            слот {m.active_slot || 1}
+                          </span>
                         ) : null}
                       </td>
                       <td className="py-2 pr-2 text-neutral-400">{slug}</td>
+                      <td className="py-2 pr-2 text-neutral-500">
+                        {m.active_slot ? `слот ${m.active_slot}` : "—"}
+                      </td>
                       <td className="py-2 pr-2 text-neutral-500">{metricStr}</td>
                       <td className="py-2 text-right whitespace-nowrap">
-                        {!m.active && (
+                        {(!m.active || m.active_slot !== 1) && (
                           <button
-                            onClick={() => handleActivateModel(slug)}
+                            onClick={() => handleActivateModel(slug, 1)}
                             className="text-[#55efc4] hover:underline mr-2"
                           >
-                            Активировать
+                            Слот 1
+                          </button>
+                        )}
+                        {(!m.active || m.active_slot !== 2) && (
+                          <button
+                            onClick={() => handleActivateModel(slug, 2)}
+                            className="text-[#ffeaa7] hover:underline mr-2"
+                          >
+                            Слот 2
                           </button>
                         )}
                         {isDevMode && (

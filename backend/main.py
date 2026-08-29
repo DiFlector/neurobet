@@ -776,11 +776,22 @@ def admin_create_new_model(req: CreateNewModelRequest, _: None = Depends(_requir
         raise HTTPException(status_code=502, detail="Failed to reach AI service for new model")
 
 
+class ActivateModelRequest(BaseModel):
+    slot: int = 1
+
+
 @app.post("/api/admin/models/{slug}/activate")
-def admin_activate_model(slug: str, _: None = Depends(_require_admin_token)):
+def admin_activate_model(
+    slug: str,
+    req: ActivateModelRequest = Body(default=ActivateModelRequest()),
+    _: None = Depends(_require_admin_token),
+):
     try:
         with httpx.Client(timeout=60.0) as client:
-            res = client.post(f"{AI_SERVICE_URL}/models/{slug}/activate")
+            res = client.post(
+                f"{AI_SERVICE_URL}/models/{slug}/activate",
+                json=req.dict(),
+            )
             if res.status_code == 200:
                 return res.json()
             raise HTTPException(status_code=res.status_code, detail=res.text)
@@ -788,6 +799,46 @@ def admin_activate_model(slug: str, _: None = Depends(_require_admin_token)):
         raise
     except Exception as e:
         logger.error(f"Error activating model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+class GroupNameRequest(BaseModel):
+    group_name: str = ""
+
+
+@app.post("/api/admin/models/slot/{slot}/deactivate")
+def admin_deactivate_model_slot(slot: int, _: None = Depends(_require_admin_token)):
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            res = client.post(f"{AI_SERVICE_URL}/models/slot/{slot}/deactivate")
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deactivating model slot: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.patch("/api/admin/models/active/group-name")
+def admin_set_model_group_name(
+    req: GroupNameRequest,
+    _: None = Depends(_require_admin_token),
+):
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            res = client.patch(
+                f"{AI_SERVICE_URL}/models/active/group-name",
+                json=req.dict(),
+            )
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting model group name: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
 
@@ -841,6 +892,51 @@ def admin_export_current_model(req: ExportCurrentModelRequest, _: None = Depends
         raise
     except Exception as e:
         logger.error(f"Error exporting current model: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/api/admin/models/export-group")
+def admin_export_model_group(_: None = Depends(_require_admin_token)):
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            res = client.get(f"{AI_SERVICE_URL}/models/export-group")
+            if res.status_code == 200:
+                disp = res.headers.get(
+                    "content-disposition",
+                    'attachment; filename="model-group.nbmodelgroup.zip"',
+                )
+                return Response(
+                    content=res.content,
+                    media_type="application/zip",
+                    headers={"Content-Disposition": disp},
+                )
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting model group: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/api/admin/models/upload-group")
+async def admin_upload_model_group(
+    file: UploadFile = File(...),
+    _: None = Depends(_require_admin_token),
+):
+    try:
+        data = await file.read()
+        with httpx.Client(timeout=180.0) as client:
+            res = client.post(
+                f"{AI_SERVICE_URL}/models/upload-group",
+                files={"file": (file.filename or "group.nbmodelgroup.zip", data, "application/zip")},
+            )
+            if res.status_code == 200:
+                return res.json()
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading model group: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
 

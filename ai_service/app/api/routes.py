@@ -398,11 +398,12 @@ def read_active_model():
 @router.get("/models")
 def list_registered_models():
     model_registry.bootstrap_legacy_if_needed()
-    active = model_registry.get_active_model()
+    active = model_registry.get_active_models()
     return {
         "status": "success",
         "models": model_registry.list_models(),
-        "active": active,
+        "active": model_registry.get_active_model(),
+        "active_models": active,
     }
 
 
@@ -439,16 +440,43 @@ async def upload_model(file: UploadFile = File(...)):
 
 
 @router.post("/models/{slug}/activate")
-def activate_registered_model(slug: str):
+def activate_registered_model(slug: str, payload: Dict[str, Any] = Body(default={})):
+    slot = int(payload.get("slot") or 1)
     try:
-        result = model_registry.activate_model(slug, reload_ensemble_checkpoints)
-        add_ai_log("SYSTEM", f"Active model switched to {result.get('name')} ({slug})")
-        return {"status": "success", "model": result}
+        result = model_registry.activate_model(slug, reload_ensemble_checkpoints, slot=slot)
+        add_ai_log(
+            "SYSTEM",
+            f"Active model slot {slot} switched to {result.get('name')} ({slug})",
+        )
+        return {"status": "success", "model": result, "active_models": model_registry.get_active_models()}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Model activate failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/models/slot/{slot}/deactivate")
+def deactivate_model_slot(slot: int):
+    try:
+        result = model_registry.deactivate_slot(slot, reload_ensemble_checkpoints)
+        add_ai_log("SYSTEM", f"Deactivated model slot {slot}")
+        return {"status": "success", "active_models": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Model slot deactivate failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/models/active/group-name")
+def set_active_group_name(payload: Dict[str, Any] = Body(default={})):
+    group_name = str(payload.get("group_name") or "").strip()
+    try:
+        result = model_registry.set_group_name(group_name or None)
+        return {"status": "success", "active_models": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/models/{slug}")
@@ -492,5 +520,43 @@ def export_current_model_route(payload: Dict[str, Any] = Body(default={})):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Export current model failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/models/export-group")
+def export_model_group():
+    try:
+        data, filename = model_registry.export_model_group()
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/models/upload-group")
+async def upload_model_group(file: UploadFile = File(...)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        result = model_registry.import_model_group(data)
+        reload_ensemble_checkpoints()
+        add_ai_log(
+            "SYSTEM",
+            f"Model group imported: {result.get('group_name')} "
+            f"({', '.join(s['slug'] for s in result.get('slots') or [])})",
+        )
+        return {
+            "status": "success",
+            "group": result,
+            "active_models": model_registry.get_active_models(),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Model group upload failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 

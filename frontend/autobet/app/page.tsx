@@ -263,6 +263,8 @@ export default function NeurobetsPage() {
   } | null>(null)
   const [activeModelName, setActiveModelName] = useState<string | null>(null)
   const [activeModelRuntime, setActiveModelRuntime] = useState(false)
+  const [activeModelDual, setActiveModelDual] = useState(false)
+  const [activeModelSlots, setActiveModelSlots] = useState<Array<{ slot?: number; name?: string }> | null>(null)
   const [activeModelLoaded, setActiveModelLoaded] = useState(false)
   const [bankroll, setBankroll] = useState<any>(null)
   const [openBetsCount, setOpenBetsCount] = useState(0)
@@ -377,6 +379,8 @@ export default function NeurobetsPage() {
         const name = model?.name || model?.slug
         setActiveModelName(typeof name === "string" && name.trim() ? name.trim() : null)
         setActiveModelRuntime(Boolean(model?.runtime))
+        setActiveModelDual(Boolean(model?.dual_active))
+        setActiveModelSlots(Array.isArray(model?.slots) ? model.slots : null)
       }
     } catch {
       // Ignore
@@ -825,6 +829,11 @@ export default function NeurobetsPage() {
                 </span>
                 {activeModelLoaded && activeModelRuntime && activeModelName && (
                   <span className="text-neutral-500"> · в памяти / обучение</span>
+                )}
+                {activeModelLoaded && activeModelDual && activeModelSlots && activeModelSlots.length >= 2 && (
+                  <span className="block text-neutral-500 text-xs mt-1">
+                    Каскад: {activeModelSlots.map((s) => `слот ${s.slot}: ${s.name}`).join(" → ")}
+                  </span>
                 )}
               </p>
               <p className="text-sm text-neutral-300 leading-relaxed">

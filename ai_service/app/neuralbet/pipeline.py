@@ -57,8 +57,9 @@ from neurobet_filters import (
     set_enabled_markets,
     live_universe_sql_params,
 )
-from app.config import MODEL_DIR, IS_PROD
+from app.config import MODEL_DIR, IS_PROD, SLOT2_RUNTIME_DIR
 from app.neuralbet.model import NeuralBetEnsemble, MAX_EPOCHS
+from app.neuralbet import model_registry
 from app.neuralbet.training_history import record_training_run, get_training_history, clear_training_history
 
 logger = logging.getLogger("ai_service_pipeline")
@@ -66,6 +67,7 @@ logger = logging.getLogger("ai_service_pipeline")
 from neurobet_time import MOSCOW_TZ, now_moscow, parse_iso_datetime
 
 ensemble_engine = NeuralBetEnsemble()
+ensemble_engine_slot2 = NeuralBetEnsemble(model_dir=SLOT2_RUNTIME_DIR)
 
 # NeuralBetEnsemble is a module-level singleton mutated in place by every request
 # handler (switches between .train()/.eval() mode, steps its optimizer). Two overlapping
@@ -89,6 +91,11 @@ def cycle_aborted() -> bool:
 def reload_ensemble_checkpoints() -> None:
     with _engine_lock:
         ensemble_engine.reload_checkpoints()
+        active = model_registry.get_active_models()
+        if active.get("dual_active"):
+            ensemble_engine_slot2.reload_checkpoints()
+        else:
+            ensemble_engine_slot2._reset_state()
 
 
 def _track_conn(conn):
@@ -2391,6 +2398,91 @@ def run_neuralbet_inference_and_training(
             _release_tracked_conns()
 
 
+def _inference_row_key(meta: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        meta["event_id"],
+        meta["factor_id"],
+        meta.get("parameter"),
+        meta.get("market_prefix"),
+    )
+
+
+def _build_coherence_rows(
+    row_meta: list[dict[str, Any]],
+    batch_results: list[tuple],
+    buckets: dict,
+) -> list[dict[str, Any]]:
+    coherence_rows: list[dict[str, Any]] = []
+    for meta, (
+        win_prob,
+        _error_rate,
+        lgb_score,
+        torch_score,
+        decision_prob,
+        stake_logit,
+        _exposure_logit,
+    ) in zip(row_meta, batch_results):
+        coeff = meta["coeff"]
+        calibrated_prob = calibrate_probability(
+            win_prob, buckets, sport=meta["sport"], coeff=coeff
+        )
+        coherence_rows.append(
+            {
+                **meta,
+                "calibrated_p": calibrated_prob / 100.0,
+                "coeff": coeff,
+                "_win_prob": win_prob,
+                "_lgb_score": lgb_score,
+                "_torch_score": torch_score,
+                "_decision_prob": decision_prob,
+                "_stake_logit": stake_logit,
+            }
+        )
+    apply_sibling_coherence(coherence_rows, min_edge_pct=MIN_BET_EDGE_PCT)
+    for row in coherence_rows:
+        calibrated_prob = float(row["calibrated_p"]) * 100.0
+        row["will_win"] = outcome_will_win(
+            int(row.get("predicted_win") or 0),
+            row["coeff"],
+            factor_id=row["factor_id"],
+            score_1=row.get("score_1"),
+            score_2=row.get("score_2"),
+            win_probability=calibrated_prob,
+            initial_coefficient=row.get("initial_coeff"),
+        )
+    return coherence_rows
+
+
+def _apply_dual_model_cascade(
+    slot1_rows: list[dict[str, Any]],
+    slot2_rows: list[dict[str, Any]],
+) -> None:
+    """Slot-2 must confirm slot-1 will_win=1 candidates (in-place)."""
+    slot2_by_key = {_inference_row_key(row): row for row in slot2_rows}
+    for row in slot1_rows:
+        if row.get("will_win") != 1:
+            continue
+        slot2 = slot2_by_key.get(_inference_row_key(row))
+        if slot2 is None or slot2.get("will_win") != 1:
+            row["will_win"] = 0
+            row["predicted_win"] = 0
+            if slot2 is not None:
+                row["calibrated_p"] = min(
+                    float(row.get("calibrated_p") or 0.0),
+                    float(slot2.get("calibrated_p") or 0.0),
+                )
+            else:
+                row["calibrated_p"] = min(float(row.get("calibrated_p") or 0.0), 0.49)
+        else:
+            row["predicted_win"] = int(row.get("predicted_win") or 0) and int(
+                slot2.get("predicted_win") or 0
+            )
+            row["calibrated_p"] = min(
+                float(row.get("calibrated_p") or 0.0),
+                float(slot2.get("calibrated_p") or 0.0),
+            )
+
+
 def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str, Any]]:
     """Live odds -> calibrated predictions -> Kelly. Skipped during cold-start."""
     # Refresh team-stats KB before live views (same finished_events path as LGB).
@@ -2565,14 +2657,9 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     live_candidates = []
     timestamp_str = now_moscow().isoformat()
 
-    batch_results = ensemble_engine.predict_batch(batch_items)
-
-    # Bucket table fetched once per cycle (not per-row) — same Bayesian-shrinkage
-    # correction the "Нейроставки" UI used to compute separately in backend, now the
-    # single source of truth: whatever gets stored/bet on is this number, not the
-    # ensemble's raw one. Buckets are per-sport (see calibration.py) so calibration
-    # itself is still one lookup per row.
     buckets = get_calibration_buckets()
+    market_support = _refresh_market_support()
+    dual_active = bool(model_registry.get_active_models().get("dual_active"))
 
     predicted_win_count = 0
     predicted_loss_count = 0
@@ -2583,38 +2670,32 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
     skipped_sport = 0
     skipped_market = 0
     skipped_will_win = 0
-    market_support = _refresh_market_support()
+    skipped_cascade = 0
 
-    # Calibrate first, then sibling coherence (soft sum-to-1 + 2-way EV veto),
-    # then EV/predicted_win and live gates — same helper as backtest (parity).
-    coherence_rows: list[dict[str, Any]] = []
-    for meta, (
-        win_prob,
-        error_rate,
-        lgb_score,
-        torch_score,
-        decision_prob,
-        stake_logit,
-        exposure_logit,
-    ) in zip(row_meta, batch_results):
-        coeff = meta["coeff"]
-        calibrated_prob = calibrate_probability(
-            win_prob, buckets, sport=meta["sport"], coeff=coeff
-        )
-        coherence_rows.append(
-            {
-                **meta,
-                "calibrated_p": calibrated_prob / 100.0,
-                "coeff": coeff,
-                "_win_prob": win_prob,
-                "_lgb_score": lgb_score,
-                "_torch_score": torch_score,
-                "_decision_prob": decision_prob,
-                "_stake_logit": stake_logit,
-            }
-        )
+    batch_results = ensemble_engine.predict_batch(batch_items)
+    coherence_rows = _build_coherence_rows(row_meta, batch_results, buckets)
 
-    apply_sibling_coherence(coherence_rows, min_edge_pct=MIN_BET_EDGE_PCT)
+    if dual_active:
+        slot1_candidates = [row for row in coherence_rows if row.get("will_win") == 1]
+        if slot1_candidates:
+            slot2_items = []
+            slot2_meta = []
+            for row in slot1_candidates:
+                key = _inference_row_key(row)
+                idx = next(
+                    (i for i, meta in enumerate(row_meta) if _inference_row_key(meta) == key),
+                    None,
+                )
+                if idx is not None:
+                    slot2_items.append(batch_items[idx])
+                    slot2_meta.append(row_meta[idx])
+            if slot2_items:
+                slot2_results = ensemble_engine_slot2.predict_batch(slot2_items)
+                slot2_rows = _build_coherence_rows(slot2_meta, slot2_results, buckets)
+                before = sum(1 for row in coherence_rows if row.get("will_win") == 1)
+                _apply_dual_model_cascade(coherence_rows, slot2_rows)
+                after = sum(1 for row in coherence_rows if row.get("will_win") == 1)
+                skipped_cascade = max(0, before - after)
 
     for row in coherence_rows:
         eid = row["event_id"]
@@ -2629,6 +2710,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         stake_logit = row["_stake_logit"]
         lgb_score = float(row["_lgb_score"])
         torch_score = float(row["_torch_score"])
+        will_win = row.get("will_win")
 
         if predicted_win:
             predicted_win_count += 1
@@ -2651,14 +2733,6 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             }
         )
 
-        will_win = outcome_will_win(
-            predicted_win,
-            coeff,
-            factor_id=fid,
-            score_1=row.get("score_1"),
-            score_2=row.get("score_2"),
-            win_probability=calibrated_prob,
-        )
         if will_win != 1:
             if predicted_win:
                 skipped_will_win += 1
@@ -2694,24 +2768,24 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         elif reason is None:
             live_candidates.append(
                 {
-                        "event_id": eid,
-                        "factor_id": fid,
-                        "market_prefix": prefix,
-                        "parameter": param,
-                        "coeff": coeff,
-                        "label": row["label"] or "",
-                        "match_name": row["match_name"] or "",
-                        "sport": row.get("sport"),
-                        "sport_path": row.get("sport_path") or "",
-                        "team_1": row["team_1"] or "",
-                        "team_2": row["team_2"] or "",
-                        "score": row["score"],
-                        "win_probability": round(calibrated_prob, 1),
-                        "expected_roi": expected_roi,
-                        "stake_logit": stake_logit,
-                        "decision_confidence": round(decision_prob, 3),
-                    }
-                )
+                    "event_id": eid,
+                    "factor_id": fid,
+                    "market_prefix": prefix,
+                    "parameter": param,
+                    "coeff": coeff,
+                    "label": row["label"] or "",
+                    "match_name": row["match_name"] or "",
+                    "sport": row.get("sport"),
+                    "sport_path": row.get("sport_path") or "",
+                    "team_1": row["team_1"] or "",
+                    "team_2": row["team_2"] or "",
+                    "score": row["score"],
+                    "win_probability": round(calibrated_prob, 1),
+                    "expected_roi": expected_roi,
+                    "stake_logit": stake_logit,
+                    "decision_confidence": round(decision_prob, 3),
+                }
+            )
 
     if (
         skipped_low_edge
@@ -2721,6 +2795,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
         or skipped_sport
         or skipped_market
         or skipped_will_win
+        or skipped_cascade
     ):
         sport_part = (
             f", {skipped_sport} — sport outside live list "
@@ -2738,6 +2813,11 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             if skipped_prob
             else ""
         )
+        cascade_part = (
+            f", {skipped_cascade} — rejected by slot-2 cascade filter"
+            if skipped_cascade
+            else ""
+        )
         add_ai_log(
             "BANKROLL",
             f"Bet candidates filtered: {skipped_will_win} — not will_win, "
@@ -2746,7 +2826,7 @@ def _run_live_inference_and_bets(scrape_timestamp: str | None) -> list[dict[str,
             f"(or {MAX_BET_COEFF:.1f}–{MAX_BET_COEFF_HIGH_P:.1f} with p<{HIGH_P_STAKE:.0%}), "
             f"{skipped_low_edge} — EV below {MIN_BET_EDGE_PCT:.0f}%, "
             f"{skipped_low_support} — market has fewer than {MIN_MARKET_SUPPORT} resolved archive outcomes"
-            f"{prob_part}{sport_part}{market_part}. "
+            f"{prob_part}{sport_part}{market_part}{cascade_part}. "
             f"Remaining {len(live_candidates)}.",
         )
 

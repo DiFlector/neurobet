@@ -274,8 +274,13 @@ class NeuralBetEnsemble:
     """
     Ensemble model combining PyTorch GRU sequence model and LightGBM GBDT.
     Saves and loads weight checkpoints from /app/data/models/ persistent volume.
+  Slot-2 inference uses model_dir=SLOT2_RUNTIME_DIR (read-only cascade filter).
     """
-    def __init__(self):
+    def __init__(self, model_dir: Optional[str] = None):
+        self._model_dir = model_dir or MODEL_DIR
+        self._pytorch_weights_path = os.path.join(self._model_dir, "pytorch_gru.pt")
+        self._lightgbm_model_path = os.path.join(self._model_dir, "lightgbm_model.txt")
+        self._lightgbm_meta_path = os.path.join(self._model_dir, "lightgbm_meta.json")
         self._reset_state()
         # Load weights if checkpoint exists — reset() reuses this same state-init logic
         # but deliberately skips this call (a reset means *discarding* whatever's on
@@ -371,7 +376,7 @@ class NeuralBetEnsemble:
         instead of jumping straight into the online 10k fine-tune loop.
         """
         self._reset_state()
-        for path in (PYTORCH_WEIGHTS_PATH, LIGHTGBM_MODEL_PATH, LIGHTGBM_META_PATH):
+        for path in (self._pytorch_weights_path, self._lightgbm_model_path, self._lightgbm_meta_path):
             try:
                 if os.path.exists(path):
                     os.remove(path)
@@ -417,7 +422,7 @@ class NeuralBetEnsemble:
 
     def save_checkpoints(self, extra: Optional[Dict[str, Any]] = None):
         try:
-            os.makedirs(MODEL_DIR, exist_ok=True)
+            os.makedirs(self._model_dir, exist_ok=True)
             self._apply_sport_threshold_floors()
             payload = {
                 "model_state": self.pytorch_model.state_dict(),
@@ -433,8 +438,8 @@ class NeuralBetEnsemble:
                 payload["last_accepted_val_loss"] = self.last_accepted_val_loss
             if self.last_accepted_val_pin_id is not None:
                 payload["last_accepted_val_pin_id"] = self.last_accepted_val_pin_id
-            torch.save(payload, PYTORCH_WEIGHTS_PATH)
-            logger.info(f"Saved PyTorch model weights checkpoint to {PYTORCH_WEIGHTS_PATH}")
+            torch.save(payload, self._pytorch_weights_path)
+            logger.info(f"Saved PyTorch model weights checkpoint to {self._pytorch_weights_path}")
             try:
                 from app.neuralbet import model_registry
                 model_registry.bootstrap_legacy_if_needed()
@@ -459,8 +464,8 @@ class NeuralBetEnsemble:
             "sport_decision_thresholds": dict(self.sport_decision_thresholds),
         }
         try:
-            os.makedirs(MODEL_DIR, exist_ok=True)
-            if not os.path.exists(PYTORCH_WEIGHTS_PATH):
+            os.makedirs(self._model_dir, exist_ok=True)
+            if not os.path.exists(self._pytorch_weights_path):
                 # No GRU file yet — a full save would dump random-init weights as if
                 # they were a real checkpoint. Leave the scalars in memory; the first
                 # accepted train_online pass writes both together.
@@ -468,7 +473,7 @@ class NeuralBetEnsemble:
                     "Ensemble weights not persisted — no GRU checkpoint on disk yet."
                 )
                 return False
-            blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
+            blob = torch.load(self._pytorch_weights_path, map_location="cpu")
             if not isinstance(blob, dict) or "model_state" not in blob:
                 # Bare state_dict from before ensemble fields existed. Full save
                 # keeps the GRU currently in memory (the accepted/restored one) and
@@ -476,10 +481,10 @@ class NeuralBetEnsemble:
                 self.save_checkpoints()
                 return True
             blob.update(ensemble_fields)
-            tmp_path = PYTORCH_WEIGHTS_PATH + ".tmp"
+            tmp_path = self._pytorch_weights_path + ".tmp"
             torch.save(blob, tmp_path)
-            os.replace(tmp_path, PYTORCH_WEIGHTS_PATH)
-            logger.info(f"Saved ensemble weights to {PYTORCH_WEIGHTS_PATH}")
+            os.replace(tmp_path, self._pytorch_weights_path)
+            logger.info(f"Saved ensemble weights to {self._pytorch_weights_path}")
             return True
         except Exception as e:
             logger.error(f"Error saving ensemble weights: {e}")
@@ -487,19 +492,19 @@ class NeuralBetEnsemble:
 
     def _persist_checkpoint_meta(self) -> None:
         """Write last-accepted floor + val-pin id without replacing GRU weights."""
-        if not os.path.exists(PYTORCH_WEIGHTS_PATH):
+        if not os.path.exists(self._pytorch_weights_path):
             return
         try:
-            blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location="cpu")
+            blob = torch.load(self._pytorch_weights_path, map_location="cpu")
             if not isinstance(blob, dict) or "model_state" not in blob:
                 return
             if self.last_accepted_val_loss is not None:
                 blob["last_accepted_val_loss"] = self.last_accepted_val_loss
             if self.last_accepted_val_pin_id is not None:
                 blob["last_accepted_val_pin_id"] = self.last_accepted_val_pin_id
-            tmp_path = PYTORCH_WEIGHTS_PATH + ".tmp"
+            tmp_path = self._pytorch_weights_path + ".tmp"
             torch.save(blob, tmp_path)
-            os.replace(tmp_path, PYTORCH_WEIGHTS_PATH)
+            os.replace(tmp_path, self._pytorch_weights_path)
         except Exception as e:
             logger.error(f"Error persisting checkpoint floor meta: {e}")
 
@@ -795,8 +800,8 @@ class NeuralBetEnsemble:
 
     def load_checkpoints(self):
         try:
-            if os.path.exists(PYTORCH_WEIGHTS_PATH):
-                blob = torch.load(PYTORCH_WEIGHTS_PATH, map_location=DEVICE)
+            if os.path.exists(self._pytorch_weights_path):
+                blob = torch.load(self._pytorch_weights_path, map_location=DEVICE)
                 # Backward compat: older checkpoints were a bare state_dict rather than
                 # {"model_state": ...}.
                 state = blob["model_state"] if isinstance(blob, dict) and "model_state" in blob else blob
@@ -845,27 +850,27 @@ class NeuralBetEnsemble:
                         # fresh optimizer state, the model weights still loaded fine.
                         pass
                 self.is_trained = True
-                logger.info(f"Successfully loaded PyTorch model weights from {PYTORCH_WEIGHTS_PATH}")
+                logger.info(f"Successfully loaded PyTorch model weights from {self._pytorch_weights_path}")
         except Exception as e:
             logger.error(f"Error loading model weights: {e}")
 
         try:
-            if os.path.exists(LIGHTGBM_MODEL_PATH):
-                booster = lgb.Booster(model_file=LIGHTGBM_MODEL_PATH)
+            if os.path.exists(self._lightgbm_model_path):
+                booster = lgb.Booster(model_file=self._lightgbm_model_path)
                 if booster.num_feature() != len(LGB_FEATURE_NAMES):
                     # Feature set changed (e.g. sport_idx added) since this booster was
                     # saved — a mismatched-shape predict() would just crash every
                     # inference cycle. Discard it and fall back to the heuristic score
                     # until the next scheduled refit produces a compatible booster.
                     logger.warning(
-                        f"Ignoring saved LightGBM model at {LIGHTGBM_MODEL_PATH}: "
+                        f"Ignoring saved LightGBM model at {self._lightgbm_model_path}: "
                         f"has {booster.num_feature()} features, expected {len(LGB_FEATURE_NAMES)}."
                     )
                 else:
                     self.lgb_model = booster
                     self.lgb_trained = True
                     self._load_lgb_meta()
-                    logger.info(f"Successfully loaded LightGBM model from {LIGHTGBM_MODEL_PATH}")
+                    logger.info(f"Successfully loaded LightGBM model from {self._lightgbm_model_path}")
         except Exception as e:
             logger.error(f"Error loading LightGBM model: {e}")
 
@@ -983,18 +988,18 @@ class NeuralBetEnsemble:
 
     def _load_lgb_meta(self) -> None:
         meta: Dict[str, Any] = {}
-        if os.path.exists(LIGHTGBM_META_PATH):
+        if os.path.exists(self._lightgbm_meta_path):
             try:
-                with open(LIGHTGBM_META_PATH, "r", encoding="utf-8") as f:
+                with open(self._lightgbm_meta_path, "r", encoding="utf-8") as f:
                     meta = json.load(f) or {}
             except Exception as e:
-                logger.warning(f"Could not read LightGBM meta {LIGHTGBM_META_PATH}: {e}")
+                logger.warning(f"Could not read LightGBM meta {self._lightgbm_meta_path}: {e}")
         brier = meta.get("val_brier")
         self.lgb_last_val_brier = float(brier) if brier is not None else None
         self.lgb_last_accepted_at = meta.get("accepted_at")
         self.lgb_newest_finished_at = meta.get("newest_finished_at")
-        if self.lgb_trained and not self.lgb_last_accepted_at and os.path.exists(LIGHTGBM_MODEL_PATH):
-            ts = datetime.fromtimestamp(os.path.getmtime(LIGHTGBM_MODEL_PATH), tz=MOSCOW_TZ)
+        if self.lgb_trained and not self.lgb_last_accepted_at and os.path.exists(self._lightgbm_model_path):
+            ts = datetime.fromtimestamp(os.path.getmtime(self._lightgbm_model_path), tz=MOSCOW_TZ)
             self.lgb_last_accepted_at = ts.isoformat()
             if not self.lgb_newest_finished_at:
                 self.lgb_newest_finished_at = self.lgb_last_accepted_at
@@ -1002,17 +1007,17 @@ class NeuralBetEnsemble:
 
     def _save_lgb_meta(self) -> None:
         try:
-            os.makedirs(MODEL_DIR, exist_ok=True)
+            os.makedirs(self._model_dir, exist_ok=True)
             payload = {
                 "val_brier": self.lgb_last_val_brier,
                 "accepted_at": self.lgb_last_accepted_at,
                 "newest_finished_at": self.lgb_newest_finished_at,
                 "seed": LGB_SEED,
             }
-            tmp = LIGHTGBM_META_PATH + ".tmp"
+            tmp = self._lightgbm_meta_path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False)
-            os.replace(tmp, LIGHTGBM_META_PATH)
+            os.replace(tmp, self._lightgbm_meta_path)
         except Exception as e:
             logger.error(f"Error saving LightGBM meta: {e}")
 
@@ -1155,9 +1160,9 @@ class NeuralBetEnsemble:
             self.lgb_newest_finished_at = str(newest_finished_at)
 
         try:
-            os.makedirs(MODEL_DIR, exist_ok=True)
-            booster.save_model(LIGHTGBM_MODEL_PATH)
-            logger.info(f"Saved LightGBM model checkpoint to {LIGHTGBM_MODEL_PATH}")
+            os.makedirs(self._model_dir, exist_ok=True)
+            booster.save_model(self._lightgbm_model_path)
+            logger.info(f"Saved LightGBM model checkpoint to {self._lightgbm_model_path}")
         except Exception as e:
             logger.error(f"Error saving LightGBM model: {e}")
         self._save_lgb_meta()

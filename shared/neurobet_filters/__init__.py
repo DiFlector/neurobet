@@ -9,7 +9,7 @@ Two layers, on purpose:
   live sports / markets) — staking real money, backtest "would bet", training
   bankroll/tuner. Thin markets and 1.0–1.1 shorts stay in the gradient; they just
   never get a stake. Money band is 1.1–2.0, plus 2.0–2.5 when calibrated p ≥ 90%.
-  Default stake floor: calibrated p ≥ 75% (`NEURALBET_MIN_STAKE_P`).
+  Default stake floor: calibrated p ≥ 80% (`NEURALBET_MIN_STAKE_P`).
 - Admin `enabled_sports` / `enabled_markets` (ai_settings.json) are product ceilings
   on live inference, UI, live backtest and Kelly. Training and full/debug backtest
   stay on all ALLOWED_SPORTS / ALLOWED_MARKET_FAMILIES. Stake = admin ∩ env ∩ Brier.
@@ -120,7 +120,7 @@ COEFF_MOVE_P_WEIGHT = float(os.getenv("NEURALBET_COEFF_MOVE_P_WEIGHT", "0.15"))
 MIN_BET_EDGE_PCT = float(os.getenv("NEURALBET_MIN_BET_EDGE_PCT", "5.0"))
 # Stake only when calibrated p ≥ this (0–1). 0 = off. UI «Выигрывающие» still shows
 # will_win=1 below the floor as «выиграет · не ставить»; bot / Kelly / backtest skip.
-MIN_STAKE_P = float(os.getenv("NEURALBET_MIN_STAKE_P", "0.75"))
+MIN_STAKE_P = float(os.getenv("NEURALBET_MIN_STAKE_P", "0.80"))
 W1_FACTOR_ID = 921
 W2_FACTOR_ID = 923
 MIN_MARKET_SUPPORT = int(os.getenv("NEURALBET_MIN_MARKET_SUPPORT", "150"))
