@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neurobet — Платформа прогнозирования и симуляции ставок</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 29, 47, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #10b981;
+      --accent-glow: rgba(16, 185, 129, 0.2);
+      --tennis-ball: #ccff00;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 50% 0%, #17223b 0%, var(--bg) 70%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      border-bottom: 1px solid var(--card-border);
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(12px);
+      background: rgba(11, 15, 25, 0.8);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .logo span { color: var(--tennis-ball); }
+    .badge-sport {
+      background: rgba(204, 255, 0, 0.12);
+      color: var(--tennis-ball);
+      border: 1px solid rgba(204, 255, 0, 0.3);
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent);
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    main {
+      flex: 1;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .stat-label {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .stat-sub {
+      font-size: 0.8rem;
+      color: var(--accent);
+      margin-top: 0.5rem;
+    }
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .match-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .match-card:hover {
+      border-color: rgba(204, 255, 0, 0.4);
+      transform: translateY(-2px);
+    }
+    .match-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .teams {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .player-name {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .player-server {
+      color: var(--tennis-ball);
+      font-size: 0.85rem;
+      margin-top: 0.2rem;
+    }
+    .score-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .score-sets {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--tennis-ball);
+    }
+    .score-games {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .odds-matrix {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      border: 1px solid var(--card-border);
+    }
+    .matrix-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .matrix-item .label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .matrix-item .val {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    .val.edge-positive {
+      color: var(--accent);
+      font-weight: 700;
+    }
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 1.5rem 2rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <span>🎾</span> Neurobet <span class="badge-sport">Sport #1: Tennis</span>
+    </div>
+    <div class="status-pill">
+      <span class="pulse-dot"></span> Paper Simulation Active
+    </div>
+  </header>
+
+  <main>
+    <section class="grid-stats">
+      <div class="stat-card">
+        <div class="stat-label">Виртуальный банкролл</div>
+        <div class="stat-value">100 000,00 ₽</div>
+        <div class="stat-sub">Лимит на ставку: 1% (1 000 ₽)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Смоделировано PnL</div>
+        <div class="stat-value" style="color: var(--accent);">+4 820,00 ₽</div>
+        <div class="stat-sub">ROI: +4.82%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ставок в симуляции</div>
+        <div class="stat-value">28</div>
+        <div class="stat-sub">Win Rate: 67.8%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Статус Collector & ML</div>
+        <div class="stat-value" style="font-size: 1.3rem; margin-top: 0.4rem;">OK (5-10s Jitter)</div>
+        <div class="stat-sub">TimescaleDB + Streams Healthy</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title">
+        <span>⚡</span> Live Анализ ценности ставок (Tennis MVP: Match Winner)
+      </div>
+
+      <div class="match-card">
+        <div class="match-header">
+          <span>ATP Masters • Live 2-й сет • Трава</span>
+          <span>Fonbet ID: 998124 • Snapshot UTC</span>
+        </div>
+
+        <div class="teams">
+          <div>
+            <div class="player-name">Carlos Alcaraz</div>
+            <div class="player-server">● Подаёт (1-я подача 74%)</div>
+          </div>
+          <div class="score-box">
+            <div class="score-sets">6-4, 3-2</div>
+            <div class="score-games">Гейм: 40-30</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="player-name">Jannik Sinner</div>
+            <div class="player-server" style="color: transparent;">—</div>
+          </div>
+        </div>
+
+        <div class="odds-matrix">
+          <div class="matrix-item">
+            <span class="label">Рынок</span>
+            <span class="val">Match Winner</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">P(Carlos Alcaraz)</span>
+            <span class="val">70.0%</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">Fair Odds (Справедливый кэф)</span>
+            <span class="val">1.43</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">Fonbet Коэффициент</span>
+            <span class="val">1.55</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">Edge (Преимущество)</span>
+            <span class="val edge-positive">+8.5%</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">Expected Value (EV)</span>
+            <span class="val edge-positive">+0.085</span>
+          </div>
+          <div class="matrix-item">
+            <span class="label">Bet Manager Решение</span>
+            <span class="val" style="color: var(--accent);">ACCEPTED (1 000 ₽)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Neurobet Research Platform • Режим: SIMULATION • UTC Time: 2026-10-08 • Reverse Proxy: necrolich.ru/diflector/neurobet
+  </footer>
+</body>
+</html>

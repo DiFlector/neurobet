@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neurobet-backend"
+version = "0.1.0"
+description = "FastAPI backend and orchestration API for Neurobet"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "asyncpg>=0.29.0",
+    "redis>=5.0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
