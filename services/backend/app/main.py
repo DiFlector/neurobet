@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -113,14 +113,98 @@ def get_event_quality_summary(event_id: str) -> Dict[str, Any]:
             return {"error": str(e), "quality_score": 0.0, "issues": []}
 
 
-@app.post("/api/quality/run")
-def trigger_data_quality_audit() -> Dict[str, Any]:
-    """Triggers on-demand audit and updates event scores in database."""
-    if not DataQualityEngine or not SessionLocal:
-        return {"error": "Data quality engine unavailable"}
+# Bankroll & Immutable Ledger endpoints
+try:
+    from bankroll import BankrollService, ReconciliationEngine
+    from db.models.betting import LedgerEntry, Bet
+except ImportError:
+    BankrollService = None
+    ReconciliationEngine = None
+    LedgerEntry = None
+    Bet = None
+
+
+@app.get("/api/bankroll")
+def get_bankroll_summary() -> Dict[str, Any]:
+    """Returns virtual bankroll summary (balance, exposure, equity, PnL)."""
+    if not BankrollService or not SessionLocal:
+        return {"error": "Bankroll service unavailable"}
     with SessionLocal() as session:
-        report = DataQualityEngine.run_full_audit(session)
+        account = BankrollService.get_or_create_account(session)
+        summary = BankrollService.get_account_summary(session, account.id)
+        session.commit()
+        return summary
+
+
+@app.get("/api/bankroll/ledger")
+def get_ledger_entries(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    """Returns immutable financial ledger transaction history."""
+    if not SessionLocal or not LedgerEntry or not BankrollService:
+        return []
+    with SessionLocal() as session:
+        account = BankrollService.get_or_create_account(session)
+        entries = (
+            session.query(LedgerEntry)
+            .filter(LedgerEntry.account_id == account.id)
+            .order_by(LedgerEntry.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": str(e.id),
+                "bet_id": str(e.bet_id) if e.bet_id else None,
+                "entry_type": e.entry_type,
+                "amount": float(e.amount),
+                "balance_after": float(e.balance_after),
+                "description": e.description,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in entries
+        ]
+
+
+@app.get("/api/bankroll/bets")
+def get_bets(status: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns list of paper bets (filter by PENDING, WON, LOST, VOID)."""
+    if not SessionLocal or not Bet or not BankrollService:
+        return []
+    with SessionLocal() as session:
+        account = BankrollService.get_or_create_account(session)
+        q = session.query(Bet).filter(Bet.account_id == account.id)
+        if status:
+            q = q.filter(Bet.status == status.upper())
+        bets = q.order_by(Bet.placed_at.desc()).limit(limit).all()
+        return [
+            {
+                "id": str(b.id),
+                "event_id": str(b.event_id),
+                "sport_code": b.sport_code,
+                "market": b.market,
+                "outcome": b.outcome,
+                "odds": float(b.odds),
+                "stake": float(b.stake),
+                "potential_payout": float(b.potential_payout),
+                "status": b.status,
+                "placed_at": b.placed_at.isoformat(),
+            }
+            for b in bets
+        ]
+
+
+@app.post("/api/bankroll/reconcile")
+def reconcile_bankroll() -> Dict[str, Any]:
+    """Runs on-demand reconciliation of bankroll from ledger journal."""
+    if not ReconciliationEngine or not BankrollService or not SessionLocal:
+        return {"error": "Reconciliation engine unavailable"}
+    with SessionLocal() as session:
+        account = BankrollService.get_or_create_account(session)
+        report = ReconciliationEngine.reconcile_account(session, account.id)
+        session.commit()
         return report.model_dump()
+
+
 
 
 if __name__ == "__main__":

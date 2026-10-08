@@ -39,6 +39,7 @@ test:
 	docker exec -i neurobet_backend python - < tests/features/test_feature_engineering.py
 	docker exec -i neurobet_neural python - < tests/neural/test_baseline_ml.py
 	docker exec -i neurobet_neural python - < tests/neural/test_backtester.py
+	docker exec -i neurobet_backend python - < tests/bankroll/test_ledger_audit.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
@@ -66,6 +67,9 @@ test-neural:
 
 test-backtest:
 	docker exec -i neurobet_neural python - < tests/neural/test_backtester.py
+
+test-bankroll:
+	docker exec -i neurobet_backend python - < tests/bankroll/test_ledger_audit.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

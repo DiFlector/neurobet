@@ -19,6 +19,12 @@ RUN pip install --no-cache-dir /app/packages/sports-core
 COPY sports/tennis /app/sports/tennis
 RUN pip install --no-cache-dir /app/sports/tennis
 
+COPY packages/db /app/packages/db
+RUN pip install --no-cache-dir /app/packages/db
+
+COPY packages/bankroll /app/packages/bankroll
+RUN pip install --no-cache-dir /app/packages/bankroll
+
 COPY services/bet-manager/pyproject.toml /app/
 COPY services/bet-manager/app /app/app
 RUN pip install --no-cache-dir .

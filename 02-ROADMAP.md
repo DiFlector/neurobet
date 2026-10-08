@@ -307,23 +307,23 @@
 
 # PHASE 11 — Virtual bankroll + immutable ledger
 
-- [ ] Создать virtual account.
-- [ ] Реализовать initial balance.
-- [ ] Реализовать ledger.
-- [ ] Запретить прямой balance UPDATE.
-- [ ] Реализовать available balance.
-- [ ] Реализовать exposed balance.
-- [ ] Реализовать virtual BET_PLACED.
-- [ ] Реализовать WIN.
-- [ ] Реализовать LOSS.
-- [ ] Реализовать VOID.
-- [ ] Реализовать reconciliation job.
-- [ ] Добавить ledger audit tests.
+- [x] Создать virtual account.
+- [x] Реализовать initial balance.
+- [x] Реализовать ledger.
+- [x] Запретить прямой balance UPDATE.
+- [x] Реализовать available balance.
+- [x] Реализовать exposed balance.
+- [x] Реализовать virtual BET_PLACED.
+- [x] Реализовать WIN.
+- [x] Реализовать LOSS.
+- [x] Реализовать VOID.
+- [x] Реализовать reconciliation job.
+- [x] Добавить ledger audit tests.
 
 ### Acceptance
 
-- [ ] Баланс можно пересчитать только из ledger.
-- [ ] Нельзя создать ставку при недостаточном balance.
+- [x] Баланс можно пересчитать только из ledger.
+- [x] Нельзя создать ставку при недостаточном balance.
 
 ---
 

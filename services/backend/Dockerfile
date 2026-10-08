@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir /app/packages/data-quality
 COPY packages/features /app/packages/features
 RUN pip install --no-cache-dir /app/packages/features
 
+COPY packages/bankroll /app/packages/bankroll
+RUN pip install --no-cache-dir /app/packages/bankroll
+
 # Install backend dependencies & app
 COPY services/backend/pyproject.toml /app/
 COPY services/backend/app /app/app

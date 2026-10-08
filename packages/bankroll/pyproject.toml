@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neurobet-bankroll"
+version = "0.1.0"
+description = "Virtual Bankroll, Immutable Financial Ledger and Reconciliation for Neurobet"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7.0",
+    "sqlalchemy>=2.0.30",
+    "psycopg2-binary>=2.9.9",
+    "neurobet-contracts",
+    "neurobet-db",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bankroll"]
