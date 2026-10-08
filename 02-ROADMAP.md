@@ -157,33 +157,33 @@
 
 # PHASE 5 — First sport adapter: Tennis
 
-- [ ] Создать `sports/core` interfaces.
-- [ ] Создать sport registry.
-- [ ] Создать `tennis` adapter.
-- [ ] Извлекать event ID.
-- [ ] Извлекать tournament / surface (хард, грунт, трава).
-- [ ] Извлекать players (Player A, Player B).
-- [ ] Извлекать scheduled start.
-- [ ] Извлекать live/prematch state.
-- [ ] Извлекать tennis score (sets, games, current game points: 0, 15, 30, 40, AD).
-- [ ] Извлекать server (кто сейчас подает).
-- [ ] Извлекать tennis stats (aces, double faults, break points).
-- [ ] Извлекать доступные markets (MVP: `match_winner`).
-- [ ] Извлекать selections (`player_a`, `player_b`).
-- [ ] Извлекать odds.
-- [ ] Извлекать market status/suspension.
-- [ ] Нормализовать имена игроков.
-- [ ] Сохранить canonical event.
-- [ ] Сохранить state snapshot (hierarchical: match -> set -> game -> point).
-- [ ] Сохранить odds snapshot.
-- [ ] Реализовать result parser.
-- [ ] Добавить parser fixture tests.
+- [x] Создать `sports/core` interfaces.
+- [x] Создать sport registry.
+- [x] Создать `tennis` adapter.
+- [x] Извлекать event ID.
+- [x] Извлекать tournament / surface (хард, грунт, трава).
+- [x] Извлекать players (Player A, Player B).
+- [x] Извлекать scheduled start.
+- [x] Извлекать live/prematch state.
+- [x] Извлекать tennis score (sets, games, current game points: 0, 15, 30, 40, AD).
+- [x] Извлекать server (кто сейчас подает).
+- [x] Извлекать tennis stats (aces, double faults, break points).
+- [x] Извлекать доступные markets (MVP: `match_winner`).
+- [x] Извлекать selections (`player_a`, `player_b`).
+- [x] Извлекать odds.
+- [x] Извлекать market status/suspension.
+- [x] Нормализовать имена игроков.
+- [x] Сохранить canonical event.
+- [x] Сохранить state snapshot (hierarchical: match -> set -> game -> point).
+- [x] Сохранить odds snapshot.
+- [x] Реализовать result parser.
+- [x] Добавить parser fixture tests.
 
 ### Acceptance
 
-- [ ] Один реальный/сохраненный live event корректно проходит `raw → event → state → odds`.
-- [ ] Повторный snapshot не создает ложные изменения.
-- [ ] Изменение odds создает новую историческую запись.
+- [x] Один реальный/сохраненный live event корректно проходит `raw → event → state → odds`.
+- [x] Повторный snapshot не создает ложные изменения.
+- [x] Изменение odds создает новую историческую запись.
 
 ---
 
