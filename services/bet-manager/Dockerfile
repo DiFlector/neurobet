@@ -13,6 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY packages/contracts /app/packages/contracts
 RUN pip install --no-cache-dir /app/packages/contracts
 
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
+COPY sports/tennis /app/sports/tennis
+RUN pip install --no-cache-dir /app/sports/tennis
+
 COPY services/bet-manager/pyproject.toml /app/
 COPY services/bet-manager/app /app/app
 RUN pip install --no-cache-dir .

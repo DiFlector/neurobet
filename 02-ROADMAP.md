@@ -189,19 +189,19 @@
 
 # PHASE 6 — Generic sports layer
 
-- [ ] Перенести event lifecycle в sport-independent core.
-- [ ] Оставить sport-specific state в adapter.
-- [ ] Убрать football-specific assumptions из backend.
-- [ ] Убрать football-specific assumptions из bet-manager.
-- [ ] Убрать football-specific assumptions из DB contracts.
-- [ ] Создать generic participant model.
-- [ ] Создать market/selection generic model.
-- [ ] Создать sport-specific label provider.
+- [x] Перенести event lifecycle в sport-independent core.
+- [x] Оставить sport-specific state в adapter.
+- [x] Убрать football-specific assumptions из backend.
+- [x] Убрать football-specific assumptions из bet-manager.
+- [x] Убрать football-specific assumptions из DB contracts.
+- [x] Создать generic participant model.
+- [x] Создать market/selection generic model.
+- [x] Создать sport-specific label provider.
 
 ### Acceptance
 
-- [ ] Backend умеет работать с неизвестным sport_code.
-- [ ] Неизвестный спорт корректно попадает в `UNSUPPORTED` и не ставит.
+- [x] Backend умеет работать с неизвестным sport_code.
+- [x] Неизвестный спорт корректно попадает в `UNSUPPORTED` и не ставит.
 
 ---
 

@@ -22,6 +22,12 @@ RUN pip install --no-cache-dir /app/packages/db
 COPY packages/streams /app/packages/streams
 RUN pip install --no-cache-dir /app/packages/streams
 
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
+COPY sports/tennis /app/sports/tennis
+RUN pip install --no-cache-dir /app/sports/tennis
+
 # Install backend dependencies & app
 COPY services/backend/pyproject.toml /app/
 COPY services/backend/app /app/app
