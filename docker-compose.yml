@@ -32,9 +32,9 @@ services:
     image: redis:7-alpine
     container_name: neurobet_redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ""
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ:-Europe/Moscow}
     ports:
       - "${REDIS_PORT:-6385}:6379"
     volumes:
@@ -42,7 +42,7 @@ services:
     networks:
       - neurobet-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping || redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 5

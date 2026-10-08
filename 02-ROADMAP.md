@@ -58,49 +58,49 @@
 
 # PHASE 2 — PostgreSQL + TimescaleDB
 
-- [ ] Запустить PostgreSQL + TimescaleDB.
-- [ ] Настроить volume для persistent storage.
-- [ ] Создать Alembic migrations.
-- [ ] Создать таблицу `sports`.
-- [ ] Создать `leagues`.
-- [ ] Создать `participants`.
-- [ ] Создать `participant_aliases`.
-- [ ] Создать `events`.
-- [ ] Создать `event_state_snapshots`.
-- [ ] Создать `raw_snapshots`.
-- [ ] Создать `markets`.
-- [ ] Создать `market_selections`.
-- [ ] Создать `odds_snapshots`.
-- [ ] Создать `odds_change_events`.
-- [ ] Создать `feature_snapshots`.
-- [ ] Создать `ml_predictions`.
-- [ ] Создать `llm_decisions`.
-- [ ] Создать `web_research_runs`.
-- [ ] Создать `web_documents`.
-- [ ] Создать `web_evidence`.
-- [ ] Создать `bet_proposals`.
-- [ ] Создать `bet_validation_results`.
-- [ ] Создать `virtual_accounts`.
-- [ ] Создать `ledger_entries`.
-- [ ] Создать `bets`.
-- [ ] Создать `bet_settlements`.
-- [ ] Создать `model_versions`.
-- [ ] Создать `training_runs`.
-- [ ] Создать `training_datasets`.
-- [ ] Создать `experiment_results`.
-- [ ] Создать `audit_log`.
-- [ ] Настроить индексы по `(event_id, observed_at)`.
-- [ ] Настроить индексы по `(sport_code, observed_at)`.
-- [ ] Настроить индексы для event lookup по source ID.
-- [ ] Настроить Timescale hypertables.
-- [ ] Настроить compression policy.
-- [ ] Настроить retention policy через конфигурацию.
+- [x] Запустить PostgreSQL + TimescaleDB.
+- [x] Настроить volume для persistent storage.
+- [x] Создать Alembic migrations.
+- [x] Создать таблицу `sports`.
+- [x] Создать `leagues`.
+- [x] Создать `participants`.
+- [x] Создать `participant_aliases`.
+- [x] Создать `events`.
+- [x] Создать `event_state_snapshots`.
+- [x] Создать `raw_snapshots`.
+- [x] Создать `markets`.
+- [x] Создать `market_selections`.
+- [x] Создать `odds_snapshots`.
+- [x] Создать `odds_change_events`.
+- [x] Создать `feature_snapshots`.
+- [x] Создать `ml_predictions`.
+- [x] Создать `llm_decisions`.
+- [x] Создать `web_research_runs`.
+- [x] Создать `web_documents`.
+- [x] Создать `web_evidence`.
+- [x] Создать `bet_proposals`.
+- [x] Создать `bet_validation_results`.
+- [x] Создать `virtual_accounts`.
+- [x] Создать `ledger_entries`.
+- [x] Создать `bets`.
+- [x] Создать `bet_settlements`.
+- [x] Создать `model_versions`.
+- [x] Создать `training_runs`.
+- [x] Создать `training_datasets`.
+- [x] Создать `experiment_results`.
+- [x] Создать `audit_log`.
+- [x] Настроить индексы по `(event_id, observed_at)`.
+- [x] Настроить индексы по `(sport_code, observed_at)`.
+- [x] Настроить индексы для event lookup по source ID.
+- [x] Настроить Timescale hypertables.
+- [x] Настроить compression policy.
+- [x] Настроить retention policy через конфигурацию.
 
 ### Acceptance
 
-- [ ] Migration с нуля создает всю схему.
-- [ ] Restart PostgreSQL сохраняет данные.
-- [ ] Запрос timeline одного event остается быстрым на тестовом датасете.
+- [x] Migration с нуля создает всю схему.
+- [x] Restart PostgreSQL сохраняет данные.
+- [x] Запрос timeline одного event остается быстрым на тестовом датасете.
 
 ---
 
