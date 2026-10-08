@@ -57,6 +57,7 @@ models/checkpoints/*
 *.bin
 *.pt
 *.onnx
+*.joblib
 
 # Docker volumes & persistent data local
 .docker-volumes/

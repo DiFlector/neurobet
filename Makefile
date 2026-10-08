@@ -37,6 +37,7 @@ test:
 	docker exec -i neurobet_backend python - < tests/sports/test_generic_layer.py
 	docker exec -i neurobet_backend python - < tests/quality/test_data_quality.py
 	docker exec -i neurobet_backend python - < tests/features/test_feature_engineering.py
+	docker exec -i neurobet_neural python - < tests/neural/test_baseline_ml.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
@@ -59,6 +60,9 @@ test-quality:
 test-features:
 	docker exec -i neurobet_backend python - < tests/features/test_feature_engineering.py
 
+test-neural:
+	docker exec -i neurobet_neural python - < tests/neural/test_baseline_ml.py
+
 # Initialize Redis Streams and consumer groups
 init-streams:
 	docker exec -i neurobet_backend python - < scripts/init_streams.py
@@ -73,7 +77,7 @@ migrate:
 
 # Run ML model training for tennis
 train:
-	docker exec -it neurobet_neural python -m app.train --sport tennis
+	docker exec -i neurobet_neural python -m app.train --sport tennis
 
 # Clean build artifacts and pycache
 clean:

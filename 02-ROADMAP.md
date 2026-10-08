@@ -253,27 +253,27 @@
 
 # PHASE 9 — Baseline ML
 
-- [ ] Создать dataset builder.
-- [ ] Реализовать point-in-time feature join.
-- [ ] Создать labels для первых поддерживаемых рынков.
-- [ ] Сделать Logistic Regression baseline.
-- [ ] Сделать LightGBM/XGBoost baseline.
-- [ ] Добавить probability calibration.
-- [ ] Добавить model artifact serialization.
-- [ ] Создать `model_versions`.
-- [ ] Создать `training_runs`.
-- [ ] Сохранять dataset version.
-- [ ] Сохранять git commit.
-- [ ] Сохранять feature version.
-- [ ] Сохранять hyperparameters.
-- [ ] Считать log loss.
-- [ ] Считать Brier.
-- [ ] Считать calibration metrics.
+- [x] Создать dataset builder.
+- [x] Реализовать point-in-time feature join.
+- [x] Создать labels для первых поддерживаемых рынков.
+- [x] Сделать Logistic Regression baseline.
+- [x] Сделать LightGBM/XGBoost baseline.
+- [x] Добавить probability calibration.
+- [x] Добавить model artifact serialization.
+- [x] Создать `model_versions`.
+- [x] Создать `training_runs`.
+- [x] Сохранять dataset version.
+- [x] Сохранять git commit.
+- [x] Сохранять feature version.
+- [x] Сохранять hyperparameters.
+- [x] Считать log loss.
+- [x] Считать Brier.
+- [x] Считать calibration metrics.
 
 ### Acceptance
 
-- [ ] Можно одной командой воспроизвести training run.
-- [ ] Prediction содержит model version и feature version.
+- [x] Можно одной командой воспроизвести training run.
+- [x] Prediction содержит model version и feature version.
 
 ---
 

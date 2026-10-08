@@ -173,7 +173,11 @@ services:
       - .env
     environment:
       TZ: ${TZ:-UTC}
+    volumes:
+      - ./models/checkpoints:/app/models/checkpoints
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
