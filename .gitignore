@@ -64,3 +64,5 @@ models/checkpoints/*
 # OS files
 .DS_Store
 Thumbs.db
+
+nginx-master-readme.md
