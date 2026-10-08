@@ -279,29 +279,29 @@
 
 # PHASE 10 — Walk-forward backtester
 
-- [ ] Реализовать chronological split.
-- [ ] Реализовать rolling/walk-forward windows.
-- [ ] Добавить purge/embargo при необходимости.
-- [ ] Запретить random split в production training.
-- [ ] Реализовать simulated decision timestamps.
-- [ ] Реализовать historical odds lookup as-of timestamp.
-- [ ] Реализовать stale odds behavior.
-- [ ] Реализовать execution latency simulation.
-- [ ] Реализовать suspension handling.
-- [ ] Реализовать virtual stake deduction.
-- [ ] Реализовать settlement.
-- [ ] Считать ROI.
-- [ ] Считать P&L.
-- [ ] Считать max drawdown.
-- [ ] Считать turnover.
-- [ ] Считать exposure.
-- [ ] Считать результаты по sport/market/odds/edge buckets.
+- [x] Реализовать chronological split.
+- [x] Реализовать rolling/walk-forward windows.
+- [x] Добавить purge/embargo при необходимости.
+- [x] Запретить random split в production training.
+- [x] Реализовать simulated decision timestamps.
+- [x] Реализовать historical odds lookup as-of timestamp.
+- [x] Реализовать stale odds behavior.
+- [x] Реализовать execution latency simulation.
+- [x] Реализовать suspension handling.
+- [x] Реализовать virtual stake deduction.
+- [x] Реализовать settlement.
+- [x] Считать ROI.
+- [x] Считать P&L.
+- [x] Считать max drawdown.
+- [x] Считать turnover.
+- [x] Считать exposure.
+- [x] Считать результаты по sport/market/odds/edge buckets.
 
 ### Critical acceptance
 
-- [ ] Backtest не может использовать данные после decision timestamp.
-- [ ] Backtest воспроизводим по seed/config version.
-- [ ] Повторный запуск на одном dataset дает одинаковые результаты.
+- [x] Backtest не может использовать данные после decision timestamp.
+- [x] Backtest воспроизводим по seed/config version.
+- [x] Повторный запуск на одном dataset дает одинаковые результаты.
 
 ---
 
