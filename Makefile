@@ -32,12 +32,16 @@ ps:
 test:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
 	docker exec -i neurobet_backend python - < tests/streams/test_streams.py
+	docker exec -i neurobet_collector python - < tests/collector/test_collector.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
 
 test-streams:
 	docker exec -i neurobet_backend python - < tests/streams/test_streams.py
+
+test-collector:
+	docker exec -i neurobet_collector python - < tests/collector/test_collector.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

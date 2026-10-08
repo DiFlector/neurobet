@@ -128,30 +128,30 @@
 
 # PHASE 4 — FON.BET collector foundation
 
-- [ ] Создать collector service.
-- [ ] Подключить Playwright/Chromium.
-- [ ] Создать browser lifecycle manager.
-- [ ] Создать configurable page URLs.
-- [ ] Реализовать graceful shutdown.
-- [ ] Реализовать `random.uniform(5, 10)` polling.
-- [ ] Реализовать concurrency limit.
-- [ ] Реализовать timeout.
-- [ ] Реализовать retry/backoff.
-- [ ] Реализовать circuit breaker.
-- [ ] Реализовать structured logging.
-- [ ] Реализовать snapshot hashing.
-- [ ] Создать raw snapshot writer.
-- [ ] Создать MinIO bucket `raw-snapshots`.
-- [ ] Записывать `collector_version`.
-- [ ] Записывать `collected_at`.
-- [ ] Сохранять URL/page type.
-- [ ] Реализовать parser tests на сохраненных fixtures.
+- [x] Создать collector service.
+- [x] Подключить Playwright/Chromium.
+- [x] Создать browser lifecycle manager.
+- [x] Создать configurable page URLs.
+- [x] Реализовать graceful shutdown.
+- [x] Реализовать `random.uniform(5, 10)` polling.
+- [x] Реализовать concurrency limit.
+- [x] Реализовать timeout.
+- [x] Реализовать retry/backoff.
+- [x] Реализовать circuit breaker.
+- [x] Реализовать structured logging.
+- [x] Реализовать snapshot hashing.
+- [x] Создать raw snapshot writer.
+- [x] Создать MinIO bucket `raw-snapshots`.
+- [x] Записывать `collector_version`.
+- [x] Записывать `collected_at`.
+- [x] Сохранять URL/page type.
+- [x] Реализовать parser tests на сохраненных fixtures.
 
 ### Acceptance
 
-- [ ] Collector может несколько часов работать без uncontrolled browser process growth.
-- [ ] Ошибка parser одной карточки не останавливает весь collector.
-- [ ] Каждая сохраненная запись имеет точный UTC timestamp.
+- [x] Collector может несколько часов работать без uncontrolled browser process growth.
+- [x] Ошибка parser одной карточки не останавливает весь collector.
+- [x] Каждая сохраненная запись имеет точный UTC timestamp.
 
 ---
 

@@ -1,13 +1,15 @@
+"""Main entrypoint for FON.BET live collector service."""
+
 import asyncio
 import logging
 import os
 import random
 import signal
-import sys
 from datetime import datetime, timezone
-import httpx
 
-# Configure logging
+from .config import settings
+from .service import CollectorService
+
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s UTC [%(levelname)s] [collector] %(message)s",
@@ -28,20 +30,22 @@ signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
 
-async def poll_cycle():
-    """Single polling cycle for Fonbet line data."""
-    now = datetime.now(timezone.utc).isoformat()
-    sport = os.getenv("PRIMARY_SPORT", "tennis")
-    logger.info("[%s] Polling Fonbet sport line: %s", now, sport)
-    # Heartbeat file for Docker healthcheck
-    with open("/tmp/healthy", "w") as f:
-        f.write(now)
-
-
 async def main():
-    logger.info("Starting Neurobet Fonbet Collector (Primary Sport: %s)", os.getenv("PRIMARY_SPORT", "tennis"))
-    min_seconds = float(os.getenv("FONBET_POLL_MIN_SECONDS", "5.0"))
-    max_seconds = float(os.getenv("FONBET_POLL_MAX_SECONDS", "10.0"))
+    global RUNNING
+    logger.info(
+        "Starting Neurobet Live Collector v%s (Sport: %s, Locale: %s, Jitter: %.1f-%.1fs)...",
+        settings.collector_version,
+        settings.sport_code,
+        settings.locale,
+        settings.poll_min_seconds,
+        settings.poll_max_seconds,
+    )
+
+    service = CollectorService()
+    try:
+        await service.initialize()
+    except Exception as e:
+        logger.error("Failed to initialize collector service: %s. Continuing with retries...", e)
 
     # Initial heartbeat
     with open("/tmp/healthy", "w") as f:
@@ -49,21 +53,29 @@ async def main():
 
     while RUNNING:
         try:
-            await poll_cycle()
-        except Exception as e:
-            logger.error("Error during polling cycle: %s", e)
+            # Update healthcheck timestamp
+            with open("/tmp/healthy", "w") as f:
+                f.write(datetime.now(timezone.utc).isoformat())
 
-        delay = random.uniform(min_seconds, max_seconds)
-        logger.debug("Sleeping for %.2f seconds (jitter 5-10s)...", delay)
-        
-        # Sleep in small slices to respond quickly to shutdown signal
+            await service.poll_once()
+
+        except Exception as exc:
+            logger.error("Unhandled exception in main collector loop: %s", exc)
+
+        # Polling delay with random jitter (5.0 - 10.0s)
+        delay = random.uniform(settings.poll_min_seconds, settings.poll_max_seconds)
+        logger.debug("Sleeping for %.2fs...", delay)
+
+        # Responsive sleep slices
         steps = int(delay * 10)
         for _ in range(steps):
             if not RUNNING:
                 break
             await asyncio.sleep(0.1)
 
-    logger.info("Collector stopped cleanly.")
+    # Clean shutdown
+    await service.shutdown()
+    logger.info("Collector service terminated cleanly.")
 
 
 if __name__ == "__main__":

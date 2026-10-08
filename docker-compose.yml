@@ -56,6 +56,7 @@ services:
     container_name: neurobet_minio
     restart: unless-stopped
     environment:
+      ENDPOINT: minio,localhost,127.0.0.1
       SCALITY_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-neurobet_minio}
       SCALITY_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-neurobet_minio_secret_pass}
       S3BACKEND: file
