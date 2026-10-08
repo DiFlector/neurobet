@@ -106,23 +106,23 @@
 
 # PHASE 3 — Redis Streams
 
-- [ ] Запустить Redis.
-- [ ] Создать streams `fonbet.raw`, `fonbet.events`, `fonbet.state`, `fonbet.odds`.
-- [ ] Создать streams `features.ready`, `ml.predictions`.
-- [ ] Создать streams `research.requests`, `research.results`.
-- [ ] Создать streams `llm.requests`, `llm.results`.
-- [ ] Создать streams `bet.proposals`, `bet.validated`, `bet.executed`, `bet.settled`.
-- [ ] Создать stream `training.jobs`.
-- [ ] Реализовать message envelope.
-- [ ] Реализовать idempotency key.
-- [ ] Реализовать consumer groups.
-- [ ] Реализовать retry policy.
-- [ ] Реализовать dead-letter handling.
+- [x] Запустить Redis.
+- [x] Создать streams `fonbet.raw`, `fonbet.events`, `fonbet.state`, `fonbet.odds`.
+- [x] Создать streams `features.ready`, `ml.predictions`.
+- [x] Создать streams `research.requests`, `research.results`.
+- [x] Создать streams `llm.requests`, `llm.results`.
+- [x] Создать streams `bet.proposals`, `bet.validated`, `bet.executed`, `bet.settled`.
+- [x] Создать stream `training.jobs`.
+- [x] Реализовать message envelope.
+- [x] Реализовать idempotency key.
+- [x] Реализовать consumer groups.
+- [x] Реализовать retry policy.
+- [x] Реализовать dead-letter handling.
 
 ### Acceptance
 
-- [ ] Один message не создает два одинаковых database action при повторной доставке.
-- [ ] Ошибка worker не теряет message.
+- [x] Один message не создает два одинаковых database action при повторной доставке.
+- [x] Ошибка worker не теряет message.
 
 ---
 

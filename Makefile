@@ -28,9 +28,20 @@ logs:
 ps:
 	$(COMPOSE) --env-file $(ENV_FILE) ps
 
-# Run contract test suite
+# Run test suite
 test:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
+	docker exec -i neurobet_backend python - < tests/streams/test_streams.py
+
+test-contracts:
+	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
+
+test-streams:
+	docker exec -i neurobet_backend python - < tests/streams/test_streams.py
+
+# Initialize Redis Streams and consumer groups
+init-streams:
+	docker exec -i neurobet_backend python - < scripts/init_streams.py
 
 # Run linter
 lint:

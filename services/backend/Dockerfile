@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir /app/packages/contracts
 COPY packages/db /app/packages/db
 RUN pip install --no-cache-dir /app/packages/db
 
+COPY packages/streams /app/packages/streams
+RUN pip install --no-cache-dir /app/packages/streams
+
 # Install backend dependencies & app
 COPY services/backend/pyproject.toml /app/
 COPY services/backend/app /app/app

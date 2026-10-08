@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY packages/contracts /app/packages/contracts
 RUN pip install --no-cache-dir /app/packages/contracts
 
+COPY packages/streams /app/packages/streams
+RUN pip install --no-cache-dir /app/packages/streams
+
 COPY services/worker/pyproject.toml /app/
 COPY services/worker/app /app/app
 RUN pip install --no-cache-dir .

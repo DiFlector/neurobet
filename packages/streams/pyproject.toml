@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neurobet-streams"
+version = "1.0.0"
+description = "Canonical Redis Streams messaging library with envelopes, consumer groups, idempotency, and dead-letter queue for Neurobet platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "redis>=5.0.4",
+    "pydantic>=2.7.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/streams"]
