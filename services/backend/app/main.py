@@ -11,6 +11,13 @@ try:
 except ImportError:
     pass
 
+try:
+    from data_quality import DataQualityEngine
+    from db.connection import SessionLocal
+except ImportError:
+    DataQualityEngine = None
+    SessionLocal = None
+
 app = FastAPI(
     title="Neurobet API",
     version="1.0.0",
@@ -80,6 +87,40 @@ def get_sport_details(sport_code: str) -> Dict[str, Any]:
 def get_tennis_events() -> List[Dict[str, Any]]:
     """Placeholder endpoint for tennis events list."""
     return []
+
+
+# Data Quality API endpoints
+@app.get("/api/quality/report")
+def get_data_quality_report() -> Dict[str, Any]:
+    """Returns global historical data quality audit report."""
+    if not DataQualityEngine or not SessionLocal:
+        return {"error": "Data quality engine unavailable"}
+    with SessionLocal() as session:
+        report = DataQualityEngine.run_full_audit(session)
+        return report.model_dump()
+
+
+@app.get("/api/quality/events/{event_id}")
+def get_event_quality_summary(event_id: str) -> Dict[str, Any]:
+    """Returns data quality score and audit issues for a specific event."""
+    if not DataQualityEngine or not SessionLocal:
+        return {"error": "Data quality engine unavailable"}
+    with SessionLocal() as session:
+        try:
+            summary = DataQualityEngine.audit_event(session, event_id)
+            return summary.model_dump()
+        except ValueError as e:
+            return {"error": str(e), "quality_score": 0.0, "issues": []}
+
+
+@app.post("/api/quality/run")
+def trigger_data_quality_audit() -> Dict[str, Any]:
+    """Triggers on-demand audit and updates event scores in database."""
+    if not DataQualityEngine or not SessionLocal:
+        return {"error": "Data quality engine unavailable"}
+    with SessionLocal() as session:
+        report = DataQualityEngine.run_full_audit(session)
+        return report.model_dump()
 
 
 if __name__ == "__main__":

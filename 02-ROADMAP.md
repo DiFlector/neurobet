@@ -207,47 +207,47 @@
 
 # PHASE 7 — Historical data quality
 
-- [ ] Создать data-quality jobs.
-- [ ] Проверять duplicate events.
-- [ ] Проверять time order.
-- [ ] Проверять отрицательные/невозможные odds.
-- [ ] Проверять невозможные изменения score.
-- [ ] Проверять clock regressions.
-- [ ] Проверять missing observations.
-- [ ] Проверять orphan odds.
-- [ ] Проверять события без result.
-- [ ] Добавить data-quality dashboard.
-- [ ] Добавить quality score на event.
+- [x] Создать data-quality jobs.
+- [x] Проверять duplicate events.
+- [x] Проверять time order.
+- [x] Проверять отрицательные/невозможные odds.
+- [x] Проверять невозможные изменения score.
+- [x] Проверять clock regressions.
+- [x] Проверять missing observations.
+- [x] Проверять orphan odds.
+- [x] Проверять события без result.
+- [x] Добавить data-quality dashboard.
+- [x] Добавить quality score на event.
 
 ### Acceptance
 
-- [ ] Можно получить отчет о качестве накопленной истории.
-- [ ] Bad rows не удаляются молча; они помечаются и остаются аудируемыми.
+- [x] Можно получить отчет о качестве накопленной истории.
+- [x] Bad rows не удаляются молча; они помечаются и остаются аудируемыми.
 
 ---
 
 # PHASE 8 — Feature engineering
 
-- [ ] Реализовать common feature base.
-- [ ] Реализовать football feature builder.
-- [ ] Реализовать rolling windows 5/10/30/60/300 sec.
-- [ ] Реализовать odds delta.
-- [ ] Реализовать odds velocity.
-- [ ] Реализовать volatility.
-- [ ] Реализовать line movement.
-- [ ] Реализовать no-vig probability.
-- [ ] Реализовать score differential.
-- [ ] Реализовать match clock/time-to-start.
-- [ ] Реализовать suspension frequency.
-- [ ] Добавить missing indicators.
-- [ ] Версионировать feature set.
-- [ ] Сохранять `feature_cutoff_timestamp`.
+- [x] Реализовать common feature base.
+- [x] Реализовать football feature builder.
+- [x] Реализовать rolling windows 5/10/30/60/300 sec.
+- [x] Реализовать odds delta.
+- [x] Реализовать odds velocity.
+- [x] Реализовать volatility.
+- [x] Реализовать line movement.
+- [x] Реализовать no-vig probability.
+- [x] Реализовать score differential.
+- [x] Реализовать match clock/time-to-start.
+- [x] Реализовать suspension frequency.
+- [x] Добавить missing indicators.
+- [x] Версионировать feature set.
+- [x] Сохранять `feature_cutoff_timestamp`.
 
 ### Critical tests
 
-- [ ] Feature builder никогда не запрашивает snapshot после `feature_cutoff_timestamp`.
-- [ ] Feature values воспроизводимы при повторном build.
-- [ ] Один и тот же event не смешивается с другим event.
+- [x] Feature builder никогда не запрашивает snapshot после `feature_cutoff_timestamp`.
+- [x] Feature values воспроизводимы при повторном build.
+- [x] Один и тот же event не смешивается с другим event.
 
 ---
 

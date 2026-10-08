@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from sqlalchemy import String, Boolean, Integer, DateTime, ForeignKey, Index, BigInteger
+from sqlalchemy import String, Boolean, Integer, DateTime, ForeignKey, Index, BigInteger, Numeric
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
@@ -30,6 +30,7 @@ class Event(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_live: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     current_period: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Set number in tennis
     current_score: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    quality_score: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), default=100.0, nullable=True)
     metadata_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     __table_args__ = (

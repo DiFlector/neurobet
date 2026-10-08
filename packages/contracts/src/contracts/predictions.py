@@ -12,6 +12,7 @@ class FeatureVector(BaseContract):
     event_id: str = Field(..., description="Canonical event ID")
     sport_code: str = Field(default="tennis", description="Sport code")
     feature_version: str = Field(default="1.0.0", description="Version of feature engineering pipeline")
+    feature_cutoff_timestamp: Optional[datetime] = Field(default=None, description="Point-in-time timestamp cutoff ensuring zero data leakage")
     features: Dict[str, float] = Field(..., description="Key-value numeric features")
 
 

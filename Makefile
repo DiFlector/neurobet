@@ -35,6 +35,8 @@ test:
 	docker exec -i neurobet_collector python - < tests/collector/test_collector.py
 	docker exec -i neurobet_backend python - < tests/sports/test_tennis_adapter.py
 	docker exec -i neurobet_backend python - < tests/sports/test_generic_layer.py
+	docker exec -i neurobet_backend python - < tests/quality/test_data_quality.py
+	docker exec -i neurobet_backend python - < tests/features/test_feature_engineering.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
@@ -50,6 +52,12 @@ test-sports:
 
 test-generic:
 	docker exec -i neurobet_backend python - < tests/sports/test_generic_layer.py
+
+test-quality:
+	docker exec -i neurobet_backend python - < tests/quality/test_data_quality.py
+
+test-features:
+	docker exec -i neurobet_backend python - < tests/features/test_feature_engineering.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

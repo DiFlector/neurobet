@@ -28,6 +28,12 @@ RUN pip install --no-cache-dir /app/packages/sports-core
 COPY sports/tennis /app/sports/tennis
 RUN pip install --no-cache-dir /app/sports/tennis
 
+COPY packages/data-quality /app/packages/data-quality
+RUN pip install --no-cache-dir /app/packages/data-quality
+
+COPY packages/features /app/packages/features
+RUN pip install --no-cache-dir /app/packages/features
+
 # Install backend dependencies & app
 COPY services/backend/pyproject.toml /app/
 COPY services/backend/app /app/app

@@ -1,3 +1,4 @@
+from .quality import DataQualityIssue
 from .sports import Sport, League, Participant, ParticipantAlias
 from .events import Event, EventStateSnapshot, RawSnapshot
 from .odds import Market, MarketSelection, OddsSnapshot, OddsChangeEvent
@@ -20,6 +21,7 @@ from .ml_registry import (
 )
 
 __all__ = [
+    "DataQualityIssue",
     "Sport",
     "League",
     "Participant",
