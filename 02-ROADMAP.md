@@ -329,30 +329,30 @@
 
 # PHASE 12 — Bet Manager
 
-- [ ] Создать отдельный service.
-- [ ] Реализовать `BetProposal` schema.
-- [ ] Реализовать event validation.
-- [ ] Реализовать market validation.
-- [ ] Реализовать selection validation.
-- [ ] Реализовать odds freshness validation.
-- [ ] Реализовать state freshness validation.
-- [ ] Реализовать odds match/slippage validation.
-- [ ] Реализовать duplicate validation.
-- [ ] Реализовать balance validation.
-- [ ] Реализовать exposure limit.
-- [ ] Реализовать stake limit.
-- [ ] Реализовать daily/session loss limit.
-- [ ] Реализовать model confidence threshold.
-- [ ] Реализовать minimum edge threshold.
-- [ ] Реализовать sport-specific validation.
-- [ ] Создать explicit reject reasons.
-- [ ] Реализовать simulation executor.
+- [x] Создать отдельный service.
+- [x] Реализовать `BetProposal` schema.
+- [x] Реализовать event validation.
+- [x] Реализовать market validation.
+- [x] Реализовать selection validation.
+- [x] Реализовать odds freshness validation.
+- [x] Реализовать state freshness validation.
+- [x] Реализовать odds match/slippage validation.
+- [x] Реализовать duplicate validation.
+- [x] Реализовать balance validation.
+- [x] Реализовать exposure limit.
+- [x] Реализовать stake limit.
+- [x] Реализовать daily/session loss limit.
+- [x] Реализовать model confidence threshold.
+- [x] Реализовать minimum edge threshold.
+- [x] Реализовать sport-specific validation.
+- [x] Создать explicit reject reasons.
+- [x] Реализовать simulation executor.
 
 ### Acceptance
 
-- [ ] ML/LLM не могут напрямую создать bet.
-- [ ] Every accepted proposal имеет полный validation trail.
-- [ ] stale odds всегда отвергаются.
+- [x] ML/LLM не могут напрямую создать bet.
+- [x] Every accepted proposal имеет полный validation trail.
+- [x] stale odds всегда отвергаются.
 
 ---
 
