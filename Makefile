@@ -1,4 +1,4 @@
-.PHONY: up down infra-up infra-down logs ps test lint migrate train clean
+.PHONY: up down infra-up infra-down logs ps test test-api lint migrate train clean
 
 # Environment variables
 COMPOSE = docker compose
@@ -46,6 +46,10 @@ test:
 	docker exec -i neurobet_research python - < tests/research/test_research.py
 	docker exec -i neurobet_backend python - < tests/decision_layer/test_decision_layer.py
 	docker exec -i neurobet_backend python - < tests/scheduler/test_candidate_scheduler.py
+	docker exec -i neurobet_backend python - < tests/api/test_backend_api.py
+
+test-api:
+	docker exec -i neurobet_backend python - < tests/api/test_backend_api.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py

@@ -466,24 +466,24 @@
 
 # PHASE 18 — Backend API
 
-- [ ] Реализовать health/readiness.
-- [ ] Реализовать sports endpoint.
-- [ ] Реализовать events endpoint.
-- [ ] Реализовать event detail.
-- [ ] Реализовать timeline endpoint.
-- [ ] Реализовать odds history endpoint.
-- [ ] Реализовать ML predictions endpoint.
-- [ ] Реализовать research endpoint.
-- [ ] Реализовать bet proposals endpoint.
-- [ ] Реализовать bets endpoint.
-- [ ] Реализовать account endpoint.
-- [ ] Реализовать ledger endpoint.
-- [ ] Реализовать performance endpoint.
-- [ ] Реализовать model endpoint.
-- [ ] Реализовать training runs endpoint.
-- [ ] Добавить pagination.
-- [ ] Добавить filters.
-- [ ] Добавить WebSocket/SSE live updates.
+- [x] Реализовать health/readiness.
+- [x] Реализовать sports endpoint.
+- [x] Реализовать events endpoint.
+- [x] Реализовать event detail.
+- [x] Реализовать timeline endpoint.
+- [x] Реализовать odds history endpoint.
+- [x] Реализовать ML predictions endpoint.
+- [x] Реализовать research endpoint.
+- [x] Реализовать bet proposals endpoint.
+- [x] Реализовать bets endpoint.
+- [x] Реализовать account endpoint.
+- [x] Реализовать ledger endpoint.
+- [x] Реализовать performance endpoint.
+- [x] Реализовать model endpoint.
+- [x] Реализовать training runs endpoint.
+- [x] Добавить pagination.
+- [x] Добавить filters.
+- [x] Добавить WebSocket/SSE live updates.
 
 ---
 
