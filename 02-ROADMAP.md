@@ -430,23 +430,23 @@
 
 # PHASE 16 — ML + LLM decision layer
 
-- [ ] Создать candidate selection.
-- [ ] Отбирать кандидатов по ML edge/confidence.
-- [ ] Добавить research only for shortlisted events.
-- [ ] Сформировать LLM input JSON.
-- [ ] Запросить LLM.
-- [ ] Провалидировать LLM output.
-- [ ] Сохранить `llm_decisions`.
-- [ ] Создать `BetProposal`.
-- [ ] Передать только через bet-manager.
-- [ ] Сравнить ML-only и ML+LLM стратегии.
-- [ ] Считать incremental value LLM.
+- [x] Создать candidate selection.
+- [x] Отбирать кандидатов по ML edge/confidence.
+- [x] Добавить research only for shortlisted events.
+- [x] Сформировать LLM input JSON.
+- [x] Запросить LLM.
+- [x] Провалидировать LLM output.
+- [x] Сохранить `llm_decisions`.
+- [x] Создать `BetProposal`.
+- [x] Передать только через bet-manager.
+- [x] Сравнить ML-only и ML+LLM стратегии.
+- [x] Считать incremental value LLM.
 
 ### Acceptance
 
-- [ ] Можно включить/выключить LLM конфигом.
-- [ ] Поведение ML-only не меняется при отключенной LLM.
-- [ ] Можно отдельно backtest LLM contribution.
+- [x] Можно включить/выключить LLM конфигом.
+- [x] Поведение ML-only не меняется при отключенной LLM.
+- [x] Можно отдельно backtest LLM contribution.
 
 ---
 

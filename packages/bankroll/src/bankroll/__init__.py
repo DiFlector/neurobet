@@ -12,6 +12,7 @@ from .exceptions import (
 from .service import BankrollService
 from .reconciliation import ReconciliationEngine, ReconciliationReport, LedgerDiscrepancy
 from .settlement import EventResultMatcher, BetSettlementEngine
+from .decision_pipeline import CandidateSelector, CombinedDecisionPipeline, LLMStrategyComparator
 
 __all__ = [
     "BankrollError",
@@ -27,4 +28,7 @@ __all__ = [
     "LedgerDiscrepancy",
     "EventResultMatcher",
     "BetSettlementEngine",
+    "CandidateSelector",
+    "CombinedDecisionPipeline",
+    "LLMStrategyComparator",
 ]

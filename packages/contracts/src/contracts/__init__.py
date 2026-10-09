@@ -13,6 +13,10 @@ from .decisions import (
     LLMResearchItem,
     LLMConstraints,
     LLMEvidenceItem,
+    DecisionPipelineConfig,
+    CandidateItem,
+    DecisionResult,
+    StrategyComparisonReport,
 )
 from .betting import BetProposal, BetValidationResult, VirtualBet, Settlement, CanonicalMatchResult
 
@@ -41,6 +45,10 @@ __all__ = [
     "LLMResearchItem",
     "LLMConstraints",
     "LLMEvidenceItem",
+    "DecisionPipelineConfig",
+    "CandidateItem",
+    "DecisionResult",
+    "StrategyComparisonReport",
     "BetProposal",
     "BetValidationResult",
     "VirtualBet",

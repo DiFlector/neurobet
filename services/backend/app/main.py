@@ -113,20 +113,33 @@ def get_event_quality_summary(event_id: str) -> Dict[str, Any]:
             return {"error": str(e), "quality_score": 0.0, "issues": []}
 
 
-# Bankroll & Immutable Ledger endpoints
+# Bankroll, Immutable Ledger & Decision Layer endpoints
 try:
-    from bankroll import BankrollService, ReconciliationEngine, EventResultMatcher, BetSettlementEngine
+    from bankroll import (
+        BankrollService, ReconciliationEngine, EventResultMatcher, BetSettlementEngine,
+        CandidateSelector, CombinedDecisionPipeline, LLMStrategyComparator,
+    )
+    from contracts.decisions import DecisionPipelineConfig, CandidateItem, StrategyComparisonReport
     from sports_core import FonbetResultsParser
-    from db.models.betting import LedgerEntry, Bet, BetSettlement
+    from db.models.betting import LedgerEntry, Bet, BetSettlement, BetProposal
+    from db.models.predictions import LLMDecision
 except ImportError:
     BankrollService = None
     ReconciliationEngine = None
     EventResultMatcher = None
     BetSettlementEngine = None
+    CandidateSelector = None
+    CombinedDecisionPipeline = None
+    LLMStrategyComparator = None
+    DecisionPipelineConfig = None
+    CandidateItem = None
+    StrategyComparisonReport = None
     FonbetResultsParser = None
     LedgerEntry = None
     Bet = None
     BetSettlement = None
+    BetProposal = None
+    LLMDecision = None
 
 
 @app.get("/api/bankroll")
@@ -305,6 +318,116 @@ def get_settlement_history(limit: int = 50) -> List[Dict[str, Any]]:
             }
             for s in settlements
         ]
+
+
+# --------------------------------------------------------------------------
+# Decision Layer (ML + LLM) Endpoints (Phase 16)
+# --------------------------------------------------------------------------
+@app.post("/api/decisions/evaluate")
+def evaluate_decision_pipeline(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluates betting options through CandidateSelector and CombinedDecisionPipeline.
+    Filters candidate options by statistical edge/confidence first to eliminate costs,
+    persists qualitative LLM decisions to DB, and routes approved candidates as BetProposals.
+    """
+    if not SessionLocal or not CandidateSelector or not CombinedDecisionPipeline:
+        return {"error": "Decision pipeline unavailable"}
+
+    raw_options = payload.get("options", [])
+    raw_cfg = payload.get("config", {})
+    config = DecisionPipelineConfig(**raw_cfg) if raw_cfg else DecisionPipelineConfig()
+
+    candidates = []
+    for opt in raw_options:
+        prob = float(opt["model_probability"])
+        odds = float(opt["odds"])
+        cand = CandidateSelector.evaluate_candidate(
+            event_id=str(opt["event_id"]),
+            sport_code=opt.get("sport_code", "tennis"),
+            participant_a=opt["participant_a"],
+            participant_b=opt["participant_b"],
+            tournament=opt.get("tournament"),
+            market=opt.get("market", "match_winner"),
+            selection=opt["selection"],
+            odds=odds,
+            model_probability=prob,
+            confidence=float(opt.get("confidence", 0.6)),
+            model_version=opt.get("model_version", "tennis_baseline_v1"),
+            min_edge=config.min_edge,
+            min_confidence=config.min_confidence,
+        )
+        candidates.append(cand)
+
+    shortlisted = [c for c in candidates if c.is_shortlisted]
+    results = []
+
+    with SessionLocal() as session:
+        pipeline = CombinedDecisionPipeline(config=config)
+        # Process non-shortlisted as filtered out
+        for c in candidates:
+            if not c.is_shortlisted:
+                from contracts.decisions import DecisionResult
+                results.append(
+                    DecisionResult(
+                        candidate=c,
+                        status="FILTERED_OUT",
+                        reason=f"Candidate edge {c.edge:.4f} or confidence {c.confidence:.4f} below hurdle",
+                    )
+                )
+            else:
+                res = pipeline.evaluate_candidate(session, c)
+                results.append(res)
+        session.commit()
+
+    return {
+        "status": "success",
+        "total_candidates": len(candidates),
+        "shortlisted_count": len(shortlisted),
+        "decisions": [r.model_dump() for r in results],
+    }
+
+
+@app.get("/api/decisions/history")
+def get_decision_history(limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns recent persisted LLMDecision analytical records."""
+    if not SessionLocal or not LLMDecision:
+        return []
+    with SessionLocal() as session:
+        decisions = (
+            session.query(LLMDecision)
+            .order_by(LLMDecision.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": str(d.id),
+                "event_id": str(d.event_id),
+                "llm_version": d.llm_version,
+                "verdict": d.verdict,
+                "confidence_adjustment": float(d.confidence_adjustment),
+                "injury_risk": d.injury_risk,
+                "fatigue_risk": d.fatigue_risk,
+                "reasoning": d.reasoning,
+                "raw_json": d.raw_json,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in decisions
+        ]
+
+
+@app.post("/api/decisions/strategy-comparison")
+def compare_strategies(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Evaluates ML-Only vs ML+LLM outcomes to measure incremental PnL,
+    ROI delta, and false positive reduction rate.
+    """
+    if not LLMStrategyComparator:
+        return {"error": "Strategy comparator unavailable"}
+
+    data = payload.get("evaluations", []) if payload else []
+    report = LLMStrategyComparator.compare(data)
+    return report.model_dump()
 
 
 if __name__ == "__main__":
