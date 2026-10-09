@@ -5,6 +5,7 @@ from .labels import SportLabelProvider
 from .lifecycle import EventLifecycleManager, EventLifecycleState
 from .models import GenericMarketDefinition, GenericParticipant, SportDescriptor
 from .registry import SportRegistry, registry
+from .results_parser import FonbetResultsParser
 
 __all__ = [
     "SportAdapter",
@@ -16,4 +17,5 @@ __all__ = [
     "GenericMarketDefinition",
     "SportDescriptor",
     "SportLabelProvider",
+    "FonbetResultsParser",
 ]

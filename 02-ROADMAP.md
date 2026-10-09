@@ -358,19 +358,19 @@
 
 # PHASE 13 — Settlement
 
-- [ ] Реализовать завершение event.
-- [ ] Реализовать canonical result.
-- [ ] Реализовать market settlement.
-- [ ] Реализовать win/loss/void.
-- [ ] Реализовать settlement transaction.
-- [ ] Сделать settlement idempotent.
-- [ ] Сделать reconciliation.
-- [ ] Реализовать `SETTLEMENT_REVIEW_REQUIRED`.
+- [x] Реализовать завершение event.
+- [x] Реализовать canonical result.
+- [x] Реализовать market settlement.
+- [x] Реализовать win/loss/void.
+- [x] Реализовать settlement transaction.
+- [x] Сделать settlement idempotent.
+- [x] Сделать reconciliation.
+- [x] Реализовать `SETTLEMENT_REVIEW_REQUIRED`.
 
 ### Acceptance
 
-- [ ] Один bet нельзя settle дважды.
-- [ ] После restart worker settlement не теряется.
+- [x] Один bet нельзя settle дважды.
+- [x] После restart worker settlement не теряется.
 
 ---
 
@@ -705,7 +705,7 @@
 - [ ] ML model calibrated.
 - [ ] Bet-manager fail-closed.
 - [ ] Virtual ledger auditable.
-- [ ] Settlement idempotent.
+- [x] Settlement idempotent.
 - [ ] LLM JSON schema enforced.
 - [ ] Research sandboxed.
 - [ ] All model versions recorded.

@@ -115,13 +115,18 @@ def get_event_quality_summary(event_id: str) -> Dict[str, Any]:
 
 # Bankroll & Immutable Ledger endpoints
 try:
-    from bankroll import BankrollService, ReconciliationEngine
-    from db.models.betting import LedgerEntry, Bet
+    from bankroll import BankrollService, ReconciliationEngine, EventResultMatcher, BetSettlementEngine
+    from sports_core import FonbetResultsParser
+    from db.models.betting import LedgerEntry, Bet, BetSettlement
 except ImportError:
     BankrollService = None
     ReconciliationEngine = None
+    EventResultMatcher = None
+    BetSettlementEngine = None
+    FonbetResultsParser = None
     LedgerEntry = None
     Bet = None
+    BetSettlement = None
 
 
 @app.get("/api/bankroll")
@@ -205,6 +210,101 @@ def reconcile_bankroll() -> Dict[str, Any]:
         return report.model_dump()
 
 
+# --------------------------------------------------------------------------
+# Settlement & Official Fonbet Results Endpoints (Phase 13)
+# --------------------------------------------------------------------------
+@app.post("/api/settlement/sync")
+def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Sync match results from official Fonbet results feed (https://fon.bet/results),
+    complete finished events in DB, and settle pending bets with strict idempotency.
+    """
+    if not SessionLocal or not FonbetResultsParser or not EventResultMatcher or not BetSettlementEngine:
+        return {"error": "Settlement engine unavailable"}
+
+    raw_data = payload or {}
+    results_list = []
+
+    # If raw_data provided directly, parse it
+    if "events" in raw_data and "sections" in raw_data:
+        results_list = FonbetResultsParser.parse_feed(raw_data)
+    else:
+        # Fetch from Fonbet results collector or endpoints
+        import subprocess
+        import json
+        for url in [
+            "https://clientsapi-lb51.bk6bba-resources.com/results/results.json",
+            "https://clientsapi-lb52.bk6bba-resources.ru/results/results.json",
+        ]:
+            try:
+                proc = subprocess.run(
+                    ["curl", "-s", "--compressed", "--connect-timeout", "5", "--max-time", "15", url],
+                    stdout=subprocess.PIPE,
+                    timeout=20,
+                )
+                if proc.returncode == 0 and proc.stdout:
+                    parsed_feed = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+                    if "events" in parsed_feed and "sections" in parsed_feed:
+                        results_list = FonbetResultsParser.parse_feed(parsed_feed)
+                        break
+            except Exception:
+                pass
+
+    events_matched = 0
+    bets_settled = 0
+    with SessionLocal() as session:
+        for res in results_list:
+            matched_evt = EventResultMatcher.match_and_complete_event(session, res)
+            if matched_evt:
+                events_matched += 1
+                settlements = BetSettlementEngine.settle_event_bets(session, matched_evt, res)
+                bets_settled += len(settlements)
+
+        session.commit()
+
+        review_queue = BetSettlementEngine.get_review_queue(session)
+        return {
+            "status": "success",
+            "results_parsed": len(results_list),
+            "events_matched": events_matched,
+            "bets_settled": bets_settled,
+            "review_queue_count": len(review_queue),
+        }
+
+
+@app.get("/api/settlement/review-queue")
+def get_settlement_review_queue() -> List[Dict[str, Any]]:
+    """Returns matches marked SETTLEMENT_REVIEW_REQUIRED that cannot be settled automatically."""
+    if not SessionLocal or not BetSettlementEngine:
+        return []
+    with SessionLocal() as session:
+        return BetSettlementEngine.get_review_queue(session)
+
+
+@app.get("/api/settlement/history")
+def get_settlement_history(limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns list of settled bets with payout, PnL, and official reasons."""
+    if not SessionLocal or not BetSettlement:
+        return []
+    with SessionLocal() as session:
+        settlements = (
+            session.query(BetSettlement)
+            .order_by(BetSettlement.settled_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": str(s.id),
+                "bet_id": str(s.bet_id),
+                "status": s.status,
+                "payout": float(s.payout),
+                "net_profit": float(s.net_profit),
+                "settlement_reason": s.settlement_reason,
+                "settled_at": s.settled_at.isoformat(),
+            }
+            for s in settlements
+        ]
 
 
 if __name__ == "__main__":

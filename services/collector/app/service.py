@@ -14,6 +14,7 @@ from .browser import BrowserLifecycleManager
 from .circuit_breaker import CircuitBreaker
 from .config import settings
 from .parser import FonbetLiveTennisParser
+from .results_collector import FonbetResultsCollector
 from .s3_writer import MinIORawWriter
 
 logger = logging.getLogger("collector.service")
@@ -28,6 +29,10 @@ class CollectorService:
         self.circuit_breaker = CircuitBreaker()
         self.redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         self.publisher = StreamPublisher(self.redis_client, producer="collector-service")
+        self.results_collector = FonbetResultsCollector(
+            s3_writer=self.s3_writer,
+            redis_client=self.redis_client,
+        )
         self.semaphore = asyncio.Semaphore(settings.max_concurrency)
         self.last_content_hash: Optional[str] = None
         self.total_polls = 0
@@ -170,6 +175,14 @@ class CollectorService:
                 logger.error("Error in poll_once: %s", e)
                 self.circuit_breaker.record_failure(e)
                 return None
+
+    def poll_results_once(self) -> Optional[str]:
+        """Trigger a poll of official Fonbet match results."""
+        try:
+            return self.results_collector.poll_once()
+        except Exception as e:
+            logger.error("Error polling Fonbet results: %s", e)
+            return None
 
     async def shutdown(self) -> None:
         """Gracefully release browser, redis, and resources."""

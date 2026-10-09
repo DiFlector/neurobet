@@ -4,7 +4,7 @@ from .odds import Selection, Market, OddsSnapshot
 from .predictions import FeatureVector, OutcomePrediction, MLPrediction
 from .research import ResearchEvidence, ResearchPacket
 from .decisions import LLMDecision
-from .betting import BetProposal, BetValidationResult, VirtualBet, Settlement
+from .betting import BetProposal, BetValidationResult, VirtualBet, Settlement, CanonicalMatchResult
 
 __all__ = [
     "BaseContract",
@@ -26,4 +26,5 @@ __all__ = [
     "BetValidationResult",
     "VirtualBet",
     "Settlement",
+    "CanonicalMatchResult",
 ]

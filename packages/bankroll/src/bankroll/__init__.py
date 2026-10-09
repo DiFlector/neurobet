@@ -11,6 +11,7 @@ from .exceptions import (
 )
 from .service import BankrollService
 from .reconciliation import ReconciliationEngine, ReconciliationReport, LedgerDiscrepancy
+from .settlement import EventResultMatcher, BetSettlementEngine
 
 __all__ = [
     "BankrollError",
@@ -24,4 +25,6 @@ __all__ = [
     "ReconciliationEngine",
     "ReconciliationReport",
     "LedgerDiscrepancy",
+    "EventResultMatcher",
+    "BetSettlementEngine",
 ]

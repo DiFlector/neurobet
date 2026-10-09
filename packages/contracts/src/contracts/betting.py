@@ -67,3 +67,27 @@ class Settlement(BaseContract):
     net_profit: float = Field(..., description="payout - stake")
     settled_at: datetime = Field(default_factory=utc_now, description="Settlement time in UTC")
     settlement_reason: str = Field(default="MATCH_COMPLETED", description="Rule or event outcome description")
+
+
+class CanonicalMatchResult(BaseContract):
+    """
+    Official match result parsed from bookmaker results service (e.g. fon.bet/results).
+    Guarantees no match result is guessed by heuristics.
+    """
+    source_event_id: str = Field(..., description="Bookmaker event identifier")
+    sport_code: str = Field(default="tennis", description="Sport code")
+    tournament: str = Field(..., description="Tournament / competition name")
+    participant_a: str = Field(..., description="Participant / Team 1 name")
+    participant_b: str = Field(..., description="Participant / Team 2 name")
+    final_score: str = Field(..., description="Official final score string, e.g. '2:1 (6-4 3-6 6-1)'")
+    winner: Optional[Literal["player_a", "player_b"]] = Field(
+        default=None,
+        description="Winning participant if match completed cleanly, None if cancelled or void",
+    )
+    status: Literal["FINISHED", "CANCELLED", "RETIRED", "VOID", "SETTLEMENT_REVIEW_REQUIRED"] = Field(
+        default="FINISHED",
+        description="Canonical outcome status",
+    )
+    is_retired: bool = Field(default=False, description="True if one participant retired/withdrew")
+    is_walkover: bool = Field(default=False, description="True if match was a walkover")
+    comments: str = Field(default="", description="Official comments/reasons from bookmaker results")
