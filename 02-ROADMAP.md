@@ -489,33 +489,33 @@
 
 # PHASE 19 — Frontend
 
-- [ ] Создать Next.js app.
-- [ ] Создать live dashboard.
-- [ ] Создать sports filter.
-- [ ] Создать league filter.
-- [ ] Создать event status filter.
-- [ ] Создать event detail page.
-- [ ] Показать live score/clock.
-- [ ] Показать odds.
-- [ ] Показать odds movement chart.
-- [ ] Показать ML probability.
-- [ ] Показать market implied probability.
-- [ ] Показать edge.
-- [ ] Показать LLM verdict.
-- [ ] Показать research evidence.
-- [ ] Показать validation chain.
-- [ ] Показать virtual bankroll.
-- [ ] Показать open exposure.
-- [ ] Показать P&L.
-- [ ] Показать drawdown.
-- [ ] Показать model version.
-- [ ] Показать event timeline.
-- [ ] Добавить dark/light theme.
+- [x] Создать Next.js app.
+- [x] Создать live dashboard.
+- [x] Создать sports filter.
+- [x] Создать league filter.
+- [x] Создать event status filter.
+- [x] Создать event detail page.
+- [x] Показать live score/clock.
+- [x] Показать odds.
+- [x] Показать odds movement chart.
+- [x] Показать ML probability.
+- [x] Показать market implied probability.
+- [x] Показать edge.
+- [x] Показать LLM verdict.
+- [x] Показать research evidence.
+- [x] Показать validation chain.
+- [x] Показать virtual bankroll.
+- [x] Показать open exposure.
+- [x] Показать P&L.
+- [x] Показать drawdown.
+- [x] Показать model version.
+- [x] Показать event timeline.
+- [x] Добавить dark/light theme.
 
 ### Acceptance
 
-- [ ] Dashboard обновляется без ручного refresh.
-- [ ] Event detail дает возможность восстановить логику решения по timestamps.
+- [x] Dashboard обновляется без ручного refresh.
+- [x] Event detail дает возможность восстановить логику решения по timestamps.
 
 ---
 
