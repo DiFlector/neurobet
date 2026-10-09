@@ -561,20 +561,20 @@
 
 Это обязательная часть проекта.
 
-- [ ] Создать искусственный dataset с очевидным future signal.
-- [ ] Убедиться, что feature builder его не видит.
-- [ ] Проверить `cutoff_timestamp`.
-- [ ] Проверить rolling windows.
-- [ ] Проверить result joins.
-- [ ] Проверить odds lookup.
-- [ ] Проверить train/validation boundary.
-- [ ] Проверить event grouping.
-- [ ] Проверить backtest execution timestamp.
-- [ ] Проверить research published/retrieved timestamps.
+- [x] Создать искусственный dataset с очевидным future signal.
+- [x] Убедиться, что feature builder его не видит.
+- [x] Проверить `cutoff_timestamp`.
+- [x] Проверить rolling windows.
+- [x] Проверить result joins.
+- [x] Проверить odds lookup.
+- [x] Проверить train/validation boundary.
+- [x] Проверить event grouping.
+- [x] Проверить backtest execution timestamp.
+- [x] Проверить research published/retrieved timestamps.
 
 ### Acceptance
 
-- [ ] Intentional future-leak test должен падать, если код случайно начинает использовать будущее.
+- [x] Intentional future-leak test должен падать, если код случайно начинает использовать будущее.
 
 ---
 

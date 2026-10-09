@@ -11,6 +11,7 @@ from .base import (
 )
 from .tennis import TennisFeatureBuilder
 from .registry import FeatureBuilderRegistry, registry
+from .leakage import DataLeakageDetectedError, DataLeakageDetector
 
 __all__ = [
     "FeatureBuilder",
@@ -23,4 +24,7 @@ __all__ = [
     "TennisFeatureBuilder",
     "FeatureBuilderRegistry",
     "registry",
+    "DataLeakageDetectedError",
+    "DataLeakageDetector",
 ]
+
