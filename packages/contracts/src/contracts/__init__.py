@@ -2,7 +2,7 @@ from .base import BaseContract, utc_now
 from .events import Event, EventState, TennisGameScore, TennisSetScore
 from .odds import Selection, Market, OddsSnapshot
 from .predictions import FeatureVector, OutcomePrediction, MLPrediction
-from .research import ResearchEvidence, ResearchPacket
+from .research import ResearchEvidence, ResearchPacket, ResearchRequest
 from .decisions import (
     LLMDecision,
     LLMAnalysisInput,
@@ -31,6 +31,7 @@ __all__ = [
     "MLPrediction",
     "ResearchEvidence",
     "ResearchPacket",
+    "ResearchRequest",
     "LLMDecision",
     "LLMAnalysisInput",
     "LLMStructuredVerdict",

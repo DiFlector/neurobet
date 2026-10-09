@@ -43,6 +43,7 @@ test:
 	docker exec -i neurobet_bet_manager python - < tests/bet_manager/test_bet_manager.py
 	docker exec -i neurobet_backend python - < tests/settlement/test_settlement.py
 	docker exec -i neurobet_llm python - < tests/llm/test_llm.py
+	docker exec -i neurobet_research python - < tests/research/test_research.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
@@ -82,6 +83,9 @@ test-settlement:
 
 test-llm:
 	docker exec -i neurobet_llm python - < tests/llm/test_llm.py
+
+test-research:
+	docker exec -i neurobet_research python - < tests/research/test_research.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

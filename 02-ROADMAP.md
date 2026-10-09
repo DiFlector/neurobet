@@ -401,30 +401,30 @@
 
 # PHASE 15 — Web Research
 
-- [ ] Создать research service.
-- [ ] Запустить search backend.
-- [ ] Добавить Playwright/browser fetcher.
-- [ ] Добавить HTML text extraction.
-- [ ] Добавить URL normalization.
-- [ ] Добавить duplicate document detection.
-- [ ] Добавить content hash.
-- [ ] Добавить published timestamp extraction.
-- [ ] Добавить retrieved timestamp.
-- [ ] Добавить freshness score.
-- [ ] Добавить domain allowlist.
-- [ ] Добавить timeout.
-- [ ] Добавить max page count.
-- [ ] Добавить max text size.
-- [ ] Добавить research cache.
-- [ ] Добавить research run history.
-- [ ] Запретить arbitrary POST/PUT requests.
-- [ ] Запретить обход CAPTCHA/anti-bot controls.
-- [ ] Запретить использование research для live score authority.
+- [x] Создать research service.
+- [x] Запустить search backend.
+- [x] Добавить Playwright/browser fetcher.
+- [x] Добавить HTML text extraction.
+- [x] Добавить URL normalization.
+- [x] Добавить duplicate document detection.
+- [x] Добавить content hash.
+- [x] Добавить published timestamp extraction.
+- [x] Добавить retrieved timestamp.
+- [x] Добавить freshness score.
+- [x] Добавить domain allowlist.
+- [x] Добавить timeout.
+- [x] Добавить max page count.
+- [x] Добавить max text size.
+- [x] Добавить research cache.
+- [x] Добавить research run history.
+- [x] Запретить arbitrary POST/PUT requests.
+- [x] Запретить обход CAPTCHA/anti-bot controls.
+- [x] Запретить использование research для live score authority.
 
 ### Acceptance
 
-- [ ] Research produces compact structured evidence packet.
-- [ ] Повторный запрос с тем же cache key не делает новый network fetch до истечения TTL.
+- [x] Research produces compact structured evidence packet.
+- [x] Повторный запрос с тем же cache key не делает новый network fetch до истечения TTL.
 
 ---
 
@@ -707,7 +707,7 @@
 - [ ] Virtual ledger auditable.
 - [x] Settlement idempotent.
 - [x] LLM JSON schema enforced.
-- [ ] Research sandboxed.
+- [x] Research sandboxed.
 - [ ] All model versions recorded.
 - [ ] Monitoring available.
 - [ ] Backups tested.
