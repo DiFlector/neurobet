@@ -202,6 +202,15 @@ services:
       - .env
     environment:
       TZ: ${TZ:-UTC}
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     networks:
       - neurobet-internal
     healthcheck:

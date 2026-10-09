@@ -376,26 +376,26 @@
 
 # PHASE 14 — Local LLM
 
-- [ ] Добавить `llm` container.
-- [ ] Поддержать GGUF model path.
-- [ ] Проверить CPU inference.
-- [ ] Проверить optional GPU offload на GTX 1050 Ti.
-- [ ] Добавить fallback на CPU.
-- [ ] Настроить context size.
-- [ ] Настроить temperature/decoding config.
-- [ ] Зафиксировать prompt version.
-- [ ] Реализовать JSON-only output.
-- [ ] Добавить Pydantic validation.
-- [ ] Добавить invalid JSON fallback.
-- [ ] Записывать latency.
-- [ ] Записывать model identifier.
-- [ ] Не давать LLM write access к DB.
+- [x] Добавить `llm` container.
+- [x] Поддержать GGUF model path.
+- [x] Проверить CPU inference.
+- [x] Проверить optional GPU offload на GTX 1050 Ti.
+- [x] Добавить fallback на CPU.
+- [x] Настроить context size.
+- [x] Настроить temperature/decoding config.
+- [x] Зафиксировать prompt version.
+- [x] Реализовать JSON-only output.
+- [x] Добавить Pydantic validation.
+- [x] Добавить invalid JSON fallback.
+- [x] Записывать latency.
+- [x] Записывать model identifier.
+- [x] Не давать LLM write access к DB.
 
 ### LLM acceptance
 
-- [ ] LLM стабильно возвращает валидный JSON на одинаковый input.
-- [ ] Некорректный JSON → `INSUFFICIENT_DATA`.
-- [ ] LLM не может создать virtual bet напрямую.
+- [x] LLM стабильно возвращает валидный JSON на одинаковый input.
+- [x] Некорректный JSON → `INSUFFICIENT_DATA`.
+- [x] LLM не может создать virtual bet напрямую.
 
 ---
 
@@ -706,7 +706,7 @@
 - [ ] Bet-manager fail-closed.
 - [ ] Virtual ledger auditable.
 - [x] Settlement idempotent.
-- [ ] LLM JSON schema enforced.
+- [x] LLM JSON schema enforced.
 - [ ] Research sandboxed.
 - [ ] All model versions recorded.
 - [ ] Monitoring available.
