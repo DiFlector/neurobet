@@ -45,6 +45,7 @@ test:
 	docker exec -i neurobet_llm python - < tests/llm/test_llm.py
 	docker exec -i neurobet_research python - < tests/research/test_research.py
 	docker exec -i neurobet_backend python - < tests/decision_layer/test_decision_layer.py
+	docker exec -i neurobet_backend python - < tests/scheduler/test_candidate_scheduler.py
 
 test-contracts:
 	docker exec -i neurobet_backend python - < tests/contract/test_contracts.py
@@ -90,6 +91,9 @@ test-research:
 
 test-decision-layer:
 	docker exec -i neurobet_backend python - < tests/decision_layer/test_decision_layer.py
+
+test-scheduler:
+	docker exec -i neurobet_backend python - < tests/scheduler/test_candidate_scheduler.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

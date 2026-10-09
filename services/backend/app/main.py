@@ -118,8 +118,10 @@ try:
     from bankroll import (
         BankrollService, ReconciliationEngine, EventResultMatcher, BetSettlementEngine,
         CandidateSelector, CombinedDecisionPipeline, LLMStrategyComparator,
+        CandidateScheduler, CandidateScorer, CooldownManager,
     )
     from contracts.decisions import DecisionPipelineConfig, CandidateItem, StrategyComparisonReport
+    from contracts.scheduling import CandidateSchedulerConfig, CandidatePriorityItem, QueueStatusReport
     from sports_core import FonbetResultsParser
     from db.models.betting import LedgerEntry, Bet, BetSettlement, BetProposal
     from db.models.predictions import LLMDecision
@@ -131,15 +133,24 @@ except ImportError:
     CandidateSelector = None
     CombinedDecisionPipeline = None
     LLMStrategyComparator = None
+    CandidateScheduler = None
+    CandidateScorer = None
+    CooldownManager = None
     DecisionPipelineConfig = None
     CandidateItem = None
     StrategyComparisonReport = None
+    CandidateSchedulerConfig = None
+    CandidatePriorityItem = None
+    QueueStatusReport = None
     FonbetResultsParser = None
     LedgerEntry = None
     Bet = None
     BetSettlement = None
     BetProposal = None
     LLMDecision = None
+
+# Global candidate scheduler instance
+global_candidate_scheduler = CandidateScheduler() if CandidateScheduler else None
 
 
 @app.get("/api/bankroll")
@@ -428,6 +439,127 @@ def compare_strategies(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
     data = payload.get("evaluations", []) if payload else []
     report = LLMStrategyComparator.compare(data)
     return report.model_dump()
+
+
+# --------------------------------------------------------------------------
+# Candidate Scheduling & Cost Control Endpoints (Phase 17)
+# --------------------------------------------------------------------------
+@app.post("/api/scheduler/evaluate")
+def evaluate_and_enqueue_candidates(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluates raw candidate options, calculates composite candidate scores,
+    and enqueues qualifying candidates into the prioritized max-heap queue.
+    """
+    if not global_candidate_scheduler or not CandidateSelector:
+        return {"error": "Scheduler unavailable"}
+
+    raw_options = payload.get("options", [])
+    raw_cfg = payload.get("config", {})
+    if raw_cfg:
+        global_candidate_scheduler.config = CandidateSchedulerConfig(**raw_cfg)
+
+    enqueued = []
+    rejected = []
+
+    for opt in raw_options:
+        prob = float(opt["model_probability"])
+        odds = float(opt["odds"])
+        cand = CandidateSelector.evaluate_candidate(
+            event_id=str(opt["event_id"]),
+            sport_code=opt.get("sport_code", "tennis"),
+            participant_a=opt["participant_a"],
+            participant_b=opt["participant_b"],
+            tournament=opt.get("tournament"),
+            market=opt.get("market", "match_winner"),
+            selection=opt["selection"],
+            odds=odds,
+            model_probability=prob,
+            confidence=float(opt.get("confidence", 0.6)),
+            model_version=opt.get("model_version", "tennis_baseline_v1"),
+            min_edge=0.0, # Let scheduler evaluate score
+            min_confidence=0.0,
+        )
+
+        item = global_candidate_scheduler.evaluate_and_enqueue(
+            candidate=cand,
+            snapshot_version=opt.get("snapshot_version"),
+            score_state=opt.get("score_state"),
+        )
+        if item:
+            enqueued.append(item.model_dump())
+        else:
+            rejected.append({
+                "event_id": cand.event_id,
+                "selection": cand.selection,
+                "reason": "Composite candidate score below hurdle",
+            })
+
+    return {
+        "status": "success",
+        "total_evaluated": len(raw_options),
+        "enqueued_count": len(enqueued),
+        "rejected_count": len(rejected),
+        "enqueued": enqueued,
+        "queue_size": global_candidate_scheduler.priority_queue.size(),
+    }
+
+
+@app.post("/api/scheduler/dispatch")
+def dispatch_scheduled_candidates(limit: int = 10) -> Dict[str, Any]:
+    """
+    Pops top candidates from the priority queue and dispatches them through
+    the decision pipeline with snapshot caching, cooldowns, and rate limiting.
+    """
+    if not global_candidate_scheduler or not SessionLocal or not CombinedDecisionPipeline:
+        return {"error": "Scheduler or decision pipeline unavailable"}
+
+    dispatched_results = []
+    with SessionLocal() as session:
+        pipeline = CombinedDecisionPipeline()
+        count = 0
+        while count < limit and global_candidate_scheduler.priority_queue.size() > 0:
+            item = global_candidate_scheduler.priority_queue.pop()
+            if not item:
+                break
+            res = global_candidate_scheduler.dispatch_candidate(session, item, pipeline)
+            dispatched_results.append(res.model_dump())
+            count += 1
+        session.commit()
+
+    return {
+        "status": "success",
+        "dispatched_count": len(dispatched_results),
+        "remaining_queue_size": global_candidate_scheduler.priority_queue.size(),
+        "results": dispatched_results,
+    }
+
+
+@app.get("/api/scheduler/queue")
+def get_scheduled_queue() -> List[Dict[str, Any]]:
+    """Returns currently queued candidates ordered by composite priority score."""
+    if not global_candidate_scheduler:
+        return []
+    items = global_candidate_scheduler.priority_queue.items()
+    return [it.model_dump() for it in items]
+
+
+@app.get("/api/scheduler/stats")
+def get_scheduler_stats() -> Dict[str, Any]:
+    """Returns real-time scheduler metrics (queue size, cooldowns, cache hits)."""
+    if not global_candidate_scheduler:
+        return {"error": "Scheduler unavailable"}
+    return global_candidate_scheduler.get_status_report().model_dump()
+
+
+@app.post("/api/scheduler/cooldowns/clear")
+def clear_scheduler_cooldowns_and_cache() -> Dict[str, Any]:
+    """Clears all active cooldowns and snapshot cache entries (for operations/testing)."""
+    if not global_candidate_scheduler:
+        return {"error": "Scheduler unavailable"}
+    global_candidate_scheduler.cooldown_manager.clear()
+    global_candidate_scheduler.snapshot_cache.clear()
+    global_candidate_scheduler.priority_queue.clear()
+    return {"status": "success", "message": "Cooldowns, snapshot cache, and queue cleared"}
 
 
 if __name__ == "__main__":

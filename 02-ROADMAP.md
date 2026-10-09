@@ -452,15 +452,15 @@
 
 # PHASE 17 — Candidate scheduling and cost control
 
-- [ ] Не запускать research для каждого события.
-- [ ] Ввести candidate score.
-- [ ] Кэшировать research.
-- [ ] Кэшировать LLM input по версии snapshot.
-- [ ] Ограничить LLM requests/sec.
-- [ ] Ограничить browser concurrency.
-- [ ] Ввести per-event research cooldown.
-- [ ] Ввести per-event LLM cooldown.
-- [ ] Добавить priority queue для high-edge candidates.
+- [x] Не запускать research для каждого события.
+- [x] Ввести candidate score.
+- [x] Кэшировать research.
+- [x] Кэшировать LLM input по версии snapshot.
+- [x] Ограничить LLM requests/sec.
+- [x] Ограничить browser concurrency.
+- [x] Ввести per-event research cooldown.
+- [x] Ввести per-event LLM cooldown.
+- [x] Добавить priority queue для high-edge candidates.
 
 ---
 

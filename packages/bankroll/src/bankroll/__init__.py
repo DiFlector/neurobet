@@ -13,6 +13,15 @@ from .service import BankrollService
 from .reconciliation import ReconciliationEngine, ReconciliationReport, LedgerDiscrepancy
 from .settlement import EventResultMatcher, BetSettlementEngine
 from .decision_pipeline import CandidateSelector, CombinedDecisionPipeline, LLMStrategyComparator
+from .candidate_scheduler import (
+    CandidateScorer,
+    CooldownManager,
+    SnapshotLLMCache,
+    CandidatePriorityQueue,
+    TokenBucketRateLimiter,
+    BrowserConcurrencyLimiter,
+    CandidateScheduler,
+)
 
 __all__ = [
     "BankrollError",
@@ -31,4 +40,11 @@ __all__ = [
     "CandidateSelector",
     "CombinedDecisionPipeline",
     "LLMStrategyComparator",
+    "CandidateScorer",
+    "CooldownManager",
+    "SnapshotLLMCache",
+    "CandidatePriorityQueue",
+    "TokenBucketRateLimiter",
+    "BrowserConcurrencyLimiter",
+    "CandidateScheduler",
 ]

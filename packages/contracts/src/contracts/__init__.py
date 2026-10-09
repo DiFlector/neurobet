@@ -19,6 +19,12 @@ from .decisions import (
     StrategyComparisonReport,
 )
 from .betting import BetProposal, BetValidationResult, VirtualBet, Settlement, CanonicalMatchResult
+from .scheduling import (
+    CandidateScoreBreakdown,
+    CandidateSchedulerConfig,
+    CandidatePriorityItem,
+    QueueStatusReport,
+)
 
 __all__ = [
     "BaseContract",
@@ -54,4 +60,8 @@ __all__ = [
     "VirtualBet",
     "Settlement",
     "CanonicalMatchResult",
+    "CandidateScoreBreakdown",
+    "CandidateSchedulerConfig",
+    "CandidatePriorityItem",
+    "QueueStatusReport",
 ]
