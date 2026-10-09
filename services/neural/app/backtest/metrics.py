@@ -41,8 +41,16 @@ class BacktestSummary:
     max_drawdown_amount: float
     max_drawdown_pct: float  # e.g. 0.125 for 12.5%
     
+    # Statistical & Probability Calibration Metrics
+    log_loss: float = 0.0
+    brier_score: float = 0.0
+    roc_auc: float = 0.0
+    expected_calibration_error: float = 0.0
+    calibration_curve: Dict[str, Any] = field(default_factory=dict)
+    
     odds_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
     edge_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
+
 
 
 class BacktestMetricsCalculator:
@@ -83,7 +91,10 @@ class BacktestMetricsCalculator:
         settled_bets: List[SimulatedBet],
         equity_curve: List[EquityPoint],
         peak_exposure: float,
+        statistical_metrics: Optional[Dict[str, float]] = None,
+        calibration_curve: Optional[Dict[str, Any]] = None,
     ) -> BacktestSummary:
+
         """
         Compute complete BacktestSummary from settled bets and equity history.
         """
@@ -144,9 +155,15 @@ class BacktestMetricsCalculator:
             peak_exposure=round(peak_exposure, 2),
             max_drawdown_amount=max_dd_amount,
             max_drawdown_pct=max_dd_pct,
+            log_loss=round((statistical_metrics or {}).get("log_loss", 0.0), 4),
+            brier_score=round((statistical_metrics or {}).get("brier_score", 0.0), 4),
+            roc_auc=round((statistical_metrics or {}).get("roc_auc", 0.0), 4),
+            expected_calibration_error=round((statistical_metrics or {}).get("expected_calibration_error", 0.0), 4),
+            calibration_curve=calibration_curve or {},
             odds_buckets=odds_buckets,
             edge_buckets=edge_buckets,
         )
+
 
     @staticmethod
     def _compute_bucket(name: str, bets: List[SimulatedBet]) -> BucketMetrics:

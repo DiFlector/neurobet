@@ -49,14 +49,21 @@ test:
 	docker exec -i neurobet_backend python - < tests/api/test_backend_api.py
 	docker exec -i neurobet_backend python - < tests/frontend/test_frontend.py
 	docker exec -i neurobet_backend python - < tests/observability/test_observability.py
-	python3 tests/security/test_security_hardening.py
 	docker exec -i neurobet_backend python - < tests/leakage/test_data_leakage.py
+
+	python3 tests/security/test_security_hardening.py
+	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
+
+
+test-experiment:
+	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
 
 test-leakage:
 	docker exec -i neurobet_backend python - < tests/leakage/test_data_leakage.py
 
 test-security:
 	python3 tests/security/test_security_hardening.py
+
 
 
 test-observability:

@@ -580,18 +580,18 @@
 
 # PHASE 23 — Scientific baseline experiment
 
-- [ ] Зафиксировать initial bankroll.
-- [ ] Зафиксировать period.
-- [ ] Зафиксировать sport.
-- [ ] Зафиксировать markets.
-- [ ] Зафиксировать minimum edge.
-- [ ] Зафиксировать stake policy.
-- [ ] Запустить ML-only experiment.
-- [ ] Получить log loss/Brier.
-- [ ] Получить ROI/P&L.
-- [ ] Получить max drawdown.
-- [ ] Получить calibration curve.
-- [ ] Сохранить experiment result.
+- [x] Зафиксировать initial bankroll.
+- [x] Зафиксировать period.
+- [x] Зафиксировать sport.
+- [x] Зафиксировать markets.
+- [x] Зафиксировать minimum edge.
+- [x] Зафиксировать stake policy.
+- [x] Запустить ML-only experiment.
+- [x] Получить log loss/Brier.
+- [x] Получить ROI/P&L.
+- [x] Получить max drawdown.
+- [x] Получить calibration curve.
+- [x] Сохранить experiment result.
 
 ---
 

@@ -25,6 +25,13 @@ from .scheduling import (
     CandidatePriorityItem,
     QueueStatusReport,
 )
+from .experiments import (
+    CalibrationPoint,
+    CalibrationCurveReport,
+    ScientificExperimentConfig,
+    ScientificExperimentResultContract,
+)
+
 
 __all__ = [
     "BaseContract",
@@ -64,4 +71,9 @@ __all__ = [
     "CandidateSchedulerConfig",
     "CandidatePriorityItem",
     "QueueStatusReport",
+    "CalibrationPoint",
+    "CalibrationCurveReport",
+    "ScientificExperimentConfig",
+    "ScientificExperimentResultContract",
 ]
+

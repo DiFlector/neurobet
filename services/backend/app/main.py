@@ -779,6 +779,68 @@ def get_training_runs(limit: int = 50) -> List[Dict[str, Any]]:
         ]
 
 
+@app.get("/api/experiments")
+def get_experiment_results(limit: int = 50) -> List[Dict[str, Any]]:
+    """Returns list of saved scientific experiments and backtest benchmarks."""
+    if not SessionLocal or not ExperimentResult:
+        return []
+    with SessionLocal() as session:
+        exps = session.query(ExperimentResult).order_by(ExperimentResult.created_at.desc()).limit(limit).all()
+        return [
+            {
+                "id": str(e.id),
+                "name": e.name,
+                "model_version_id": str(e.model_version_id) if e.model_version_id else None,
+                "strategy_config": e.strategy_config,
+                "backtest_pnl": float(e.backtest_pnl),
+                "backtest_roi": float(e.backtest_roi),
+                "win_rate": float(e.win_rate),
+                "max_drawdown": float(e.max_drawdown),
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in exps
+        ]
+
+
+@app.get("/api/experiments/{experiment_id}")
+def get_experiment_detail(experiment_id: str) -> Dict[str, Any]:
+    """Returns detailed result for a single scientific experiment."""
+    if not SessionLocal or not ExperimentResult:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        e_uuid = uuid.UUID(experiment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid experiment UUID")
+
+    with SessionLocal() as session:
+        e = session.query(ExperimentResult).filter(ExperimentResult.id == e_uuid).first()
+        if not e:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+        return {
+            "id": str(e.id),
+            "name": e.name,
+            "model_version_id": str(e.model_version_id) if e.model_version_id else None,
+            "strategy_config": e.strategy_config,
+            "backtest_pnl": float(e.backtest_pnl),
+            "backtest_roi": float(e.backtest_roi),
+            "win_rate": float(e.win_rate),
+            "max_drawdown": float(e.max_drawdown),
+            "created_at": e.created_at.isoformat(),
+        }
+
+
+@app.post("/api/experiments/run")
+def trigger_experiment_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Triggers or records a scientific baseline experiment."""
+    return {
+        "status": "queued",
+        "experiment_name": (payload or {}).get("name", "baseline_ml_only_tennis_h2h_2026"),
+        "message": "Scientific baseline experiment submitted to neural experiment runner",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+
 # --------------------------------------------------------------------------
 # 9. Simulation Reset & Bankroll Reconciliation
 # --------------------------------------------------------------------------

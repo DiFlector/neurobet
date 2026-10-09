@@ -9,6 +9,11 @@ class BacktestConfig(BaseModel):
     """
     sport_code: str = Field(default="tennis", description="Target sport code")
     market: str = Field(default="match_winner", description="Market name")
+    experiment_name: Optional[str] = Field(default=None, description="Optional custom name for experiment registry")
+    period_start: Optional[str] = Field(default=None, description="Evaluation period start timestamp ISO")
+    period_end: Optional[str] = Field(default=None, description="Evaluation period end timestamp ISO")
+    use_llm: bool = Field(default=False, description="Whether LLM reasoning is enabled in this experiment")
+
     
     # Financial & Bankroll parameters
     initial_bankroll: float = Field(default=100_000.0, gt=0.0, description="Starting virtual bankroll in RUB")

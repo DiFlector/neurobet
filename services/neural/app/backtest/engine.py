@@ -9,8 +9,10 @@ from .execution import ExecutionSimulator, SimulatedOddsSnapshot, OrderExecution
 from .bankroll import BacktestBankroll, SimulatedBet
 from .metrics import BacktestMetricsCalculator, BacktestSummary
 from ..models import build_gradient_boosting_pipeline, build_logistic_regression_pipeline
+from ..metrics import compute_classification_metrics
 from db import SessionLocal
 from db.models.ml_registry import ExperimentResult
+
 
 logger = logging.getLogger("neural.backtest")
 
@@ -86,6 +88,8 @@ class WalkForwardBacktester:
 
         total_orders_considered = 0
         total_orders_rejected = 0
+        all_test_y_true: List[int] = []
+        all_test_y_prob: List[float] = []
 
         for fold_idx, (train_idx, test_idx) in enumerate(splits):
             logger.info(f"--- Fold {fold_idx + 1}/{len(splits)}: Train={len(train_idx)}, Test={len(test_idx)} ---")
@@ -111,6 +115,10 @@ class WalkForwardBacktester:
                 probs = model.predict_proba(feat)[0]
                 prob_p1 = float(probs[1])
                 prob_p2 = float(probs[0])
+
+                all_test_y_true.append(sample.label)
+                all_test_y_prob.append(prob_p1)
+
 
                 # Check edge for P1 and P2
                 edge_p1 = (prob_p1 * sample.p1_odds) - 1.0
@@ -189,22 +197,62 @@ class WalkForwardBacktester:
                     settled_at=match_end_time,
                 )
 
-        # 7. Calculate complete summary metrics
+        # 7. Calculate statistical probabilistic metrics and calibration curve
+        stat_metrics = {}
+        calibration_curve_data = {}
+        if all_test_y_true and all_test_y_prob:
+            y_true_arr = np.array(all_test_y_true, dtype=int)
+            y_prob_arr = np.array(all_test_y_prob, dtype=float)
+            stat_metrics = compute_classification_metrics(y_true_arr, y_prob_arr)
+
+            # Compute 10-bin calibration curve
+            bins = np.linspace(0.0, 1.0, 11)
+            bin_indices = np.digitize(y_prob_arr, bins) - 1
+            calib_points = []
+            for b in range(10):
+                mask = bin_indices == b
+                b_count = int(np.sum(mask))
+                if b_count > 0:
+                    b_true = float(np.mean(y_true_arr[mask]))
+                    b_pred = float(np.mean(y_prob_arr[mask]))
+                else:
+                    b_true = 0.0
+                    b_pred = float((bins[b] + bins[b + 1]) / 2.0)
+                calib_points.append({
+                    "bin_index": b,
+                    "bin_range": f"[{bins[b]:.2f}, {bins[b+1]:.2f})",
+                    "mean_predicted_prob": round(b_pred, 4),
+                    "fraction_positives": round(b_true, 4),
+                    "sample_count": b_count,
+                })
+
+            calibration_curve_data = {
+                "n_bins": 10,
+                "points": calib_points,
+                "expected_calibration_error": stat_metrics.get("expected_calibration_error", 0.0),
+                "brier_score": stat_metrics.get("brier_score", 0.0),
+                "log_loss": stat_metrics.get("log_loss", 0.0),
+            }
+
+        # 8. Calculate complete summary metrics
         summary = BacktestMetricsCalculator.compute_summary(
             initial_bankroll=self.bankroll.initial_balance,
             final_bankroll=self.bankroll.current_balance,
             settled_bets=self.bankroll.settled_bets,
             equity_curve=self.bankroll.equity_curve,
             peak_exposure=self.bankroll.peak_exposure,
+            statistical_metrics=stat_metrics,
+            calibration_curve=calibration_curve_data,
         )
 
         logger.info(
             f"Backtest Complete! Final Balance: {summary.final_bankroll:.2f} RUB "
             f"| P&L: {summary.net_pnl:+.2f} RUB | ROI: {summary.roi*100:.2f}% "
-            f"| WinRate: {summary.win_rate*100:.1f}% | MaxDrawdown: {summary.max_drawdown_pct*100:.2f}%"
+            f"| WinRate: {summary.win_rate*100:.1f}% | MaxDrawdown: {summary.max_drawdown_pct*100:.2f}% "
+            f"| LogLoss: {summary.log_loss:.4f} | Brier: {summary.brier_score:.4f} | ECE: {summary.expected_calibration_error:.4f}"
         )
 
-        # 8. Save results to database if requested
+        # 9. Save results to database if requested
         if save_to_db:
             self._save_experiment_result(summary, model_type)
 
@@ -214,19 +262,34 @@ class WalkForwardBacktester:
         """Record experiment in PostgreSQL experiment_results table."""
         try:
             with SessionLocal() as db:
+                exp_name = getattr(self.config, "experiment_name", None) or f"WalkForward_{self.config.sport_code}_{model_type}_{self.config.stake_strategy}"
+                strat_dict = self.config.model_dump()
+                strat_dict["config"] = self.config.model_dump()
+                strat_dict["statistical_metrics"] = {
+                    "log_loss": summary.log_loss,
+                    "brier_score": summary.brier_score,
+                    "roc_auc": summary.roc_auc,
+                    "expected_calibration_error": summary.expected_calibration_error,
+                }
+                strat_dict["calibration_curve"] = summary.calibration_curve
+                strat_dict["odds_buckets"] = {k: v.__dict__ for k, v in summary.odds_buckets.items()}
+                strat_dict["edge_buckets"] = {k: v.__dict__ for k, v in summary.edge_buckets.items()}
+
                 exp = ExperimentResult(
-                    name=f"WalkForward_{self.config.sport_code}_{model_type}_{self.config.stake_strategy}",
-                    strategy_config=self.config.model_dump(),
+                    name=exp_name,
+                    strategy_config=strat_dict,
                     backtest_pnl=float(summary.net_pnl),
                     backtest_roi=float(summary.roi),
                     win_rate=float(summary.win_rate),
                     max_drawdown=float(summary.max_drawdown_pct),
                 )
+
                 db.add(exp)
                 db.commit()
                 logger.info(f"Saved ExperimentResult to database with ID: {exp.id}")
         except Exception as e:
             logger.warning(f"Could not persist ExperimentResult to database: {e}")
+
 
 
 def generate_synthetic_backtest_samples(
