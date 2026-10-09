@@ -53,10 +53,14 @@ test:
 
 	python3 tests/security/test_security_hardening.py
 	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
+	docker exec -i neurobet_neural python - < tests/experiments/test_llm_experiment.py
 
 
 test-experiment:
 	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
+
+test-llm-experiment:
+	docker exec -i neurobet_neural python - < tests/experiments/test_llm_experiment.py
 
 test-leakage:
 	docker exec -i neurobet_backend python - < tests/leakage/test_data_leakage.py

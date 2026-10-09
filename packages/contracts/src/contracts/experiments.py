@@ -103,5 +103,88 @@ class ScientificExperimentResultContract(BaseContract):
     # Odds & Edge breakdowns
     odds_buckets: Dict[str, Any] = Field(default_factory=dict, description="Performance broken down by odds range")
     edge_buckets: Dict[str, Any] = Field(default_factory=dict, description="Performance broken down by edge range")
+    freshness_buckets: Dict[str, Any] = Field(default_factory=dict, description="Performance broken down by research freshness")
     
     created_at: datetime = Field(default_factory=utc_now, description="Execution completion timestamp")
+
+
+class FreshnessBucketMetrics(BaseContract):
+    """Performance metrics segmented by research evidence freshness."""
+    bucket_name: str = Field(..., description="Freshness category, e.g. <1h, 1-6h, >6h, none")
+    total_bets: int = Field(default=0, ge=0)
+    bets_won: int = Field(default=0, ge=0)
+    bets_lost: int = Field(default=0, ge=0)
+    bets_void: int = Field(default=0, ge=0)
+    win_rate: float = Field(default=0.0)
+    turnover: float = Field(default=0.0)
+    net_pnl: float = Field(default=0.0)
+    roi: float = Field(default=0.0)
+    avg_odds: float = Field(default=0.0)
+    avg_edge: float = Field(default=0.0)
+
+
+class LLMErrorAnalysis(BaseContract):
+    """Deep error breakdown of qualitative LLM approvals and vetoes."""
+    total_candidates_evaluated: int = Field(default=0, ge=0, description="Total proposals evaluated by LLM")
+    veto_count: int = Field(default=0, ge=0, description="Total proposals vetoed/filtered by LLM")
+    true_negatives: int = Field(default=0, ge=0, description="Vetoed proposals that would have LOST (losses successfully avoided)")
+    false_negatives: int = Field(default=0, ge=0, description="Vetoed proposals that would have WON (missed wins / opportunity cost)")
+    veto_precision: float = Field(default=0.0, ge=0.0, le=1.0, description="Ratio of true negatives to total vetoes")
+    
+    approved_count: int = Field(default=0, ge=0, description="Total proposals approved by LLM")
+    approval_count: int = Field(default=0, ge=0, description="Alias for approved_count")
+    true_positives: int = Field(default=0, ge=0, description="Approved proposals that WON")
+    false_positives: int = Field(default=0, ge=0, description="Approved proposals that LOST")
+    approval_precision: float = Field(default=0.0, ge=0.0, le=1.0, description="Win rate among LLM-approved bets")
+    
+    losses_avoided_amount: float = Field(default=0.0, description="Estimated capital preserved by avoiding losses (RUB)")
+    avoided_loss_pnl: float = Field(default=0.0, description="Alias for losses_avoided_amount")
+    profits_forgone_amount: float = Field(default=0.0, description="Estimated potential profit missed due to false vetoes (RUB)")
+    missed_profit_pnl: float = Field(default=0.0, description="Alias for profits_forgone_amount")
+    net_veto_value_pnl: float = Field(default=0.0, description="Economic value created by vetoes (losses avoided - profits forgone)")
+
+
+class LLMExperimentComparisonReport(BaseContract):
+    """
+    Formal scientific comparison between ML-only baseline and ML+LLM experiment.
+    Evaluates incremental value, statistical significance, and risk deltas.
+    """
+    id: Optional[str] = Field(default=None, description="Comparison report UUID")
+    name: str = Field(..., description="Comparison experiment name")
+    baseline_name: str = Field(..., description="Baseline ML-only experiment identifier")
+    llm_experiment_name: str = Field(..., description="ML + LLM experiment identifier")
+    sport_code: str = Field(default="tennis")
+    market: str = Field(default="match_winner")
+    period_start: str = Field(...)
+    period_end: str = Field(...)
+    
+    # Financial & Risk comparison summaries
+    baseline_summary: Dict[str, Any] = Field(default_factory=dict, description="Condensed ML-only performance summary")
+    llm_summary: Dict[str, Any] = Field(default_factory=dict, description="Condensed ML+LLM performance summary")
+    
+    # Delta metrics: (ML+LLM) - (ML-only)
+    delta_total_bets: int = Field(..., description="Change in total bets placed")
+    delta_turnover: float = Field(..., description="Change in turnover (RUB)")
+    delta_pnl: float = Field(..., description="Incremental PnL (RUB)")
+    delta_roi: float = Field(..., description="Change in ROI (percentage points)")
+    delta_win_rate: float = Field(..., description="Change in Win Rate (percentage points)")
+    delta_max_drawdown_amount: float = Field(default=0.0, description="Change in max drawdown (RUB)")
+    delta_max_drawdown_pct: float = Field(..., description="Change in max drawdown percentage")
+    
+    # Statistical & Calibration Deltas
+    delta_brier_score: float = Field(..., description="Change in Brier score (negative is better calibration)")
+    delta_log_loss: float = Field(..., description="Change in Log Loss (negative is better calibration)")
+    delta_ece: float = Field(..., description="Change in Expected Calibration Error")
+    
+    # Segmented breakdowns
+    edge_bucket_comparison: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Side-by-side edge bucket stats")
+    freshness_breakdown: Dict[str, FreshnessBucketMetrics] = Field(default_factory=dict, description="Performance by research age")
+    
+    # Error analysis and Independent Information Value
+    error_analysis: LLMErrorAnalysis = Field(..., description="Analysis of LLM mistakes and veto accuracy")
+    has_independent_information: bool = Field(default=True, description="True if LLM provides non-redundant predictive signal")
+    is_overall_improvement: bool = Field(..., description="Strict acceptance: True only if empirical evidence supports benefit")
+    conclusion: str = Field(..., description="Scientific verdict and deployment recommendation")
+    
+    created_at: datetime = Field(default_factory=utc_now)
+

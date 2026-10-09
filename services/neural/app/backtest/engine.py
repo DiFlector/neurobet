@@ -28,6 +28,11 @@ class BacktestSample:
         p2_odds: float,
         odds_snapshots: List[SimulatedOddsSnapshot],
         actual_winner: str,  # "p1" or "p2" or "void"
+        research_published_at: Optional[datetime] = None,
+        research_retrieved_at: Optional[datetime] = None,
+        adverse_fatigue_injury_p1: bool = False,
+        adverse_fatigue_injury_p2: bool = False,
+        research_summary: Optional[str] = None,
     ):
         self.event_id = event_id
         self.decision_timestamp = decision_timestamp
@@ -36,6 +41,11 @@ class BacktestSample:
         self.p2_odds = p2_odds
         self.odds_snapshots = odds_snapshots
         self.actual_winner = actual_winner
+        self.research_published_at = research_published_at
+        self.research_retrieved_at = research_retrieved_at
+        self.adverse_fatigue_injury_p1 = adverse_fatigue_injury_p1
+        self.adverse_fatigue_injury_p2 = adverse_fatigue_injury_p2
+        self.research_summary = research_summary
         # Label: 1 if p1 won, 0 if p2 won
         self.label = 1 if actual_winner == "p1" else 0
 
@@ -91,6 +101,17 @@ class WalkForwardBacktester:
         all_test_y_true: List[int] = []
         all_test_y_prob: List[float] = []
 
+        # Error analysis tracking for LLM
+        total_candidates_evaluated = 0
+        veto_count = 0
+        approval_count = 0
+        true_positives = 0
+        false_positives = 0
+        true_negatives = 0
+        false_negatives = 0
+        avoided_loss_pnl = 0.0
+        missed_profit_pnl = 0.0
+
         for fold_idx, (train_idx, test_idx) in enumerate(splits):
             logger.info(f"--- Fold {fold_idx + 1}/{len(splits)}: Train={len(train_idx)}, Test={len(test_idx)} ---")
 
@@ -119,7 +140,6 @@ class WalkForwardBacktester:
                 all_test_y_true.append(sample.label)
                 all_test_y_prob.append(prob_p1)
 
-
                 # Check edge for P1 and P2
                 edge_p1 = (prob_p1 * sample.p1_odds) - 1.0
                 edge_p2 = (prob_p2 * sample.p2_odds) - 1.0
@@ -147,6 +167,36 @@ class WalkForwardBacktester:
                 if not target_outcome:
                     continue  # No profitable edge identified
 
+                total_candidates_evaluated += 1
+
+                # LLM qualitative reasoning & veto logic (if enabled)
+                llm_verdict = None
+                if self.config.use_llm:
+                    is_vetoed = False
+                    if target_outcome == "p1" and sample.adverse_fatigue_injury_p1:
+                        is_vetoed = True
+                    elif target_outcome == "p2" and sample.adverse_fatigue_injury_p2:
+                        is_vetoed = True
+
+                    if is_vetoed:
+                        veto_count += 1
+                        llm_verdict = "VETO"
+                        hypo_won = (sample.actual_winner == target_outcome)
+                        hypo_stake = self.bankroll.calculate_stake(
+                            probability=target_prob,
+                            odds=target_odds,
+                        )
+                        if hypo_won:
+                            false_negatives += 1
+                            missed_profit_pnl += hypo_stake * (target_odds - 1.0)
+                        else:
+                            true_negatives += 1
+                            avoided_loss_pnl += hypo_stake
+                        continue
+                    else:
+                        approval_count += 1
+                        llm_verdict = "APPROVED"
+
                 total_orders_considered += 1
 
                 # 4. Realistic execution simulation (latency, as-of odds, staleness, suspension)
@@ -172,6 +222,17 @@ class WalkForwardBacktester:
                 if stake <= 0:
                     continue
 
+                age_sec = None
+                fresh_bucket = "none"
+                if sample.research_published_at:
+                    age_sec = max(0.0, (sample.decision_timestamp - sample.research_published_at).total_seconds())
+                    if age_sec <= 3600:
+                        fresh_bucket = "<1h"
+                    elif age_sec <= 21600:
+                        fresh_bucket = "1-6h"
+                    else:
+                        fresh_bucket = ">6h"
+
                 bet_id = f"bt_bet_{sample.event_id}_{target_outcome}_{len(self.bankroll.settled_bets) + len(self.bankroll.active_bets)}"
                 bet = self.bankroll.place_bet(
                     bet_id=bet_id,
@@ -182,6 +243,9 @@ class WalkForwardBacktester:
                     stake=stake,
                     probability=target_prob,
                     edge=exec_result.effective_edge,
+                    research_age_seconds=age_sec,
+                    research_freshness_bucket=fresh_bucket,
+                    llm_verdict=llm_verdict,
                 )
 
                 if not bet:
@@ -196,6 +260,12 @@ class WalkForwardBacktester:
                     actual_winner=sample.actual_winner,
                     settled_at=match_end_time,
                 )
+
+                if self.config.use_llm:
+                    if bet.status == "WON":
+                        true_positives += 1
+                    elif bet.status == "LOST":
+                        false_positives += 1
 
         # 7. Calculate statistical probabilistic metrics and calibration curve
         stat_metrics = {}
@@ -234,7 +304,27 @@ class WalkForwardBacktester:
                 "log_loss": stat_metrics.get("log_loss", 0.0),
             }
 
-        # 8. Calculate complete summary metrics
+        # 8. Compute error analysis metrics
+        veto_precision = (true_negatives / (true_negatives + false_negatives)) if (true_negatives + false_negatives) > 0 else 0.0
+        approval_precision = (true_positives / (true_positives + false_positives)) if (true_positives + false_positives) > 0 else 0.0
+        net_veto_value_pnl = avoided_loss_pnl - missed_profit_pnl
+
+        error_analysis_data = {
+            "total_candidates_evaluated": total_candidates_evaluated,
+            "veto_count": veto_count,
+            "approval_count": approval_count,
+            "true_positives": true_positives,
+            "false_positives": false_positives,
+            "true_negatives": true_negatives,
+            "false_negatives": false_negatives,
+            "veto_precision": round(veto_precision, 4),
+            "approval_precision": round(approval_precision, 4),
+            "avoided_loss_pnl": round(avoided_loss_pnl, 2),
+            "missed_profit_pnl": round(missed_profit_pnl, 2),
+            "net_veto_value_pnl": round(net_veto_value_pnl, 2),
+        }
+
+        # 9. Calculate complete summary metrics
         summary = BacktestMetricsCalculator.compute_summary(
             initial_bankroll=self.bankroll.initial_balance,
             final_bankroll=self.bankroll.current_balance,
@@ -243,6 +333,7 @@ class WalkForwardBacktester:
             peak_exposure=self.bankroll.peak_exposure,
             statistical_metrics=stat_metrics,
             calibration_curve=calibration_curve_data,
+            error_analysis=error_analysis_data,
         )
 
         logger.info(
@@ -252,7 +343,7 @@ class WalkForwardBacktester:
             f"| LogLoss: {summary.log_loss:.4f} | Brier: {summary.brier_score:.4f} | ECE: {summary.expected_calibration_error:.4f}"
         )
 
-        # 9. Save results to database if requested
+        # 10. Save results to database if requested
         if save_to_db:
             self._save_experiment_result(summary, model_type)
 
@@ -274,6 +365,8 @@ class WalkForwardBacktester:
                 strat_dict["calibration_curve"] = summary.calibration_curve
                 strat_dict["odds_buckets"] = {k: v.__dict__ for k, v in summary.odds_buckets.items()}
                 strat_dict["edge_buckets"] = {k: v.__dict__ for k, v in summary.edge_buckets.items()}
+                strat_dict["freshness_buckets"] = {k: v.__dict__ for k, v in summary.freshness_buckets.items()}
+                strat_dict["error_analysis"] = summary.error_analysis
 
                 exp = ExperimentResult(
                     name=exp_name,
@@ -298,7 +391,7 @@ def generate_synthetic_backtest_samples(
 ) -> List[BacktestSample]:
     """
     Generates realistic, chronologically ordered synthetic tennis events
-    with odds time-series, suspensions, features, and true outcomes.
+    with odds time-series, suspensions, features, qualitative research packets, and true outcomes.
     Used for deterministic backtesting validation and unit tests.
     """
     rng = np.random.RandomState(random_seed)
@@ -311,6 +404,34 @@ def generate_synthetic_backtest_samples(
 
         # True latent probability for player 1 winning
         true_p1 = rng.beta(2.5, 2.5)
+
+        # Generate qualitative research publication timestamps
+        freshness_rand = rng.rand()
+        if freshness_rand < 0.30:
+            # < 1 hour old
+            research_pub = event_time - timedelta(minutes=int(rng.uniform(10, 50)))
+        elif freshness_rand < 0.65:
+            # 1 to 6 hours old
+            research_pub = event_time - timedelta(hours=int(rng.uniform(1.5, 5.5)))
+        elif freshness_rand < 0.85:
+            # > 6 hours old
+            research_pub = event_time - timedelta(hours=int(rng.uniform(7, 24)))
+        else:
+            # No external research available
+            research_pub = None
+
+        research_retrieved = event_time - timedelta(minutes=2) if research_pub else None
+
+        # Contextual risk factors (fatigue / minor injury)
+        has_adverse_p1 = (rng.rand() < 0.12)
+        has_adverse_p2 = (rng.rand() < 0.12) if not has_adverse_p1 else False
+
+        # True probability shifts according to contextual fatigue / injury
+        if has_adverse_p1:
+            true_p1 = max(0.08, true_p1 - 0.28)
+        elif has_adverse_p2:
+            true_p1 = min(0.92, true_p1 + 0.28)
+
         actual_winner = "p1" if rng.rand() < true_p1 else "p2"
 
         # Generate odds with slight bookmaker margin (overround ~ 5%)
@@ -341,7 +462,6 @@ def generate_synthetic_backtest_samples(
             )
 
         # Generate 43 synthetic features correlated with true_p1
-        # Similar to TennisFeatureBuilder output
         features = np.zeros(43, dtype=np.float32)
         features[0] = p1_odds
         features[1] = p2_odds
@@ -358,6 +478,10 @@ def generate_synthetic_backtest_samples(
                 p2_odds=p2_odds,
                 odds_snapshots=snapshots,
                 actual_winner=actual_winner,
+                research_published_at=research_pub,
+                research_retrieved_at=research_retrieved,
+                adverse_fatigue_injury_p1=has_adverse_p1,
+                adverse_fatigue_injury_p2=has_adverse_p2,
             )
         )
 

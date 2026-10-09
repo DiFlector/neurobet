@@ -30,6 +30,9 @@ from .experiments import (
     CalibrationCurveReport,
     ScientificExperimentConfig,
     ScientificExperimentResultContract,
+    FreshnessBucketMetrics,
+    LLMErrorAnalysis,
+    LLMExperimentComparisonReport,
 )
 
 
@@ -75,5 +78,8 @@ __all__ = [
     "CalibrationCurveReport",
     "ScientificExperimentConfig",
     "ScientificExperimentResultContract",
+    "FreshnessBucketMetrics",
+    "LLMErrorAnalysis",
+    "LLMExperimentComparisonReport",
 ]
 

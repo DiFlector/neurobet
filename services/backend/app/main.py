@@ -802,6 +802,24 @@ def get_experiment_results(limit: int = 50) -> List[Dict[str, Any]]:
         ]
 
 
+@app.get("/api/experiments/comparison")
+def get_latest_comparison_report() -> Dict[str, Any]:
+    """Returns the latest scientific ML vs ML+LLM comparison report."""
+    if not SessionLocal or not ExperimentResult:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    with SessionLocal() as session:
+        exp = (
+            session.query(ExperimentResult)
+            .filter(ExperimentResult.name.like("comparison_%"))
+            .order_by(ExperimentResult.created_at.desc())
+            .first()
+        )
+        if not exp:
+            raise HTTPException(status_code=404, detail="No comparative experiment found")
+        comp = (exp.strategy_config or {}).get("comparison_report", {})
+        return comp if comp else exp.strategy_config
+
+
 @app.get("/api/experiments/{experiment_id}")
 def get_experiment_detail(experiment_id: str) -> Dict[str, Any]:
     """Returns detailed result for a single scientific experiment."""

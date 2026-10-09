@@ -50,6 +50,8 @@ class BacktestSummary:
     
     odds_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
     edge_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
+    freshness_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
+    error_analysis: Dict[str, Any] = field(default_factory=dict)
 
 
 
@@ -93,6 +95,7 @@ class BacktestMetricsCalculator:
         peak_exposure: float,
         statistical_metrics: Optional[Dict[str, float]] = None,
         calibration_curve: Optional[Dict[str, Any]] = None,
+        error_analysis: Optional[Dict[str, Any]] = None,
     ) -> BacktestSummary:
 
         """
@@ -139,6 +142,24 @@ class BacktestMetricsCalculator:
             for name, condition in edge_bins.items()
         }
 
+        # 3. Freshness Bucketing: <1h, 1-6h, >6h, none
+        def _get_freshness_cat(b: SimulatedBet) -> str:
+            if b.research_freshness_bucket:
+                return b.research_freshness_bucket
+            if b.research_age_seconds is None:
+                return "none"
+            if b.research_age_seconds <= 3600:
+                return "<1h"
+            if b.research_age_seconds <= 21600:
+                return "1-6h"
+            return ">6h"
+
+        freshness_categories = ["<1h", "1-6h", ">6h", "none"]
+        freshness_buckets = {
+            cat: cls._compute_bucket(cat, [b for b in settled_bets if _get_freshness_cat(b) == cat])
+            for cat in freshness_categories
+        }
+
         return BacktestSummary(
             initial_bankroll=round(initial_bankroll, 2),
             final_bankroll=round(final_bankroll, 2),
@@ -162,6 +183,8 @@ class BacktestMetricsCalculator:
             calibration_curve=calibration_curve or {},
             odds_buckets=odds_buckets,
             edge_buckets=edge_buckets,
+            freshness_buckets=freshness_buckets,
+            error_analysis=error_analysis or {},
         )
 
 

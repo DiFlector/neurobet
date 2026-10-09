@@ -20,6 +20,9 @@ class SimulatedBet:
     settled_at: Optional[datetime] = None
     payout: float = 0.0
     net_profit: float = 0.0
+    research_age_seconds: Optional[float] = None
+    research_freshness_bucket: Optional[str] = None
+    llm_verdict: Optional[str] = None
 
 
 @dataclass
@@ -134,6 +137,9 @@ class BacktestBankroll:
         stake: float,
         probability: float,
         edge: float,
+        research_age_seconds: Optional[float] = None,
+        research_freshness_bucket: Optional[str] = None,
+        llm_verdict: Optional[str] = None,
     ) -> Optional[SimulatedBet]:
         """
         Deduct stake from available balance and register active bet.
@@ -159,6 +165,9 @@ class BacktestBankroll:
             model_probability=probability,
             edge=edge,
             status="PENDING",
+            research_age_seconds=research_age_seconds,
+            research_freshness_bucket=research_freshness_bucket,
+            llm_verdict=llm_verdict,
         )
         self.active_bets[bet_id] = bet
 

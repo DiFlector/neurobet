@@ -597,23 +597,23 @@
 
 # PHASE 24 — LLM experiment
 
-- [ ] На том же time split запустить ML + LLM.
-- [ ] Не менять feature data между экспериментами.
-- [ ] Не менять bankroll/risk config.
-- [ ] Не менять execution latency.
-- [ ] Сравнить number of bets.
-- [ ] Сравнить ROI.
-- [ ] Сравнить P&L.
-- [ ] Сравнить drawdown.
-- [ ] Сравнить calibration.
-- [ ] Разбить результаты по edge buckets.
-- [ ] Разбить результаты по research freshness.
-- [ ] Проверить, когда LLM ошибается.
-- [ ] Проверить, добавляет ли LLM независимую информацию.
+- [x] На том же time split запустить ML + LLM.
+- [x] Не менять feature data между экспериментами.
+- [x] Не менять bankroll/risk config.
+- [x] Не менять execution latency.
+- [x] Сравнить number of bets.
+- [x] Сравнить ROI.
+- [x] Сравнить P&L.
+- [x] Сравнить drawdown.
+- [x] Сравнить calibration.
+- [x] Разбить результаты по edge buckets.
+- [x] Разбить результаты по research freshness.
+- [x] Проверить, когда LLM ошибается.
+- [x] Проверить, добавляет ли LLM независимую информацию.
 
 ### Acceptance
 
-- [ ] LLM не объявляется улучшением проекта без сравнительного эксперимента.
+- [x] LLM не объявляется улучшением проекта без сравнительного эксперимента.
 
 ---
 
