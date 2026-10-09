@@ -48,6 +48,10 @@ test:
 	docker exec -i neurobet_backend python - < tests/scheduler/test_candidate_scheduler.py
 	docker exec -i neurobet_backend python - < tests/api/test_backend_api.py
 	docker exec -i neurobet_backend python - < tests/frontend/test_frontend.py
+	docker exec -i neurobet_backend python - < tests/observability/test_observability.py
+
+test-observability:
+	docker exec -i neurobet_backend python - < tests/observability/test_observability.py
 
 test-frontend:
 	docker exec -i neurobet_backend python - < tests/frontend/test_frontend.py

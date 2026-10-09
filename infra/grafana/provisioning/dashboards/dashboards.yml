@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'Neurobet Dashboards'
+    orgId: 1
+    folder: 'Neurobet'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

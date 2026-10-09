@@ -1,0 +1,123 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Healthy Services (Up)",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(up)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Collector Polls Total",
+      "type": "stat",
+      "targets": [
+        { "expr": "collector_polls_total", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Bankroll Balance (RUB)",
+      "type": "stat",
+      "targets": [
+        { "expr": "virtual_bankroll_balance_rub", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "unit": "currencyRUB"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Locked Risk Exposure (RUB)",
+      "type": "stat",
+      "targets": [
+        { "expr": "virtual_bankroll_exposure_rub", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "unit": "currencyRUB"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 5,
+      "title": "Collector Ingestion Activity & Latency",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(collector_polls_total[1m])", "legendFormat": "Polls / sec", "refId": "A" },
+        { "expr": "collector_events_seen", "legendFormat": "Events Seen", "refId": "B" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 6,
+      "title": "ML Predictions & Decision Pipeline",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "ml_predictions_total", "legendFormat": "ML Predictions", "refId": "A" },
+        { "expr": "bet_proposals_total", "legendFormat": "Bet Proposals", "refId": "B" },
+        { "expr": "bet_executed_total", "legendFormat": "Executed Bets", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 7,
+      "title": "Local LLM Latency & Verdict Rates",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "llm_requests_total", "legendFormat": "LLM Requests", "refId": "A" },
+        { "expr": "llm_verdict_counts", "legendFormat": "Verdicts", "refId": "B" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 8,
+      "title": "Web Research & Cache Hit Ratio",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "research_requests_total", "legendFormat": "Total Research Requests", "refId": "A" },
+        { "expr": "research_cache_hits_total", "legendFormat": "Cache Hits", "refId": "B" }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["neurobet", "observability", "metrics"],
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Neurobet Platform Overview",
+  "uid": "neurobet-overview",
+  "version": 1
+}

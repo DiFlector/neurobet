@@ -99,6 +99,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+try:
+    from observability import setup_observability, get_logger, REGISTRY, BANKROLL_BALANCE, BANKROLL_EXPOSURE
+    setup_observability(app, service_name="backend")
+    logger = get_logger("backend")
+except ImportError:
+    pass
+
 # Global candidate scheduler instance for cost control & candidate queuing
 global_candidate_scheduler = CandidateScheduler() if CandidateScheduler else None
 
@@ -473,6 +480,11 @@ def get_bankroll_summary() -> Dict[str, Any]:
         account = BankrollService.get_or_create_account(session)
         summary = BankrollService.get_account_summary(session, account.id)
         summary["balance"] = summary.get("available_balance", 0.0)
+        try:
+            BANKROLL_BALANCE.set(float(summary.get("available_balance", 0.0)))
+            BANKROLL_EXPOSURE.set(float(summary.get("locked_exposure", 0.0)))
+        except Exception:
+            pass
         session.commit()
         return summary
 

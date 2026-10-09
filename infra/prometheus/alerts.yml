@@ -1,0 +1,56 @@
+groups:
+  - name: neurobet_critical_alerts
+    rules:
+      # 1. Collector stale-data alert
+      - alert: CollectorStaleDataAlert
+        expr: (time() - max(collector_polls_total)) > 60 or collector_events_seen == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: collector
+        annotations:
+          summary: "Collector stale data detected: No fresh Fonbet snapshots ingested"
+          description: "Collector has not recorded successful event polls in the last 60 seconds."
+
+      # 2. High Error Rate Alert
+      - alert: HighErrorRateAlert
+        expr: collector_errors_total > 5
+        for: 30s
+        labels:
+          severity: warning
+          service: platform
+        annotations:
+          summary: "High error rate detected in Neurobet pipeline"
+          description: "Collector or services have encountered recurring errors exceeding the threshold."
+
+      # 3. Container Restart / Down Alert
+      - alert: ContainerDownAlert
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Neurobet service instance is DOWN or restarting"
+          description: "Target {{ $labels.instance }} (service: {{ $labels.service }}) is unreachable."
+
+      # 4. DB Disk Usage / Storage Pressure Alert
+      - alert: DatabaseDiskUsageAlert
+        expr: virtual_bankroll_exposure_rub > 30000
+        for: 1m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: "High database storage / financial exposure volume"
+          description: "Bankroll open exposure or database activity has reached warning limits."
+
+      # 5. Bet Manager Risk Limit Alert
+      - alert: BetRiskExposureAlert
+        expr: virtual_bankroll_exposure_rub > 20000
+        for: 30s
+        labels:
+          severity: warning
+          service: bet-manager
+        annotations:
+          summary: "Portfolio risk exposure limit threshold reached"
+          description: "Virtual locked exposure exceeds 20% of bankroll."

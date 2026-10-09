@@ -28,6 +28,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+try:
+    from observability import setup_observability
+    setup_observability(app, service_name="llm")
+except ImportError:
+    pass
+
 # Initialize engine on startup
 def get_engine() -> BaseInferenceEngine:
     if not hasattr(app.state, "engine"):

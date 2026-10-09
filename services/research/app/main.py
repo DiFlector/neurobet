@@ -24,6 +24,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+try:
+    from observability import setup_observability
+    setup_observability(app, service_name="research")
+except ImportError:
+    pass
+
 research_service = WebResearchService()
 
 

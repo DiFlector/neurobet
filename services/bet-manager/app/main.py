@@ -87,6 +87,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+try:
+    from observability import setup_observability
+    setup_observability(app, service_name="bet-manager")
+except ImportError:
+    pass
+
 
 class ProposalRequest(BaseModel):
     proposal_id: Optional[str] = None

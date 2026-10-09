@@ -521,21 +521,21 @@
 
 # PHASE 20 — Observability
 
-- [ ] Structured logs.
-- [ ] Request IDs.
-- [ ] Event IDs в каждом релевантном логе.
-- [ ] Collector metrics.
-- [ ] ML metrics.
-- [ ] Research metrics.
-- [ ] LLM metrics.
-- [ ] Bet-manager metrics.
-- [ ] Settlement metrics.
-- [ ] Prometheus.
-- [ ] Grafana.
-- [ ] Error alerts.
-- [ ] Collector stale-data alert.
-- [ ] DB disk usage alert.
-- [ ] Container restart alert.
+- [x] Structured logs.
+- [x] Request IDs.
+- [x] Event IDs в каждом релевантном логе.
+- [x] Collector metrics.
+- [x] ML metrics.
+- [x] Research metrics.
+- [x] LLM metrics.
+- [x] Bet-manager metrics.
+- [x] Settlement metrics.
+- [x] Prometheus.
+- [x] Grafana.
+- [x] Error alerts.
+- [x] Collector stale-data alert.
+- [x] DB disk usage alert.
+- [x] Container restart alert.
 
 ---
 

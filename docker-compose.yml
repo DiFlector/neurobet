@@ -292,6 +292,48 @@ services:
       retries: 3
       start_period: 5s
 
+  # ============================================================================
+  # Observability & Monitoring: Prometheus & Grafana (Phase 20)
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: neurobet_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9095}:9090"
+    networks:
+      - neurobet-internal
+      - neurobet-public
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: neurobet_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-neurobet2026}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-8086}:3000"
+    networks:
+      - neurobet-internal
+      - neurobet-public
+    depends_on:
+      - prometheus
+
 # ==============================================================================
 # Networks Isolation Policy
 # ==============================================================================
@@ -317,3 +359,7 @@ volumes:
     name: neurobet_redis_data
   minio_data:
     name: neurobet_minio_data
+  prometheus_data:
+    name: neurobet_prometheus_data
+  grafana_data:
+    name: neurobet_grafana_data

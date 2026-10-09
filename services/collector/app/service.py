@@ -168,11 +168,23 @@ class CollectorService:
                         len(live_events),
                     )
 
+                try:
+                    from observability import COLLECTOR_POLLS_TOTAL, COLLECTOR_EVENTS_SEEN
+                    COLLECTOR_POLLS_TOTAL.inc(labels={"sport": settings.sport_code})
+                    COLLECTOR_EVENTS_SEEN.set(len(live_events))
+                except Exception:
+                    pass
+
                 self.circuit_breaker.record_success()
                 return content_hash
 
             except Exception as e:
                 logger.error("Error in poll_once: %s", e)
+                try:
+                    from observability import COLLECTOR_ERRORS_TOTAL
+                    COLLECTOR_ERRORS_TOTAL.inc()
+                except Exception:
+                    pass
                 self.circuit_breaker.record_failure(e)
                 return None
 
