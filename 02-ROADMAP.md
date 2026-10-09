@@ -541,19 +541,19 @@
 
 # PHASE 21 — Security hardening
 
-- [ ] Не публиковать PostgreSQL port наружу без необходимости.
-- [ ] Не публиковать Redis наружу.
-- [ ] Не публиковать MinIO наружу без необходимости.
-- [ ] Секреты в env/secrets.
-- [ ] Минимальные container capabilities.
-- [ ] Non-root containers где возможно.
-- [ ] Resource limits.
-- [ ] Browser sandbox.
-- [ ] Research URL allowlist.
-- [ ] Нет arbitrary shell execution от LLM.
-- [ ] Нет arbitrary database writes от LLM.
-- [ ] Нет реальных ставок в default compose.
-- [ ] `BET_MODE=SIMULATION` enforced on application startup.
+- [x] Не публиковать PostgreSQL port наружу без необходимости.
+- [x] Не публиковать Redis наружу.
+- [x] Не публиковать MinIO наружу без необходимости.
+- [x] Секреты в env/secrets.
+- [x] Минимальные container capabilities.
+- [x] Non-root containers где возможно.
+- [x] Resource limits.
+- [x] Browser sandbox.
+- [x] Research URL allowlist.
+- [x] Нет arbitrary shell execution от LLM.
+- [x] Нет arbitrary database writes от LLM.
+- [x] Нет реальных ставок в default compose.
+- [x] `BET_MODE=SIMULATION` enforced on application startup.
 
 ---
 

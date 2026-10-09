@@ -49,6 +49,10 @@ test:
 	docker exec -i neurobet_backend python - < tests/api/test_backend_api.py
 	docker exec -i neurobet_backend python - < tests/frontend/test_frontend.py
 	docker exec -i neurobet_backend python - < tests/observability/test_observability.py
+	python3 tests/security/test_security_hardening.py
+
+test-security:
+	python3 tests/security/test_security_hardening.py
 
 test-observability:
 	docker exec -i neurobet_backend python - < tests/observability/test_observability.py

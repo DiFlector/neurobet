@@ -2,7 +2,10 @@
 
 import logging
 from typing import Dict, Optional, Tuple
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None
 from .config import config
 from .domain_filter import DomainFilter
 
@@ -61,6 +64,17 @@ class SandboxedFetcher:
 
                     if resp.status_code != 200:
                         return None, f"HTTP_{resp.status_code}"
+
+                    # Content-type check
+                    content_type = resp.headers.get("content-type", "").lower()
+                    if content_type and not any(t in content_type for t in ("text/html", "text/plain", "application/xhtml+xml", "application/xml", "application/json")):
+                        logger.warning(f"Rejected non-text content-type '{content_type}' on '{url}'.")
+                        return None, f"UNSUPPORTED_CONTENT_TYPE: {content_type}"
+
+                    # Payload size cap (5 MB)
+                    if len(resp.content) > 5 * 1024 * 1024:
+                        logger.warning(f"Payload on '{url}' exceeds 5MB limit.")
+                        return None, "PAYLOAD_TOO_LARGE"
 
                     body = resp.text
 

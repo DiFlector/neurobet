@@ -110,6 +110,20 @@ except ImportError:
 global_candidate_scheduler = CandidateScheduler() if CandidateScheduler else None
 
 
+@app.on_event("startup")
+def startup_security_check():
+    bet_mode = os.getenv("BET_MODE", "SIMULATION").upper()
+    if bet_mode != "SIMULATION":
+        logger.critical(
+            "FATAL SECURITY VIOLATION: Unauthorized BET_MODE='%s'. System operates strictly in SIMULATION mode.",
+            bet_mode,
+        )
+        raise RuntimeError(
+            f"FATAL SECURITY VIOLATION: BET_MODE={bet_mode} is forbidden. System operates strictly in SIMULATION mode."
+        )
+    logger.info("Security hardening verified: BET_MODE=%s enforced.", bet_mode)
+
+
 # --------------------------------------------------------------------------
 # 1. Health & Readiness (Architecture Section 31)
 # --------------------------------------------------------------------------
@@ -150,6 +164,7 @@ def get_supported_sports() -> List[Dict[str, Any]]:
         desc = registry.get_descriptor(sport_code)
         d = desc.model_dump()
         d["code"] = sport_code
+        d["sport_code"] = sport_code
         d["is_primary"] = (sport_code == primary)
         sports.append(d)
     return sports
@@ -161,6 +176,7 @@ def get_sport_details(sport_code: str) -> Dict[str, Any]:
     desc = registry.get_descriptor(sport_code)
     res = desc.model_dump()
     res["code"] = sport_code
+    res["sport_code"] = sport_code
     primary = os.getenv("PRIMARY_SPORT", "tennis").lower()
     res["is_primary"] = (sport_code.lower() == primary)
     return res

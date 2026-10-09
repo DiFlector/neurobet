@@ -55,7 +55,17 @@ async def heartbeat_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting Bet-Manager service in mode: %s", os.getenv("BET_MODE", "SIMULATION"))
+    bet_mode = os.getenv("BET_MODE", "SIMULATION").upper()
+    if bet_mode != "SIMULATION":
+        logger.critical(
+            "FATAL SECURITY VIOLATION: Unauthorized BET_MODE='%s'. Only 'SIMULATION' mode is permitted.",
+            bet_mode,
+        )
+        raise RuntimeError(
+            f"FATAL SECURITY VIOLATION: BET_MODE={bet_mode} is forbidden. System operates strictly in SIMULATION mode."
+        )
+
+    logger.info("Starting Bet-Manager service in mode: %s", bet_mode)
     logger.info("Supported sports: %s", registry.list_sports())
 
     # Ensure default virtual account is initialized

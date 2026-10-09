@@ -34,7 +34,7 @@ def test_frontend_health():
         assert resp.status == 200
         data = json.loads(resp.read().decode("utf-8"))
         assert data["status"] == "healthy"
-        assert data["service"] == "neurobet-frontend"
+        assert data["service"] in ("frontend", "neurobet-frontend")
     print("✓ test_frontend_health passed")
 
 

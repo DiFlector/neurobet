@@ -12,12 +12,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neurobet_secure_pass}
       TZ: ${TZ:-UTC}
     ports:
-      - "${POSTGRES_PORT:-5435}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5435}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./infra/postgres/init-timescale.sh:/docker-entrypoint-initdb.d/init-timescale.sh:ro
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neurobet} -d ${POSTGRES_DB:-neurobet}"]
       interval: 10s
@@ -36,11 +43,18 @@ services:
     environment:
       TZ: ${TZ:-Europe/Moscow}
     ports:
-      - "${REDIS_PORT:-6385}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6385}:6379"
     volumes:
       - redis_data:/data
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping || redis-cli ping"]
       interval: 10s
@@ -63,11 +77,18 @@ services:
       S3DATAPATH: /data
       TZ: ${TZ:-UTC}
     ports:
-      - "${MINIO_API_PORT:-9005}:8000"
+      - "127.0.0.1:${MINIO_API_PORT:-9005}:8000"
     volumes:
       - minio_data:/data
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:8000/ || exit 0"]
       interval: 15s
@@ -89,7 +110,7 @@ services:
     environment:
       TZ: ${TZ:-UTC}
     ports:
-      - "${BACKEND_PORT:-8005}:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8005}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +119,20 @@ services:
     networks:
       - neurobet-public
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -126,6 +161,20 @@ services:
     networks:
       - neurobet-public
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s
@@ -153,6 +202,20 @@ services:
         condition: service_healthy
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s
@@ -182,6 +245,20 @@ services:
         condition: service_healthy
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s
@@ -204,8 +281,13 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       - ./models:/models
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
+        limits:
+          cpus: '2.0'
+          memory: 4096M
         reservations:
           devices:
             - driver: nvidia
@@ -236,6 +318,20 @@ services:
     networks:
       - neurobet-public
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1536M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s
@@ -261,6 +357,20 @@ services:
         condition: service_healthy
     networks:
       - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s
@@ -285,6 +395,20 @@ services:
       - "${FRONTEND_PORT:-8085}:3000"
     networks:
       - neurobet-public
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 15s
@@ -308,10 +432,17 @@ services:
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "${PROMETHEUS_PORT:-9095}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9095}:9090"
     networks:
       - neurobet-internal
       - neurobet-public
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
 
   grafana:
     image: grafana/grafana:10.4.0
@@ -327,10 +458,17 @@ services:
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
-      - "${GRAFANA_PORT:-8086}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-8086}:3000"
     networks:
       - neurobet-internal
       - neurobet-public
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     depends_on:
       - prometheus
 
