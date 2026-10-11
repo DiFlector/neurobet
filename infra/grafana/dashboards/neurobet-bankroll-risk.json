@@ -1,0 +1,123 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Available Bankroll",
+      "type": "stat",
+      "targets": [
+        { "expr": "virtual_bankroll_balance_rub", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "unit": "currencyRUB"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Active Risk Exposure",
+      "type": "stat",
+      "targets": [
+        { "expr": "virtual_bankroll_exposure_rub", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "unit": "currencyRUB"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Bet Proposals Total",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(bet_proposals_total)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Virtual Bets Executed",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(bet_executed_total)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "id": 5,
+      "title": "Bankroll Equity & Exposure Over Time",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "virtual_bankroll_balance_rub", "legendFormat": "Available Balance (RUB)", "refId": "A" },
+        { "expr": "virtual_bankroll_exposure_rub", "legendFormat": "Locked Exposure (RUB)", "refId": "B" },
+        { "expr": "virtual_bankroll_balance_rub + virtual_bankroll_exposure_rub", "legendFormat": "Total Portfolio Equity (RUB)", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "id": 6,
+      "title": "Bet Validation Pipeline (Proposals vs Rejections vs Executed)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(bet_proposals_total[2m])", "legendFormat": "Proposals / sec", "refId": "A" },
+        { "expr": "rate(bet_rejected_total[2m])", "legendFormat": "Rejected (Risk Gates) / sec", "refId": "B" },
+        { "expr": "rate(bet_executed_total[2m])", "legendFormat": "Accepted & Executed / sec", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "id": 7,
+      "title": "Settlements Throughput & Outcomes",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(settlements_total[2m])", "legendFormat": "Settlements / sec", "refId": "A" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "id": 8,
+      "title": "Bet Rejection Ratio (% Blocked by Risk Gates)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "(rate(bet_rejected_total[5m]) / clamp_min(rate(bet_proposals_total[5m]), 0.001)) * 100", "legendFormat": "Rejection Rate (%)", "refId": "A" }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["neurobet", "bankroll", "betting", "risk", "settlement"],
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "timezone": "utc",
+  "title": "Neurobet — Virtual Bankroll, Risk & Settlement",
+  "uid": "neurobet-bankroll-risk",
+  "version": 1
+}

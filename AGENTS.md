@@ -144,56 +144,65 @@ LLM является дополнительным источником инфо�
 
 ---
 
-## 4. Ожидаемая структура репозитория
-
-Базовая структура Neurobet предполагается примерно такой:
+## 4. Фактическая структура репозитория
 
 ```text
 neurobet/
-├── AGENTS.md
-├── 01-ARCHITECTURE.md
-├── 02-ROADMAP.md
-├── README.md
-├── docker-compose.yml
-├── .env.example
+├── AGENTS.md                          # Контекст и инварианты для AI-агентов
+├── 01-ARCHITECTURE.md                 # Полная техническая архитектура и контракты
+├── 02-ROADMAP.md                      # Чеклист реализации (Phase 1–32)
+├── README.md                          # Общее описание проекта
+├── Makefile                           # Команды сборки, тестирования и валидации
+├── docker-compose.yml                 # 13 сервисов платформы
+├── nginx-master-readme.md             # Инструкция по работе с внешним Nginx-Master
+├── .env.example                       # Переменные окружения
 │
-├── services/
-│   ├── collector/
-│   ├── event-processor/
-│   ├── neural/
-│   ├── llm/
-│   ├── research/
-│   ├── bet-manager/
-│   ├── backend/
-│   └── frontend/
+├── packages/                          # Переиспользуемые библиотеки ядра
+│   ├── contracts/                     # Pydantic v2 схемы и версионирование
+│   ├── db/                            # TimescaleDB / PostgreSQL модели и миграции
+│   ├── sports-core/                   # Базовый интерфейс адаптеров BaseSportAdapter
+│   ├── bankroll/                      # Виртуальный банкролл, PnL, reconciliation
+│   ├── streams/                       # Redis Streams шина событий
+│   ├── data-quality/                  # Валидация аномалий и проверка целостности
+│   ├── observability/                 # Prometheus метрики и OpenTelemetry трейсинг
+│   └── mcp-server/                    # Model Context Protocol сервер для AI-агентов
 │
-├── sports/
-│   ├── common/
-│   ├── football/
-│   ├── hockey/
-│   ├── basketball/
-│   ├── tennis/
-│   └── ...
+├── services/                          # Микросервисы платформы
+│   ├── collector/                     # Fonbet polling (5-10s jitter)
+│   ├── event-processor/               # Нормализация событий и снапшотов
+│   ├── neural/                        # Числовой ML движок (GBDT, inference sandbox)
+│   ├── llm/                           # Локальная аналитическая LLM (GTX 1050 Ti)
+│   ├── research/                      # Контур внешнего веб-поиска контекста
+│   ├── bet-manager/                   # Gatekeeper ставок и риск-менеджмент
+│   ├── backend/                       # Единый REST API и прокси для Prometheus
+│   ├── frontend/                      # Web-интерфейс (Next.js / Dashboard)
+│   └── worker/                        # Фоновые воркеры и scheduler
 │
-├── db/
-│   ├── migrations/
-│   └── seeds/
+├── sports/                            # Адаптеры видов спорта
+│   ├── common/                        # Общие утилиты видов спорта
+│   ├── tennis/                        # Теннис (сеты, геймы, брейки)
+│   ├── football/                      # Футбол (таймы, голы, угловые)
+│   ├── basketball/                    # Баскетбол (четверти, фолы)
+│   ├── hockey/                        # Хоккей (периоды, буллиты)
+│   └── volleyball/                    # Волейбол (партии, баланс)
 │
-├── models/
-│   ├── checkpoints/
-│   ├── configs/
-│   └── experiments/
+├── infra/                             # Конфигурации инфраструктуры
+│   ├── prometheus/                    # prometheus.yml и alerts.yml
+│   └── grafana/                       # Дашборды и datasource
 │
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── snapshots/
+├── .agents/                           # Конфигурация для Antigravity и других агентов
+│   ├── mcp_config.json                # Конфигурация MCP-сервера
+│   ├── rules/                         # Правила и инварианты агентов
+│   ├── plugins/                       # Плагины Antigravity
+│   └── skills/                        # Скиллы (neurobet, neurobet-mcp)
 │
-├── tests/
-└── scripts/
+├── .cursor/                           # Конфигурация для Cursor IDE
+│   └── mcp.json                       # MCP конфигурация для Cursor
+│
+├── tests/                             # Интеграционные и модульные тесты
+└── scripts/                           # Вспомогательные скрипты развертывания
 ```
 
-Фактическая структура может изменяться, но логическое разделение ответственности должно сохраняться.
 
 ---
 
@@ -471,4 +480,84 @@ prediction → decision → simulated bet → outcome → evaluation → learnin
 
 Neurobet должна позволять сравнивать различные стратегии, версии моделей и варианты использования LLM на одной исторической базе данных и в едином формате экспериментов.
 
-### `nginx-master-readme.md` - инструкция как работать с nginx на текущем сервере. Адрес будет necrolich.ru/diflector/neurobet
+---
+
+## 12. Интеграция с Model Context Protocol (MCP)
+
+В репозитории реализован полнофункциональный **MCP-сервер** (`packages/mcp-server`), предназначенный для взаимодействия AI-агентов (в таких IDE, как **Cursor** и **Antigravity**) с платформой Neurobet.
+
+### Конфигурация подключения:
+
+Конфигурации хранятся в `.cursor/mcp.json`, `.agents/mcp_config.json` и глобальном `~/.gemini/config/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "neurobet": {
+      "command": "python3",
+      "args": [
+        "-u",
+        "/srv/neurobet/packages/mcp-server/src/neurobet_mcp/server.py"
+      ],
+      "env": {
+        "NEUROBET_API_URL": "https://necrolich.ru/diflector/neurobet",
+        "PYTHONPATH": "/srv/neurobet/packages/mcp-server/src"
+      }
+    }
+  }
+}
+```
+
+> **Важно:** Все запросы (включая метрики и таргеты Prometheus) идут через единую точку входа `NEUROBET_API_URL` благодаря встроенному backend-прокси (`/api/prometheus/query`, `/api/prometheus/targets`). Никаких локальных портов наружу не выставляется.
+
+### Доступные группы инструментов MCP:
+
+1. **Здоровье кластера и мониторинг**:
+   - `neurobet_get_system_health`: агрегированный статус БД, Redis, планировщика, банкролла и активных моделей.
+   - `neurobet_query_prometheus`: выполнение любых PromQL-запросов к временным рядам.
+   - `neurobet_get_prometheus_targets`: проверка состояния всех 5 таргетов сбора метрик.
+2. **Управление ML-моделями и Shadow Mode**:
+   - `neurobet_list_models`, `neurobet_get_active_model`.
+   - `neurobet_get_shadow_report`, `neurobet_register_shadow_model`, `neurobet_promote_model`, `neurobet_rollback_model`.
+   - `neurobet_simulate_inference`: безопасная песочница симуляции инференса без сайд-эффектов.
+3. **Тренировки и Эксперименты**:
+   - `neurobet_trigger_training`, `neurobet_list_training_runs`.
+   - `neurobet_list_experiments`, `neurobet_compare_experiments`.
+4. **События линии Fonbet и Web Research**:
+   - `neurobet_list_live_events`, `neurobet_get_event_timeline`, `neurobet_get_event_odds`.
+   - `neurobet_get_predictions`, `neurobet_get_research_packet`.
+5. **Виртуальный банкролл и ставки**:
+   - `neurobet_get_bankroll_summary`: баланс, equity, заблокированная маржа, PnL, ROI.
+   - `neurobet_list_virtual_bets`, `neurobet_list_bet_proposals`, `neurobet_sync_settlements`.
+   - `neurobet_get_data_quality_report`, `neurobet_get_scheduler_stats`.
+
+---
+
+## 13. Сетевая топология и Nginx Reverse Proxy
+
+Инфраструктура платформы развернута с использованием внешнего обратного прокси:
+
+- **Сервер приложений**: `192.168.1.92` (сервер `necrolich.ru`), где в Docker работают 13 контейнеров платформы Neurobet.
+- **Хост обратного прокси**: `192.168.1.90` (контейнер `nginx_master`).
+- **Публичный адрес платформы**: `https://necrolich.ru/diflector/neurobet`.
+- Подробные правила настройки и работы со сниппетами описаны в [`nginx-master-readme.md`](file:///srv/neurobet/nginx-master-readme.md).
+
+---
+
+## 14. Скиллы (Skills) для AI-агентов
+
+Для агентов подготовлены специализированные руководства и регламенты:
+
+- [`.agents/skills/neurobet/SKILL.md`](file:///srv/neurobet/.agents/skills/neurobet/SKILL.md) — Главный инженерный справочник: архитектура, ML-жизненный цикл, risk gates, пайплайны ставок и ранбуки.
+- [`.agents/skills/neurobet-mcp/SKILL.md`](file:///srv/neurobet/.agents/skills/neurobet-mcp/SKILL.md) — Шпаргалка и сценарии использования инструментов MCP-сервера.
+
+---
+
+## 15. Команды тестирования и верификации
+
+Перед фиксацией любых изменений агент обязан запускать проверку соответствующего контура:
+
+- **MCP Server**: `make test-mcp`
+- **Контракты и API**: `make test-contracts`, `make test-api`
+- **Числовой ML и Shadow Mode**: `docker exec -i neurobet_neural python - < tests/neural/test_baseline_ml.py`
+- **Полный стек тестов**: `make test`

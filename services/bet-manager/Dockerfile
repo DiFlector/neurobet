@@ -30,6 +30,9 @@ RUN pip install --no-cache-dir /app/packages/db
 COPY packages/bankroll /app/packages/bankroll
 RUN pip install --no-cache-dir /app/packages/bankroll
 
+COPY packages/observability /app/packages/observability
+RUN pip install --no-cache-dir /app/packages/observability
+
 COPY services/bet-manager/pyproject.toml /app/
 COPY services/bet-manager/app /app/app
 RUN pip install --no-cache-dir .

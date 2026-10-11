@@ -1,0 +1,119 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "ML Predictions Generated",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(ml_predictions_total)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Local LLM Decisions",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(llm_requests_total)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Web Research Hits",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(research_requests_total)", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "LLM Latency (p95)",
+      "type": "stat",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(llm_latency_seconds_bucket[5m])) by (le))", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "unit": "s"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "id": 5,
+      "title": "ML Predictions Rate & Value Edge Distribution",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ml_predictions_total[1m])", "legendFormat": "Predictions / sec", "refId": "A" },
+        { "expr": "ml_edge_value", "legendFormat": "Observed Edge {{market}}", "refId": "B" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "id": 6,
+      "title": "LLM Verdict Distribution (AGREE vs DISAGREE vs PASS)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (verdict) (rate(llm_verdict_counts[5m]))", "legendFormat": "{{verdict}}", "refId": "A" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "id": 7,
+      "title": "Web Research Latency & Cache Hit Ratio",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(research_requests_total[2m])", "legendFormat": "Research Requests / sec", "refId": "A" },
+        { "expr": "rate(research_cache_hits_total[2m])", "legendFormat": "Cache Hits / sec", "refId": "B" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "id": 8,
+      "title": "Prediction Distribution Drift (PSI & Outlier Tracking)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "abs(deriv(ml_edge_value[5m]))", "legendFormat": "Edge Drift Velocity", "refId": "A" }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["neurobet", "ml", "models", "drift", "llm"],
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "timezone": "utc",
+  "title": "Neurobet — ML Models, Drift & Qualitative LLM",
+  "uid": "neurobet-models-drift",
+  "version": 1
+}

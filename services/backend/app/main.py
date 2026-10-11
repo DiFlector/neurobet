@@ -1645,6 +1645,244 @@ def clear_scheduler_cooldowns_and_cache() -> Dict[str, Any]:
     return {"status": "success", "message": "Cooldowns, snapshot cache, and queue cleared"}
 
 
+class ModelRollbackRequest(BaseModel):
+    sport_code: str = "tennis"
+    target_version_tag: Optional[str] = None
+    reason: Optional[str] = "Manual rollback via Model Control"
+
+
+@app.post("/api/models/rollback")
+def rollback_model_version(req: ModelRollbackRequest) -> Dict[str, Any]:
+    """
+    Rolls back the current ACTIVE model for a sport.
+    Demotes the active model to RETIRED or STAGING and restores a target or previous version.
+    """
+    if not SessionLocal or not ModelVersion:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    with SessionLocal() as session:
+        current_active = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == req.sport_code, ModelVersion.status == "ACTIVE")
+            .order_by(desc(ModelVersion.created_at))
+            .first()
+        )
+
+        if req.target_version_tag:
+            target = (
+                session.query(ModelVersion)
+                .filter(ModelVersion.version_tag == req.target_version_tag, ModelVersion.sport_code == req.sport_code)
+                .first()
+            )
+            if not target:
+                raise HTTPException(status_code=404, detail=f"Target model version '{req.target_version_tag}' not found")
+        else:
+            target = (
+                session.query(ModelVersion)
+                .filter(
+                    ModelVersion.sport_code == req.sport_code,
+                    ModelVersion.status.in_(["RETIRED", "STAGING", "SHADOW"]),
+                )
+                .order_by(desc(ModelVersion.created_at))
+                .first()
+            )
+            if not target:
+                raise HTTPException(status_code=400, detail=f"No previous model versions found to rollback to for {req.sport_code}")
+
+        if current_active and current_active.id == target.id:
+            raise HTTPException(status_code=400, detail="Target model is already the active model")
+
+        demoted_tag = None
+        if current_active:
+            current_active.status = "RETIRED"
+            demoted_tag = current_active.version_tag
+
+        target.status = "ACTIVE"
+        session.commit()
+
+        return {
+            "status": "rolled_back",
+            "sport_code": req.sport_code,
+            "demoted_version": demoted_tag,
+            "restored_active_version": target.version_tag,
+            "reason": req.reason,
+            "metrics": target.metrics,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class SimulateInferenceRequest(BaseModel):
+    sport_code: str = "tennis"
+    features: Dict[str, float]
+    odds: Optional[Dict[str, float]] = None
+
+
+@app.post("/api/models/simulate-inference")
+def simulate_model_inference(req: SimulateInferenceRequest) -> Dict[str, Any]:
+    """
+    Simulates ML inference on a custom feature vector without placing a bet or altering ledger.
+    Calculates estimated probabilities, implied odds, edges, and model confidence.
+    """
+    # Baseline estimation logic for sandbox testing
+    features = req.features or {}
+    elo_diff = features.get("elo_diff", features.get("rating_diff", 0.0))
+    h2h_advantage = features.get("h2h_win_rate_diff", features.get("h2h_diff", 0.0))
+    momentum = features.get("recent_form_diff", features.get("momentum_diff", 0.0))
+    fatigue = features.get("fatigue_diff", 0.0)
+
+    # Sigmoid score computation
+    z = (elo_diff * 0.005) + (h2h_advantage * 1.2) + (momentum * 0.8) - (fatigue * 0.5)
+    import math
+    p1 = 1.0 / (1.0 + math.exp(-max(-10.0, min(10.0, z))))
+    p2 = 1.0 - p1
+
+    fair_odds_p1 = round(1.0 / max(0.01, p1), 2)
+    fair_odds_p2 = round(1.0 / max(0.01, p2), 2)
+
+    odds_eval = {}
+    if req.odds:
+        b_p1 = req.odds.get("outcome_a", req.odds.get("p1", 0.0))
+        b_p2 = req.odds.get("outcome_b", req.odds.get("p2", 0.0))
+        edge_p1 = round((p1 * b_p1) - 1.0, 4) if b_p1 > 1.0 else 0.0
+        edge_p2 = round((p2 * b_p2) - 1.0, 4) if b_p2 > 1.0 else 0.0
+        odds_eval = {
+            "bookmaker_odds": {"outcome_a": b_p1, "outcome_b": b_p2},
+            "edge": {"outcome_a": edge_p1, "outcome_b": edge_p2},
+            "best_edge": max(edge_p1, edge_p2),
+            "recommendation": "BET_OUTCOME_A" if edge_p1 > 0.03 and edge_p1 > edge_p2 else ("BET_OUTCOME_B" if edge_p2 > 0.03 else "PASS"),
+        }
+
+    return {
+        "status": "success",
+        "sport_code": req.sport_code,
+        "mode": "simulation_sandbox",
+        "predicted_probabilities": {
+            "outcome_a": round(p1, 4),
+            "outcome_b": round(p2, 4),
+        },
+        "fair_odds": {
+            "outcome_a": fair_odds_p1,
+            "outcome_b": fair_odds_p2,
+        },
+        "confidence": round(abs(p1 - 0.5) * 2.0, 4),
+        "odds_evaluation": odds_eval,
+        "input_features_count": len(features),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/system/status")
+def get_system_cluster_status() -> Dict[str, Any]:
+    """
+    Comprehensive real-time status across all system components, models,
+    database connection, queues, and bankroll.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    db_ok = False
+    active_models_summary = {}
+
+    if SessionLocal and ModelVersion:
+        try:
+            with SessionLocal() as session:
+                models = session.query(ModelVersion).filter(ModelVersion.status == "ACTIVE").all()
+                for m in models:
+                    active_models_summary[m.sport_code] = {
+                        "version_tag": m.version_tag,
+                        "model_name": m.model_name,
+                        "market": m.market,
+                        "metrics": m.metrics,
+                    }
+                db_ok = True
+        except Exception:
+            db_ok = False
+
+    redis_ok = False
+    try:
+        import redis
+        r = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), socket_timeout=1.5)
+        if r.ping():
+            redis_ok = True
+    except Exception:
+        redis_ok = False
+
+    bankroll_data = {}
+    if BankrollService and SessionLocal:
+        try:
+            with SessionLocal() as session:
+                acc = BankrollService.get_or_create_account(session, name=os.getenv("DEFAULT_ACCOUNT_NAME", "default_paper_account"))
+                bankroll_data = {
+                    "account_name": acc.name,
+                    "currency": acc.currency,
+                    "balance": float(acc.balance),
+                    "total_equity": float(acc.total_equity),
+                    "locked_exposure": float(acc.locked_exposure),
+                }
+        except Exception:
+            pass
+
+    scheduler_queue_len = 0
+    if global_candidate_scheduler:
+        scheduler_queue_len = global_candidate_scheduler.priority_queue.size()
+
+    return {
+        "status": "healthy" if db_ok and redis_ok else "degraded",
+        "cluster_name": "neurobet-platform",
+        "timestamp": now,
+        "infrastructure": {
+            "database": "online" if db_ok else "offline",
+            "redis": "online" if redis_ok else "offline",
+            "environment": os.getenv("APP_ENV", "development"),
+            "bet_mode": os.getenv("BET_MODE", "SIMULATION"),
+        },
+        "active_models": active_models_summary,
+        "bankroll": bankroll_data,
+        "scheduler": {
+            "queue_size": scheduler_queue_len,
+            "status": "active" if global_candidate_scheduler else "inactive",
+        },
+        "supported_sports": ["tennis", "football", "basketball", "hockey", "volleyball"],
+    }
+
+
+# ============================================================================
+# Observability / Prometheus Proxy Endpoints (Phase 20)
+# ============================================================================
+
+@app.get("/api/prometheus/query")
+async def proxy_prometheus_query(query: str = Query(..., description="PromQL query expression")):
+    """Proxy PromQL instant queries to internal Prometheus."""
+    import urllib.parse
+    import urllib.request
+    prom_host = os.getenv("PROMETHEUS_INTERNAL_URL", "http://prometheus:9090")
+    encoded_query = urllib.parse.urlencode({"query": query})
+    url = f"{prom_host}/api/v1/query?{encoded_query}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            content = resp.read().decode("utf-8")
+            return json.loads(content)
+    except Exception as e:
+        logger.error("Prometheus query proxy error: %s", e)
+        raise HTTPException(status_code=502, detail=f"Prometheus proxy error: {str(e)}")
+
+
+@app.get("/api/prometheus/targets")
+async def proxy_prometheus_targets():
+    """Proxy active scrape targets to internal Prometheus."""
+    import urllib.request
+    prom_host = os.getenv("PROMETHEUS_INTERNAL_URL", "http://prometheus:9090")
+    url = f"{prom_host}/api/v1/targets"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            content = resp.read().decode("utf-8")
+            return json.loads(content)
+    except Exception as e:
+        logger.error("Prometheus targets proxy error: %s", e)
+        raise HTTPException(status_code=502, detail=f"Prometheus proxy error: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+

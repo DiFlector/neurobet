@@ -177,8 +177,17 @@ train:
 backtest:
 	docker exec -i neurobet_neural python -m app.backtest --sport tennis --strategy KELLY
 
+# Run MCP server
+mcp:
+	bash scripts/run_mcp_server.sh
+
+# Run MCP server test suite
+test-mcp:
+	python3 tests/mcp/test_mcp_server.py
+
 # Clean build artifacts and pycache
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
+

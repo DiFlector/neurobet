@@ -1,0 +1,31 @@
+# Neurobet — Cursor AI Rules & Agent Guidelines
+
+You are an expert pair-programming AI agent working on the Neurobet platform.
+Before modifying any files or proposing architectural changes, adhere strictly to the rules below.
+
+## 1. Master Documentation
+Always respect the project guidelines defined in:
+- `AGENTS.md`: Core principles, boundaries, and agent behavior constraints.
+- `01-ARCHITECTURE.md`: Complete technical architecture and contract definitions.
+- `02-ROADMAP.md`: Phase-by-phase implementation checklist.
+- `.agents/skills/neurobet/SKILL.md`: Detailed engineering workflows and runbooks.
+
+## 2. Inviolable Architectural Invariants
+- **Simulation Only**: `BET_MODE=SIMULATION` is strictly enforced. No real money betting logic is allowed.
+- **Single Gatekeeper**: Only `services/bet-manager` can register bets and write to the immutable financial ledger. ML models and LLMs can only recommend.
+- **Zero Data Leakage**: Temporal feature validation is mandatory. Features must strictly satisfy `observed_at <= decision_timestamp`. Future information must never leak into training or inference.
+- **Sport-Independent Core**: Never hardcode sport-specific rules (tennis sets, football halves, basketball quarters) into core packages. All sport-specific logic belongs in `sports/<sport_code>/` implementing `BaseSportAdapter`.
+- **Strict Schema Enforcement**: All inter-service communications must be validated via Pydantic models in `packages/contracts` with `schema_version`.
+
+## 3. MCP Server Integration
+The repository provides a full Model Context Protocol (MCP) server configured in `.cursor/mcp.json`:
+- Command: `python3 /srv/neurobet/packages/mcp-server/src/neurobet_mcp/server.py`
+- Available tools include cluster health (`neurobet_get_system_health`), PromQL querying (`neurobet_query_prometheus`), model drift analysis (`neurobet_get_shadow_report`), sandbox inference (`neurobet_simulate_inference`), and paper bankroll status (`neurobet_get_bankroll_summary`).
+- Use these tools to inspect live state and evaluate system responses.
+
+## 4. Testing & Verification
+- Always run the relevant test suite after modifying code:
+  - MCP Server: `make test-mcp`
+  - Contracts & APIs: `make test-contracts`, `make test-api`
+  - ML & Shadow Mode: `docker exec -i neurobet_neural python - < tests/neural/test_baseline_ml.py`
+  - Full Platform: `make test`

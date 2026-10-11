@@ -33,3 +33,11 @@ scrape_configs:
       - targets: ["research:8000"]
         labels:
           service: "research"
+
+  - job_name: "neurobet-neural"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["neural:8000"]
+        labels:
+          service: "neural"
+

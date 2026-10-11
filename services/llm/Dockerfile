@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY packages/contracts /app/packages/contracts
 RUN pip install --no-cache-dir /app/packages/contracts
 
+COPY packages/observability /app/packages/observability
+RUN pip install --no-cache-dir /app/packages/observability
+
 COPY services/llm/pyproject.toml /app/
 COPY services/llm/app /app/app
 RUN pip install --no-cache-dir .

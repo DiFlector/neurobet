@@ -749,6 +749,30 @@
 
 ---
 
+# PHASE 33 — Model Context Protocol (MCP) Server & Advanced Observability
+
+- [x] Создать пакет `packages/mcp-server` с архитектурой на стандартной библиотеке Python 3.10+ (zero-dependency stdio server).
+- [x] Реализовать протокол JSON-RPC 2.0 по спецификации MCP (версия `2024-11-05`).
+- [x] Реализовать HTTP-клиент к Neurobet Backend API (`http://127.0.0.1:8005`) и Prometheus (`http://127.0.0.1:9095`).
+- [x] Реализовать 25 исчерпывающих инструментов (Observability, Model Registry, Shadow Mode, Drift, Bankroll, Bets, Research, Data Quality).
+- [x] Реализовать динамические ресурсы `neurobet://system/health`, `neurobet://models/registry`, `neurobet://bankroll/status`, `neurobet://metrics/prometheus`.
+- [x] Реализовать шаблоны промптов `analyze_model_drift`, `audit_bet_decision`, `evaluate_experiment_results`.
+- [x] Реализовать новые эндпоинты в Backend API: `/api/models/rollback`, `/api/models/simulate-inference`, `/api/system/status`.
+- [x] Развернуть специализированные Grafana дашборды: `neurobet-models-drift.json` и `neurobet-bankroll-risk.json`.
+- [x] Подключить сбор метрик сервиса `neural` в `infra/prometheus/prometheus.yml`.
+- [x] Настроить конфигурации IDE: `.agents/mcp_config.json` (Antigravity IDE) и `.cursor/mcp.json` (Cursor IDE).
+- [x] Создать верификационный тест-сьют `tests/mcp/test_mcp_server.py` и команды `make test-mcp`, `make mcp`.
+- [x] Разработать документацию `docs/mcp-server.md`.
+
+### Acceptance
+
+- [x] MCP handshake `initialize` проходит и регистрирует 25 инструментов, 4 ресурса и 3 промпта.
+- [x] Модели в Cursor и Antigravity могут выполнять PromQL-запросы, опрашивать здоровье кластера, проверять дрейф PSI и тестировать инференс.
+- [x] Тест `python3 tests/mcp/test_mcp_server.py` проходит со 100% успехом.
+
+---
+
+
 # Recommended first milestone
 
 Не пытаться сразу сделать весь roadmap.
