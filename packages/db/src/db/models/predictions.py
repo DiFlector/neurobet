@@ -47,12 +47,14 @@ class MLPrediction(Base, UUIDPrimaryKeyMixin):
     confidence: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
 
     has_positive_edge: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_shadow: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     outcomes_detail: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
         Index("idx_ml_predictions_event", "event_id", "created_at"),
         Index("idx_ml_predictions_edge", "has_positive_edge", "created_at"),
+        Index("idx_ml_predictions_shadow", "is_shadow", "created_at"),
     )
 
 

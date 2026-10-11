@@ -54,6 +54,7 @@ test:
 	python3 tests/security/test_security_hardening.py
 	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
 	docker exec -i neurobet_neural python - < tests/experiments/test_llm_experiment.py
+	docker exec -i neurobet_backend python - < tests/neural/test_shadow_mode.py
 
 
 test-experiment:
@@ -126,6 +127,9 @@ test-decision-layer:
 
 test-scheduler:
 	docker exec -i neurobet_backend python - < tests/scheduler/test_candidate_scheduler.py
+
+test-shadow:
+	docker exec -i neurobet_backend python - < tests/neural/test_shadow_mode.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

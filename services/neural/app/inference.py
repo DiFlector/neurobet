@@ -50,6 +50,7 @@ class MLPredictor:
         odds_a: Optional[float] = None,
         odds_b: Optional[float] = None,
         min_edge_threshold: float = 0.02,
+        is_shadow: bool = False,
     ) -> MLPrediction:
         """
         Calculates calibrated prediction from FeatureVector.
@@ -133,4 +134,5 @@ class MLPredictor:
             outcomes=outcomes,
             best_outcome=best if has_positive_edge else None,
             has_positive_edge=has_positive_edge,
+            is_shadow=is_shadow,
         )

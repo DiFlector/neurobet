@@ -619,21 +619,21 @@
 
 # PHASE 25 — Shadow mode
 
-- [ ] Реализовать shadow predictions.
-- [ ] Shadow model не создает virtual bets.
-- [ ] Собирает predictions параллельно active model.
-- [ ] Сравнивать predictions.
-- [ ] Считать drift.
-- [ ] Считать performance by segment.
-- [ ] Установить минимальный shadow period в конфиге.
+- [x] Реализовать shadow predictions.
+- [x] Shadow model не создает virtual bets.
+- [x] Собирает predictions параллельно active model.
+- [x] Сравнивать predictions.
+- [x] Считать drift.
+- [x] Считать performance by segment.
+- [x] Установить минимальный shadow period в конфиге.
 
 ---
 
 # PHASE 26 — Second sport
 
-Первым кандидатом можно сделать hockey.
+Первым кандидатом можно сделать Basketball.
 
-- [ ] Создать `sports/hockey`.
+- [ ] Создать `sports/Basketball`.
 - [ ] Реализовать adapter.
 - [ ] Реализовать state schema.
 - [ ] Реализовать market mappings.
@@ -647,21 +647,35 @@
 
 ### Acceptance
 
-- [ ] Hockey включается только config-флагом.
-- [ ] Football pipeline не изменяется из-за hockey.
+- [ ] Basketball включается только config-флагом.
+- [ ] Tennis pipeline не изменяется из-за Basketball.
 
 ---
+# PHASE 29 — Third sport
 
-# PHASE 27 — Third/fourth sports
-
-- [ ] Добавить basketball.
-- [ ] Добавить tennis.
+- [ ] Добавить Volleyball.
 - [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
 - [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
 
 ---
 
-# PHASE 28 — Performance and scale
+# PHASE 29 — fourth sport
+
+- [ ] Добавить Hockey.
+- [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
+- [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
+
+---
+
+# PHASE 29 — Fifth sport
+
+- [ ] Добавить Football.
+- [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
+- [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
+
+---
+
+# PHASE 30 — Performance and scale
 
 - [ ] Нагрузочный тест collector.
 - [ ] Нагрузочный тест PostgreSQL.
@@ -679,7 +693,7 @@
 
 ---
 
-# PHASE 29 — Disaster recovery
+# PHASE 31 — Disaster recovery
 
 - [ ] Backup PostgreSQL.
 - [ ] Backup MinIO metadata/data.
@@ -693,7 +707,7 @@
 
 ---
 
-# PHASE 30 — Final production-like simulation gate
+# PHASE 32 — Final production-like simulation gate
 
 Все пункты должны быть выполнены до любых мыслей о реальном executor.
 

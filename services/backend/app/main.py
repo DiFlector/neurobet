@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, status
@@ -81,6 +81,27 @@ except ImportError:
     CandidatePriorityItem = None
     QueueStatusReport = None
     FonbetResultsParser = None
+
+try:
+    from contracts import (
+        ShadowConfig,
+        ShadowPredictionPair,
+        DriftAnalysisReport,
+        SegmentPerformance,
+        ShadowEvaluationReport,
+        ShadowEngine,
+        OutcomePrediction,
+        MLPrediction as MLPredictionContract,
+    )
+except ImportError:
+    ShadowConfig = None
+    ShadowPredictionPair = None
+    DriftAnalysisReport = None
+    SegmentPerformance = None
+    ShadowEvaluationReport = None
+    ShadowEngine = None
+    OutcomePrediction = None
+    MLPredictionContract = None
 
 logger = logging.getLogger("backend")
 
@@ -742,6 +763,355 @@ def get_model_versions() -> List[Dict[str, Any]]:
             }
             for m in models
         ]
+
+
+class ShadowRegisterRequest(BaseModel):
+    version_tag: str
+    sport_code: str = "tennis"
+
+
+class ShadowPromoteRequest(BaseModel):
+    shadow_version_tag: str
+    sport_code: str = "tennis"
+    force: bool = False
+    min_shadow_period_days: Optional[float] = None
+    min_shadow_evaluations: Optional[int] = None
+    max_acceptable_drift_psi: Optional[float] = None
+    min_shadow_roi: Optional[float] = None
+    max_acceptable_brier_delta: Optional[float] = None
+
+
+@app.get("/api/models/shadow")
+def get_shadow_models_status(sport_code: str = "tennis") -> Dict[str, Any]:
+    """Returns active and shadow models with observation status and counts."""
+    if not SessionLocal or not ModelVersion:
+        return {"status": "unavailable", "detail": "Database connection not available"}
+
+    with SessionLocal() as session:
+        active_model = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == sport_code, ModelVersion.status == "ACTIVE")
+            .order_by(ModelVersion.created_at.desc())
+            .first()
+        )
+        shadow_model = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == sport_code, ModelVersion.status == "SHADOW")
+            .order_by(ModelVersion.created_at.desc())
+            .first()
+        )
+
+        active_count = 0
+        shadow_count = 0
+        if MLPrediction:
+            active_count = session.query(func.count(MLPrediction.id)).filter(
+                MLPrediction.is_shadow.is_(False)
+            ).scalar() or 0
+            shadow_count = session.query(func.count(MLPrediction.id)).filter(
+                MLPrediction.is_shadow.is_(True)
+            ).scalar() or 0
+
+        shadow_period_days = 0.0
+        if shadow_model:
+            now = datetime.now(timezone.utc)
+            created = shadow_model.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            shadow_period_days = round(max(0.0, (now - created).total_seconds() / 86400.0), 2)
+
+        return {
+            "sport_code": sport_code,
+            "has_shadow_model": shadow_model is not None,
+            "active_model": {
+                "id": str(active_model.id),
+                "version_tag": active_model.version_tag,
+                "model_name": active_model.model_name,
+                "metrics": active_model.metrics,
+                "created_at": active_model.created_at.isoformat(),
+            } if active_model else None,
+            "shadow_model": {
+                "id": str(shadow_model.id),
+                "version_tag": shadow_model.version_tag,
+                "model_name": shadow_model.model_name,
+                "metrics": shadow_model.metrics,
+                "created_at": shadow_model.created_at.isoformat(),
+                "observation_days": shadow_period_days,
+            } if shadow_model else None,
+            "metrics": {
+                "active_predictions_count": active_count,
+                "shadow_predictions_count": shadow_count,
+                "shadow_observation_days": shadow_period_days,
+            },
+        }
+
+
+@app.get("/api/models/shadow/report")
+def get_shadow_evaluation_report(
+    sport_code: str = "tennis",
+    min_shadow_period_days: float = 7.0,
+    min_shadow_evaluations: int = 100,
+    max_acceptable_drift_psi: float = 0.25,
+    min_shadow_roi: float = 0.0,
+    max_acceptable_brier_delta: float = 0.02,
+) -> Dict[str, Any]:
+    """Generates comprehensive Shadow Evaluation Report comparing active vs shadow models."""
+    if not SessionLocal or not ModelVersion or not ShadowEngine:
+        raise HTTPException(status_code=503, detail="Database or ShadowEngine not available")
+
+    with SessionLocal() as session:
+        active_model = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == sport_code, ModelVersion.status == "ACTIVE")
+            .order_by(ModelVersion.created_at.desc())
+            .first()
+        )
+        shadow_model = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == sport_code, ModelVersion.status == "SHADOW")
+            .order_by(ModelVersion.created_at.desc())
+            .first()
+        )
+
+        active_tag = active_model.version_tag if active_model else "active-baseline"
+        shadow_tag = shadow_model.version_tag if shadow_model else "shadow-candidate"
+
+        config = ShadowConfig(
+            active_model_version=active_tag,
+            shadow_model_version=shadow_tag,
+            sport_code=sport_code,
+            min_shadow_period_days=min_shadow_period_days,
+            min_shadow_evaluations=min_shadow_evaluations,
+            max_acceptable_drift_psi=max_acceptable_drift_psi,
+            min_shadow_roi=min_shadow_roi,
+            max_acceptable_brier_delta=max_acceptable_brier_delta,
+        )
+
+        engine = ShadowEngine(config=config)
+        now = datetime.now(timezone.utc)
+        start_time = shadow_model.created_at if shadow_model else (now - timedelta(days=1))
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+
+        # Query pairs of predictions from DB if available
+        if MLPrediction:
+            active_preds = (
+                session.query(MLPrediction)
+                .filter(MLPrediction.is_shadow.is_(False))
+                .order_by(MLPrediction.created_at.desc())
+                .limit(500)
+                .all()
+            )
+            shadow_preds = (
+                session.query(MLPrediction)
+                .filter(MLPrediction.is_shadow.is_(True))
+                .order_by(MLPrediction.created_at.desc())
+                .limit(500)
+                .all()
+            )
+
+            act_by_event = {str(p.event_id): p for p in active_preds}
+            for s_pred in shadow_preds:
+                evt_id_str = str(s_pred.event_id)
+                a_pred = act_by_event.get(evt_id_str)
+                if a_pred and OutcomePrediction and MLPredictionContract:
+                    def to_contract(db_p, is_shd: bool):
+                        outcomes = []
+                        for o in (db_p.probabilities.get("outcomes", []) if isinstance(db_p.probabilities, dict) else []):
+                            prob = float(o.get("model_probability", 0.5))
+                            odds = float(o.get("bookmaker_odds", 2.0))
+                            edge = float(o.get("edge", prob * odds - 1.0))
+                            fair = float(o.get("fair_odds", round(1.0 / max(0.001, prob), 4)))
+                            ev = float(o.get("expected_value", round(prob * (odds - 1.0) - (1.0 - prob), 4)))
+                            conf = float(o.get("confidence", 0.85))
+                            outcomes.append(
+                                OutcomePrediction(
+                                    outcome=str(o.get("outcome", "player_a")),
+                                    model_probability=prob,
+                                    bookmaker_odds=odds,
+                                    fair_odds=fair,
+                                    edge=edge,
+                                    expected_value=ev,
+                                    confidence=conf,
+                                )
+                            )
+                        if not outcomes:
+                            p_a = float(db_p.probabilities.get("player_a", 0.5)) if isinstance(db_p.probabilities, dict) else 0.5
+                            p_b = round(1.0 - p_a, 4)
+                            outcomes = [
+                                OutcomePrediction(
+                                    outcome="player_a",
+                                    model_probability=p_a,
+                                    bookmaker_odds=2.0,
+                                    fair_odds=round(1.0 / max(0.001, p_a), 4),
+                                    edge=round(p_a * 2.0 - 1.0, 4),
+                                    expected_value=round(p_a * 1.0 - (1.0 - p_a), 4),
+                                    confidence=0.85,
+                                ),
+                                OutcomePrediction(
+                                    outcome="player_b",
+                                    model_probability=p_b,
+                                    bookmaker_odds=2.0,
+                                    fair_odds=round(1.0 / max(0.001, p_b), 4),
+                                    edge=round(p_b * 2.0 - 1.0, 4),
+                                    expected_value=round(p_b * 1.0 - (1.0 - p_b), 4),
+                                    confidence=0.85,
+                                ),
+                            ]
+                        best_o = outcomes[0].outcome if outcomes[0].model_probability >= outcomes[1].model_probability else outcomes[1].outcome
+                        best_edge_val = max(o.edge for o in outcomes)
+                        return MLPredictionContract(
+                            prediction_id=str(db_p.id),
+                            event_id=str(db_p.event_id),
+                            model_version=db_p.model_version,
+                            sport_code=sport_code,
+                            market="match_winner",
+                            outcomes=outcomes,
+                            best_outcome=best_o,
+                            has_positive_edge=(best_edge_val > 0.0),
+                            is_shadow=is_shd,
+                        )
+
+                    c_act = to_contract(a_pred, False)
+                    c_shd = to_contract(s_pred, True)
+                    prob_diff = round(abs(c_act.outcomes[0].model_probability - c_shd.outcomes[0].model_probability), 4)
+                    act_max_e = max(o.edge for o in c_act.outcomes)
+                    shd_max_e = max(o.edge for o in c_shd.outcomes)
+                    pair = ShadowPredictionPair(
+                        event_id=evt_id_str,
+                        timestamp=s_pred.created_at,
+                        active_prediction=c_act,
+                        shadow_prediction=c_shd,
+                        prob_diff_outcome_a=prob_diff,
+                        outcomes_match=(c_act.best_outcome == c_shd.best_outcome),
+                        edge_diff=round(abs(act_max_e - shd_max_e), 4),
+                    )
+                    engine.pairs_history.append(pair)
+
+            if Event:
+                completed_events = (
+                    session.query(Event)
+                    .filter(Event.status == "finished")
+                    .limit(500)
+                    .all()
+                )
+                for ev in completed_events:
+                    meta = getattr(ev, "metadata_json", {}) or {}
+                    score = getattr(ev, "current_score", {}) or {}
+                    winner = meta.get("winner") or score.get("winner") or "player_a"
+                    engine.register_ground_truth(str(ev.id), winner)
+
+        report = engine.generate_evaluation_report(
+            shadow_start_time=start_time,
+            shadow_end_time=now,
+        )
+        return report.model_dump()
+
+
+@app.post("/api/models/shadow/register")
+def register_shadow_model(req: ShadowRegisterRequest) -> Dict[str, Any]:
+    """Transitions or registers a model version into SHADOW status."""
+    if not SessionLocal or not ModelVersion:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    with SessionLocal() as session:
+        candidate = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.version_tag == req.version_tag)
+            .first()
+        )
+        if not candidate:
+            raise HTTPException(status_code=404, detail=f"Model version {req.version_tag} not found")
+
+        # Retire any prior shadow models for this sport
+        prior_shadows = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == req.sport_code, ModelVersion.status == "SHADOW")
+            .all()
+        )
+        for p in prior_shadows:
+            if p.id != candidate.id:
+                p.status = "RETIRED"
+
+        candidate.status = "SHADOW"
+        candidate.sport_code = req.sport_code
+        session.commit()
+
+        return {
+            "status": "success",
+            "message": f"Model {req.version_tag} registered into SHADOW status",
+            "version_tag": candidate.version_tag,
+            "model_status": candidate.status,
+            "created_at": candidate.created_at.isoformat(),
+        }
+
+
+@app.post("/api/models/shadow/promote")
+def promote_shadow_model(req: ShadowPromoteRequest) -> Dict[str, Any]:
+    """
+    Promotes a SHADOW model to ACTIVE only if it satisfies all empirical promotion gates.
+    Blocks promotion with 400 Bad Request if validation gates fail.
+    """
+    if not SessionLocal or not ModelVersion:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    with SessionLocal() as session:
+        candidate = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.version_tag == req.shadow_version_tag)
+            .first()
+        )
+        if not candidate:
+            raise HTTPException(status_code=404, detail=f"Candidate model {req.shadow_version_tag} not found")
+
+        if candidate.status != "SHADOW" and not req.force:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Candidate model must be in SHADOW status to promote (current: {candidate.status})",
+            )
+
+        # Generate evaluation report to verify promotion criteria
+        report_data = get_shadow_evaluation_report(
+            sport_code=req.sport_code,
+            min_shadow_period_days=req.min_shadow_period_days or 7.0,
+            min_shadow_evaluations=req.min_shadow_evaluations or 100,
+            max_acceptable_drift_psi=req.max_acceptable_drift_psi or 0.25,
+            min_shadow_roi=req.min_shadow_roi or 0.0,
+            max_acceptable_brier_delta=req.max_acceptable_brier_delta or 0.02,
+        )
+
+        meets_criteria = report_data.get("meets_promotion_criteria", False)
+        rejection_reasons = report_data.get("promotion_rejection_reasons", [])
+
+        if not meets_criteria and not req.force:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "PROMOTION_GATE_FAILED",
+                    "message": "Candidate model failed mandatory shadow promotion criteria",
+                    "rejection_reasons": rejection_reasons,
+                    "report": report_data,
+                },
+            )
+
+        # Transition old active models to RETIRED
+        active_models = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.sport_code == req.sport_code, ModelVersion.status == "ACTIVE")
+            .all()
+        )
+        for act in active_models:
+            act.status = "RETIRED"
+
+        candidate.status = "ACTIVE"
+        session.commit()
+
+        return {
+            "status": "promoted",
+            "message": f"Model {candidate.version_tag} successfully promoted to ACTIVE status",
+            "promoted_version": candidate.version_tag,
+            "sport_code": candidate.sport_code,
+            "promotion_report": report_data,
+        }
 
 
 @app.post("/api/models/train")

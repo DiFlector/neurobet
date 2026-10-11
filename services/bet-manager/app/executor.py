@@ -88,7 +88,19 @@ class SimulationExecutor:
                 try:
                     cand_ml = uuid.UUID(str(proposal_dict["ml_prediction_id"]))
                     from db.models.predictions import MLPrediction
-                    if session.get(MLPrediction, cand_ml):
+                    ml_pred_record = session.get(MLPrediction, cand_ml)
+                    if ml_pred_record:
+                        if getattr(ml_pred_record, "is_shadow", False):
+                            return (
+                                BetValidationResult(
+                                    is_valid=False,
+                                    status="REJECTED",
+                                    rejection_reason="SHADOW_MODEL_CANNOT_BET",
+                                    risk_score=1.0,
+                                    details={"is_shadow": True, "message": "Linked MLPrediction is from a shadow model"},
+                                ),
+                                None,
+                            )
                         ml_pred_id = cand_ml
                 except Exception:
                     ml_pred_id = None

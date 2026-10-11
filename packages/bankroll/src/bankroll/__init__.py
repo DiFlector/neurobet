@@ -22,6 +22,7 @@ from .candidate_scheduler import (
     BrowserConcurrencyLimiter,
     CandidateScheduler,
 )
+from .validator import BetValidator, BetValidationResult
 
 __all__ = [
     "BankrollError",
@@ -47,4 +48,6 @@ __all__ = [
     "TokenBucketRateLimiter",
     "BrowserConcurrencyLimiter",
     "CandidateScheduler",
+    "BetValidator",
+    "BetValidationResult",
 ]

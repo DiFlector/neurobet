@@ -34,6 +34,15 @@ from .experiments import (
     LLMErrorAnalysis,
     LLMExperimentComparisonReport,
 )
+from .shadow import (
+    ShadowConfig,
+    ShadowPredictionPair,
+    DriftAnalysisReport,
+    SegmentPerformance,
+    ShadowEvaluationReport,
+)
+from .shadow_engine import ShadowEngine
+
 
 
 __all__ = [
@@ -81,5 +90,11 @@ __all__ = [
     "FreshnessBucketMetrics",
     "LLMErrorAnalysis",
     "LLMExperimentComparisonReport",
+    "ShadowConfig",
+    "ShadowPredictionPair",
+    "DriftAnalysisReport",
+    "SegmentPerformance",
+    "ShadowEvaluationReport",
+    "ShadowEngine",
 ]
 
