@@ -7,11 +7,13 @@ from contracts import CanonicalMatchResult
 
 logger = logging.getLogger("sports_core.results_parser")
 
-# Sport ID 4 in Fonbet corresponds to Tennis, 3 to Basketball, 9 to Volleyball, 2 to Hockey
+# Sport ID 4 in Fonbet corresponds to Tennis, 3 to Basketball, 9 to Volleyball, 2 to Hockey, 1 to Football
 FONBET_TENNIS_SPORT_ID = 4
 FONBET_HOCKEY_SPORT_ID = 2
 FONBET_BASKETBALL_SPORT_ID = 3
 FONBET_VOLLEYBALL_SPORT_ID = 9
+FONBET_FOOTBALL_SPORT_ID = 1
+
 
 # Sub-event names to exclude (statistics markets, not match results)
 STAT_SUB_EVENTS = {
@@ -206,6 +208,41 @@ class FonbetResultsParser:
         return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
 
     @classmethod
+    def parse_football_winner_and_status(
+        cls,
+        score_str: str,
+        comments_str: str = "",
+    ) -> Tuple[Optional[str], str, bool, bool]:
+        """
+        Extract winner ('team_a', 'team_b', or 'draw') and status from football score.
+        Handles regular time (e.g. '2:1 (1:0, 1:1)' or '1:1 (0:0, 1:1)'),
+        extra time (e.g. '2:2 (1:1, 1:1, доп.вр. 0:0, пен. 4:3)'), and penalties.
+        Returns: (winner, status, is_cancelled, is_walkover)
+        """
+        clean_score = str(score_str or "").strip()
+        all_text = f"{clean_score} {comments_str}".lower()
+
+        is_walkover = any(k in all_text for k in ("не сост", "отмен", "дисквал", "walkover", "wo", "w.o."))
+        if is_walkover:
+            return None, "CANCELLED", True, True
+
+        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", clean_score)
+        if match:
+            goals_a = int(match.group(1))
+            goals_b = int(match.group(2))
+            if goals_a > goals_b:
+                return "team_a", "FINISHED", False, False
+            elif goals_b > goals_a:
+                return "team_b", "FINISHED", False, False
+            else:
+                return "draw", "FINISHED", False, False
+
+        if not clean_score or clean_score == "-:-":
+            return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
+
+        return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
+
+    @classmethod
     def parse_feed(
         cls,
         data: Dict[str, Any],
@@ -262,11 +299,17 @@ class FonbetResultsParser:
                         score_str=score,
                         comments_str=comments,
                     )
+                elif sport_code == "football":
+                    winner, status, is_retired, is_walkover = cls.parse_football_winner_and_status(
+                        score_str=score,
+                        comments_str=comments,
+                    )
                 else:
                     winner, status, is_retired, is_walkover = cls.parse_tennis_winner_and_status(
                         score_str=score,
                         comments_str=comments,
                     )
+
 
                 canonical = CanonicalMatchResult(
                     source_event_id=str(event_data.get("id")),

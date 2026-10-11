@@ -10,6 +10,7 @@ from .tennis import TennisFeatureBuilder
 from .basketball import BasketballFeatureBuilder
 from .volleyball import VolleyballFeatureBuilder
 from .hockey import HockeyFeatureBuilder
+from .football import FootballFeatureBuilder
 
 
 class FeatureBuilderRegistry:
@@ -53,3 +54,5 @@ registry.register(TennisFeatureBuilder())
 registry.register(BasketballFeatureBuilder())
 registry.register(VolleyballFeatureBuilder())
 registry.register(HockeyFeatureBuilder())
+registry.register(FootballFeatureBuilder())
+

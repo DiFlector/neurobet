@@ -81,10 +81,11 @@ class CanonicalMatchResult(BaseContract):
     participant_a: str = Field(..., description="Participant / Team 1 name")
     participant_b: str = Field(..., description="Participant / Team 2 name")
     final_score: str = Field(..., description="Official final score string, e.g. '2:1 (6-4 3-6 6-1)'")
-    winner: Optional[Literal["player_a", "player_b", "team_a", "team_b"]] = Field(
+    winner: Optional[Literal["player_a", "player_b", "team_a", "team_b", "draw"]] = Field(
         default=None,
-        description="Winning participant if match completed cleanly, None if cancelled or void",
+        description="Winning participant or draw if match completed cleanly, None if cancelled or void",
     )
+
     status: Literal["FINISHED", "CANCELLED", "RETIRED", "VOID", "SETTLEMENT_REVIEW_REQUIRED"] = Field(
         default="FINISHED",
         description="Canonical outcome status",

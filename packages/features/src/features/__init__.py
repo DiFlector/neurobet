@@ -13,6 +13,7 @@ from .tennis import TennisFeatureBuilder
 from .basketball import BasketballFeatureBuilder
 from .volleyball import VolleyballFeatureBuilder
 from .hockey import HockeyFeatureBuilder
+from .football import FootballFeatureBuilder
 from .registry import FeatureBuilderRegistry, registry
 from .leakage import DataLeakageDetectedError, DataLeakageDetector
 
@@ -28,6 +29,7 @@ __all__ = [
     "BasketballFeatureBuilder",
     "VolleyballFeatureBuilder",
     "HockeyFeatureBuilder",
+    "FootballFeatureBuilder",
     "FeatureBuilderRegistry",
     "registry",
     "DataLeakageDetectedError",

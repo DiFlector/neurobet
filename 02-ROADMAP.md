@@ -679,10 +679,15 @@
 
 # PHASE 29 — Fifth sport
 
-- [ ] Добавить Football.
-- [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
-- [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
-Acceptance как в PHASE 26
+- [x] Добавить Football (`sports/football`, РПЛ/Еврокубки normalizer, adapter, pipeline).
+- [x] Проверить, что generic contracts не стали содержать sport-specific fields (`EventState`, `Event` остаются чистыми, таймы, карточки, угловые, xG в `stats["football_halves"]`, `stats["yellow_cards"]`, `stats["red_cards"]`, `stats["corners"]`, `stats["shots_on_goal"]`, `stats["xg"]`).
+- [x] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic (`FootballFeatureBuilder`, `FootballSportAdapter`, results parser `FONBET_FOOTBALL_SPORT_ID=1`).
+
+### Acceptance
+
+- [x] Football включается только config-флагом (`ENABLE_FOOTBALL=true`, по умолчанию отключен).
+- [x] Tennis, Basketball, Volleyball и Hockey pipelines не изменяются из-за Football (100% изоляция пяти спортов).
+
 
 ---
 
