@@ -19,6 +19,11 @@ except ImportError:
     pass
 
 try:
+    import basketball_adapter
+except ImportError:
+    pass
+
+try:
     from data_quality import DataQualityEngine
     from db.connection import SessionLocal
     from db.models.events import Event, EventStateSnapshot

@@ -16,6 +16,10 @@ class SportRegistry:
         """Register a concrete SportAdapter."""
         self._adapters[adapter.sport_code.lower()] = adapter
 
+    def unregister(self, sport_code: str) -> None:
+        """Unregister a SportAdapter by code."""
+        self._adapters.pop(sport_code.lower(), None)
+
     def get(self, sport_code: str) -> Optional[SportAdapter]:
         """Retrieve adapter for sport code if registered."""
         return self._adapters.get(sport_code.lower())

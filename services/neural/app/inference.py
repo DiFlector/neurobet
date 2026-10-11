@@ -80,8 +80,12 @@ class MLPredictor:
             prob_b = round(prob_b / prob_sum, 4)
 
         # Bookmaker odds
-        bm_odds_a = odds_a or float(feature_vector.features.get("current_odds_player_a", 1.85))
-        bm_odds_b = odds_b or float(feature_vector.features.get("current_odds_player_b", 1.95))
+        bm_odds_a = odds_a or float(
+            feature_vector.features.get("current_odds_team_a", feature_vector.features.get("current_odds_player_a", 1.85))
+        )
+        bm_odds_b = odds_b or float(
+            feature_vector.features.get("current_odds_team_b", feature_vector.features.get("current_odds_player_b", 1.95))
+        )
 
         # Fair odds (strictly > 1.0)
         fair_a = max(1.01, round(1.0 / max(0.001, prob_a), 2))
@@ -99,9 +103,13 @@ class MLPredictor:
         conf_a = round(min(1.0, abs(prob_a - 0.5) * 2.0), 4)
         conf_b = round(min(1.0, abs(prob_b - 0.5) * 2.0), 4)
 
+        is_team_sport = feature_vector.sport_code in ("basketball", "football", "hockey")
+        outcome_a = "team_a" if is_team_sport else "player_a"
+        outcome_b = "team_b" if is_team_sport else "player_b"
+
         outcomes = [
             OutcomePrediction(
-                outcome="player_a",
+                outcome=outcome_a,
                 model_probability=prob_a,
                 bookmaker_odds=bm_odds_a,
                 fair_odds=fair_a,
@@ -110,7 +118,7 @@ class MLPredictor:
                 confidence=conf_a,
             ),
             OutcomePrediction(
-                outcome="player_b",
+                outcome=outcome_b,
                 model_probability=prob_b,
                 bookmaker_odds=bm_odds_b,
                 fair_odds=fair_b,
@@ -121,7 +129,7 @@ class MLPredictor:
         ]
 
         # Determine best outcome
-        best = "player_a" if edge_a >= edge_b else "player_b"
+        best = outcome_a if edge_a >= edge_b else outcome_b
         best_edge = max(edge_a, edge_b)
         has_positive_edge = bool(best_edge >= min_edge_threshold)
 

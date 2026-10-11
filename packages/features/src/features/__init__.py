@@ -10,6 +10,7 @@ from .base import (
     calculate_volatility,
 )
 from .tennis import TennisFeatureBuilder
+from .basketball import BasketballFeatureBuilder
 from .registry import FeatureBuilderRegistry, registry
 from .leakage import DataLeakageDetectedError, DataLeakageDetector
 
@@ -22,6 +23,7 @@ __all__ = [
     "calculate_line_drift",
     "calculate_no_vig_probabilities",
     "TennisFeatureBuilder",
+    "BasketballFeatureBuilder",
     "FeatureBuilderRegistry",
     "registry",
     "DataLeakageDetectedError",

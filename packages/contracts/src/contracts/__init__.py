@@ -1,5 +1,5 @@
 from .base import BaseContract, utc_now
-from .events import Event, EventState, TennisGameScore, TennisSetScore
+from .events import Event, EventState, TennisGameScore, TennisSetScore, BasketballQuarterScore
 from .odds import Selection, Market, OddsSnapshot
 from .predictions import FeatureVector, OutcomePrediction, MLPrediction
 from .research import ResearchEvidence, ResearchPacket, ResearchRequest
@@ -52,6 +52,7 @@ __all__ = [
     "EventState",
     "TennisGameScore",
     "TennisSetScore",
+    "BasketballQuarterScore",
     "Selection",
     "Market",
     "OddsSnapshot",

@@ -18,6 +18,13 @@ class TennisSetScore(BaseContract):
     games_b: int = Field(default=0, ge=0, description="Games won by Player B")
 
 
+class BasketballQuarterScore(BaseContract):
+    """Basketball score within a quarter or overtime period."""
+    quarter_number: int = Field(..., ge=1, le=10, description="Quarter number (1..4, 5+ for OTs)")
+    points_a: int = Field(default=0, ge=0, description="Points scored by Team A")
+    points_b: int = Field(default=0, ge=0, description="Points scored by Team B")
+
+
 class Event(BaseContract):
     """
     Canonical representation of a sporting event in Neurobet.
@@ -26,35 +33,41 @@ class Event(BaseContract):
     source: str = Field(default="fonbet", description="Data provider source")
     source_event_id: str = Field(..., description="External source ID from Fonbet")
     sport_code: str = Field(default="tennis", description="Identifier of the sport (e.g., tennis)")
-    tournament: str = Field(..., description="Tournament / League name (e.g., ATP, WTA, ITF)")
-    participant_a: str = Field(..., description="Canonical name of Player A / Home")
-    participant_b: str = Field(..., description="Canonical name of Player B / Away")
+    tournament: str = Field(..., description="Tournament / League name (e.g., ATP, WTA, ITF, VTB, NBA)")
+    participant_a: str = Field(..., description="Canonical name of Player A / Home Team")
+    participant_b: str = Field(..., description="Canonical name of Player B / Away Team")
     scheduled_start: datetime = Field(..., description="Scheduled start time in UTC")
     is_live: bool = Field(default=False, description="True if match is currently live")
     status: Literal["prematch", "live", "finished", "interrupted", "cancelled"] = Field(
         default="prematch",
         description="Current event lifecycle status",
     )
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata, e.g. surface")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata, e.g. surface or league")
 
 
 class EventState(BaseContract):
     """
     Hierarchical snapshot of the live match state.
     For Tennis: match -> set -> game -> point.
+    For Basketball: match -> quarter -> score/clock/possession.
     """
     event_id: str = Field(..., description="Canonical event ID")
     sport_code: str = Field(default="tennis", description="Sport code")
-    current_period: int = Field(default=1, description="Current set number in tennis")
-    sets: List[TennisSetScore] = Field(default_factory=list, description="Sets completed and current")
-    current_game: TennisGameScore = Field(default_factory=TennisGameScore, description="Current game points")
+    current_period: int = Field(default=1, description="Current set number in tennis or quarter in basketball")
+    sets: List[TennisSetScore] = Field(default_factory=list, description="Sets completed and current (Tennis)")
+    current_game: TennisGameScore = Field(default_factory=TennisGameScore, description="Current game points (Tennis)")
+    quarters: List[BasketballQuarterScore] = Field(default_factory=list, description="Quarters completed and current (Basketball)")
     server: Optional[Literal["player_a", "player_b"]] = Field(
         default=None,
-        description="Player currently serving",
+        description="Player currently serving (Tennis)",
+    )
+    possession: Optional[Literal["team_a", "team_b", "player_a", "player_b"]] = Field(
+        default=None,
+        description="Participant currently in possession of the ball",
     )
     is_break_point: bool = Field(default=False, description="True if receiving player has break point")
     match_clock_seconds: Optional[int] = Field(default=None, description="Match elapsed time in seconds")
     stats: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Sport-specific live stats (aces, double faults, 1st serve %, etc.)",
+        description="Sport-specific live stats (aces, fouls, timeouts, rebounds, etc.)",
     )

@@ -38,7 +38,9 @@ class SportLabelProvider:
         },
         "basketball": {
             "match_winner": "Победитель матча",
+            "handicap_points": "Фора по очкам",
             "total_points": "Тотал очков",
+            "quarter_winner": "Победитель четверти",
         },
     }
 
@@ -52,6 +54,12 @@ class SportLabelProvider:
         "football": {
             "team_a": "Команда 1 (П1)",
             "draw": "Ничья (X)",
+            "team_b": "Команда 2 (П2)",
+            "over": "Больше",
+            "under": "Меньше",
+        },
+        "basketball": {
+            "team_a": "Команда 1 (П1)",
             "team_b": "Команда 2 (П2)",
             "over": "Больше",
             "under": "Меньше",

@@ -633,37 +633,39 @@
 
 Первым кандидатом можно сделать Basketball.
 
-- [ ] Создать `sports/Basketball`.
-- [ ] Реализовать adapter.
-- [ ] Реализовать state schema.
-- [ ] Реализовать market mappings.
-- [ ] Реализовать features.
-- [ ] Реализовать labels.
-- [ ] Реализовать baseline model.
-- [ ] Реализовать settlement tests.
-- [ ] Реализовать historical fixtures.
-- [ ] Подключить model registry.
-- [ ] Подключить frontend.
+- [x] Создать `sports/Basketball`.
+- [x] Реализовать adapter.
+- [x] Реализовать state schema.
+- [x] Реализовать market mappings.
+- [x] Реализовать features.
+- [x] Реализовать labels.
+- [x] Реализовать baseline model.
+- [x] Реализовать settlement tests.
+- [x] Реализовать historical fixtures.
+- [x] Подключить model registry.
+- [x] Подключить frontend.
 
 ### Acceptance
 
-- [ ] Basketball включается только config-флагом.
-- [ ] Tennis pipeline не изменяется из-за Basketball.
+- [x] Basketball включается только config-флагом.
+- [x] Tennis pipeline не изменяется из-за Basketball.
 
 ---
-# PHASE 29 — Third sport
+# PHASE 27 — Third sport
 
 - [ ] Добавить Volleyball.
 - [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
 - [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
+Acceptance как в PHASE 26
 
 ---
 
-# PHASE 29 — fourth sport
+# PHASE 28 — fourth sport
 
 - [ ] Добавить Hockey.
 - [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
 - [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
+Acceptance как в PHASE 26
 
 ---
 
@@ -672,6 +674,7 @@
 - [ ] Добавить Football.
 - [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
 - [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
+Acceptance как в PHASE 26
 
 ---
 

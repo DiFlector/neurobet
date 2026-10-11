@@ -7,8 +7,9 @@ from contracts import CanonicalMatchResult
 
 logger = logging.getLogger("sports_core.results_parser")
 
-# Sport ID 4 in Fonbet corresponds to Tennis
+# Sport ID 4 in Fonbet corresponds to Tennis, 3 to Basketball
 FONBET_TENNIS_SPORT_ID = 4
+FONBET_BASKETBALL_SPORT_ID = 3
 
 # Sub-event names to exclude (statistics markets, not match results)
 STAT_SUB_EVENTS = {
@@ -102,6 +103,37 @@ class FonbetResultsParser:
             return None, "VOID", True, False
 
         # If score is empty or cannot determine winner
+        if not clean_score or clean_score == "-:-":
+            return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
+
+        return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
+
+    @classmethod
+    def parse_basketball_winner_and_status(
+        cls,
+        score_str: str,
+        comments_str: str = "",
+    ) -> Tuple[Optional[str], str, bool, bool]:
+        """
+        Extract winner ('team_a' or 'team_b') and status from basketball score.
+        Returns: (winner, status, is_cancelled, is_walkover)
+        """
+        clean_score = str(score_str or "").strip()
+        all_text = f"{clean_score} {comments_str}".lower()
+
+        is_walkover = any(k in all_text for k in ("не сост", "отмен", "дисквал", "walkover", "wo", "w.o."))
+        if is_walkover:
+            return None, "CANCELLED", True, True
+
+        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", clean_score)
+        if match:
+            pts_a = int(match.group(1))
+            pts_b = int(match.group(2))
+            if pts_a > pts_b:
+                return "team_a", "FINISHED", False, False
+            elif pts_b > pts_a:
+                return "team_b", "FINISHED", False, False
+
         if not clean_score or clean_score == "-:-":
             return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
 

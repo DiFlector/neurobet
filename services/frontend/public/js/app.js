@@ -302,9 +302,10 @@
     if (!el.matchesGrid) return;
 
     if (state.events.length === 0) {
+      const sportEmoji = state.activeSport === 'basketball' ? '🏀' : '🎾';
       el.matchesGrid.innerHTML = `
         <div class="empty-state" style="grid-column: 1 / -1;">
-          <div class="icon">🎾</div>
+          <div class="icon">${sportEmoji}</div>
           <h3>Событий не найдено</h3>
           <p>В текущем фильтре нет активных событий. Ожидание обновлений линии Fonbet...</p>
         </div>
@@ -363,16 +364,21 @@
         `;
       }
 
-      card.innerHTML = `
+        const isBball = (evt.sport_code === 'basketball' || state.activeSport === 'basketball');
+        const sportIcon = isBball ? '🏀' : '🎾';
+        const roleA = isBball ? 'Команда 1' : 'Игрок A';
+        const roleB = isBball ? 'Команда 2' : 'Игрок B';
+
+        card.innerHTML = `
         <div class="card-header">
-          <span class="league">Fonbet ID: ${evt.source_event_id || evt.id.slice(0, 8)}</span>
+          <span class="league">${sportIcon} Fonbet ID: ${evt.source_event_id || evt.id.slice(0, 8)}</span>
           <span class="status-badge ${statusClass}">${statusLabel}</span>
         </div>
 
         <div class="match-body">
           <div class="player-block">
             <div class="player-name">${playerA}</div>
-            <div class="player-sub">🎾 Игрок A</div>
+            <div class="player-sub">${roleA}</div>
           </div>
           <div class="score-display">
             <div class="score-sets mono">${scoreStr}</div>
@@ -380,7 +386,7 @@
           </div>
           <div class="player-block right">
             <div class="player-name">${playerB}</div>
-            <div class="player-sub">Игрок B</div>
+            <div class="player-sub">${roleB}</div>
           </div>
         </div>
 
