@@ -1,4 +1,4 @@
-.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football
+.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance
 
 # Environment variables
 COMPOSE = docker compose
@@ -144,6 +144,9 @@ test-hockey:
 
 test-football:
 	docker exec -i neurobet_backend python - < tests/sports/test_football_adapter.py
+
+test-performance:
+	bash scripts/run_phase30_benchmarks.sh
 
 # Initialize Redis Streams and consumer groups
 init-streams:
