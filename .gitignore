@@ -62,6 +62,10 @@ models/checkpoints/*
 # Docker volumes & persistent data local
 .docker-volumes/
 
+# Backups
+backups/*
+!backups/.gitkeep
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,4 +1,4 @@
-.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance
+.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance test-dr backup
 
 # Environment variables
 COMPOSE = docker compose
@@ -147,6 +147,12 @@ test-football:
 
 test-performance:
 	bash scripts/run_phase30_benchmarks.sh
+
+test-dr:
+	bash scripts/run_phase31_dr_tests.sh
+
+backup:
+	python3 scripts/backup_manager.py --all
 
 # Initialize Redis Streams and consumer groups
 init-streams:

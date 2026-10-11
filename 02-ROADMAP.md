@@ -712,15 +712,16 @@
 
 # PHASE 31 — Disaster recovery
 
-- [ ] Backup PostgreSQL.
-- [ ] Backup MinIO metadata/data.
-- [ ] Export model artifacts.
-- [ ] Export config.
-- [ ] Document restore procedure.
-- [ ] Test DB restore.
-- [ ] Test complete stack restart.
-- [ ] Test reconstruction of balance from ledger.
-- [ ] Test reconstruction of a bet decision from audit records.
+- [x] Backup PostgreSQL (`scripts/backup_manager.py`: бинарный сжатый pg_dump Custom format `-Fc` с метаданными и контрольными суммами).
+- [x] Backup MinIO metadata/data (`scripts/backup_manager.py`: tar.gz архив `/data` хранилища объектов MinIO с SHA256).
+- [x] Export model artifacts (`scripts/backup_manager.py`: экспорт чекпоинтов .joblib, синтетических датасетов и манифеста реестра).
+- [x] Export config (`scripts/backup_manager.py`: экспорт `.env`, `docker-compose.yml`, Alembic migrations, Prometheus configs).
+- [x] Document restore procedure (`docs/DISASTER_RECOVERY.md`: детальный пошаговый runbook восстановления, RTO < 15 мин, RPO < 1 час).
+- [x] Test DB restore (`tests/disaster_recovery/test_db_restore.py`: создание бэкапа, изолированное восстановление в тестовую БД, 100% совпадение таблиц и строк).
+- [x] Test complete stack restart (`tests/disaster_recovery/test_stack_restart.py`: graceful restart контейнеров стека, валидация healthcheck эндпоинтов).
+- [x] Test reconstruction of balance from ledger (`tests/disaster_recovery/test_balance_reconstruction.py`: аудит `ReconciliationEngine`, починка баланса из иммутируемого журнала).
+- [x] Test reconstruction of a bet decision from audit records (`tests/disaster_recovery/test_bet_decision_reconstruction.py`: 100% обратный аудит по `bet.id`).
+
 
 ---
 
