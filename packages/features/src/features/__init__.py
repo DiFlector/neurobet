@@ -11,6 +11,7 @@ from .base import (
 )
 from .tennis import TennisFeatureBuilder
 from .basketball import BasketballFeatureBuilder
+from .volleyball import VolleyballFeatureBuilder
 from .registry import FeatureBuilderRegistry, registry
 from .leakage import DataLeakageDetectedError, DataLeakageDetector
 
@@ -24,6 +25,7 @@ __all__ = [
     "calculate_no_vig_probabilities",
     "TennisFeatureBuilder",
     "BasketballFeatureBuilder",
+    "VolleyballFeatureBuilder",
     "FeatureBuilderRegistry",
     "registry",
     "DataLeakageDetectedError",

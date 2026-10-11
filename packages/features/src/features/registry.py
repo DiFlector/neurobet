@@ -8,6 +8,7 @@ from contracts import FeatureVector
 from .base import FeatureBuilder
 from .tennis import TennisFeatureBuilder
 from .basketball import BasketballFeatureBuilder
+from .volleyball import VolleyballFeatureBuilder
 
 
 class FeatureBuilderRegistry:
@@ -49,3 +50,4 @@ class FeatureBuilderRegistry:
 registry = FeatureBuilderRegistry()
 registry.register(TennisFeatureBuilder())
 registry.register(BasketballFeatureBuilder())
+registry.register(VolleyballFeatureBuilder())

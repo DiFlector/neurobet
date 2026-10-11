@@ -23,6 +23,8 @@
   --accent-tennis-dim: rgba(204, 255, 0, 0.12);
   --accent-basketball: #f97316;
   --accent-basketball-dim: rgba(249, 115, 22, 0.14);
+  --accent-volleyball: #eab308;
+  --accent-volleyball-dim: rgba(234, 179, 8, 0.14);
   --accent-green: #10b981;
   --accent-green-dim: rgba(16, 185, 129, 0.14);
   --accent-blue: #3b82f6;
@@ -62,6 +64,8 @@
   --accent-tennis-dim: rgba(2, 132, 199, 0.12);
   --accent-basketball: #ea580c;
   --accent-basketball-dim: rgba(234, 88, 12, 0.14);
+  --accent-volleyball: #ca8a04;
+  --accent-volleyball-dim: rgba(202, 138, 4, 0.14);
   --accent-green: #059669;
   --accent-green-dim: rgba(5, 150, 105, 0.12);
   --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.06);

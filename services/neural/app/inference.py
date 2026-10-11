@@ -103,7 +103,7 @@ class MLPredictor:
         conf_a = round(min(1.0, abs(prob_a - 0.5) * 2.0), 4)
         conf_b = round(min(1.0, abs(prob_b - 0.5) * 2.0), 4)
 
-        is_team_sport = feature_vector.sport_code in ("basketball", "football", "hockey")
+        is_team_sport = feature_vector.sport_code in ("basketball", "football", "hockey", "volleyball")
         outcome_a = "team_a" if is_team_sport else "player_a"
         outcome_b = "team_b" if is_team_sport else "player_b"
 

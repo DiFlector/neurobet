@@ -53,8 +53,8 @@ test:
 
 	docker exec -i neurobet_neural python - < tests/experiments/test_baseline_experiment.py
 	docker exec -i neurobet_neural python - < tests/experiments/test_llm_experiment.py
-	docker exec -i neurobet_backend python - < tests/neural/test_shadow_mode.py
 	docker exec -i neurobet_backend python - < tests/sports/test_basketball_adapter.py
+	docker exec -i neurobet_backend python - < tests/sports/test_volleyball_adapter.py
 
 
 test-experiment:
@@ -133,6 +133,9 @@ test-shadow:
 
 test-basketball:
 	docker exec -i neurobet_backend python - < tests/sports/test_basketball_adapter.py
+
+test-volleyball:
+	docker exec -i neurobet_backend python - < tests/sports/test_volleyball_adapter.py
 
 # Initialize Redis Streams and consumer groups
 init-streams:

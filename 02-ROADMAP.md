@@ -653,10 +653,14 @@
 ---
 # PHASE 27 — Third sport
 
-- [ ] Добавить Volleyball.
-- [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
-- [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
-Acceptance как в PHASE 26
+- [x] Добавить Volleyball (`sports/volleyball`, Superleague normalizer, adapter, pipeline).
+- [x] Проверить, что generic contracts не стали содержать sport-specific fields (`EventState`, `Event` остаются чистыми, волейбольные сеты в `stats["volleyball_sets"]`).
+- [x] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic (`VolleyballFeatureBuilder`, `VolleyballSportAdapter`, results parser `FONBET_VOLLEYBALL_SPORT_ID=9`).
+
+### Acceptance
+
+- [x] Volleyball включается только config-флагом (`ENABLE_VOLLEYBALL=true`, по умолчанию отключен).
+- [x] Tennis и Basketball pipelines не изменяются из-за Volleyball (100% изоляция трёх спортов).
 
 ---
 

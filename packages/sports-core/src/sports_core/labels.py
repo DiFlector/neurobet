@@ -42,6 +42,13 @@ class SportLabelProvider:
             "total_points": "Тотал очков",
             "quarter_winner": "Победитель четверти",
         },
+        "volleyball": {
+            "match_winner": "Победитель матча",
+            "set_winner": "Победитель сета",
+            "total_points": "Тотал очков",
+            "handicap_sets": "Фора по сетам",
+            "handicap_points": "Фора по очкам",
+        },
     }
 
     OUTCOMES_RU: Dict[str, Dict[str, str]] = {
@@ -59,6 +66,12 @@ class SportLabelProvider:
             "under": "Меньше",
         },
         "basketball": {
+            "team_a": "Команда 1 (П1)",
+            "team_b": "Команда 2 (П2)",
+            "over": "Больше",
+            "under": "Меньше",
+        },
+        "volleyball": {
             "team_a": "Команда 1 (П1)",
             "team_b": "Команда 2 (П2)",
             "over": "Больше",
