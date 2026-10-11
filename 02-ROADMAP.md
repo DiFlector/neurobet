@@ -666,10 +666,14 @@
 
 # PHASE 28 — fourth sport
 
-- [ ] Добавить Hockey.
-- [ ] Проверить, что generic contracts не стали содержать sport-specific fields.
-- [ ] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic.
-Acceptance как в PHASE 26
+- [x] Добавить Hockey (`sports/hockey`, КХЛ/НХЛ normalizer, adapter, pipeline).
+- [x] Проверить, что generic contracts не стали содержать sport-specific fields (`EventState`, `Event` остаются чистыми, периоды, буллиты, штрафы и броски в `stats["hockey_periods"]`, `stats["shots_on_goal"]`, `stats["powerplay"]`).
+- [x] Если generic model начинает ухудшать качество, выделить sport-specific storage/logic (`HockeyFeatureBuilder`, `HockeySportAdapter`, results parser `FONBET_HOCKEY_SPORT_ID=2`).
+
+### Acceptance
+
+- [x] Hockey включается только config-флагом (`ENABLE_HOCKEY=true`, по умолчанию отключен).
+- [x] Tennis, Basketball и Volleyball pipelines не изменяются из-за Hockey (100% изоляция четырёх спортов).
 
 ---
 

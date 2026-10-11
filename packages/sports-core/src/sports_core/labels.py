@@ -33,8 +33,11 @@ class SportLabelProvider:
             "both_teams_to_score": "Обе забьют",
         },
         "hockey": {
-            "match_winner": "Победитель матча",
+            "match_winner": "Победитель матча (с ОТ и буллитами)",
+            "match_winner_regular": "Результат в основное время (1X2)",
             "total_goals": "Тотал шайб",
+            "handicap_goals": "Фора по шайбам",
+            "period_winner": "Победитель периода",
         },
         "basketball": {
             "match_winner": "Победитель матча",
@@ -73,6 +76,13 @@ class SportLabelProvider:
         },
         "volleyball": {
             "team_a": "Команда 1 (П1)",
+            "team_b": "Команда 2 (П2)",
+            "over": "Больше",
+            "under": "Меньше",
+        },
+        "hockey": {
+            "team_a": "Команда 1 (П1)",
+            "draw": "Ничья (X)",
             "team_b": "Команда 2 (П2)",
             "over": "Больше",
             "under": "Меньше",

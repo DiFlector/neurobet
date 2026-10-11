@@ -302,7 +302,7 @@
     if (!el.matchesGrid) return;
 
     if (state.events.length === 0) {
-      const sportEmoji = state.activeSport === 'basketball' ? '🏀' : state.activeSport === 'volleyball' ? '🏐' : '🎾';
+      const sportEmoji = state.activeSport === 'basketball' ? '🏀' : state.activeSport === 'volleyball' ? '🏐' : state.activeSport === 'hockey' ? '🏒' : '🎾';
       el.matchesGrid.innerHTML = `
         <div class="empty-state" style="grid-column: 1 / -1;">
           <div class="icon">${sportEmoji}</div>
@@ -366,7 +366,7 @@
 
         const sport = evt.sport_code || state.activeSport;
         const isTeam = (sport === 'basketball' || sport === 'volleyball' || sport === 'football' || sport === 'hockey');
-        const sportIcon = sport === 'basketball' ? '🏀' : sport === 'volleyball' ? '🏐' : '🎾';
+        const sportIcon = sport === 'basketball' ? '🏀' : sport === 'volleyball' ? '🏐' : sport === 'hockey' ? '🏒' : '🎾';
         const roleA = isTeam ? 'Команда 1' : 'Игрок A';
         const roleB = isTeam ? 'Команда 2' : 'Игрок B';
 
