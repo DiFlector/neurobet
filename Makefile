@@ -1,4 +1,4 @@
-.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance test-dr backup
+.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance test-dr backup simulation-gate
 
 # Environment variables
 COMPOSE = docker compose
@@ -150,6 +150,9 @@ test-performance:
 
 test-dr:
 	bash scripts/run_phase31_dr_tests.sh
+
+simulation-gate:
+	bash scripts/run_phase32_simulation_gate.sh
 
 backup:
 	python3 scripts/backup_manager.py --all
