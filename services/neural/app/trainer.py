@@ -9,7 +9,7 @@ import joblib
 from sqlalchemy.orm import Session
 
 from db.models import ModelVersion, TrainingRun, TrainingDataset
-from .dataset import TennisDatasetBuilder
+from .dataset import SportDatasetBuilder, TennisDatasetBuilder, get_dataset_builder
 from .metrics import compute_classification_metrics
 from .models import build_gradient_boosting_pipeline, build_logistic_regression_pipeline
 
@@ -26,7 +26,7 @@ def get_git_commit_hash() -> str:
 class ModelTrainer:
     """
     Orchestrates ML baseline training, calibration, metrics evaluation,
-    checkpoint serialization, and database registry tracking.
+    checkpoint serialization, and database registry tracking across all sports.
     """
 
     def __init__(
@@ -38,7 +38,6 @@ class ModelTrainer:
         self.checkpoint_dir = checkpoint_dir
         self.feature_version = feature_version
         self.random_seed = random_seed
-        self.dataset_builder = TennisDatasetBuilder()
 
     def train_model(
         self,
@@ -47,19 +46,21 @@ class ModelTrainer:
         sport_code: str = "tennis",
         market: str = "match_winner",
     ) -> Dict[str, Any]:
-        """Trains, calibrates, evaluates, saves, and registers a single model."""
+        """Trains, calibrates, evaluates, saves, and registers a single model for any sport."""
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         started_at = datetime.now(timezone.utc)
+        sport_code = sport_code.lower()
 
-        # 1. Build dataset
-        X_train, y_train, X_val, y_val, feature_names, ds_meta = self.dataset_builder.build_from_db(
+        # 1. Build dataset using sport-specific point-in-time builder
+        dataset_builder = get_dataset_builder(sport_code)
+        X_train, y_train, X_val, y_val, feature_names, ds_meta = dataset_builder.build_from_db(
             session=session,
             save_dir=self.checkpoint_dir,
         )
 
         # 2. Build model architecture & hyperparameters
         if model_type == "lr":
-            model_name = "tennis_logistic_regression"
+            model_name = f"{sport_code}_logistic_regression"
             hyperparameters = {
                 "C": 1.0,
                 "max_iter": 1000,
@@ -71,8 +72,8 @@ class ModelTrainer:
                 random_state=self.random_seed,
                 calibration_method=hyperparameters["calibration"],
             )
-        elif model_type == "gb":
-            model_name = "tennis_gradient_boosting"
+        elif model_type in ("gb", "gbdt"):
+            model_name = f"{sport_code}_gradient_boosting"
             hyperparameters = {
                 "learning_rate": 0.05,
                 "max_iter": 100,
@@ -88,7 +89,7 @@ class ModelTrainer:
                 calibration_method=hyperparameters["calibration"],
             )
         else:
-            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr' or 'gb'")
+            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', or 'gbdt'")
 
         # 3. Train calibrated model
         estimator.fit(X_train, y_train)
@@ -101,8 +102,9 @@ class ModelTrainer:
         metrics_val = compute_classification_metrics(y_val, val_prob)
 
         # 5. Serialize model checkpoint
+        m_tag = "lr" if model_type == "lr" else "gb"
         now_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        version_tag = f"v1.0.0_{model_type}_{now_str}_{uuid.uuid4().hex[:4]}"
+        version_tag = f"v1.0.0_{m_tag}_{now_str}_{uuid.uuid4().hex[:4]}"
         artifact_filename = f"{sport_code}_{market}_{model_name}_{version_tag}.joblib"
         artifact_path = os.path.join(self.checkpoint_dir, artifact_filename)
 
@@ -123,7 +125,7 @@ class ModelTrainer:
         joblib.dump(checkpoint_data, artifact_path)
 
         # Also save latest pointer
-        latest_path = os.path.join(self.checkpoint_dir, f"{sport_code}_{market}_{model_type}_latest.joblib")
+        latest_path = os.path.join(self.checkpoint_dir, f"{sport_code}_{market}_{m_tag}_latest.joblib")
         joblib.dump(checkpoint_data, latest_path)
 
         # 6. Database registry logging
@@ -184,9 +186,18 @@ class ModelTrainer:
         }
 
     def train_all(self, session: Session, sport_code: str = "tennis") -> List[Dict[str, Any]]:
-        """Trains and registers both baseline models: Logistic Regression & Gradient Boosting."""
+        """Trains and registers both baseline models: Logistic Regression & Gradient Boosting for a sport."""
         results = []
         for m_type in ["lr", "gb"]:
             res = self.train_model(session=session, model_type=m_type, sport_code=sport_code)
             results.append(res)
         return results
+
+    def train_all_sports(self, session: Session, sports: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Trains and registers baseline models across all supported sports."""
+        target_sports = sports or ["tennis", "football", "basketball", "hockey", "volleyball"]
+        all_results = []
+        for s in target_sports:
+            results = self.train_all(session=session, sport_code=s)
+            all_results.extend(results)
+        return all_results

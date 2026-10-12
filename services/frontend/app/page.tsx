@@ -1,0 +1,330 @@
+"use client";
+
+import * as React from "react";
+import { Zap, FileText, Landmark, BrainCircuit, Clock } from "lucide-react";
+import { Header } from "@/components/dashboard/header";
+import { BankrollCards } from "@/components/dashboard/bankroll-cards";
+import { MatchesTab } from "@/components/dashboard/tabs/matches-tab";
+import { BetsTab } from "@/components/dashboard/tabs/bets-tab";
+import { LedgerTab } from "@/components/dashboard/tabs/ledger-tab";
+import { ModelsTab } from "@/components/dashboard/tabs/models-tab";
+import { QueueTab } from "@/components/dashboard/tabs/queue-tab";
+import { EventDeepdiveModal } from "@/components/dashboard/modal/event-deepdive-modal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  fetchAccount,
+  fetchPerformance,
+  fetchSports,
+  fetchEvents,
+  fetchPredictions,
+  fetchBets,
+  fetchLedger,
+  fetchModels,
+  fetchTrainingRuns,
+  fetchSchedulerQueue,
+  fetchSchedulerStats,
+  fetchEventDetails,
+  resetSimulationApi,
+} from "@/lib/api";
+import {
+  BankrollData,
+  PerformanceData,
+  SportItem,
+  EventItem,
+  PredictionItem,
+  BetItem,
+  LedgerEntry,
+  ModelItem,
+  TrainingRun,
+  QueueItem,
+  QueueStats,
+  EventDetailData,
+} from "@/lib/types";
+import { getSportNameRu } from "@/lib/formatters";
+
+export default function DashboardPage() {
+  const [activeTab, setActiveTab] = React.useState<string>("matches");
+  const [activeSport, setActiveSport] = React.useState<string>("tennis");
+  const [activeStatus, setActiveStatus] = React.useState<string>("live");
+  const [searchQuery, setSearchQuery] = React.useState<string>("");
+
+  const [bankroll, setBankroll] = React.useState<BankrollData | null>(null);
+  const [performance, setPerformance] = React.useState<PerformanceData | null>(null);
+  const [sports, setSports] = React.useState<SportItem[]>([]);
+  const [events, setEvents] = React.useState<EventItem[]>([]);
+  const [predictions, setPredictions] = React.useState<Record<string, PredictionItem[]>>({});
+  const [bets, setBets] = React.useState<BetItem[]>([]);
+  const [ledger, setLedger] = React.useState<LedgerEntry[]>([]);
+  const [models, setModels] = React.useState<ModelItem[]>([]);
+  const [trainingRuns, setTrainingRuns] = React.useState<TrainingRun[]>([]);
+  const [queue, setQueue] = React.useState<QueueItem[]>([]);
+  const [queueStats, setQueueStats] = React.useState<QueueStats | null>(null);
+
+  const [selectedEventData, setSelectedEventData] = React.useState<EventDetailData | null>(null);
+  const [modalOpen, setModalOpen] = React.useState<boolean>(false);
+  const [sseConnected, setSseConnected] = React.useState<boolean>(false);
+  const [isResetting, setIsResetting] = React.useState<boolean>(false);
+  const [loading, setLoading] = React.useState<boolean>(true);
+
+  // Load initial bankroll & sports
+  const loadInitialData = React.useCallback(async () => {
+    try {
+      const [acc, perf, spList] = await Promise.all([
+        fetchAccount(),
+        fetchPerformance(),
+        fetchSports(),
+      ]);
+      if (acc) setBankroll(acc);
+      if (perf) setPerformance(perf);
+      if (spList && spList.length > 0) {
+        setSports(spList);
+        if (!activeSport) setActiveSport(spList[0].code);
+      }
+    } catch (e) {
+      console.error("[Dashboard] loadInitialData error:", e);
+    }
+  }, [activeSport]);
+
+  // Load tab-specific data
+  const loadTabContent = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      if (activeTab === "matches") {
+        const [evs, preds] = await Promise.all([
+          fetchEvents(activeSport, activeStatus, searchQuery),
+          fetchPredictions(),
+        ]);
+        setEvents(evs);
+        const pMap: Record<string, PredictionItem[]> = {};
+        preds.forEach((p) => {
+          if (!pMap[p.event_id]) pMap[p.event_id] = [];
+          pMap[p.event_id].push(p);
+        });
+        setPredictions(pMap);
+      } else if (activeTab === "bets") {
+        const bList = await fetchBets(50);
+        setBets(bList);
+      } else if (activeTab === "ledger") {
+        const lList = await fetchLedger(50);
+        setLedger(lList);
+      } else if (activeTab === "models") {
+        const [mList, tList] = await Promise.all([fetchModels(), fetchTrainingRuns()]);
+        setModels(mList);
+        setTrainingRuns(tList);
+      } else if (activeTab === "scheduler") {
+        const [qList, qSt] = await Promise.all([
+          fetchSchedulerQueue(),
+          fetchSchedulerStats(),
+        ]);
+        setQueue(qList);
+        if (qSt) setQueueStats(qSt);
+      }
+    } catch (err) {
+      console.error("[Dashboard] loadTabContent error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab, activeSport, activeStatus, searchQuery]);
+
+  React.useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  React.useEffect(() => {
+    loadTabContent();
+  }, [loadTabContent]);
+
+  // SSE Stream listener
+  React.useEffect(() => {
+    let sse: EventSource | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+
+    function connectSSE() {
+      const isSubpath =
+        typeof window !== "undefined" &&
+        window.location.pathname.includes("/diflector/neurobet");
+      const streamUrl = isSubpath
+        ? "/diflector/neurobet/api/live/stream"
+        : "/api/live/stream";
+
+      try {
+        sse = new EventSource(streamUrl);
+
+        sse.onopen = () => {
+          setSseConnected(true);
+        };
+
+        sse.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === "BANKROLL_UPDATE" && data.bankroll) {
+              setBankroll(data.bankroll);
+            } else if (data.type === "EVENT_UPDATE") {
+              loadTabContent();
+            }
+          } catch {
+            // ignore non-json messages (keep-alive)
+          }
+        };
+
+        sse.onerror = () => {
+          setSseConnected(false);
+          if (sse) sse.close();
+          reconnectTimer = setTimeout(connectSSE, 5000);
+        };
+      } catch {
+        setSseConnected(false);
+      }
+    }
+
+    connectSSE();
+
+    return () => {
+      if (sse) sse.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [loadTabContent]);
+
+  // Inspect event deep-dive modal
+  const handleInspectEvent = async (eventId: string) => {
+    const details = await fetchEventDetails(eventId);
+    if (details) {
+      setSelectedEventData(details);
+      setModalOpen(true);
+    }
+  };
+
+  // Reset simulation handler
+  const handleResetSimulation = async () => {
+    setIsResetting(true);
+    try {
+      const ok = await resetSimulationApi();
+      if (ok) {
+        await loadInitialData();
+        await loadTabContent();
+      }
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
+      {/* Top Header */}
+      <Header
+        sseConnected={sseConnected}
+        activeSportName={getSportNameRu(activeSport)}
+        onResetSimulation={handleResetSimulation}
+        isResetting={isResetting}
+      />
+
+      {/* Main Container */}
+      <main className="flex-1 container mx-auto px-4 sm:px-6 py-5 space-y-5">
+        {/* Bankroll & Performance Cards Banner */}
+        <section aria-label="Сводка виртуального банкролла">
+          <BankrollCards bankroll={bankroll} performance={performance} />
+        </section>
+
+        {/* Navigation Tabs */}
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="w-full space-y-4"
+        >
+          <TabsList className="w-full grid grid-cols-2 md:grid-cols-5 gap-1.5 p-1.5 bg-muted/30 border border-border/60 rounded-xl shadow-xs">
+            <TabsTrigger
+              value="matches"
+              className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-emerald-500 dark:data-active:text-emerald-400"
+            >
+              <Zap className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span className="truncate">Live Матчи & Value Bets</span>
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="bets"
+              className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-blue-500 dark:data-active:text-blue-400"
+            >
+              <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+              <span className="truncate">Журнал Ставок</span>
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="ledger"
+              className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-amber-500 dark:data-active:text-amber-400"
+            >
+              <Landmark className="h-4 w-4 text-amber-500 shrink-0" />
+              <span className="truncate">Аудит Ledger</span>
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="models"
+              className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-indigo-500 dark:data-active:text-indigo-400"
+            >
+              <BrainCircuit className="h-4 w-4 text-indigo-500 shrink-0" />
+              <span className="truncate">Реестр Моделей ML</span>
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="scheduler"
+              className="w-full py-2.5 px-3 gap-2 col-span-2 md:col-span-1 data-active:bg-card data-active:text-purple-500 dark:data-active:text-purple-400"
+            >
+              <Clock className="h-4 w-4 text-purple-500 shrink-0" />
+              <span className="truncate">Очередь Планировщика</span>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tab 1: Matches & Value Bets */}
+          <TabsContent value="matches" className="mt-0 focus-visible:outline-none">
+            <MatchesTab
+              events={events}
+              predictions={predictions}
+              sports={sports}
+              activeSport={activeSport}
+              onSelectSport={setActiveSport}
+              activeStatus={activeStatus}
+              onSelectStatus={setActiveStatus}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onInspectEvent={handleInspectEvent}
+              loading={loading}
+            />
+          </TabsContent>
+
+          {/* Tab 2: Virtual Bets */}
+          <TabsContent value="bets" className="mt-0 focus-visible:outline-none">
+            <BetsTab bets={bets} loading={loading} />
+          </TabsContent>
+
+          {/* Tab 3: Ledger Audit */}
+          <TabsContent value="ledger" className="mt-0 focus-visible:outline-none">
+            <LedgerTab ledger={ledger} loading={loading} />
+          </TabsContent>
+
+          {/* Tab 4: ML Models */}
+          <TabsContent value="models" className="mt-0 focus-visible:outline-none">
+            <ModelsTab models={models} trainingRuns={trainingRuns} loading={loading} />
+          </TabsContent>
+
+          {/* Tab 5: Scheduler Priority Queue */}
+          <TabsContent value="scheduler" className="mt-0 focus-visible:outline-none">
+            <QueueTab queue={queue} stats={queueStats} loading={loading} />
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Deep-Dive Event Modal */}
+      <EventDeepdiveModal
+        data={selectedEventData}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
+
+      {/* Footer */}
+      <footer className="border-t border-border/40 py-4 bg-muted/20 text-center text-xs text-muted-foreground mt-8">
+        <div className="container mx-auto px-4">
+          Neurobet Research Platform • Платформа спортивной аналитики и прогнозирования
+        </div>
+      </footer>
+    </div>
+  );
+}

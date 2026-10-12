@@ -51,6 +51,7 @@ async def main():
     with open("/tmp/healthy", "w") as f:
         f.write(datetime.now(timezone.utc).isoformat())
 
+    poll_count = 0
     while RUNNING:
         try:
             # Update healthcheck timestamp
@@ -58,6 +59,11 @@ async def main():
                 f.write(datetime.now(timezone.utc).isoformat())
 
             await service.poll_once()
+            poll_count += 1
+
+            # Periodically poll official results from https://fon.bet/results (every ~30s)
+            if poll_count % 4 == 0:
+                service.poll_results_once()
 
         except Exception as exc:
             logger.error("Unhandled exception in main collector loop: %s", exc)

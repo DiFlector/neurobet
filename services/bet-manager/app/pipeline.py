@@ -159,6 +159,18 @@ class BetValidationPipeline:
             )
         passed.append("EVENT_ACTIVE")
 
+        # In-play (Live) check if configured
+        if self.config.live_only and (not event.is_live or event.status != "live"):
+            failed.append("EVENT_IN_PLAY")
+            return ValidationReport(
+                is_accepted=False,
+                rejection_code=reject_codes.EVENT_NOT_IN_PLAY,
+                checks_passed=passed,
+                checks_failed=failed,
+                details={"status": event.status, "is_live": event.is_live},
+            )
+        passed.append("EVENT_IN_PLAY")
+
         # Check Event State Freshness
         event_last_seen = event.last_seen_at
         if event_last_seen.tzinfo is None:

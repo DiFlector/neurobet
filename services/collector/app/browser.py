@@ -36,8 +36,6 @@ class BrowserLifecycleManager:
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
                     "--no-first-run",
-                    "--no-zygote",
-                    "--single-process",
                     "--disable-background-networking",
                 ],
             )
@@ -59,10 +57,25 @@ class BrowserLifecycleManager:
 
     async def get_page(self) -> Page:
         """Get the reusable browser page, creating a new one if crashed/closed."""
-        if self._page is None or self._page.is_closed():
-            if self.context is None:
+        if (
+            self.browser is None
+            or not self.browser.is_connected()
+            or self.context is None
+            or self._page is None
+            or self._page.is_closed()
+        ):
+            try:
+                if self.browser is None or not self.browser.is_connected() or self.context is None:
+                    await self.close()
+                    await self.start()
+                else:
+                    self._page = await self.context.new_page()
+            except Exception as e:
+                logger.warning("Context or browser closed unexpectedly (%s), restarting browser...", e)
+                await self.close()
                 await self.start()
-            self._page = await self.context.new_page()
+                if self.context:
+                    self._page = await self.context.new_page()
         return self._page
 
     async def fetch_page_content(self, url: str, timeout_ms: int = 15000) -> str:

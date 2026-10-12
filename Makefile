@@ -173,6 +173,10 @@ migrate:
 train:
 	docker exec -i neurobet_neural python -m app.train --sport tennis
 
+# Run ML model training across all supported sports
+train-all:
+	docker exec -i neurobet_neural python -m app.train --sport all --model all
+
 # Run walk-forward backtest
 backtest:
 	docker exec -i neurobet_neural python -m app.backtest --sport tennis --strategy KELLY

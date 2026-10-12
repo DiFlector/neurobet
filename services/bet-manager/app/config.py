@@ -20,6 +20,7 @@ class BetManagerConfig:
     default_account_name: str = os.getenv("DEFAULT_ACCOUNT_NAME", "default_paper_account")
     initial_bankroll: float = float(os.getenv("INITIAL_BANKROLL", "100000.00"))
     currency: str = os.getenv("CURRENCY", "RUB")
+    live_only: bool = os.getenv("BET_LIVE_ONLY", "true").lower() in ("true", "1", "yes")
 
 
 config = BetManagerConfig()
