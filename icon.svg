@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_Слой_1" data-name=" Слой 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #fafafa;
+      }
+
+      .cls-2 {
+        fill: #00bc7d;
+      }
+
+      .cls-3 {
+        font-family: Ebrima-Bold, Ebrima;
+        font-size: 709.75px;
+        font-weight: 700;
+        isolation: isolate;
+        letter-spacing: -.32em;
+      }
+
+      .cls-4 {
+        fill: #015136;
+        stroke-width: 0px;
+      }
+    </style>
+  </defs>
+  <rect class="cls-4" width="1024" height="1024" rx="154.07" ry="154.07"/>
+  <text class="cls-3" transform="translate(129.44 762.18)"><tspan class="cls-1" x="0" y="0">N</tspan><tspan class="cls-2" x="335.03" y="0">B</tspan></text>
+</svg>

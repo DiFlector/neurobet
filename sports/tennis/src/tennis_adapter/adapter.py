@@ -137,6 +137,50 @@ class TennisSportAdapter:
             except ValueError:
                 pass
 
+        fonbet_score = raw_payload.get("fonbet_score") if isinstance(raw_payload.get("fonbet_score"), dict) else None
+        point_detail = None
+        sets_won_a = None
+        sets_won_b = None
+        if fonbet_score and isinstance(fonbet_score.get("lines"), list) and fonbet_score["lines"]:
+            sets_list = []
+            lines = fonbet_score["lines"]
+            for index, line in enumerate(lines):
+                try:
+                    ga, gb = int(line.get("games_a")), int(line.get("games_b"))
+                except (TypeError, ValueError):
+                    continue
+                if index < len(lines) - 1:
+                    sets_list.append(TennisSetScore(set_number=index + 1, games_a=ga, games_b=gb))
+                else:
+                    current_set_num = index + 1
+                    current_game_a, current_game_b = ga, gb
+                    point_detail = line.get("detail")
+            if fonbet_score.get("points_a") is not None:
+                score_data = dict(score_data)
+                score_data["points_a"] = fonbet_score.get("points_a")
+                score_data["points_b"] = fonbet_score.get("points_b")
+                # Канонические очки из scores[2] важнее «зашумленного» detail.
+                left = str(fonbet_score.get("points_a"))
+                right = str(fonbet_score.get("points_b"))
+                serve_flag_pts = fonbet_score.get("serve")
+                if serve_flag_pts == 1:
+                    left = f"{left}*"
+                elif serve_flag_pts == 2:
+                    right = f"{right}*"
+                point_detail = f"{left}-{right}"
+            serve_flag = fonbet_score.get("serve")
+            if serve_flag == 1:
+                score_data = dict(score_data)
+                score_data["server"] = "player_a"
+            elif serve_flag == 2:
+                score_data = dict(score_data)
+                score_data["server"] = "player_b"
+            try:
+                sets_won_a = int(fonbet_score.get("sets_a"))
+                sets_won_b = int(fonbet_score.get("sets_b"))
+            except (TypeError, ValueError):
+                sets_won_a = sets_won_b = None
+
         # Determine points (0, 15, 30, 40, AD)
         pt_a = str(score_data.get("points_a", "0"))
         pt_b = str(score_data.get("points_b", "0"))
@@ -172,6 +216,22 @@ class TennisSportAdapter:
             "first_serve_win_pct_a": float(raw_stats.get("first_serve_win_pct_a", 0.0)),
             "first_serve_win_pct_b": float(raw_stats.get("first_serve_win_pct_b", 0.0)),
         }
+        if point_detail is None and (pt_a != "0" or pt_b != "0"):
+            point_detail = f"{pt_a}-{pt_b}"
+        set_lines = [
+            {"games_a": row.games_a, "games_b": row.games_b, "live": False, "detail": None}
+            for row in sets_list
+        ]
+        set_lines.append({
+            "games_a": int(current_game_a or 0),
+            "games_b": int(current_game_b or 0),
+            "live": True,
+            "detail": point_detail,
+        })
+        stats["set_lines"] = set_lines
+        if sets_won_a is not None:
+            stats["sets_a"] = sets_won_a
+            stats["sets_b"] = sets_won_b
 
         return EventState(
             event_id=event_id,

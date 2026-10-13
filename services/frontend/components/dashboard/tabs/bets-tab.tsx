@@ -33,7 +33,7 @@ export function BetsTab({ bets, loading = false }: BetsTabProps) {
             Журнал ставок пуст
           </h3>
           <p className="text-xs text-muted-foreground mt-1 max-w-md">
-            Виртуальные ставки формируются автоматически при обнаружении положительного математического ожидания (Value Bet).
+            Виртуальные ставки формируются автоматически, когда у прогноза есть положительный перевес.
           </p>
         </CardContent>
       </Card>
@@ -47,8 +47,8 @@ export function BetsTab({ bets, loading = false }: BetsTabProps) {
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow className="border-border/60 text-xs">
-                <TableHead className="font-semibold">ID ставки</TableHead>
-                <TableHead className="font-semibold">Спорт & Рынок</TableHead>
+                <TableHead className="font-semibold">Номер ставки</TableHead>
+                <TableHead className="font-semibold">Спорт и рынок</TableHead>
                 <TableHead className="font-semibold">Выбор (Исход)</TableHead>
                 <TableHead className="font-semibold text-right">Коэффициент</TableHead>
                 <TableHead className="font-semibold text-right">Сумма ставки</TableHead>

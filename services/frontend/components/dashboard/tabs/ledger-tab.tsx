@@ -32,7 +32,7 @@ export function LedgerTab({ ledger, loading = false }: LedgerTabProps) {
             Журнал аудита пуст
           </h3>
           <p className="text-xs text-muted-foreground mt-1 max-w-md">
-            Финансовый ledger фиксирует все транзакции изменения виртуального баланса и проверяет математическую целостность счета.
+            Финансовый журнал фиксирует все операции с виртуальным балансом и проверяет целостность счёта.
           </p>
         </CardContent>
       </Card>
@@ -65,7 +65,7 @@ export function LedgerTab({ ledger, loading = false }: LedgerTabProps) {
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow className="border-border/60 text-xs">
-                <TableHead className="font-semibold">ID Транзакции</TableHead>
+                <TableHead className="font-semibold">Номер операции</TableHead>
                 <TableHead className="font-semibold">Тип операции</TableHead>
                 <TableHead className="font-semibold text-right">Сумма</TableHead>
                 <TableHead className="font-semibold text-right">Баланс после</TableHead>

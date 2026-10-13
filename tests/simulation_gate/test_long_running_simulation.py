@@ -9,7 +9,8 @@ and executes periodic and final financial ledger audits.
 import random
 import uuid
 from datetime import datetime, timezone
-from db.connection import SessionLocal
+from sqlalchemy.orm import Session
+from db.connection import engine
 from db.models.sports import Sport
 from db.models.events import Event
 from db.models.betting import VirtualAccount, LedgerEntry, Bet, BetProposal
@@ -32,7 +33,13 @@ def test_long_running_simulation():
 
     random.seed(42)  # Deterministic seed
 
-    with SessionLocal() as session:
+    # The whole gate runs inside one transaction and is rolled back.
+    # session.commit in the loop only flushes, so sim_evt_* rows never land in the live board.
+    connection = engine.connect()
+    outer = connection.begin()
+    session = Session(bind=connection)
+    session.commit = session.flush  # type: ignore[method-assign]
+    try:
         seed_sports(session)
         acc_name = f"sim_gate_acc_{uuid.uuid4().hex[:8]}"
         initial_balance = 500000.00
@@ -144,6 +151,11 @@ def test_long_running_simulation():
         print(f"Total Ledger Entries: {final_report.total_ledger_entries}")
         print(f"Balance Discrepancy:  {final_report.balance_difference:.4f} RUB (ZERO DRIFT)")
         print(f"=======================================================")
+    finally:
+        session.close()
+        if outer.is_active:
+            outer.rollback()
+        connection.close()
 
     print("============================================================")
     print("✅ TEST LONG-RUNNING SIMULATION: PASSED")

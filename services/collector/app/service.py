@@ -59,11 +59,10 @@ class CollectorService:
             "Accept": "application/json, text/plain, */*",
         }
 
-        # Query live endpoints with lang=ru
+        # Official line list. The site HTML shell is not a JSON feed.
         endpoints = [
-            f"{settings.fonbet_base_url}/line/common/v1/live/events?lang=ru",
-            f"https://line01i.bkfon-resources.com/events/list?lang=ru",
-            f"{settings.fonbet_live_url}",
+            "https://line-lb51-w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1600",
+            "https://line-lb61-w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1600",
         ]
 
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds, headers=headers) as client:
@@ -71,12 +70,16 @@ class CollectorService:
                 try:
                     logger.debug("Attempting live feed query: %s", endpoint)
                     resp = await client.get(endpoint)
-                    if resp.status_code == 200:
-                        content_type = resp.headers.get("content-type", "")
-                        if "json" in content_type:
-                            data = resp.json()
-                            if "events" in data:
-                                return data
+                    if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
+                        data = resp.json()
+                        if isinstance(data, dict) and data.get("events"):
+                            normalized = FonbetLiveTennisParser.from_line_feed(data)
+                            logger.info(
+                                "Line feed %s produced %d live tennis cards.",
+                                endpoint,
+                                len(normalized.get("events") or []),
+                            )
+                            return normalized
                 except Exception as exc:
                     logger.debug("Endpoint %s failed: %s", endpoint, exc)
 

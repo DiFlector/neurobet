@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone, timedelta
 import logging
+import os
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
@@ -25,6 +26,75 @@ from db.models.events import Event
 from db.models.predictions import LLMDecision
 
 logger = logging.getLogger("bankroll.decision_pipeline")
+
+
+class HttpLlmClient:
+    """HTTP client for the local LLM /api/analyze endpoint."""
+
+    def __init__(self, url: Optional[str] = None, timeout: float = 45.0):
+        self.url = url or os.getenv("LLM_URL", "http://llm:8000/api/analyze")
+        self.timeout = timeout
+
+    def analyze(self, llm_input: LLMAnalysisInput) -> LLMStructuredVerdict:
+        import httpx
+
+        payload = llm_input.model_dump(mode="json")
+        with httpx.Client(timeout=self.timeout) as client:
+            resp = client.post(self.url, json=payload)
+            resp.raise_for_status()
+            return LLMStructuredVerdict.model_validate(resp.json())
+
+
+def fetch_research_snippets(
+    candidate: CandidateItem,
+    research_url: Optional[str] = None,
+    timeout: float = 25.0,
+    max_pages: int = 3,
+) -> List[Dict[str, str]]:
+    """Fetches qualitative research evidence for a candidate from the research service."""
+    import httpx
+
+    url = research_url or os.getenv("RESEARCH_URL", "http://research:8000/api/research")
+    payload = {
+        "event_id": candidate.event_id,
+        "sport_code": candidate.sport_code,
+        "participant_a": candidate.participant_a,
+        "participant_b": candidate.participant_b,
+        "tournament": candidate.tournament,
+        "max_pages": max_pages,
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.info(
+                    "Research service returned %s for event %s",
+                    resp.status_code,
+                    candidate.event_id,
+                )
+                return []
+            packet = resp.json()
+    except Exception as exc:
+        logger.info("Research fetch failed for event %s: %s", candidate.event_id, exc)
+        return []
+
+    evidence = packet.get("evidence") or []
+    snippets: List[Dict[str, str]] = []
+    for item in evidence:
+        snippet = (item.get("snippet") or "").strip()
+        if not snippet:
+            continue
+        if snippet.lower() == "rune reported feeling 100% physically recovered.":
+            continue
+        snippets.append(
+            {
+                "title": item.get("title") or "News",
+                "domain": item.get("domain") or item.get("source_domain") or "unknown",
+                "snippet": snippet,
+                "url": item.get("url") or item.get("normalized_url") or "",
+            }
+        )
+    return snippets
 
 
 class CandidateSelector:
@@ -101,6 +171,7 @@ class CombinedDecisionPipeline:
 
     def __init__(self, config: Optional[DecisionPipelineConfig] = None):
         self.config = config or DecisionPipelineConfig()
+        self._last_verdict: Optional[LLMStructuredVerdict] = None
 
     def process_candidate(
         self,
@@ -115,6 +186,8 @@ class CombinedDecisionPipeline:
         - If LLM disabled -> PROPOSED via ML-only.
         - If LLM enabled -> queries LLM, records llm_decisions, filters red flags.
         """
+        self._last_verdict = None
+
         # 1. Reject non-shortlisted candidates early
         if not candidate.is_shortlisted:
             return DecisionResult(
@@ -135,7 +208,15 @@ class CombinedDecisionPipeline:
             )
 
         # 3. ML + LLM Mode: Enrich with qualitative context
-        snippets = research_snippets or []
+        # None => fetch from research service; explicit list (even empty) => use as-is.
+        if research_snippets is None:
+            snippets = fetch_research_snippets(
+                candidate,
+                research_url=self.config.research_url,
+            )
+        else:
+            snippets = list(research_snippets)
+
         llm_input = LLMAnalysisInput(
             event=LLMEventContext(
                 sport=candidate.sport_code,
@@ -170,8 +251,9 @@ class CombinedDecisionPipeline:
             ),
         )
 
-        # 4. Query LLM
+        # 4. Query LLM (explicit client, HTTP service, or deterministic fallback)
         verdict = self._query_llm(llm_input, llm_client)
+        self._last_verdict = verdict
 
         # 5. Persist record to PostgreSQL llm_decisions table
         llm_decision_record = self._persist_llm_decision(session, candidate, verdict)
@@ -224,9 +306,15 @@ class CombinedDecisionPipeline:
     evaluate_candidate = process_candidate
 
     def _query_llm(self, llm_input: LLMAnalysisInput, llm_client: Optional[Any]) -> LLMStructuredVerdict:
-        """Dispatches request to LLM client or fallback deterministic mock."""
+        """Dispatches request to LLM client, HTTP LLM service, or deterministic fallback."""
         if llm_client and hasattr(llm_client, "analyze"):
             return llm_client.analyze(llm_input)
+
+        # Prefer the live local LLM service when reachable.
+        try:
+            return HttpLlmClient(url=self.config.llm_url).analyze(llm_input)
+        except Exception as exc:
+            logger.warning("HTTP LLM unavailable (%s); using deterministic fallback", exc)
 
         # Check for injury keywords in research
         injury_keywords = ["травм", "боль", "снялся", "снялась", "injury", "retire"]
@@ -244,11 +332,18 @@ class CombinedDecisionPipeline:
                 confidence=0.35,
                 stake_recommendation_fraction=0.0,
                 reason_codes=["INJURY_RISK"],
-                contradictions=["Player injury reported in qualitative context"],
-                summary=f"Injury risk identified for {llm_input.market.selection}. Recommendation: NO_BET.",
+                contradictions=["В источниках есть сообщение о травме"],
+                summary=(
+                    f"{llm_input.event.home} — {llm_input.event.away}: "
+                    f"обнаружен риск травмы (выбор «{llm_input.market.selection}»). "
+                    f"Рекомендация: без ставки."
+                ),
                 model_identifier="mock-llm-engine",
             )
 
+        home = llm_input.event.home
+        away = llm_input.event.away
+        edge_pct = llm_input.ml.edge * 100.0
         return LLMStructuredVerdict(
             verdict="BET",
             market_type=llm_input.market.type,
@@ -256,7 +351,11 @@ class CombinedDecisionPipeline:
             confidence=round(llm_input.ml.confidence, 2),
             stake_recommendation_fraction=min(0.015, self.config.max_stake_fraction),
             reason_codes=["MODEL_EDGE", "NO_NEGATIVE_SIGNALS"],
-            summary=f"Qualitative analysis supports ML edge of {llm_input.ml.edge:.2%}.",
+            summary=(
+                f"{home} — {away}: качественный анализ поддерживает выбор "
+                f"«{llm_input.market.selection}» с перевесом модели {edge_pct:.2f}% "
+                f"и без негативных сигналов."
+            ),
             model_identifier="mock-llm-engine",
         )
 

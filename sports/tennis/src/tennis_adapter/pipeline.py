@@ -21,6 +21,75 @@ from .adapter import TennisSportAdapter
 logger = logging.getLogger("tennis.pipeline")
 
 
+def _with_fonbet_clock(
+    score: Dict[str, Any],
+    clock: Optional[Dict[str, Any]],
+    previous_score: Optional[Dict[str, Any]],
+    now: datetime,
+) -> Dict[str, Any]:
+    """Attach the Fonbet match clock. A stopped timer or a pause mark freezes the time."""
+    if not clock:
+        return score
+    now_ms = int(now.timestamp() * 1000)
+    prev = {}
+    if isinstance(previous_score, dict):
+        prev = ((previous_score.get("stats") or {}).get("match_clock")) or {}
+    pause_label = clock.get("pause_label")
+    has_timer = bool(clock.get("has_timer")) and clock.get("timer_seconds") is not None
+
+    if has_timer:
+        base = int(clock.get("timer_seconds") or 0)
+        updated = int(clock.get("timer_updated_at_ms") or now_ms)
+        running = clock.get("timer_direction") == 1 and not pause_label
+        if pause_label and running is False and clock.get("timer_direction") == 1:
+            base = base + max(0, int((now_ms - updated) / 1000))
+            updated = now_ms
+        paused = bool(pause_label) or clock.get("timer_direction") == 0
+        match_clock = {
+            "running": running and not paused,
+            "paused": paused,
+            "base_seconds": base,
+            "updated_at_ms": updated,
+            "label": pause_label,
+        }
+    elif clock.get("start_time"):
+        start = int(clock["start_time"])
+        if pause_label:
+            if prev.get("paused") and prev.get("base_seconds") is not None:
+                base = int(prev["base_seconds"])
+                updated = int(prev.get("updated_at_ms") or now_ms)
+            elif prev.get("base_seconds") is not None:
+                extra = max(0, int((now_ms - int(prev.get("updated_at_ms") or now_ms)) / 1000))
+                base = int(prev["base_seconds"]) + (extra if prev.get("running") else 0)
+                updated = now_ms
+            else:
+                base = max(0, int(now.timestamp()) - start)
+                updated = now_ms
+            match_clock = {
+                "running": False,
+                "paused": True,
+                "base_seconds": base,
+                "updated_at_ms": updated,
+                "label": pause_label,
+            }
+        else:
+            match_clock = {
+                "running": True,
+                "paused": False,
+                "base_seconds": max(0, int(now.timestamp()) - start),
+                "updated_at_ms": now_ms,
+                "label": None,
+            }
+    else:
+        return score
+
+    stats = dict(score.get("stats") or {})
+    stats["match_clock"] = match_clock
+    score["stats"] = stats
+    score["match_clock_seconds"] = match_clock["base_seconds"]
+    return score
+
+
 class TennisPipeline:
     """Orchestrates normalization and persistence of live tennis events and snapshots."""
 
@@ -70,7 +139,12 @@ class TennisPipeline:
                 status=event_contract.status,
                 is_live=event_contract.is_live,
                 current_period=state_contract.current_period,
-                current_score=state_contract.model_dump(mode="json"),
+                current_score=_with_fonbet_clock(
+                    state_contract.model_dump(mode="json"),
+                    raw_payload.get("fonbet_clock"),
+                    None,
+                    now,
+                ),
                 metadata_json=event_contract.metadata,
             )
             session.add(db_event)
@@ -80,8 +154,16 @@ class TennisPipeline:
             db_event.is_live = event_contract.is_live
             db_event.status = event_contract.status
             db_event.last_seen_at = now
+            # Collector re-saw the match: clear stale settlement/finish markers.
+            if event_contract.is_live:
+                db_event.finished_at = None
             db_event.current_period = state_contract.current_period
-            db_event.current_score = state_contract.model_dump(mode="json")
+            db_event.current_score = _with_fonbet_clock(
+                state_contract.model_dump(mode="json"),
+                raw_payload.get("fonbet_clock"),
+                db_event.current_score,
+                now,
+            )
             session.flush()
             logger.debug("Updated existing DBEvent: %s", db_event.id)
 

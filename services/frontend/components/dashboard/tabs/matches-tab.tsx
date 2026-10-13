@@ -152,11 +152,11 @@ export function MatchesTab({
   return (
     <div className="space-y-4">
       {/* Filters Toolbar */}
-      <div className="flex flex-col gap-3.5 p-3.5 rounded-lg border border-border/60 bg-card/60 backdrop-blur">
-        {/* Top row: Sports buttons (Left), Extended Search (Center-right), Toggle Switch (Right) */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div className="flex flex-col rounded-lg border border-border/60 bg-card/60 p-3.5 pb-0 backdrop-blur">
+        {/* Спорт слева, поиск по центру панели, «Показывать все» справа */}
+        <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(auto,1fr)_minmax(0,42rem)_minmax(auto,1fr)]">
           {/* Sports Selector */}
-          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+          <div className="flex items-center gap-1.5 flex-wrap md:justify-self-start">
             {sportList.map((s) => {
               const isActive = activeSport === s.code;
               return (
@@ -177,12 +177,12 @@ export function MatchesTab({
             })}
           </div>
 
-          {/* Extended Search Input */}
-          <div className="relative flex-1 max-w-none sm:max-w-md">
+          {/* Extended Search Input — геометрический центр блока, как ряд статусов */}
+          <div className="relative w-full md:justify-self-center">
             <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Поиск по турниру, игроку, команде или ID..."
+              placeholder="Поиск по турниру, игроку, команде или номеру..."
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               className="h-8 pl-8.5 text-xs bg-background/80 border-border/60 w-full"
@@ -190,11 +190,11 @@ export function MatchesTab({
           </div>
 
           {/* Toggle Switch: Показывать все */}
-          <div className="flex items-center gap-2.5 px-3 py-1 rounded-md border border-border/60 bg-background/60 self-start sm:self-auto shrink-0 shadow-2xs">
+          <div className="flex w-max shrink-0 items-center gap-2.5 self-start whitespace-nowrap rounded-md border border-border/60 bg-background/60 px-3 py-1 shadow-2xs md:justify-self-end md:self-auto">
             <BrainCircuit className="h-4 w-4 text-emerald-500" />
             <label
               htmlFor="show-all-switch"
-              className="text-xs font-medium cursor-pointer text-muted-foreground hover:text-foreground select-none"
+              className="cursor-pointer select-none whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-foreground"
               title="Выключено (по умолчанию): только ставки с прогнозом ML. Включено: показывать абсолютно все матчи (включая ожидающие анализа)."
             >
               Показывать все
@@ -218,7 +218,7 @@ export function MatchesTab({
         </div>
 
         {/* Center row: Status Buttons ('Все', 'В игре', 'Предстоящие', 'Завершенные') — STRICTLY CENTERED */}
-        <div className="flex items-center justify-center pt-1 border-t border-border/40">
+        <div className="mt-3.5 flex items-center justify-center border-t border-border/40 py-3.5">
           <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border/40 shadow-2xs">
             <Button
               variant={activeStatus === "all" ? "secondary" : "ghost"}
@@ -241,7 +241,7 @@ export function MatchesTab({
               onClick={() => onSelectStatus("live")}
             >
               <Radio className="h-3 w-3 text-red-500" />
-              В игре (Live)
+              В игре
             </Button>
             <Button
               variant={activeStatus === "prematch" ? "secondary" : "ghost"}

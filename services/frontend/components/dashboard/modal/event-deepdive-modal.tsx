@@ -30,9 +30,55 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { EventDetailData, EventItem } from "@/lib/types";
+import { EventDetailData, EventItem, LLMDecisionItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu, formatTime } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
+import { getDetailedScore } from "@/components/dashboard/match-timer";
+import {
+  fatigueRiskHint,
+  injuryRiskHint,
+  localizeLlmSummary,
+  localizeReasonCode,
+  localizeRiskLevel,
+  localizeVerdict,
+  reasonCodeHint,
+} from "@/lib/llm-locale";
+import { HintTooltip, qualityScoreHint } from "@/components/dashboard/hint-tooltip";
+
+function buildMlFallbackSummary(params: {
+  playerA: string;
+  playerB: string;
+  score: string;
+  primaryPred: PredictionItem | null;
+  predictedWinnerName: string;
+}): string {
+  const { playerA, playerB, score, primaryPred, predictedWinnerName } = params;
+  if (!primaryPred) {
+    return `Для матча ${playerA} — ${playerB} (счёт ${score}) числовой прогноз и вердикт языковой модели пока не записаны.`;
+  }
+  const prob = (primaryPred.model_probability * 100).toFixed(1);
+  const odds = Number(primaryPred.bookmaker_odds).toFixed(2);
+  const edgePct = (primaryPred.edge * 100).toFixed(1);
+  const edgeSign = primaryPred.edge > 0 ? "+" : "";
+  const version = primaryPred.model_version || "unknown";
+  return (
+    `Матч ${playerA} — ${playerB}, текущий счёт ${score}. ` +
+    `Модель ${version} оценивает исход «${predictedWinnerName || primaryPred.predicted_outcome || primaryPred.outcome || "—"}» ` +
+    `с вероятностью ${prob}% при коэффициенте ${odds} (перевес ${edgeSign}${edgePct}%). ` +
+    `Вердикт локальной языковой модели для этого события ещё не записан.`
+  );
+}
+
+function verdictBadgeClass(verdict: string): string {
+  const v = (verdict || "").toUpperCase();
+  if (v === "BET" || v === "SUPPORT") {
+    return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+  }
+  if (v === "NO_BET" || v === "OPPOSE") {
+    return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30";
+  }
+  return "bg-muted text-muted-foreground border-border";
+}
 
 interface EventDeepdiveModalProps {
   data: EventDetailData | null;
@@ -81,27 +127,8 @@ function matchesParticipant(
 }
 
 function getFormattedScore(evt: EventItem): string {
-  const cs = evt.current_score;
-  if (cs && typeof cs === "object" && Object.keys(cs).length > 0) {
-    if (cs.sets && cs.games) return `${cs.sets} (${cs.games})`;
-    if (cs.sets) return String(cs.sets);
-    if (cs.score) return String(cs.score);
-    if (cs.score_a !== undefined && cs.score_b !== undefined) {
-      return `${cs.score_a}:${cs.score_b}`;
-    }
-    if (cs.sets_a !== undefined && cs.sets_b !== undefined) {
-      let s = `${cs.sets_a}:${cs.sets_b}`;
-      if (cs.games_a !== undefined && cs.games_b !== undefined) {
-        s += ` (${cs.games_a}:${cs.games_b})`;
-      }
-      return s;
-    }
-  }
-  if (evt.score_str) return evt.score_str;
-  if (evt.current_period) return evt.current_period;
-  if (evt.status === "live") return "1-й сет";
-  if (evt.status === "finished") return "Матч окончен";
-  return "vs";
+  const score = getDetailedScore(evt);
+  return score.sub ? `${score.main} (${score.sub})` : score.main;
 }
 
 export function EventDeepdiveModal({
@@ -111,7 +138,7 @@ export function EventDeepdiveModal({
 }: EventDeepdiveModalProps) {
   if (!data || !data.evt) return null;
 
-  const { evt, timeline, odds, preds, research } = data;
+  const { evt, timeline, odds, preds, research, llm = [] } = data;
 
   const rawA = evt.participant_a || evt.participant_a_name || "Участник 1";
   const rawB = evt.participant_b || evt.participant_b_name || "Участник 2";
@@ -121,6 +148,7 @@ export function EventDeepdiveModal({
   const playerB = getLocalizedParticipantName(rawB, evt.sport_code);
 
   const primaryPred = preds.find((p) => p.has_positive_edge) || preds[0] || null;
+  const primaryLlm: LLMDecisionItem | null = llm[0] || null;
 
   const outcomeStr =
     primaryPred?.predicted_outcome || primaryPred?.outcome || primaryPred?.selection || "";
@@ -157,12 +185,14 @@ export function EventDeepdiveModal({
               </span>
               <span>•</span>
               <span className="font-mono">
-                ID: {evt.source_event_id || evt.id.slice(0, 8)}
+                № {evt.source_event_id || evt.id.slice(0, 8)}
               </span>
               <span>•</span>
-              <span className="font-mono">
-                Q: {Number(evt.quality_score || 100).toFixed(0)}%
-              </span>
+              <HintTooltip content={qualityScoreHint(Number(evt.quality_score || 100))}>
+                <span className="font-mono">
+                  К: {Number(evt.quality_score || 100).toFixed(0)}%
+                </span>
+              </HintTooltip>
             </div>
 
             <div>
@@ -281,7 +311,7 @@ export function EventDeepdiveModal({
                   variant="outline"
                   className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-bold text-[11px]"
                 >
-                  +{(primaryPred.edge * 100).toFixed(1)}% Edge
+                  +{(primaryPred.edge * 100).toFixed(1)}% перевес
                 </Badge>
               )}
             </div>
@@ -301,7 +331,7 @@ export function EventDeepdiveModal({
             </TabsTrigger>
             <TabsTrigger value="llm" className="text-xs gap-1.5 py-2 px-2.5">
               <Bot className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">LLM Контекст</span>
+              <span className="truncate">Контекст модели</span>
             </TabsTrigger>
             <TabsTrigger value="timeline" className="text-xs gap-1.5 py-2 px-2.5">
               <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -414,27 +444,80 @@ export function EventDeepdiveModal({
 
           {/* 3. LLM Контекст & Новости */}
           <TabsContent value="llm" className="mt-3 space-y-3">
-            <div className="rounded-md border border-border/60 p-3.5 bg-card/60 space-y-2">
-              <div className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-emerald-500" />
-                <span className="text-xs font-semibold text-foreground">
-                  Аналитическое резюме локальной нейросети (LLM)
-                </span>
+            <div className="rounded-md border border-border/60 p-3.5 bg-card/60 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-emerald-500" />
+                  <span className="text-xs font-semibold text-foreground">
+                    {primaryLlm
+                      ? "Аналитическое резюме локальной языковой модели"
+                      : "Резюме по прогнозу ML — вердикт языковой модели ещё не записан"}
+                  </span>
+                </div>
+                {primaryLlm && (
+                  <Badge
+                    variant="outline"
+                    className={`text-[11px] font-semibold ${verdictBadgeClass(primaryLlm.verdict)}`}
+                  >
+                    {localizeVerdict(primaryLlm.verdict)}
+                  </Badge>
+                )}
               </div>
+
               <p className="text-xs text-muted-foreground leading-relaxed">
-                На основе статистического профиля и недавних выступлений фаворит демонстрирует
-                стабильный процент первой подачи (&gt;68%) и минимальное количество невынужденных ошибок.
-                Внешние новости подтверждают отсутствие травм и готовность к встрече.
+                {primaryLlm
+                  ? localizeLlmSummary(primaryLlm.summary || primaryLlm.reasoning)
+                  : buildMlFallbackSummary({
+                      playerA,
+                      playerB,
+                      score: getFormattedScore(evt),
+                      primaryPred,
+                      predictedWinnerName,
+                    })}
               </p>
+
+              {primaryLlm && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {(primaryLlm.reason_codes || []).map((code) => (
+                    <HintTooltip key={code} content={reasonCodeHint(code)}>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-muted/40 border-border/50"
+                      >
+                        {localizeReasonCode(code)}
+                      </Badge>
+                    </HintTooltip>
+                  ))}
+                  {primaryLlm.injury_risk && primaryLlm.injury_risk !== "unknown" && (
+                    <HintTooltip content={injuryRiskHint(primaryLlm.injury_risk)}>
+                      <Badge variant="outline" className="text-[10px] border-border/50">
+                        Травма: {localizeRiskLevel(primaryLlm.injury_risk)}
+                      </Badge>
+                    </HintTooltip>
+                  )}
+                  {primaryLlm.fatigue_risk && primaryLlm.fatigue_risk !== "unknown" && (
+                    <HintTooltip content={fatigueRiskHint(primaryLlm.fatigue_risk)}>
+                      <Badge variant="outline" className="text-[10px] border-border/50">
+                        Усталость: {localizeRiskLevel(primaryLlm.fatigue_risk)}
+                      </Badge>
+                    </HintTooltip>
+                  )}
+                  {primaryLlm.llm_version && (
+                    <span className="text-[10px] text-muted-foreground font-mono self-center ml-auto">
+                      {primaryLlm.llm_version}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
               <div className="text-xs font-semibold text-foreground">
-                Источники и новости (Research)
+                Источники и новости
               </div>
               {research.length === 0 ? (
                 <div className="text-center text-muted-foreground py-4 text-xs border rounded-md border-border/40">
-                  Внешние информационные источники не зафиксировали критических факторов
+                  Для этого матча внешние источники ещё не собраны
                 </div>
               ) : (
                 research.map((r) => (
@@ -442,16 +525,16 @@ export function EventDeepdiveModal({
                     key={r.id}
                     className="rounded-md border border-border/40 p-2.5 bg-muted/20 text-xs space-y-1"
                   >
-                    <div className="flex items-center justify-between font-medium">
+                    <div className="flex items-center justify-between font-medium gap-2">
                       <span className="text-foreground">
-                        {r.title || r.source_title || "Спортивный отчет"}
+                        {r.title || r.source_title || r.source_domain || "Источник"}
                       </span>
                       {r.url && (
                         <a
                           href={r.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-emerald-500 hover:underline flex items-center gap-1 text-[11px]"
+                          className="text-emerald-500 hover:underline flex items-center gap-1 text-[11px] shrink-0"
                         >
                           Источник <ExternalLink className="h-3 w-3" />
                         </a>

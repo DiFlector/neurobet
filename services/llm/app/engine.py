@@ -86,33 +86,56 @@ class DeterministicEngine(BaseInferenceEngine):
         reason_codes = []
         contradictions = []
 
+        matchup = f"{input_data.event.home} — {input_data.event.away}"
+        selection = input_data.market.selection
+        selection_ru = {
+            "player_a": "участник 1",
+            "player_b": "участник 2",
+            "team_a": "команда 1",
+            "team_b": "команда 2",
+        }.get(str(selection).lower(), selection)
+
         if has_injury_risk:
             verdict = "NO_BET"
             reason_codes.append("INJURY_RISK")
-            contradictions.append("External news indicates physical impairment despite statistical model edge")
+            contradictions.append(
+                "Внешние источники указывают на травму вопреки статистическому перевесу модели"
+            )
             stake_fraction = 0.0
             qual_conf = max(0.2, confidence - 0.3)
-            summary = f"Opposing bet on {input_data.market.selection}: active injury report in external research."
+            summary = (
+                f"{matchup}: против ставки на «{selection_ru}» — "
+                f"во внешних источниках есть сообщение о травме."
+            )
         elif has_fatigue_risk:
             verdict = "NO_BET"
             reason_codes.append("SCHEDULE_FATIGUE")
-            contradictions.append("Player fatigue and scheduling congestion identified")
+            contradictions.append("Выявлены признаки усталости и плотного графика")
             stake_fraction = 0.0
             qual_conf = max(0.3, confidence - 0.2)
-            summary = f"Opposing bet on {input_data.market.selection}: severe physical fatigue identified."
+            summary = (
+                f"{matchup}: против ставки на «{selection_ru}» — "
+                f"выявлена сильная физическая усталость."
+            )
         elif edge > 0.02 and ml_prob >= 0.52:
             verdict = "BET"
             reason_codes.append("MODEL_EDGE")
             reason_codes.append("NO_NEGATIVE_SIGNALS")
             stake_fraction = min(0.015, input_data.constraints.max_stake_fraction)
             qual_conf = min(0.95, confidence + 0.05)
-            summary = f"Qualitative analysis supports statistical edge of {edge:.2%} on {input_data.market.selection} with no negative red flags."
+            summary = (
+                f"{matchup}: качественный анализ поддерживает выбор «{selection_ru}» "
+                f"со статистическим перевесом {edge:.2%} и без негативных сигналов."
+            )
         else:
             verdict = "NO_BET"
             reason_codes.append("MARGINAL_EDGE")
             stake_fraction = 0.0
             qual_conf = 0.50
-            summary = f"No bet: edge {edge:.2%} is insufficient or statistical confidence is low."
+            summary = (
+                f"{matchup}: без ставки — перевес {edge:.2%} недостаточный "
+                f"или низкая статистическая уверенность для выбора «{selection_ru}»."
+            )
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 

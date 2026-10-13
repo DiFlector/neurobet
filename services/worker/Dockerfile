@@ -8,10 +8,20 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY packages/contracts /app/packages/contracts
 RUN pip install --no-cache-dir /app/packages/contracts
+
+COPY packages/db /app/packages/db
+RUN pip install --no-cache-dir /app/packages/db
+
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
+COPY sports/tennis /app/sports/tennis
+RUN pip install --no-cache-dir /app/sports/tennis
 
 COPY packages/streams /app/packages/streams
 RUN pip install --no-cache-dir /app/packages/streams

@@ -383,19 +383,24 @@ class CandidateScheduler:
             return ml_pipeline.evaluate_candidate(session=session, candidate=candidate)
 
         # 4. Check web research cooldown
-        research_snippets = []
-        if not self.cooldown_manager.is_research_in_cooldown(candidate.event_id):
-            # Safe to research; record research timestamp
-            self.cooldown_manager.record_research(candidate.event_id)
-        else:
+        # None lets the pipeline fetch; [] skips external research for this dispatch.
+        research_snippets = None
+        if self.cooldown_manager.is_research_in_cooldown(candidate.event_id):
             logger.info(f"Event {candidate.event_id} in research cooldown. Skipping external fetch.")
+            research_snippets = []
+        else:
+            self.cooldown_manager.record_research(candidate.event_id)
 
-        # 5. Execute decision pipeline
-        res = decision_pipeline.evaluate_candidate(session=session, candidate=candidate)
+        # 5. Execute decision pipeline (LLM + optional research)
+        res = decision_pipeline.evaluate_candidate(
+            session=session,
+            candidate=candidate,
+            research_snippets=research_snippets,
+        )
 
         # Record LLM execution timestamp and cache verdict if evaluated
         self.cooldown_manager.record_llm(candidate.event_id)
-        if hasattr(decision_pipeline, "_last_verdict") and decision_pipeline._last_verdict:
+        if getattr(decision_pipeline, "_last_verdict", None):
             self.snapshot_cache.set(state_hash, decision_pipeline._last_verdict)
 
         return res

@@ -60,7 +60,7 @@ export function BankrollCards({
       <Card className="border-border/60 bg-card/60 hover:bg-card/90 transition-colors">
         <CardContent className="p-3.5 space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-medium truncate">Equity счета</span>
+            <span className="text-[11px] font-medium truncate">Капитал счёта</span>
             <Landmark className="h-3.5 w-3.5 text-blue-500 shrink-0" />
           </div>
           <div className="font-mono text-sm sm:text-base font-bold tracking-tight text-foreground truncate">
@@ -88,7 +88,7 @@ export function BankrollCards({
       <Card className="border-border/60 bg-card/60 hover:bg-card/90 transition-colors">
         <CardContent className="p-3.5 space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-medium truncate">Итого P&L</span>
+            <span className="text-[11px] font-medium truncate">Итого прибыль</span>
             {isPnlPositive ? (
               <TrendingUp className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
             ) : (
@@ -112,7 +112,7 @@ export function BankrollCards({
       <Card className="border-border/60 bg-card/60 hover:bg-card/90 transition-colors">
         <CardContent className="p-3.5 space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-medium truncate">ROI стратегии</span>
+            <span className="text-[11px] font-medium truncate">Доходность</span>
             <Percent className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
           </div>
           <div

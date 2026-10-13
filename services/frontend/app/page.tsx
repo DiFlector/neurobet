@@ -94,13 +94,15 @@ export default function DashboardPage() {
           fetchEvents(activeSport, activeStatus, searchQuery),
           fetchPredictions(),
         ]);
-        setEvents(evs);
-        const pMap: Record<string, PredictionItem[]> = {};
-        preds.forEach((p) => {
-          if (!pMap[p.event_id]) pMap[p.event_id] = [];
-          pMap[p.event_id].push(p);
-        });
-        setPredictions(pMap);
+        if (evs) setEvents(evs);
+        if (preds && preds.length > 0) {
+          const pMap: Record<string, PredictionItem[]> = {};
+          preds.forEach((p) => {
+            if (!pMap[p.event_id]) pMap[p.event_id] = [];
+            pMap[p.event_id].push(p);
+          });
+          setPredictions(pMap);
+        }
       } else if (activeTab === "bets") {
         const bList = await fetchBets(50);
         setBets(bList);
@@ -134,56 +136,141 @@ export default function DashboardPage() {
     loadTabContent();
   }, [loadTabContent]);
 
-  // SSE Stream listener
+  const viewRef = React.useRef({
+    activeTab,
+    activeSport,
+    activeStatus,
+    searchQuery,
+    modalOpen,
+    eventId: null as string | null,
+  });
+  viewRef.current = {
+    activeTab,
+    activeSport,
+    activeStatus,
+    searchQuery,
+    modalOpen,
+    eventId: selectedEventData?.evt?.id ?? null,
+  };
+
+  const applyPredictions = React.useCallback((preds: PredictionItem[]) => {
+    const pMap: Record<string, PredictionItem[]> = {};
+    preds.forEach((p) => {
+      if (!pMap[p.event_id]) pMap[p.event_id] = [];
+      pMap[p.event_id].push(p);
+    });
+    setPredictions(pMap);
+  }, []);
+
+  // Тихое обновление счёта, коэффициентов и банкролла без перезагрузки страницы.
+  const refreshLive = React.useCallback(async () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    const view = viewRef.current;
+    try {
+      const [acc, perf] = await Promise.all([fetchAccount(), fetchPerformance()]);
+      if (acc) setBankroll(acc);
+      if (perf) setPerformance(perf);
+
+      if (view.activeTab === "matches") {
+        const [evs, preds] = await Promise.all([
+          fetchEvents(view.activeSport, view.activeStatus, view.searchQuery),
+          fetchPredictions(),
+        ]);
+        // Keep previous board on empty/failed polls so the live list does not flicker away.
+        if (evs && evs.length > 0) setEvents(evs);
+        if (preds && preds.length > 0) applyPredictions(preds);
+        if (view.modalOpen && view.eventId) {
+          const details = await fetchEventDetails(view.eventId);
+          if (details) setSelectedEventData(details);
+        }
+      } else if (view.activeTab === "bets") {
+        const bList = await fetchBets(50);
+        if (bList.length > 0) setBets(bList);
+      } else if (view.activeTab === "ledger") {
+        const lList = await fetchLedger(50);
+        if (lList.length > 0) setLedger(lList);
+      } else if (view.activeTab === "scheduler") {
+        const [qList, qSt] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats()]);
+        if (qList.length > 0) setQueue(qList);
+        if (qSt) setQueueStats(qSt);
+      }
+    } catch (err) {
+      console.error("[Dashboard] refreshLive error:", err);
+    }
+  }, [applyPredictions]);
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshLive();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [refreshLive]);
+
+  // SSE Stream listener. EventSource retries on its own; a short blip
+  // must not flip the header into "Подключение..." and open a second socket.
   React.useEffect(() => {
     let sse: EventSource | null = null;
-    let reconnectTimer: NodeJS.Timeout | null = null;
+    let offlineTimer: NodeJS.Timeout | null = null;
+    let stopped = false;
 
-    function connectSSE() {
-      const isSubpath =
-        typeof window !== "undefined" &&
-        window.location.pathname.includes("/diflector/neurobet");
-      const streamUrl = isSubpath
-        ? "/diflector/neurobet/api/live/stream"
-        : "/api/live/stream";
+    const isSubpath =
+      typeof window !== "undefined" &&
+      window.location.pathname.includes("/diflector/neurobet");
+    const streamUrl = isSubpath
+      ? "/diflector/neurobet/api/live/stream"
+      : "/api/live/stream";
 
-      try {
-        sse = new EventSource(streamUrl);
-
-        sse.onopen = () => {
-          setSseConnected(true);
-        };
-
-        sse.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.type === "BANKROLL_UPDATE" && data.bankroll) {
-              setBankroll(data.bankroll);
-            } else if (data.type === "EVENT_UPDATE") {
-              loadTabContent();
-            }
-          } catch {
-            // ignore non-json messages (keep-alive)
-          }
-        };
-
-        sse.onerror = () => {
-          setSseConnected(false);
-          if (sse) sse.close();
-          reconnectTimer = setTimeout(connectSSE, 5000);
-        };
-      } catch {
-        setSseConnected(false);
+    const clearOfflineTimer = () => {
+      if (offlineTimer) {
+        clearTimeout(offlineTimer);
+        offlineTimer = null;
       }
-    }
+    };
 
-    connectSSE();
+    const markOpen = () => {
+      clearOfflineTimer();
+      setSseConnected(true);
+    };
+
+    sse = new EventSource(streamUrl);
+
+    sse.onopen = () => {
+      markOpen();
+    };
+
+    sse.addEventListener("heartbeat", () => {
+      markOpen();
+    });
+
+    sse.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === "BANKROLL_UPDATE" && data.bankroll) {
+          setBankroll(data.bankroll);
+        } else if (data.type === "EVENT_UPDATE") {
+          void refreshLive();
+        }
+      } catch {
+        // ignore non-json messages (keep-alive)
+      }
+    };
+
+    sse.onerror = () => {
+      if (stopped) return;
+      clearOfflineTimer();
+      offlineTimer = setTimeout(() => {
+        if (!stopped && sse && sse.readyState !== EventSource.OPEN) {
+          setSseConnected(false);
+        }
+      }, 8000);
+    };
 
     return () => {
+      stopped = true;
+      clearOfflineTimer();
       if (sse) sse.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [loadTabContent]);
+  }, [refreshLive]);
 
   // Inspect event deep-dive modal
   const handleInspectEvent = async (eventId: string) => {
@@ -237,7 +324,7 @@ export default function DashboardPage() {
               className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-emerald-500 dark:data-active:text-emerald-400"
             >
               <Zap className="h-4 w-4 text-emerald-500 shrink-0" />
-              <span className="truncate">Live Матчи & Value Bets</span>
+              <span className="truncate">Live Матчи</span>
             </TabsTrigger>
 
             <TabsTrigger
@@ -253,7 +340,7 @@ export default function DashboardPage() {
               className="w-full py-2.5 px-3 gap-2 data-active:bg-card data-active:text-amber-500 dark:data-active:text-amber-400"
             >
               <Landmark className="h-4 w-4 text-amber-500 shrink-0" />
-              <span className="truncate">Аудит Ledger</span>
+              <span className="truncate">Аудит журнала</span>
             </TabsTrigger>
 
             <TabsTrigger
@@ -322,7 +409,7 @@ export default function DashboardPage() {
       {/* Footer */}
       <footer className="border-t border-border/40 py-4 bg-muted/20 text-center text-xs text-muted-foreground mt-8">
         <div className="container mx-auto px-4">
-          Neurobet Research Platform • Платформа спортивной аналитики и прогнозирования
+          Neurobet • Платформа спортивной аналитики и прогнозирования
         </div>
       </footer>
     </div>

@@ -110,8 +110,13 @@ def test_events_and_filtering_pagination():
         session.add(evt_pre)
         session.commit()
 
-    # 1. Query with is_live=true
-    resp_live = client.get("/api/events?is_live=true&limit=10")
+    # 1. Query with is_live=true. Fixture ids use the ext_ prefix and are hidden
+    # unless the caller asks for synthetic rows.
+    resp_hidden = client.get("/api/events?is_live=true&limit=50")
+    assert resp_hidden.status_code == 200
+    assert all(e["id"] != str(event_live_id) for e in resp_hidden.json()["events"])
+
+    resp_live = client.get("/api/events?is_live=true&limit=50&include_synthetic=true")
     assert resp_live.status_code == 200
     data_live = resp_live.json()
     assert data_live["total"] >= 1
@@ -119,7 +124,7 @@ def test_events_and_filtering_pagination():
     assert all(e["is_live"] is True for e in data_live["events"])
 
     # 2. Query with search filter
-    resp_search = client.get("/api/events?search=Alcaraz")
+    resp_search = client.get("/api/events?search=Alcaraz&include_synthetic=true")
     assert resp_search.status_code == 200
     search_data = resp_search.json()
     assert any("Alcaraz" in e["participant_a"] for e in search_data["events"])
@@ -286,11 +291,20 @@ def test_predictions_and_research():
             id=uuid.uuid4(),
             document_id=doc.id,
             event_id=event_id,
-            snippet="Rune reported feeling 100% physically recovered.",
+            snippet="Rune enters the match after a strong clay-court win last week.",
             relevance_score=0.95,
             freshness_score=0.90,
         )
         session.add(evidence)
+        fixture_ev = WebEvidence(
+            id=uuid.uuid4(),
+            document_id=doc.id,
+            event_id=event_id,
+            snippet="Rune reported feeling 100% physically recovered.",
+            relevance_score=0.50,
+            freshness_score=0.50,
+        )
+        session.add(fixture_ev)
         session.commit()
 
     # Predictions
@@ -301,12 +315,15 @@ def test_predictions_and_research():
     assert preds[0]["predicted_outcome"] == "player_a"
     assert preds[0]["edge"] > 0.10
 
-    # Research evidence
+    # Research evidence (fixture seed snippet is filtered out)
     resp_research = client.get(f"/api/events/{event_id}/research")
     assert resp_research.status_code == 200
     ev_list = resp_research.json()
     assert len(ev_list) >= 1
-    assert "physically recovered" in ev_list[0]["snippet"]
+    assert "clay-court win" in ev_list[0]["snippet"]
+    assert ev_list[0].get("title") == "Rune preview"
+    assert ev_list[0].get("url") == "https://tennis.com/rune-preview"
+    assert all("physically recovered" not in (e.get("snippet") or "") for e in ev_list)
 
     # Trigger research
     resp_run = client.post("/api/research/run", json={"event_id": str(event_id), "query": "Rune form"})
@@ -388,7 +405,7 @@ def test_bankroll_bets_proposals_and_performance():
     assert "balance" in resp_acc.json()
 
     # Bets list and detail
-    resp_bets = client.get("/api/bets?status=WON")
+    resp_bets = client.get("/api/bets?status=WON&include_synthetic=true")
     assert resp_bets.status_code == 200
     bets = resp_bets.json()
     assert len(bets) >= 1
@@ -406,7 +423,7 @@ def test_bankroll_bets_proposals_and_performance():
     assert len(resp_props.json()) >= 1
 
     # Portfolio Performance
-    resp_perf = client.get("/api/performance")
+    resp_perf = client.get("/api/performance?include_synthetic=true")
     assert resp_perf.status_code == 200
     perf = resp_perf.json()
     assert perf["total_bets"] >= 1
@@ -475,10 +492,15 @@ def test_simulation_reset_endpoint():
 
 
 def test_sse_live_streaming():
-    """Verify Server-Sent Events /api/live/stream broadcasts heartbeat frames."""
-    resp = client.get("/api/live/stream")
+    """Verify Server-Sent Events /api/live/stream emits a handshake and a heartbeat.
+
+    max_heartbeats keeps the test body finite. The live handler stays open when
+    the parameter is omitted.
+    """
+    resp = client.get("/api/live/stream?max_heartbeats=1")
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers["content-type"]
+    assert resp.headers.get("x-accel-buffering") == "no"
     content = resp.text
     assert "event: connected" in content
     assert "event: heartbeat" in content

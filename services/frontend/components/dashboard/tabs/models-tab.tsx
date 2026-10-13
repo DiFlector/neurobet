@@ -38,7 +38,7 @@ export function ModelsTab({
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Активные и теневые (Shadow Mode) модели прогнозирования вероятностей и калибровки
+            Активные и теневые модели прогнозирования вероятностей и калибровки
           </CardDescription>
         </CardHeader>
 
@@ -50,9 +50,9 @@ export function ModelsTab({
                   <TableHead className="font-semibold">Модель</TableHead>
                   <TableHead className="font-semibold">Тег версии</TableHead>
                   <TableHead className="font-semibold">Спорт</TableHead>
-                  <TableHead className="font-semibold text-right">Brier Score</TableHead>
-                  <TableHead className="font-semibold text-right">ROC AUC</TableHead>
-                  <TableHead className="font-semibold text-right">PSI Дрейф</TableHead>
+                  <TableHead className="font-semibold text-right">Ошибка Брайера</TableHead>
+                  <TableHead className="font-semibold text-right">Различимость</TableHead>
+                  <TableHead className="font-semibold text-right">Дрейф</TableHead>
                   <TableHead className="font-semibold text-center">Статус</TableHead>
                 </TableRow>
               </TableHeader>
@@ -112,7 +112,7 @@ export function ModelsTab({
                               className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 gap-1 text-[11px] py-0"
                             >
                               <Eye className="h-3 w-3" />
-                              Shadow Mode
+                              Теневая
                             </Badge>
                           )}
                           {!isActive && !isShadow && (
@@ -137,11 +137,11 @@ export function ModelsTab({
           <div className="flex items-center gap-2">
             <History className="h-5 w-5 text-indigo-500" />
             <CardTitle className="text-base font-semibold">
-              История тренировочных запусков (Training Runs)
+              История тренировочных запусков
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Журнал переобучения моделей на свежих снапшотах и оценки качества
+            Журнал переобучения моделей на свежих снимках и оценки качества
           </CardDescription>
         </CardHeader>
 
@@ -150,7 +150,7 @@ export function ModelsTab({
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/60 text-xs">
-                  <TableHead className="font-semibold">ID Запуска</TableHead>
+                  <TableHead className="font-semibold">Номер запуска</TableHead>
                   <TableHead className="font-semibold">Модель</TableHead>
                   <TableHead className="font-semibold">Версия</TableHead>
                   <TableHead className="font-semibold text-center">Статус</TableHead>
@@ -177,14 +177,19 @@ export function ModelsTab({
                         {r.model_name}
                       </TableCell>
                       <TableCell className="font-mono text-muted-foreground">
-                        {r.version_tag || "latest"}
+                        {r.version_tag || "последняя"}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge
                           variant="outline"
                           className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] py-0"
                         >
-                          {r.status || "COMPLETED"}
+                          {{
+                            COMPLETED: "Завершён",
+                            RUNNING: "Идёт",
+                            FAILED: "Ошибка",
+                            QUEUED: "В очереди",
+                          }[(r.status || "COMPLETED").toUpperCase()] || "Завершён"}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-muted-foreground text-right">

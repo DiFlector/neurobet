@@ -174,6 +174,8 @@ class FonbetLiveTennisParser:
                 "participant_b": player_b,
                 "score_state": score_state,
                 "markets": markets,
+                "fonbet_clock": card_data.get("fonbet_clock"),
+                "fonbet_score": card_data.get("fonbet_score"),
             }
         except Exception as e:
             logger.warning("Error parsing individual event card: %s", e)
@@ -194,3 +196,170 @@ class FonbetLiveTennisParser:
 
         logger.info("Parsed %d live tennis events from feed.", len(events_list))
         return events_list
+
+    @classmethod
+    def _root_sport_id(cls, sports: Dict[Any, Dict[str, Any]], sport_id: Any, guard: int = 0) -> Any:
+        sport = sports.get(sport_id)
+        if not sport or guard > 12:
+            return sport_id
+        parent = sport.get("parentId")
+        if not parent:
+            return sport_id
+        return cls._root_sport_id(sports, parent, guard + 1)
+
+    @classmethod
+    def _live_score(cls, info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Structured Fonbet score: set games plus the current game in parentheses."""
+        scores = info.get("scores") or []
+        if not isinstance(scores, list) or len(scores) < 2:
+            return None
+        try:
+            sets_row = scores[0][0]
+            set_games = list(scores[1] or [])
+            points = scores[2][0] if len(scores) > 2 and scores[2] else {}
+        except (IndexError, TypeError):
+            return None
+        if not isinstance(sets_row, dict) or not set_games:
+            return None
+
+        # Очки текущего гейма: scores[2] каноничнее, чем comment из subscores
+        # (у Fonbet comment иногда дублирует «0-0 0-0 …»).
+        detail = None
+        if isinstance(points, dict) and points.get("c1") is not None:
+            left, right = str(points.get("c1")), str(points.get("c2"))
+            if points.get("serve") == 1:
+                left = f"{left}*"
+            elif points.get("serve") == 2:
+                right = f"{right}*"
+            detail = f"{left}-{right}"
+        if not detail:
+            for sub in info.get("subscores") or []:
+                if isinstance(sub, dict) and sub.get("comment"):
+                    detail = str(sub["comment"]).strip()
+            if detail and detail.startswith("(") and detail.endswith(")"):
+                detail = detail[1:-1]
+            if detail:
+                # Оставляем только последнюю пару очков (15-40, 00-00*, AD-40 …).
+                matches = re.findall(
+                    r"(?:AD|\d+)\*?-(?:AD|\d+)\*?",
+                    detail,
+                    flags=re.IGNORECASE,
+                )
+                detail = matches[-1] if matches else detail.split()[-1]
+
+        lines = []
+        last = len(set_games) - 1
+        for index, part in enumerate(set_games):
+            if not isinstance(part, dict):
+                continue
+            lines.append({
+                "games_a": part.get("c1"),
+                "games_b": part.get("c2"),
+                "live": index == last,
+                "detail": detail if index == last else None,
+            })
+        if not lines:
+            return None
+        return {
+            "sets_a": sets_row.get("c1"),
+            "sets_b": sets_row.get("c2"),
+            "points_a": points.get("c1") if isinstance(points, dict) else None,
+            "points_b": points.get("c2") if isinstance(points, dict) else None,
+            "serve": points.get("serve") if isinstance(points, dict) else None,
+            "lines": lines,
+        }
+
+    @classmethod
+    def _score_from_live_info(cls, info: Dict[str, Any]) -> str:
+        """Turn Fonbet liveEventInfos into a score string the card parser understands."""
+        if not info:
+            return ""
+        scores = info.get("scores") or []
+        try:
+            sets = scores[0][0]
+            set_games = scores[1]
+            games = ", ".join(f"{part.get('c1')}-{part.get('c2')}" for part in set_games)
+            points = scores[2][0] if len(scores) > 2 and scores[2] else {}
+            star = "*" if points.get("serve") == 1 else ""
+            return f"{sets.get('c1')}-{sets.get('c2')} ({games}{star})"
+        except (IndexError, TypeError, AttributeError):
+            return str(info.get("scoreComment") or "")
+
+    @classmethod
+    def from_line_feed(cls, feed: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Reduce the official line list payload to live tennis cards.
+
+        Segment sport ids sit under tennis (sport id 4). Match-winner prices
+        are custom factors 921 and 923.
+        """
+        sports = {
+            item.get("id"): item
+            for item in feed.get("sports") or []
+            if isinstance(item, dict)
+        }
+        tennis_ids = {
+            sport_id
+            for sport_id in sports
+            if cls._root_sport_id(sports, sport_id) in FONBET_TENNIS_SPORT_IDS
+        }
+        factors_by_event: Dict[Any, List[Any]] = {}
+        for block in feed.get("customFactors") or []:
+            if isinstance(block, dict) and block.get("e") is not None:
+                factors_by_event[block["e"]] = block.get("factors") or []
+        info_by_event = {
+            item.get("eventId"): item
+            for item in feed.get("liveEventInfos") or []
+            if isinstance(item, dict)
+        }
+        misc_by_event = {
+            item.get("id"): item
+            for item in feed.get("eventMiscs") or []
+            if isinstance(item, dict)
+        }
+
+        cards: List[Dict[str, Any]] = []
+        for event in feed.get("events") or []:
+            if not isinstance(event, dict):
+                continue
+            if event.get("place") != "live":
+                continue
+            if event.get("sportId") not in tennis_ids:
+                continue
+            if not event.get("team1") or not event.get("team2"):
+                continue
+            sport = sports.get(event.get("sportId")) or {}
+            info = info_by_event.get(event.get("id")) or {}
+            misc = misc_by_event.get(event.get("id")) or {}
+            cards.append({
+                "id": event.get("id"),
+                "place": "live",
+                "team1": event.get("team1"),
+                "team2": event.get("team2"),
+                "competitionName": sport.get("name") or "Теннис. Live",
+                "score": cls._score_from_live_info(info),
+                "fonbet_score": cls._live_score(info),
+                "factors": factors_by_event.get(event.get("id"), []),
+                "fonbet_clock": cls._clock_from_line(event, info, misc),
+            })
+        return {"events": cards}
+
+    @staticmethod
+    def _clock_from_line(event: Dict[str, Any], info: Dict[str, Any], misc: Dict[str, Any]) -> Dict[str, Any]:
+        """Clock fields exactly as Fonbet publishes them on the line list."""
+        tail = str(info.get("scoreCommentTail") or "").strip()
+        comment = str(info.get("scoreComment") or "")
+        pause_label = None
+        for marker in ("Просмотр", "Перерыв", "Пауза", "Тайм-аут", "Таймаут"):
+            if marker.lower() in tail.lower() or marker.lower() in comment.lower():
+                pause_label = marker
+                break
+        has_timer = "timerSeconds" in misc or "timerDirection" in misc
+        return {
+            "has_timer": has_timer,
+            "timer_seconds": misc.get("timerSeconds") if has_timer else None,
+            "timer_direction": misc.get("timerDirection") if has_timer else None,
+            "timer_updated_at_ms": misc.get("timerUpdateTimestampMsec") if has_timer else None,
+            "start_time": event.get("startTime"),
+            "pause_label": pause_label,
+        }

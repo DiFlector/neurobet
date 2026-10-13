@@ -33,7 +33,9 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
     computes calibrated ML probabilities and edge, and writes them to ml_predictions.
     """
     try:
-        from db.session import SessionLocal
+        from sqlalchemy import or_
+
+        from db.connection import SessionLocal
         from db.models.events import Event
         from db.models.predictions import MLPrediction as DBMLPrediction
         from contracts import FeatureVector
@@ -44,10 +46,18 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
     evaluated_count = 0
     try:
         with SessionLocal() as session:
-            # Find active events
+            synthetic = or_(
+                Event.source_event_id.like("sim_evt_%"),
+                Event.source_event_id.like("ext_%"),
+                Event.source_event_id.like("evt_%"),
+                Event.source_event_id.like("dr_%"),
+            )
             active_events = (
                 session.query(Event)
+                .outerjoin(DBMLPrediction, DBMLPrediction.event_id == Event.id)
                 .filter(Event.status.in_(["live", "prematch"]))
+                .filter(~synthetic)
+                .filter(DBMLPrediction.id.is_(None))
                 .order_by(Event.is_live.desc(), Event.created_at.desc())
                 .limit(30)
                 .all()
@@ -55,35 +65,31 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
             if not active_events:
                 return 0
 
-            # Check which events already have predictions
-            event_ids = [e.id for e in active_events]
-            existing_preds = (
-                session.query(DBMLPrediction.event_id)
-                .filter(DBMLPrediction.event_id.in_(event_ids))
-                .all()
-            )
-            predicted_event_ids = {row[0] for row in existing_preds}
-
             for evt in active_events:
-                if evt.id in predicted_event_ids:
-                    continue
-
                 sport_code = (evt.sport_code or "tennis").lower()
                 predictor = predictors.get(sport_code) or predictors.get("tennis")
                 if not predictor or not predictor.checkpoint_data:
                     continue
 
-                # Prepare feature vector based on model's trained feature schema
+                odds_a, odds_b = _latest_outcome_odds(session, evt.id)
+                if odds_a is None or odds_b is None:
+                    logger.debug("Skip event %s: no match-winner odds snapshot", evt.id)
+                    continue
+
                 feature_names = predictor.checkpoint_data.get("feature_names", [])
                 features_dict = {}
                 for name in feature_names:
-                    if "odds" in name:
-                        features_dict[name] = 1.90
-                    elif "win_rate" in name:
+                    lowered = name.lower()
+                    if "odds" in lowered:
+                        if lowered.endswith("_b") or "player_b" in lowered or "team_b" in lowered:
+                            features_dict[name] = odds_b
+                        else:
+                            features_dict[name] = odds_a
+                    elif "win_rate" in lowered:
                         features_dict[name] = 0.55
-                    elif "h2h" in name:
+                    elif "h2h" in lowered:
                         features_dict[name] = 0.50
-                    elif "score" in name or "games" in name:
+                    elif "score" in lowered or "games" in lowered:
                         features_dict[name] = 1.0
                     else:
                         features_dict[name] = 0.0
@@ -95,33 +101,39 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
                     features=features_dict,
                 )
 
-                # Calibrated ML prediction
                 try:
-                    res = predictor.predict(f_vec, odds_a=1.85, odds_b=1.95)
-                    best_outcome = res.predicted_outcome
+                    res = predictor.predict(f_vec, odds_a=odds_a, odds_b=odds_b)
+                    best = next(
+                        (item for item in res.outcomes if item.outcome == res.best_outcome),
+                        None,
+                    )
+                    if best is None and res.outcomes:
+                        best = max(res.outcomes, key=lambda item: item.edge)
+                    if best is None:
+                        continue
 
                     db_pred = DBMLPrediction(
                         event_id=evt.id,
                         sport_code=sport_code,
                         model_version=res.model_version,
-                        market="match_winner",
-                        predicted_outcome=best_outcome,
-                        model_probability=res.model_probability,
-                        bookmaker_odds=res.bookmaker_odds,
-                        fair_odds=res.fair_odds,
-                        edge=res.edge,
-                        expected_value=res.expected_value,
-                        confidence=res.confidence,
+                        market=res.market or "match_winner",
+                        predicted_outcome=best.outcome,
+                        model_probability=best.model_probability,
+                        bookmaker_odds=best.bookmaker_odds,
+                        fair_odds=best.fair_odds,
+                        edge=best.edge,
+                        expected_value=best.expected_value,
+                        confidence=best.confidence,
                         has_positive_edge=res.has_positive_edge,
-                        is_shadow=False,
+                        is_shadow=res.is_shadow,
                         outcomes_detail={
                             "outcomes": [
                                 {
-                                    "outcome": o.outcome,
-                                    "probability": o.probability,
-                                    "fair_odds": o.fair_odds,
+                                    "outcome": item.outcome,
+                                    "probability": item.model_probability,
+                                    "fair_odds": item.fair_odds,
                                 }
-                                for o in res.outcomes
+                                for item in res.outcomes
                             ]
                         },
                     )
@@ -136,10 +148,63 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
                     "Evaluated and saved ML predictions for %d active events.",
                     evaluated_count,
                 )
+                _trigger_llm_sync(limit=min(evaluated_count, 15))
     except Exception as exc:
         logger.error("Error during evaluate_pending_events: %s", exc)
 
     return evaluated_count
+
+
+def _trigger_llm_sync(limit: int = 15) -> None:
+    """Ask backend to enqueue ML predictions lacking LLM verdicts and dispatch them."""
+    import json
+    from urllib.error import URLError, HTTPError
+    from urllib.request import Request, urlopen
+
+    backend_url = os.getenv("BACKEND_INTERNAL_URL", "http://backend:8000").rstrip("/")
+    url = (
+        f"{backend_url}/api/scheduler/sync-ml-predictions"
+        f"?limit={int(limit)}&dispatch=true"
+    )
+    try:
+        req = Request(url, method="POST", data=b"")
+        req.add_header("Content-Type", "application/json")
+        with urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            logger.info(
+                "LLM sync after ML: enqueued=%s dispatched=%s",
+                data.get("enqueued_count"),
+                (data.get("dispatch") or {}).get("dispatched_count"),
+            )
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        logger.warning("LLM sync request error: %s", exc)
+
+
+def _latest_outcome_odds(session, event_id):
+    """Latest match-winner prices for both sides, or (None, None) when the line is missing."""
+    from db.models.odds import OddsSnapshot
+
+    rows = (
+        session.query(OddsSnapshot)
+        .filter(OddsSnapshot.event_id == event_id)
+        .order_by(OddsSnapshot.observed_at.desc())
+        .limit(20)
+        .all()
+    )
+    odds_a = None
+    odds_b = None
+    for row in rows:
+        outcome = (row.outcome or "").lower()
+        price = float(row.odds) if row.odds is not None else None
+        if price is None or price <= 1.0:
+            continue
+        if outcome in ("player_a", "team_a", "1", "p1") and odds_a is None:
+            odds_a = price
+        elif outcome in ("player_b", "team_b", "2", "p2") and odds_b is None:
+            odds_b = price
+        if odds_a is not None and odds_b is not None:
+            break
+    return odds_a, odds_b
 
 
 async def main():

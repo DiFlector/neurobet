@@ -25,10 +25,33 @@ class EventResultMatcher:
     and updates event lifecycle state to finished without guessing.
     """
 
+    _INCOMPLETE_SCORE_PREFIXES = ("0:0", "0-0", "-:-", ":")
+
     @staticmethod
     def normalize_name(name: str) -> str:
         """Strip initials and common prefixes for fuzzy participant matching."""
         return " ".join(re.findall(r"\w+", name.lower())) if name else ""
+
+    @classmethod
+    def result_is_definitive(cls, result: CanonicalMatchResult) -> bool:
+        """
+        True only when the official result is safe to remove a match from the live board.
+        Placeholder rows (0:0 / review / no winner) must not wipe in-play events.
+        """
+        if result.status in ("CANCELLED", "VOID"):
+            return True
+        if result.status == "SETTLEMENT_REVIEW_REQUIRED":
+            return False
+        if result.status not in ("FINISHED", "RETIRED"):
+            return False
+        if not result.winner and not result.is_retired and not result.is_walkover:
+            return False
+        score_head = (result.final_score or "").strip().split()[0] if result.final_score else ""
+        if not score_head or score_head in cls._INCOMPLETE_SCORE_PREFIXES:
+            return False
+        if score_head.startswith("0:0") or score_head.startswith("0-0"):
+            return False
+        return True
 
     @classmethod
     def match_and_complete_event(
@@ -38,6 +61,7 @@ class EventResultMatcher:
     ) -> Optional[Event]:
         """
         Find event in DB by source_event_id or participant names and mark finished.
+        Incomplete / review-only results never force a still-live event off the board.
         """
         # 1. Primary lookup by source_event_id
         stmt = select(Event).where(
@@ -46,11 +70,14 @@ class EventResultMatcher:
         )
         event = session.execute(stmt).scalars().first()
 
-        # 2. Secondary fallback lookup by participant names if IDs differ between live & results feed
+        # 2. Secondary fallback: fuzzy names only among already non-live rows
+        #    (never steal an active live match via 4-char prefix collision).
         if not event:
             stmt_fuzzy = select(Event).where(
                 Event.sport_code == result.sport_code,
                 Event.source == "fonbet",
+                Event.is_live.is_(False),
+                Event.status != "live",
                 or_(
                     and_(
                         Event.participant_a_name.ilike(f"%{result.participant_a[:4]}%"),
@@ -73,8 +100,33 @@ class EventResultMatcher:
             )
             return None
 
+        definitive = cls.result_is_definitive(result)
+        still_live = bool(event.is_live) or (event.status == "live")
+
+        # Incomplete official rows (often 0:0 placeholders) must not clear the live board.
+        if still_live and not definitive:
+            meta = dict(event.metadata_json or {})
+            meta["pending_official_result"] = result.model_dump(mode="json")
+            if result.status == "SETTLEMENT_REVIEW_REQUIRED":
+                meta["settlement_review_required"] = True
+                meta["settlement_review_reason"] = (
+                    f"Incomplete official score while event still live: {result.final_score}"
+                )
+            event.metadata_json = meta
+            session.flush()
+            logger.info(
+                "Skip finishing live event %s (%s vs %s): non-definitive result score=%s status=%s",
+                event.id,
+                event.participant_a_name,
+                event.participant_b_name,
+                result.final_score,
+                result.status,
+            )
+            return event
+
         # Update event state to finished
         event.status = "finished" if result.status != "CANCELLED" else "cancelled"
+        event.is_live = False
         event.finished_at = utc_now()
         event.current_score = {
             "final_score": result.final_score,

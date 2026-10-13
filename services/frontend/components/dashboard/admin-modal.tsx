@@ -190,7 +190,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                 className="text-xs h-9 bg-background/80"
               />
               <p className="text-[10px] text-muted-foreground">
-                Пароль безопасно хешируется (SHA-256) в браузере перед проверкой.
+                Пароль проверяется в браузере и не отправляется открытым текстом.
               </p>
             </div>
 
@@ -206,7 +206,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
               disabled={isLoggingIn}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9 font-medium"
             >
-              {isLoggingIn ? "Проверка хеша..." : "Войти в админ-панель"}
+              {isLoggingIn ? "Проверка..." : "Войти в панель управления"}
             </Button>
           </form>
         ) : (
@@ -237,7 +237,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                     executeAdminAction(
                       "settlement",
                       "/settlement/sync",
-                      "Синхронизация Settlement"
+                      "Синхронизация расчётов"
                     )
                   }
                 >
@@ -258,12 +258,12 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                     executeAdminAction(
                       "reconcile",
                       "/bankroll/reconcile",
-                      "Сверка Ledger"
+                      "Сверка журнала"
                     )
                   }
                 >
                   <Database className="h-3.5 w-3.5 mr-2 shrink-0 text-emerald-500" />
-                  <span>Сверка баланса Ledger</span>
+                  <span>Сверка баланса журнала</span>
                 </Button>
 
                 <Button
@@ -292,12 +292,12 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                     executeAdminAction(
                       "cooldowns",
                       "/scheduler/cooldowns/clear",
-                      "Очистка кулдаунов"
+                      "Сброс пауз очереди"
                     )
                   }
                 >
                   <Layers className="h-3.5 w-3.5 mr-2 shrink-0 text-blue-500" />
-                  <span>Сброс кулдаунов очередей</span>
+                  <span>Сброс пауз очереди</span>
                 </Button>
               </div>
             </div>
@@ -307,7 +307,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
               <div className="text-xs font-semibold text-foreground flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-                  Параметры риск-гейтов (Bet Manager)
+                  Параметры ограничений риска
                 </span>
                 <Badge variant="outline" className="text-[10px] font-mono">
                   Активно
@@ -317,10 +317,10 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="p-2 rounded bg-card border border-border/40">
                   <div className="text-[10px] text-muted-foreground">Режим</div>
-                  <div className="font-bold text-foreground mt-0.5">Live-Only</div>
+                  <div className="font-bold text-foreground mt-0.5">Только Live</div>
                 </div>
                 <div className="p-2 rounded bg-card border border-border/40">
-                  <div className="text-[10px] text-muted-foreground">Мин. Edge</div>
+                  <div className="text-[10px] text-muted-foreground">Мин. перевес</div>
                   <div className="font-bold text-emerald-500 mt-0.5">&gt; 3.0%</div>
                 </div>
                 <div className="p-2 rounded bg-card border border-border/40">

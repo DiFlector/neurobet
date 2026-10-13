@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -233,11 +233,15 @@ def get_events(
     status: Optional[str] = None,
     is_live: Optional[bool] = None,
     search: Optional[str] = None,
+    include_synthetic: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """
     Returns paginated list of sporting events with filters for sport, status, live, and search.
+
+    Fixture rows written by tests (source_event_id sim_evt_* and ext_*) stay in the
+    database because bets may reference them, but they are omitted from the default list.
     """
     if not SessionLocal or not Event:
         return {"total": 0, "limit": limit, "offset": offset, "events": []}
@@ -253,6 +257,13 @@ def get_events(
         if search:
             pattern = f"%{search}%"
             q = q.filter((Event.participant_a_name.ilike(pattern)) | (Event.participant_b_name.ilike(pattern)))
+        if not include_synthetic:
+            q = q.filter(
+                ~Event.source_event_id.like("sim_evt_%"),
+                ~Event.source_event_id.like("ext_%"),
+                ~Event.source_event_id.like("evt_%"),
+                ~Event.source_event_id.like("dr_%"),
+            )
 
         total = q.count()
         events = q.order_by(Event.scheduled_start_at.desc()).offset(offset).limit(limit).all()
@@ -462,6 +473,12 @@ def get_predictions(event_id: Optional[str] = None, limit: int = 50) -> List[Dic
         ]
 
 
+# Known fixture / seed snippet that was duplicated across unrelated events.
+_FIXTURE_RESEARCH_SNIPPETS = frozenset({
+    "rune reported feeling 100% physically recovered.",
+})
+
+
 @app.get("/api/research")
 @app.get("/api/events/{event_id}/research")
 def get_research_evidence(event_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
@@ -470,25 +487,92 @@ def get_research_evidence(event_id: Optional[str] = None, limit: int = 50) -> Li
         return []
 
     with SessionLocal() as session:
-        q = session.query(WebEvidence)
+        if WebDocument is not None:
+            q = session.query(WebEvidence, WebDocument).outerjoin(
+                WebDocument, WebEvidence.document_id == WebDocument.id
+            )
+        else:
+            q = session.query(WebEvidence)
+
         if event_id:
             try:
                 q = q.filter(WebEvidence.event_id == uuid.UUID(event_id))
             except ValueError:
                 return []
 
-        evidence = q.order_by(WebEvidence.created_at.desc()).limit(limit).all()
-        return [
-            {
-                "id": str(e.id),
-                "event_id": str(e.event_id),
-                "snippet": e.snippet,
-                "relevance_score": float(e.relevance_score),
-                "freshness_score": float(e.freshness_score),
-                "created_at": e.created_at.isoformat(),
-            }
-            for e in evidence
-        ]
+        # Fetch extra rows so fixture filtering still leaves up to `limit` items.
+        rows = q.order_by(WebEvidence.created_at.desc()).limit(max(limit * 3, limit)).all()
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if WebDocument is not None:
+                e, doc = row
+            else:
+                e, doc = row, None
+            snippet = (e.snippet or "").strip()
+            if snippet.lower() in _FIXTURE_RESEARCH_SNIPPETS:
+                continue
+            results.append(
+                {
+                    "id": str(e.id),
+                    "event_id": str(e.event_id),
+                    "snippet": e.snippet,
+                    "title": doc.title if doc else None,
+                    "url": doc.url if doc else None,
+                    "source_domain": doc.source_domain if doc else None,
+                    "source_title": doc.title if doc else None,
+                    "relevance_score": float(e.relevance_score),
+                    "freshness_score": float(e.freshness_score),
+                    "created_at": e.created_at.isoformat(),
+                }
+            )
+            if len(results) >= limit:
+                break
+        return results
+
+
+@app.get("/api/events/{event_id}/llm")
+def get_event_llm_decisions(event_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Returns latest persisted LLM qualitative verdicts for a single event."""
+    if not SessionLocal or not LLMDecision:
+        return []
+
+    try:
+        e_uuid = uuid.UUID(event_id)
+    except ValueError:
+        return []
+
+    with SessionLocal() as session:
+        decisions = (
+            session.query(LLMDecision)
+            .filter(LLMDecision.event_id == e_uuid)
+            .order_by(LLMDecision.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        results: List[Dict[str, Any]] = []
+        for d in decisions:
+            raw = d.raw_json if isinstance(d.raw_json, dict) else {}
+            results.append(
+                {
+                    "id": str(d.id),
+                    "event_id": str(d.event_id),
+                    "llm_version": d.llm_version,
+                    "verdict": d.verdict,
+                    "confidence_adjustment": float(d.confidence_adjustment),
+                    "injury_risk": d.injury_risk,
+                    "fatigue_risk": d.fatigue_risk,
+                    "reasoning": d.reasoning,
+                    "summary": raw.get("summary") or d.reasoning,
+                    "reason_codes": raw.get("reason_codes") or [],
+                    "contradictions": raw.get("contradictions") or [],
+                    "research_quality": raw.get("research_quality"),
+                    "model_identifier": raw.get("model_identifier"),
+                    "prompt_version": raw.get("prompt_version"),
+                    "raw_json": raw,
+                    "created_at": d.created_at.isoformat(),
+                }
+            )
+        return results
 
 
 @app.post("/api/research/run")
@@ -547,18 +631,32 @@ def get_bankroll_summary() -> Dict[str, Any]:
         return summary
 
 
+def _combat_event_ids(column):
+    """Real Fonbet event ids are numeric. Fixture ids use sim_evt_, ext_, evt_, dr_."""
+    return column.op("~")(r"^[0-9]+$")
+
+
 @app.get("/api/ledger")
 @app.get("/api/bankroll/ledger")
-def get_ledger_entries(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+def get_ledger_entries(
+    limit: int = 50,
+    offset: int = 0,
+    include_synthetic: bool = False,
+) -> List[Dict[str, Any]]:
     """Returns immutable financial ledger transaction audit trail."""
-    if not SessionLocal or not LedgerEntry or not BankrollService:
+    if not SessionLocal or not LedgerEntry or not BankrollService or not Bet or not Event:
         return []
     with SessionLocal() as session:
         account = BankrollService.get_or_create_account(session)
+        q = session.query(LedgerEntry).filter(LedgerEntry.account_id == account.id)
+        if not include_synthetic:
+            q = (
+                q.join(Bet, LedgerEntry.bet_id == Bet.id)
+                .join(Event, Bet.event_id == Event.id)
+                .filter(_combat_event_ids(Event.source_event_id))
+            )
         entries = (
-            session.query(LedgerEntry)
-            .filter(LedgerEntry.account_id == account.id)
-            .order_by(LedgerEntry.created_at.desc())
+            q.order_by(LedgerEntry.created_at.desc())
             .offset(offset)
             .limit(limit)
             .all()
@@ -582,14 +680,22 @@ def get_ledger_entries(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]
 def get_bets(
     status: Optional[str] = None,
     account_id: Optional[str] = None,
+    include_synthetic: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
     """Returns paper bets with optional status and account filtering (PENDING, WON, LOST, VOID)."""
-    if not SessionLocal or not Bet:
+    if not SessionLocal or not Bet or not Event or not VirtualAccount or not BankrollService:
         return []
     with SessionLocal() as session:
         q = session.query(Bet)
+        if not include_synthetic:
+            account = BankrollService.get_or_create_account(session)
+            q = (
+                q.join(Event, Bet.event_id == Event.id)
+                .filter(Bet.account_id == account.id)
+                .filter(_combat_event_ids(Event.source_event_id))
+            )
         if account_id:
             try:
                 acc_uuid = uuid.UUID(account_id)
@@ -700,16 +806,21 @@ def get_bet_proposals(event_id: Optional[str] = None, limit: int = 50) -> List[D
 # 7. Portfolio Performance & Drawdown Metrics
 # --------------------------------------------------------------------------
 @app.get("/api/performance")
-def get_portfolio_performance() -> Dict[str, Any]:
+def get_portfolio_performance(include_synthetic: bool = False) -> Dict[str, Any]:
     """Calculates overall betting performance: PnL, ROI, Win Rate, and Max Drawdown."""
-    if not SessionLocal or not Bet or not VirtualAccount:
-        return {
-            "total_bets": 0, "won_bets": 0, "lost_bets": 0, "void_bets": 0, "pending_bets": 0,
-            "win_rate": 0.0, "total_turnover": 0.0, "net_pnl": 0.0, "roi": 0.0, "max_drawdown": 0.0
-        }
+    empty = {
+        "total_bets": 0, "won_bets": 0, "lost_bets": 0, "void_bets": 0, "pending_bets": 0,
+        "win_rate": 0.0, "total_turnover": 0.0, "net_pnl": 0.0, "roi": 0.0, "max_drawdown": 0.0,
+    }
+    if not SessionLocal or not Bet or not VirtualAccount or not BankrollService or not Event or not BetSettlement:
+        return empty
 
     with SessionLocal() as session:
-        bets = session.query(Bet).all()
+        account = BankrollService.get_or_create_account(session)
+        q = session.query(Bet).filter(Bet.account_id == account.id)
+        if not include_synthetic:
+            q = q.join(Event, Bet.event_id == Event.id).filter(_combat_event_ids(Event.source_event_id))
+        bets = q.all()
         total_bets = len(bets)
         won_bets = sum(1 for b in bets if b.status == "WON")
         lost_bets = sum(1 for b in bets if b.status == "LOST")
@@ -720,19 +831,20 @@ def get_portfolio_performance() -> Dict[str, Any]:
         win_rate = round(won_bets / decided_bets, 4) if decided_bets > 0 else 0.0
         total_turnover = sum(float(b.stake) for b in bets)
 
-        # Net PnL from settled bets
-        settlements = session.query(BetSettlement).all()
+        bet_ids = [b.id for b in bets]
+        settlements = (
+            session.query(BetSettlement).filter(BetSettlement.bet_id.in_(bet_ids)).all()
+            if bet_ids else []
+        )
         net_pnl = round(sum(float(s.net_profit) for s in settlements), 2)
         settled_turnover = sum(float(b.stake) for b in bets if b.status in ("WON", "LOST", "VOID"))
         roi = round((net_pnl / settled_turnover * 100.0), 2) if settled_turnover > 0 else 0.0
 
-        # Calculate max drawdown from ledger transaction history
-        account = session.query(VirtualAccount).first()
         max_dd = 0.0
-        if account:
+        if bet_ids and LedgerEntry:
             entries = (
                 session.query(LedgerEntry)
-                .filter(LedgerEntry.account_id == account.id)
+                .filter(LedgerEntry.account_id == account.id, LedgerEntry.bet_id.in_(bet_ids))
                 .order_by(LedgerEntry.created_at.asc())
                 .all()
             )
@@ -1307,17 +1419,24 @@ def reconcile_bankroll() -> Dict[str, Any]:
 # 10. Live Updates via Server-Sent Events (SSE) (Architecture Section 31)
 # --------------------------------------------------------------------------
 @app.get("/api/live/stream")
-async def live_stream_updates():
+async def live_stream_updates(request: Request, max_heartbeats: Optional[int] = None):
     """
     Server-Sent Events (SSE) stream broadcasting live match state changes,
     odds shifts, and decision updates to the frontend dashboard.
+
+    The response stays open. Heartbeats keep proxies and the browser EventSource
+    from treating a short payload as a dropped connection. max_heartbeats is only
+    for tests that must read a finite body.
     """
     async def event_generator():
-        # Emit initial connection handshake
-        yield f"event: connected\ndata: {json.dumps({'message': 'Connected to Neurobet live stream', 'time': datetime.now(timezone.utc).isoformat()})}\n\n"
+        yield (
+            "event: connected\n"
+            f"data: {json.dumps({'message': 'Connected to Neurobet live stream', 'time': datetime.now(timezone.utc).isoformat()})}\n\n"
+        )
         count = 0
-        while count < 3: # Stream 3 frames for test/polling or continuous in live mode
-            await asyncio.sleep(0.5)
+        while max_heartbeats is None or count < max_heartbeats:
+            if await request.is_disconnected():
+                break
             count += 1
             data = {
                 "heartbeat": count,
@@ -1325,8 +1444,19 @@ async def live_stream_updates():
                 "status": "active",
             }
             yield f"event: heartbeat\ndata: {json.dumps(data)}\n\n"
+            if max_heartbeats is not None and count >= max_heartbeats:
+                break
+            await asyncio.sleep(15)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1614,6 +1744,111 @@ def dispatch_scheduled_candidates(limit: int = 10) -> Dict[str, Any]:
         "dispatched_count": len(dispatched_results),
         "remaining_queue_size": global_candidate_scheduler.priority_queue.size(),
         "results": dispatched_results,
+    }
+
+
+@app.post("/api/scheduler/sync-ml-predictions")
+def sync_ml_predictions_to_llm(limit: int = 15, dispatch: bool = True) -> Dict[str, Any]:
+    """
+    Finds live/prematch events that already have ML predictions but no LLM verdict,
+    enqueues them into the candidate scheduler, and optionally dispatches through
+    CombinedDecisionPipeline so llm_decisions rows are written for the UI.
+    """
+    if not global_candidate_scheduler or not SessionLocal or not CandidateSelector:
+        return {"error": "Scheduler unavailable"}
+    if not MLPrediction or not Event or not LLMDecision:
+        return {"error": "Prediction models unavailable"}
+
+    from sqlalchemy import and_, exists
+
+    enqueued: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+
+    # Temporarily lower score hurdle so context generation covers more live matches.
+    original_min_score = global_candidate_scheduler.config.min_candidate_score
+    global_candidate_scheduler.config = global_candidate_scheduler.config.model_copy(
+        update={"min_candidate_score": min(original_min_score, 0.35)}
+    )
+
+    try:
+        with SessionLocal() as session:
+            has_llm = exists().where(LLMDecision.event_id == Event.id)
+            rows = (
+                session.query(Event, MLPrediction)
+                .join(MLPrediction, MLPrediction.event_id == Event.id)
+                .filter(Event.status.in_(["live", "prematch"]))
+                .filter(~has_llm)
+                .order_by(Event.is_live.desc(), MLPrediction.created_at.desc())
+                .limit(limit * 3)
+                .all()
+            )
+
+            seen_events = set()
+            for evt, pred in rows:
+                evt_key = str(evt.id)
+                if evt_key in seen_events:
+                    continue
+                seen_events.add(evt_key)
+                if len(enqueued) >= limit:
+                    break
+
+                odds = float(pred.bookmaker_odds or 0.0)
+                if odds <= 1.0:
+                    skipped.append({"event_id": evt_key, "reason": "invalid_odds"})
+                    continue
+
+                cand = CandidateSelector.evaluate_candidate(
+                    event_id=evt_key,
+                    sport_code=evt.sport_code or pred.sport_code or "tennis",
+                    participant_a=evt.participant_a_name or "Participant A",
+                    participant_b=evt.participant_b_name or "Participant B",
+                    tournament=None,
+                    market=pred.market or "match_winner",
+                    selection=pred.predicted_outcome,
+                    odds=odds,
+                    model_probability=float(pred.model_probability),
+                    confidence=float(pred.confidence or 0.6),
+                    model_version=pred.model_version or "unknown",
+                    min_edge=0.0,
+                    min_confidence=0.0,
+                )
+                # Always shortlist for qualitative LLM context when ML prediction exists.
+                if not cand.is_shortlisted:
+                    cand = cand.model_copy(update={"is_shortlisted": True})
+
+                item = global_candidate_scheduler.evaluate_and_enqueue(
+                    candidate=cand,
+                    snapshot_version=f"mlpred:{pred.id}",
+                    score_state=pred.predicted_outcome,
+                )
+                if item:
+                    enqueued.append(
+                        {
+                            "event_id": evt_key,
+                            "selection": cand.selection,
+                            "edge": cand.edge,
+                            "composite_score": item.score_breakdown.composite_score,
+                        }
+                    )
+                else:
+                    skipped.append({"event_id": evt_key, "reason": "score_below_hurdle"})
+    finally:
+        global_candidate_scheduler.config = global_candidate_scheduler.config.model_copy(
+            update={"min_candidate_score": original_min_score}
+        )
+
+    dispatch_result: Dict[str, Any] = {"dispatched_count": 0, "results": []}
+    if dispatch and enqueued:
+        dispatch_result = dispatch_scheduled_candidates(limit=len(enqueued))
+
+    return {
+        "status": "success",
+        "enqueued_count": len(enqueued),
+        "skipped_count": len(skipped),
+        "enqueued": enqueued,
+        "skipped": skipped[:20],
+        "dispatch": dispatch_result,
+        "queue_size": global_candidate_scheduler.priority_queue.size(),
     }
 
 
