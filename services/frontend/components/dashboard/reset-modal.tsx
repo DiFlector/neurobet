@@ -55,7 +55,7 @@ export function ResetSimulationDialog({
           </div>
           <AlertDialogDescription className="text-sm pt-2 text-muted-foreground leading-relaxed">
             Вы уверены, что хотите сбросить виртуальный баланс к{" "}
-            <span className="font-semibold text-foreground">100 000 ₽</span>?
+            <span className="font-semibold text-foreground">1 000 ₽</span>?
             Все смоделированные ставки и записи в финансовом журнале будут
             безвозвратно очищены.
           </AlertDialogDescription>

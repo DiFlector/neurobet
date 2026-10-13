@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
-from sqlalchemy import String, Integer, Numeric, DateTime, ForeignKey, Index
+from sqlalchemy import String, Integer, Numeric, DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ..base import Base, UUIDPrimaryKeyMixin, utc_now
@@ -11,7 +11,7 @@ class ModelVersion(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "model_versions"
 
     model_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    version_tag: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    version_tag: Mapped[str] = mapped_column(String(64), nullable=False)
     sport_code: Mapped[str] = mapped_column(String(32), default="tennis", nullable=False)
     market: Mapped[str] = mapped_column(String(64), default="match_winner", nullable=False)
     artifact_path: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -19,6 +19,16 @@ class ModelVersion(Base, UUIDPrimaryKeyMixin):
     hyperparameters: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="ACTIVE", nullable=False)  # ACTIVE, SHADOW, RETIRED
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "sport_code",
+            "model_name",
+            "market",
+            "version_tag",
+            name="uq_model_versions_line",
+        ),
+    )
 
 
 class TrainingDataset(Base, UUIDPrimaryKeyMixin):

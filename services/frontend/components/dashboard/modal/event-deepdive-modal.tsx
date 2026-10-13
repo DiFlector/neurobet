@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { EventDetailData, EventItem, LLMDecisionItem, PredictionItem } from "@/lib/types";
+import { EventDetailData, EventItem, LLMDecisionItem, OddItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu, formatTime } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
 import { getDetailedScore } from "@/components/dashboard/match-timer";
@@ -126,6 +126,59 @@ function matchesParticipant(
   return false;
 }
 
+function collapseTimeline(items: EventDetailData["timeline"]): EventDetailData["timeline"] {
+  const collapsed: EventDetailData["timeline"] = [];
+  for (const item of items) {
+    const score = item.score || "";
+    const previous = collapsed[collapsed.length - 1];
+    if (previous && score && (previous.score || "") === score) {
+      continue;
+    }
+    collapsed.push(item);
+  }
+  return collapsed;
+}
+
+function outcomeSideLabel(outcome: string | undefined, playerA: string, playerB: string): string {
+  const code = (outcome || "").trim().toLowerCase();
+  if (["player_a", "team_a", "1", "p1", "w1", "home", "п1"].includes(code)) return playerA;
+  if (["player_b", "team_b", "2", "p2", "w2", "away", "п2"].includes(code)) return playerB;
+  return outcome || "—";
+}
+
+function marketLabel(market: string | undefined): string {
+  const code = (market || "").trim().toLowerCase();
+  if (!code || code === "match_winner") return "Победа в матче";
+  return market || "Победа в матче";
+}
+
+function impliedProbability(odd: OddItem): number | null {
+  const raw = odd.implied_prob ?? odd.probability_implied;
+  if (raw === undefined || raw === null || Number.isNaN(Number(raw))) return null;
+  const value = Number(raw);
+  if (value <= 0) return null;
+  return value > 1 ? value / 100 : value;
+}
+
+function marginsByMoment(odds: OddItem[]): Map<string, number> {
+  const groups = new Map<string, number[]>();
+  for (const odd of odds) {
+    const price = Number(odd.odds);
+    if (!odd.observed_at || !Number.isFinite(price) || price <= 1) continue;
+    const key = `${odd.observed_at}|${odd.market_type || odd.market || ""}`;
+    const prices = groups.get(key) || [];
+    prices.push(price);
+    groups.set(key, prices);
+  }
+  const margins = new Map<string, number>();
+  for (const [key, prices] of groups) {
+    if (prices.length < 2) continue;
+    const overround = prices.reduce((sum, price) => sum + 1 / price, 0) - 1;
+    margins.set(key, overround);
+  }
+  return margins;
+}
+
 function getFormattedScore(evt: EventItem): string {
   const score = getDetailedScore(evt);
   return score.sub ? `${score.main} (${score.sub})` : score.main;
@@ -138,7 +191,9 @@ export function EventDeepdiveModal({
 }: EventDeepdiveModalProps) {
   if (!data || !data.evt) return null;
 
-  const { evt, timeline, odds, preds, research, llm = [] } = data;
+  const { evt, timeline: rawTimeline, odds, preds, research, llm = [] } = data;
+  const timeline = collapseTimeline(rawTimeline);
+  const marginByMoment = marginsByMoment(odds);
 
   const rawA = evt.participant_a || evt.participant_a_name || "Участник 1";
   const rawB = evt.participant_b || evt.participant_b_name || "Участник 2";
@@ -363,23 +418,30 @@ export function EventDeepdiveModal({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    odds.map((o, idx) => (
-                      <TableRow key={idx} className="border-border/50 text-xs hover:bg-muted/30">
+                    odds.map((o, idx) => {
+                      const probability = impliedProbability(o);
+                      const momentKey = `${o.observed_at}|${o.market_type || o.market || ""}`;
+                      const margin = o.margin ?? marginByMoment.get(momentKey);
+                      return (
+                      <TableRow key={o.id || idx} className="border-border/50 text-xs hover:bg-muted/30">
                         <TableCell className="font-medium">
-                          {o.market || o.market_type || "Победа"}
+                          {marketLabel(o.market || o.market_type)}
                         </TableCell>
-                        <TableCell className="font-semibold">{o.selection}</TableCell>
+                        <TableCell className="font-semibold">
+                          {o.selection || outcomeSideLabel(o.outcome, playerA, playerB)}
+                        </TableCell>
                         <TableCell className="font-mono text-right font-bold text-foreground">
                           {Number(o.odds).toFixed(2)}
                         </TableCell>
                         <TableCell className="font-mono text-right text-muted-foreground">
-                          {o.implied_prob ? `${(o.implied_prob * 100).toFixed(1)}%` : "—"}
+                          {probability !== null ? `${(probability * 100).toFixed(1)}%` : "—"}
                         </TableCell>
                         <TableCell className="font-mono text-right text-muted-foreground">
-                          {o.margin ? `${(o.margin * 100).toFixed(1)}%` : "5.2%"}
+                          {margin !== undefined ? `${(margin * 100).toFixed(1)}%` : "—"}
                         </TableCell>
                       </TableRow>
-                    ))
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -555,16 +617,18 @@ export function EventDeepdiveModal({
                   Хронология матча формируется по мере поступления событий Fonbet...
                 </div>
               ) : (
-                timeline.map((t, i) => (
+                timeline.map((t) => (
                   <div
-                    key={i}
+                    key={t.id || `${t.observed_at}-${t.score}`}
                     className="flex items-start gap-3 text-xs border-b border-border/30 pb-2 last:border-0 last:pb-0"
                   >
                     <span className="font-mono text-muted-foreground shrink-0 text-[11px]">
-                      {t.event_time ? formatTime(t.event_time) : `${i + 1}-й гейм`}
+                      {formatTime(t.observed_at || t.event_time || t.timestamp)}
                     </span>
                     <div className="space-y-0.5">
-                      <p className="font-medium text-foreground">{t.description}</p>
+                      {t.description && (
+                        <p className="font-medium text-foreground">{t.description}</p>
+                      )}
                       {t.score && (
                         <p className="text-[11px] font-mono text-emerald-500">Счет: {t.score}</p>
                       )}

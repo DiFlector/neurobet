@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { getApiBase } from "@/lib/api";
+import { getSportNameRu } from "@/lib/formatters";
 
 // Хеш SHA-256 от пароля пользователя "!Zz128500246315"
 // Пароль нигде не хранится в открытом виде.
@@ -45,6 +46,29 @@ interface AdminModalProps {
   onResetSimulation: () => Promise<void>;
 }
 
+interface ModelLiveRecord {
+  id: string;
+  model_name: string;
+  version_tag: string;
+  sport_code: string;
+  status: string;
+  settled: number;
+  wins: number;
+  win_rate: number | null;
+}
+
+function winRateLabel(rate: number | null, settled: number): string {
+  if (!settled || rate === null) return "—";
+  return `${Math.round(rate * 100)}%`;
+}
+
+function winRateClass(rate: number | null, settled: number): string {
+  if (!settled || rate === null) return "text-muted-foreground";
+  if (rate >= 0.55) return "text-emerald-500";
+  if (rate >= 0.5) return "text-amber-500";
+  return "text-red-500";
+}
+
 export function AdminModal({ onResetSimulation }: AdminModalProps) {
   const [open, setOpen] = React.useState(false);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
@@ -58,6 +82,8 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
   // Состояние действий
   const [actionStatus, setActionStatus] = React.useState<string | null>(null);
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+  const [modelRows, setModelRows] = React.useState<ModelLiveRecord[] | null>(null);
+  const [modelsLoading, setModelsLoading] = React.useState(false);
 
   // Проверка сессии при открытии
   React.useEffect(() => {
@@ -68,6 +94,29 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
       }
     }
   }, [open]);
+
+  React.useEffect(() => {
+    if (!open || !isAuthenticated) return;
+    let cancelled = false;
+    setModelsLoading(true);
+    fetch(`${getApiBase()}/models/live-record`, { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setModelRows(Array.isArray(data.models) ? data.models : []);
+      })
+      .catch(() => {
+        if (!cancelled) setModelRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,7 +183,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="border-b border-border/50 pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -212,6 +261,78 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
         ) : (
           /* Панель администратора */
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-foreground">Модели</div>
+              <div className="overflow-x-auto rounded-lg border border-border/60">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Спорт</th>
+                      <th className="px-3 py-2 text-left font-medium">Модель</th>
+                      <th className="px-3 py-2 text-left font-medium">Роль</th>
+                      <th className="px-3 py-2 text-right font-medium">Завершено</th>
+                      <th className="px-3 py-2 text-right font-medium">Побед</th>
+                      <th className="px-3 py-2 text-right font-medium">% побед</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelsLoading && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                          Считаю результаты…
+                        </td>
+                      </tr>
+                    )}
+                    {!modelsLoading && (modelRows || []).length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                          Активных и теневых моделей нет
+                        </td>
+                      </tr>
+                    )}
+                    {!modelsLoading &&
+                      (modelRows || []).map((row) => {
+                        const status = (row.status || "").toUpperCase();
+                        const combat = status === "ACTIVE";
+                        return (
+                          <tr key={row.id} className="border-t border-border/50">
+                            <td className="px-3 py-2">{getSportNameRu(row.sport_code)}</td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-foreground">{row.model_name}</div>
+                              <div className="font-mono text-[10px] text-muted-foreground" title={row.version_tag}>
+                                {row.version_tag}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  combat
+                                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+                                }
+                              >
+                                {combat ? "Боевая" : "Тень"}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{row.settled}</td>
+                            <td className="px-3 py-2 text-right font-mono">{row.wins}</td>
+                            <td
+                              className={`px-3 py-2 text-right font-mono font-semibold ${winRateClass(row.win_rate, row.settled)}`}
+                            >
+                              {winRateLabel(row.win_rate, row.settled)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Процент побед — доля завершённых матчей, где прогноз стороны совпал с победителем. Пока матч не закончился, он в счёт не входит.
+              </p>
+            </div>
+
             {/* Статус выполнения действий */}
             {actionStatus && (
               <div className="p-2.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
@@ -324,8 +445,8 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                   <div className="font-bold text-emerald-500 mt-0.5">&gt; 3.0%</div>
                 </div>
                 <div className="p-2 rounded bg-card border border-border/40">
-                  <div className="text-[10px] text-muted-foreground">Макс. риск</div>
-                  <div className="font-bold text-foreground mt-0.5">20% банка</div>
+                  <div className="text-[10px] text-muted-foreground">Ставка</div>
+                  <div className="font-bold text-foreground mt-0.5">50 ₽ – 20%</div>
                 </div>
               </div>
             </div>
@@ -338,10 +459,10 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                 className="h-8 text-xs bg-red-600/15 text-red-600 dark:text-red-400 hover:bg-red-600/25 border border-red-500/30"
                 onClick={async () => {
                   await onResetSimulation();
-                  setActionStatus("Виртуальный баланс успешно сброшен к 100 000 ₽");
+                  setActionStatus("Виртуальный баланс успешно сброшен к 1 000 ₽");
                 }}
               >
-                Сбросить симуляцию (100k ₽)
+                Сбросить симуляцию (1 000 ₽)
               </Button>
 
               <Button

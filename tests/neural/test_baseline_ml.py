@@ -103,13 +103,14 @@ def test_training_and_artifact_serialization():
 
     with SessionLocal() as session:
         # Train Logistic Regression
-        res_lr = trainer.train_model(session=session, model_type="lr", sport_code="tennis")
+        res_lr = trainer.train_model(session=session, model_type="lr", sport_code="tennis", bump="test")
         assert res_lr["model_name"] == "tennis_logistic_regression"
+        assert res_lr["version_tag"].startswith("test_v1.0.0")
         assert os.path.exists(res_lr["artifact_path"])
         assert res_lr["metrics_val"]["log_loss"] > 0.0
 
         # Train Gradient Boosting
-        res_gb = trainer.train_model(session=session, model_type="gb", sport_code="tennis")
+        res_gb = trainer.train_model(session=session, model_type="gb", sport_code="tennis", bump="test")
         assert res_gb["model_name"] == "tennis_gradient_boosting"
         assert os.path.exists(res_gb["artifact_path"])
 
@@ -117,8 +118,14 @@ def test_training_and_artifact_serialization():
         mv_id = uuid.UUID(res_lr["model_version_id"])
         mv_record = session.query(ModelVersion).filter(ModelVersion.id == mv_id).first()
         assert mv_record is not None
-        assert mv_record.status == "ACTIVE"
+        assert mv_record.status == "SHADOW"
         assert "log_loss" in mv_record.metrics
+
+        gb_record = session.query(ModelVersion).filter(
+            ModelVersion.id == uuid.UUID(res_gb["model_version_id"])
+        ).first()
+        assert gb_record is not None
+        assert gb_record.status == "SHADOW"
 
         tr_id = uuid.UUID(res_lr["training_run_id"])
         tr_record = session.query(TrainingRun).filter(TrainingRun.id == tr_id).first()

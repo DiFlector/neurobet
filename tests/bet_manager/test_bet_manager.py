@@ -462,7 +462,7 @@ def test_stake_limits_rejected():
 
         executor = SimulationExecutor()
 
-        # Stake too low (< 100)
+        # Stake too low (< 50)
         p_low = {
             "proposal_id": str(uuid.uuid4()),
             "event_id": str(event.id),
@@ -474,13 +474,13 @@ def test_stake_limits_rejected():
             "fair_odds": 1.80,
             "model_probability": 0.55,
             "edge": 0.10,
-            "suggested_stake": 50.0,
+            "suggested_stake": 10.0,
         }
         res_low = executor.process_proposal(session, p_low, account_name=acc_name)
         assert res_low.is_accepted is False
         assert res_low.rejection_code == reject_codes.STAKE_TOO_LOW
 
-        # Stake exceeds max limit (> 10000)
+        # Stake exceeds 20% of the 50 000 balance (max 10 000)
         p_high = {
             "proposal_id": str(uuid.uuid4()),
             "event_id": str(event.id),
@@ -523,15 +523,15 @@ def test_insufficient_bankroll_rejected():
             "fair_odds": 1.80,
             "model_probability": 0.55,
             "edge": 0.10,
-            "suggested_stake": 1000.0,  # balance is only 500
+            "suggested_stake": 1000.0,  # 20% of a 500 balance is 100
         }
 
         executor = SimulationExecutor()
         res = executor.process_proposal(session, proposal, account_name=acc_name)
 
         assert res.is_accepted is False
-        assert res.rejection_code == reject_codes.INSUFFICIENT_BANKROLL
-        assert "BANKROLL_SUFFICIENCY" in res.checks_failed
+        assert res.rejection_code == reject_codes.STAKE_LIMIT_EXCEEDED
+        assert "STAKE_LIMITS" in res.checks_failed
         print("✓ test_insufficient_bankroll_rejected PASSED")
     finally:
         session.close()

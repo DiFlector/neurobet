@@ -26,6 +26,16 @@ export function ModelsTab({
   trainingRuns,
   loading = false,
 }: ModelsTabProps) {
+  const orderedModels = [...models].sort((left, right) => {
+    const rank = (status?: string) => {
+      const code = (status || "").trim().toUpperCase();
+      if (code === "ACTIVE") return 0;
+      if (code === "SHADOW") return 1;
+      return 2;
+    };
+    return rank(left.status) - rank(right.status);
+  });
+
   return (
     <div className="space-y-6">
       {/* 1. Реестр моделей */}
@@ -57,7 +67,7 @@ export function ModelsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {models.length === 0 ? (
+                {orderedModels.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={7}
@@ -67,8 +77,8 @@ export function ModelsTab({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  models.map((m) => {
-                    const status = m.status?.toUpperCase() || "ACTIVE";
+                  orderedModels.map((m) => {
+                    const status = (m.status || "ACTIVE").trim().toUpperCase();
                     const isActive = status === "ACTIVE";
                     const isShadow = status === "SHADOW";
 
@@ -117,7 +127,7 @@ export function ModelsTab({
                           )}
                           {!isActive && !isShadow && (
                             <Badge variant="outline" className="text-[11px] py-0 text-muted-foreground">
-                              {status}
+                              {status === "RETIRED" ? "Снята" : status === "STAGING" ? "Подготовка" : "Снята"}
                             </Badge>
                           )}
                         </TableCell>

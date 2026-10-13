@@ -129,11 +129,9 @@ export function MatchesTab({
     return tones;
   }, [bets]);
 
-  const eventsWithPredictionsCount = React.useMemo(() => {
-    return deduplicatedEvents.filter(
-      (e) => predictions[e.id] && predictions[e.id].length > 0
-    ).length;
-  }, [deduplicatedEvents, predictions]);
+  const betEventIds = React.useMemo(() => {
+    return new Set(bets.map((bet) => bet.event_id).filter(Boolean));
+  }, [bets]);
 
   const filteredEvents = React.useMemo(() => {
     let list = deduplicatedEvents;
@@ -147,11 +145,16 @@ export function MatchesTab({
       list = list.filter((e) => e.status === "finished");
     }
 
+    // Завершённый матч виден только если Neurobet принял на него ставку.
+    list = list.filter((e) => e.status !== "finished" || betEventIds.has(e.id));
+
     // По умолчанию (showAllMatches === false): показывать ТОЛЬКО ставки с прогнозом ML
     // Если включено (showAllMatches === true): показывать абсолютно все матчи
     if (!showAllMatches) {
       list = list.filter(
-        (e) => predictions[e.id] && predictions[e.id].length > 0
+        (e) =>
+          (e.status === "finished" && betEventIds.has(e.id)) ||
+          (predictions[e.id] && predictions[e.id].length > 0)
       );
     }
 
@@ -182,6 +185,7 @@ export function MatchesTab({
   }, [
     deduplicatedEvents,
     predictions,
+    betEventIds,
     showAllMatches,
     searchQuery,
     activeStatus,
@@ -250,7 +254,7 @@ export function MatchesTab({
                   : "bg-muted text-muted-foreground"
               }`}
             >
-              {showAllMatches ? deduplicatedEvents.length : eventsWithPredictionsCount}
+              {filteredEvents.length}
             </Badge>
           </div>
         </div>
@@ -322,7 +326,9 @@ export function MatchesTab({
           <Trophy className="h-10 w-10 text-muted-foreground/40 mb-3" />
           <h3 className="font-semibold text-base">Событий не найдено</h3>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-            {!showAllMatches
+            {activeStatus === "finished"
+              ? "Neurobet ещё не поставил на завершённые матчи этого вида спорта."
+              : !showAllMatches
               ? "Нет событий с рассчитанными прогнозами ML. Включите тумблер «Показывать все», чтобы увидеть события в очереди анализа."
               : "По текущим фильтрам нет доступных матчей. Ожидаем обновления данных Fonbet..."}
           </p>

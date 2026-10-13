@@ -12,6 +12,7 @@ from db.models import ModelVersion, TrainingRun, TrainingDataset
 from .dataset import SportDatasetBuilder, TennisDatasetBuilder, get_dataset_builder
 from .metrics import compute_classification_metrics
 from .models import build_gradient_boosting_pipeline, build_logistic_regression_pipeline
+from .versioning import allocate_test_version, next_release_version
 
 
 def get_git_commit_hash() -> str:
@@ -45,6 +46,8 @@ class ModelTrainer:
         model_type: str = "lr",  # "lr" or "gb"
         sport_code: str = "tennis",
         market: str = "match_winner",
+        bump: str = "patch",
+        version_tag: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Trains, calibrates, evaluates, saves, and registers a single model for any sport."""
         os.makedirs(self.checkpoint_dir, exist_ok=True)
@@ -101,10 +104,23 @@ class ModelTrainer:
         metrics_train = compute_classification_metrics(y_train, train_prob)
         metrics_val = compute_classification_metrics(y_val, val_prob)
 
-        # 5. Serialize model checkpoint
+        # 5. Serialize model checkpoint. The tag is only the version of this line.
         m_tag = "lr" if model_type == "lr" else "gb"
-        now_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        version_tag = f"v1.0.0_{m_tag}_{now_str}_{uuid.uuid4().hex[:4]}"
+        if version_tag is None:
+            existing_tags = [
+                row[0]
+                for row in session.query(ModelVersion.version_tag)
+                .filter(
+                    ModelVersion.sport_code == sport_code,
+                    ModelVersion.model_name == model_name,
+                    ModelVersion.market == market,
+                )
+                .all()
+            ]
+            if bump == "test":
+                version_tag = allocate_test_version(existing_tags)
+            else:
+                version_tag = next_release_version(existing_tags, bump)
         artifact_filename = f"{sport_code}_{market}_{model_name}_{version_tag}.joblib"
         artifact_path = os.path.join(self.checkpoint_dir, artifact_filename)
 
@@ -128,7 +144,8 @@ class ModelTrainer:
         latest_path = os.path.join(self.checkpoint_dir, f"{sport_code}_{market}_{m_tag}_latest.joblib")
         joblib.dump(checkpoint_data, latest_path)
 
-        # 6. Database registry logging
+        # 6. Database registry logging.
+        # A fresh training run stays in shadow until promote/rollback replaces ACTIVE.
         finished_at = datetime.now(timezone.utc)
 
         db_model_version = ModelVersion(
@@ -144,7 +161,7 @@ class ModelTrainer:
                 "git_commit": get_git_commit_hash(),
                 "dataset_name": ds_meta["name"],
             },
-            status="ACTIVE",
+            status="SHADOW",
         )
         session.add(db_model_version)
         session.flush()
@@ -185,11 +202,11 @@ class ModelTrainer:
             "feature_version": self.feature_version,
         }
 
-    def train_all(self, session: Session, sport_code: str = "tennis") -> List[Dict[str, Any]]:
+    def train_all(self, session: Session, sport_code: str = "tennis", bump: str = "patch") -> List[Dict[str, Any]]:
         """Trains and registers both baseline models: Logistic Regression & Gradient Boosting for a sport."""
         results = []
         for m_type in ["lr", "gb"]:
-            res = self.train_model(session=session, model_type=m_type, sport_code=sport_code)
+            res = self.train_model(session=session, model_type=m_type, sport_code=sport_code, bump=bump)
             results.append(res)
         return results
 

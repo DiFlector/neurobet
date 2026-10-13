@@ -441,7 +441,7 @@ def test_models_registry_and_training_runs():
         mv = ModelVersion(
             id=uuid.uuid4(),
             model_name="tennis_gbdt",
-            version_tag=f"v_test_{uuid.uuid4().hex[:6]}",
+            version_tag=f"test_v1.0.0_{uuid.uuid4().hex[:6]}",
             sport_code="tennis",
             market="match_winner",
             artifact_path="/models/checkpoints/tennis_gbdt.joblib",
@@ -486,7 +486,7 @@ def test_simulation_reset_endpoint():
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "success"
-    assert data["new_balance"] == 100000.0
+    assert data["new_balance"] == 1000.0
     assert data["locked_exposure"] == 0.0
     print("✓ test_simulation_reset_endpoint passed")
 

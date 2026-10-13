@@ -379,6 +379,7 @@ class BetValidationPipeline:
         # ---------------------------------------------------------------------
         # 9. Stake Limits & Constraints
         # ---------------------------------------------------------------------
+        max_stake = round(float(account.balance) * self.config.max_stake_fraction, 2)
         if stake < self.config.min_stake:
             failed.append("STAKE_LIMITS")
             return ValidationReport(
@@ -388,14 +389,19 @@ class BetValidationPipeline:
                 checks_failed=failed,
                 details={"stake": stake, "min": self.config.min_stake},
             )
-        if stake > self.config.max_stake:
+        if stake > max_stake:
             failed.append("STAKE_LIMITS")
             return ValidationReport(
                 is_accepted=False,
                 rejection_code=reject_codes.STAKE_LIMIT_EXCEEDED,
                 checks_passed=passed,
                 checks_failed=failed,
-                details={"stake": stake, "max": self.config.max_stake},
+                details={
+                    "stake": stake,
+                    "max": max_stake,
+                    "balance": float(account.balance),
+                    "max_stake_fraction": self.config.max_stake_fraction,
+                },
             )
         passed.append("STAKE_LIMITS")
 

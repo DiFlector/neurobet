@@ -31,7 +31,7 @@ class BankrollService:
     def get_or_create_account(
         session: Session,
         name: str = "default_paper_account",
-        initial_balance: float = 100_000.00,
+        initial_balance: float = 1_000.00,
         currency: str = "RUB",
     ) -> VirtualAccount:
         """

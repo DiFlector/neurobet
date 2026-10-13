@@ -1,5 +1,6 @@
 """Multi-sport Dataset Builder: Point-in-time feature extraction strictly on real database events."""
 
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,15 +11,9 @@ from sqlalchemy.orm import Session
 
 from contracts import FeatureVector
 from db.models import Event, EventStateSnapshot, OddsSnapshot, TrainingDataset
-from features import (
-    FeatureBuilder,
-    TennisFeatureBuilder,
-    FootballFeatureBuilder,
-    BasketballFeatureBuilder,
-    HockeyFeatureBuilder,
-    VolleyballFeatureBuilder,
-    registry as feature_registry,
-)
+logger = logging.getLogger("neural.dataset")
+
+from features import FeatureBuilder, TennisFeatureBuilder, registry as feature_registry
 
 
 class SportDatasetBuilder:
@@ -33,7 +28,9 @@ class SportDatasetBuilder:
         if feature_builder is not None:
             self.feature_builder = feature_builder
         else:
-            self.feature_builder = feature_registry.get(self.sport_code) or TennisFeatureBuilder()
+            self.feature_builder = feature_registry.get(self.sport_code)
+            if self.feature_builder is None:
+                raise ValueError(f"No feature builder registered for sport '{self.sport_code}'")
 
     def build_from_db(
         self,
@@ -51,6 +48,7 @@ class SportDatasetBuilder:
             select(Event)
             .where(Event.sport_code == self.sport_code)
             .where(Event.status.in_(["finished", "completed"]))
+            .where(Event.source_event_id.op("~")(r"^[0-9]+$"))
             .order_by(Event.scheduled_start_at.asc())
         )
         events = list(session.execute(events_stmt).scalars())
@@ -58,6 +56,7 @@ class SportDatasetBuilder:
         rows: List[List[float]] = []
         labels: List[int] = []
         feature_names: List[str] = []
+        matches_used = 0
 
         if not events:
             raise ValueError(
@@ -124,6 +123,8 @@ class SportDatasetBuilder:
                 # Without real odds, point-in-time market betting feature cannot be formed
                 continue
 
+            matches_used += 1
+
             # 3. Point-in-time extraction: evaluate features at observed cutoffs
             if states:
                 for snapshot in states:
@@ -157,6 +158,14 @@ class SportDatasetBuilder:
                 feature_vals = [float(vec.features.get(k, 0.0)) for k in feature_names]
                 rows.append(feature_vals)
                 labels.append(y_label)
+
+            if matches_used == 1 or matches_used % 10 == 0:
+                logger.info(
+                    "Dataset %s: %d matches, %d rows",
+                    self.sport_code,
+                    matches_used,
+                    len(rows),
+                )
 
         if len(rows) < min_samples_required:
             raise ValueError(
@@ -206,6 +215,7 @@ class SportDatasetBuilder:
             "name": name,
             "row_count": n_samples,
             "storage_path": storage_path,
+            "match_count": matches_used,
             "train_samples": len(X_train),
             "val_samples": len(X_val),
             "feature_count": len(feature_names),

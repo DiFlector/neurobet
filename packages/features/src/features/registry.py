@@ -36,10 +36,7 @@ class FeatureBuilderRegistry:
         """Dispatches feature building to the registered sport builder."""
         builder = self.get(sport_code)
         if not builder:
-            # Fallback to tennis builder for default live processing
-            builder = self._builders.get("tennis")
-            if not builder:
-                raise ValueError(f"No feature builder registered for sport '{sport_code}'")
+            raise ValueError(f"No feature builder registered for sport '{sport_code}'")
 
         return builder.build_features(
             event_id=event_id,

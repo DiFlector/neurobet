@@ -42,6 +42,12 @@ def main():
         default=42,
         help="Random seed for reproducibility",
     )
+    parser.add_argument(
+        "--bump",
+        default="patch",
+        choices=["patch", "minor", "major"],
+        help="Version step: patch v1.0.0->v1.0.1, minor v1.0.0->v1.1.0, major v1.0.0->v2.0.0",
+    )
     args = parser.parse_args()
 
     logger.info("Starting ML training run for sport='%s', model='%s', seed=%d", args.sport, args.model, args.seed)
@@ -57,19 +63,34 @@ def main():
             for sport in SUPPORTED_SPORTS:
                 logger.info("--- Training models for sport: %s ---", sport)
                 if args.model == "all":
-                    res = trainer.train_all(session=session, sport_code=sport)
+                    res = trainer.train_all(session=session, sport_code=sport, bump=args.bump)
                 else:
-                    res = [trainer.train_model(session=session, model_type=args.model, sport_code=sport)]
+                    res = [trainer.train_model(session=session, model_type=args.model, sport_code=sport, bump=args.bump)]
                 results.extend(res)
         else:
             if args.model == "all":
-                results = trainer.train_all(session=session, sport_code=args.sport.lower())
+                results = trainer.train_all(session=session, sport_code=args.sport.lower(), bump=args.bump)
             else:
-                results = [trainer.train_model(session=session, model_type=args.model, sport_code=args.sport.lower())]
+                results = [
+                    trainer.train_model(
+                        session=session,
+                        model_type=args.model,
+                        sport_code=args.sport.lower(),
+                        bump=args.bump,
+                    )
+                ]
 
     logger.info("=== TRAINING RUN SUMMARY ===")
     for res in results:
         m = res["metrics_val"]
+        ds = res.get("dataset_meta") or {}
+        logger.info(
+            "Dataset: matches=%s rows=%s train=%s val=%s",
+            ds.get("match_count"),
+            ds.get("row_count"),
+            ds.get("train_samples"),
+            ds.get("val_samples"),
+        )
         logger.info(
             "Sport: %s | Model: %s | Version: %s | LogLoss: %.4f | Brier: %.4f | Acc: %.4f | AUC: %.4f | ECE: %.4f",
             res["model_name"].split("_")[0].upper(),

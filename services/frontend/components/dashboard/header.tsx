@@ -1,23 +1,20 @@
 "use client";
 
-import { Trophy, Radio } from "lucide-react";
+import { Radio } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { ResetSimulationDialog } from "./reset-modal";
 import { AdminModal } from "./admin-modal";
 
 interface HeaderProps {
   sseConnected: boolean;
   activeSportName: string;
   onResetSimulation: () => Promise<void>;
-  isResetting?: boolean;
 }
 
 export function Header({
   sseConnected,
   activeSportName,
   onResetSimulation,
-  isResetting,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -25,9 +22,11 @@ export function Header({
         {/* Left: Brand & Sport Badge */}
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-2.5 font-bold tracking-tight text-xl">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/30">
-              <Trophy className="h-5 w-5" />
-            </div>
+            <img
+              src="/diflector/neurobet/brand/icon.svg"
+              alt=""
+              className="h-9 w-9 shrink-0"
+            />
             <span className="text-foreground">
               Neuro<span className="text-emerald-500">bet</span>
             </span>
@@ -67,14 +66,7 @@ export function Header({
             </span>
           </div>
 
-          {/* Admin Modal */}
           <AdminModal onResetSimulation={onResetSimulation} />
-
-          {/* Reset Simulation Dialog */}
-          <ResetSimulationDialog
-            onReset={onResetSimulation}
-            isResetting={isResetting}
-          />
 
           {/* Light / Dark Mode Toggle */}
           <ThemeToggle />

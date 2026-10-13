@@ -27,7 +27,7 @@ export function BankrollCards({
   performance,
   loading = false,
 }: BankrollCardsProps) {
-  const balance = bankroll?.available_balance ?? bankroll?.balance ?? 100000;
+  const balance = bankroll?.available_balance ?? bankroll?.balance ?? 1000;
   const equity = bankroll?.total_equity ?? balance;
   const exposure = bankroll?.locked_exposure ?? 0;
 

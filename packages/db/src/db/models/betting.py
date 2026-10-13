@@ -12,8 +12,8 @@ class VirtualAccount(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="RUB", nullable=False)
-    initial_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=100000.00, nullable=False)
-    balance: Mapped[float] = mapped_column(Numeric(12, 2), default=100000.00, nullable=False)
+    initial_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=1000.00, nullable=False)
+    balance: Mapped[float] = mapped_column(Numeric(12, 2), default=1000.00, nullable=False)
     locked_exposure: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

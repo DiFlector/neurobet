@@ -63,7 +63,6 @@ export default function DashboardPage() {
   const [selectedEventData, setSelectedEventData] = React.useState<EventDetailData | null>(null);
   const [modalOpen, setModalOpen] = React.useState<boolean>(false);
   const [sseConnected, setSseConnected] = React.useState<boolean>(false);
-  const [isResetting, setIsResetting] = React.useState<boolean>(false);
   const [loading, setLoading] = React.useState<boolean>(true);
 
   // Load initial bankroll & sports
@@ -287,15 +286,10 @@ export default function DashboardPage() {
 
   // Reset simulation handler
   const handleResetSimulation = async () => {
-    setIsResetting(true);
-    try {
-      const ok = await resetSimulationApi();
-      if (ok) {
-        await loadInitialData();
-        await loadTabContent();
-      }
-    } finally {
-      setIsResetting(false);
+    const ok = await resetSimulationApi();
+    if (ok) {
+      await loadInitialData();
+      await loadTabContent();
     }
   };
 
@@ -306,7 +300,6 @@ export default function DashboardPage() {
         sseConnected={sseConnected}
         activeSportName={getSportNameRu(activeSport)}
         onResetSimulation={handleResetSimulation}
-        isResetting={isResetting}
       />
 
       {/* Main Container */}

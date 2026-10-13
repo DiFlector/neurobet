@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, func, text
+from sqlalchemy import asc, case, desc, func, text
 
 from sports_core import registry
 try:
@@ -234,6 +234,7 @@ def get_events(
     is_live: Optional[bool] = None,
     search: Optional[str] = None,
     include_synthetic: bool = False,
+    with_bets: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
@@ -264,6 +265,10 @@ def get_events(
                 ~Event.source_event_id.like("evt_%"),
                 ~Event.source_event_id.like("dr_%"),
             )
+        if with_bets and Bet is not None and BankrollService is not None:
+            account = BankrollService.get_or_create_account(session)
+            placed_event_ids = session.query(Bet.event_id).filter(Bet.account_id == account.id)
+            q = q.filter(Event.id.in_(placed_event_ids))
 
         total = q.count()
         events = q.order_by(Event.scheduled_start_at.desc()).offset(offset).limit(limit).all()
@@ -875,13 +880,105 @@ def get_portfolio_performance(include_synthetic: bool = False) -> Dict[str, Any]
 # --------------------------------------------------------------------------
 # 8. ML Models & Training Runs Registry
 # --------------------------------------------------------------------------
+def _event_winner(event: Any) -> Optional[str]:
+    meta = getattr(event, "metadata_json", None) or {}
+    score = getattr(event, "current_score", None) or {}
+    winner = meta.get("winner") or meta.get("participant_winner") or score.get("winner")
+    if winner is None:
+        return None
+    text = str(winner).strip().lower()
+    return text or None
+
+
+@app.get("/api/models/live-record")
+def get_model_live_record() -> Dict[str, Any]:
+    """Win rate of ACTIVE and SHADOW models on finished matches."""
+    if not SessionLocal or not ModelVersion or not MLPrediction or not Event:
+        return {"models": []}
+
+    with SessionLocal() as session:
+        models = (
+            session.query(ModelVersion)
+            .filter(ModelVersion.status.in_(["ACTIVE", "SHADOW"]))
+            .order_by(
+                case(
+                    (ModelVersion.status == "ACTIVE", 0),
+                    (ModelVersion.status == "SHADOW", 1),
+                    else_=2,
+                ),
+                ModelVersion.sport_code.asc(),
+                ModelVersion.created_at.desc(),
+            )
+            .all()
+        )
+        version_tags = [m.version_tag for m in models]
+        stats: Dict[str, Dict[str, int]] = {
+            tag: {"settled": 0, "wins": 0} for tag in version_tags
+        }
+        if version_tags:
+            rows = (
+                session.query(MLPrediction, Event)
+                .join(Event, Event.id == MLPrediction.event_id)
+                .filter(
+                    MLPrediction.model_version.in_(version_tags),
+                    Event.status == "finished",
+                )
+                .order_by(MLPrediction.created_at.desc())
+                .all()
+            )
+            seen: set[tuple[str, str]] = set()
+            for prediction, event in rows:
+                key = (str(event.id), prediction.model_version)
+                if key in seen:
+                    continue
+                seen.add(key)
+                winner = _event_winner(event)
+                if not winner:
+                    continue
+                bucket = stats.setdefault(prediction.model_version, {"settled": 0, "wins": 0})
+                bucket["settled"] += 1
+                predicted = (prediction.predicted_outcome or "").strip().lower()
+                if predicted == winner:
+                    bucket["wins"] += 1
+
+        payload = []
+        for model in models:
+            bucket = stats.get(model.version_tag, {"settled": 0, "wins": 0})
+            settled = bucket["settled"]
+            wins = bucket["wins"]
+            payload.append(
+                {
+                    "id": str(model.id),
+                    "model_name": model.model_name,
+                    "version_tag": model.version_tag,
+                    "sport_code": model.sport_code,
+                    "status": model.status,
+                    "settled": settled,
+                    "wins": wins,
+                    "win_rate": round(wins / settled, 4) if settled else None,
+                }
+            )
+        return {"models": payload}
+
+
 @app.get("/api/models")
 def get_model_versions() -> List[Dict[str, Any]]:
     """Returns registered ML model versions and performance checkpoints."""
     if not SessionLocal or not ModelVersion:
         return []
     with SessionLocal() as session:
-        models = session.query(ModelVersion).order_by(ModelVersion.created_at.desc()).all()
+        models = (
+            session.query(ModelVersion)
+            .order_by(
+                case(
+                    (ModelVersion.status == "ACTIVE", 0),
+                    (ModelVersion.status == "SHADOW", 1),
+                    else_=2,
+                ),
+                ModelVersion.created_at.desc(),
+            )
+            .all()
+        )
         return [
             {
                 "id": str(m.id),
@@ -1368,7 +1465,7 @@ def trigger_experiment_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str
 @app.post("/api/simulation/reset")
 def reset_simulation(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Resets virtual bankroll to initial deposit balance (100,000 RUB).
+    Resets virtual bankroll to initial deposit balance (1,000 RUB).
     Creates an explicit RESET transaction in the immutable ledger.
     """
     if not SessionLocal or not VirtualAccount or not LedgerEntry or not BankrollService:

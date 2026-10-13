@@ -41,6 +41,12 @@ const OUTCOME_LABEL: Record<BetOutcomeTone, string> = {
   void: "Возврат",
 };
 
+const OUTCOME_MARK: Record<BetOutcomeTone, string> = {
+  won: "/diflector/neurobet/brand/won.svg",
+  lost: "/diflector/neurobet/brand/lost.svg",
+  void: "/diflector/neurobet/brand/void.svg",
+};
+
 function matchesParticipant(
   outcomeStr: string,
   rawName: string,
@@ -123,7 +129,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
 
   return (
     <Card
-      className={`border transition-all hover:shadow-md ${
+      className={`relative overflow-hidden border transition-all hover:shadow-md ${
         outcomeTone
           ? OUTCOME_CARD[outcomeTone]
           : hasEdge
@@ -131,7 +137,15 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
             : "border-border/60 bg-card/80"
       }`}
     >
-      <CardContent className="p-4 space-y-3.5">
+      {outcomeTone && (
+        <img
+          src={OUTCOME_MARK[outcomeTone]}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 right-0 z-0 h-40 w-40 select-none"
+        />
+      )}
+      <CardContent className="relative z-10 p-4 space-y-3.5">
         {/* Header: Sport, Event ID, Data Quality & Status Badge */}
         <div className="flex items-center gap-1.5 text-xs">
           <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-500" />

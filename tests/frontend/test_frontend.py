@@ -131,7 +131,7 @@ def test_simulation_reset_via_frontend():
         assert resp.status == 200
         data = json.loads(resp.read().decode("utf-8"))
         assert data["status"] in ["success", "reset"]
-        assert data["new_balance"] == 100000.0
+        assert data["new_balance"] == 1000.0
 
     print("✓ test_simulation_reset_via_frontend passed")
 

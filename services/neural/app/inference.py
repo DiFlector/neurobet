@@ -34,14 +34,10 @@ class MLPredictor:
         model_type: str = "lr",
         checkpoint_dir: str = "/app/models/checkpoints",
     ) -> "MLPredictor":
-        """Loads latest checkpoint for specified sport and model type."""
+        """Loads the exact latest checkpoint file for this sport and model type."""
         path = os.path.join(checkpoint_dir, f"{sport_code}_{market}_{model_type}_latest.joblib")
-        if not os.path.exists(path):
-            # Fallback to any joblib in directory
-            for f in sorted(os.listdir(checkpoint_dir), reverse=True):
-                if f.endswith(".joblib") and sport_code in f:
-                    path = os.path.join(checkpoint_dir, f)
-                    break
+        if not os.path.isfile(path):
+            return cls(checkpoint_path=None)
         return cls(checkpoint_path=path)
 
     def predict(

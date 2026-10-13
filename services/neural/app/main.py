@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, List
 
 from .inference import MLPredictor
 
@@ -26,19 +26,137 @@ def handle_shutdown(signum, frame):
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
+_logged_skips: set[str] = set()
 
-def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
+
+def _log_skip_once(key: str, message: str) -> None:
+    if key in _logged_skips:
+        return
+    _logged_skips.add(key)
+    logger.info(message)
+
+
+def load_registry_predictors() -> tuple[Dict[str, MLPredictor], Dict[str, List[MLPredictor]]]:
+    """Load each sport's own ACTIVE and SHADOW match-winner checkpoints.
+
+    A sport with a missing or unreadable artifact is left out. No other sport's file is used.
+    """
+    active: Dict[str, MLPredictor] = {}
+    shadow: Dict[str, List[MLPredictor]] = {}
+    try:
+        from db.connection import SessionLocal
+        from db.models.ml_registry import ModelVersion
+    except ImportError as exc:
+        logger.warning("Model registry is unavailable: %s", exc)
+        return active, shadow
+
+    try:
+        with SessionLocal() as session:
+            rows = (
+                session.query(ModelVersion)
+                .filter(
+                    ModelVersion.market == "match_winner",
+                    ModelVersion.status.in_(["ACTIVE", "SHADOW"]),
+                )
+                .order_by(ModelVersion.created_at.desc())
+                .all()
+            )
+    except Exception as exc:
+        logger.warning("Could not read model registry: %s", exc)
+        return active, shadow
+
+    for row in rows:
+        sport = (row.sport_code or "").strip().lower()
+        if not sport:
+            logger.warning("Skip registry row %s: empty sport_code", row.version_tag)
+            continue
+        if row.status == "ACTIVE" and sport in active:
+            logger.warning(
+                "Extra ACTIVE model for %s ignored: %s",
+                sport,
+                row.version_tag,
+            )
+            continue
+        predictor = MLPredictor(checkpoint_path=row.artifact_path)
+        if not predictor.checkpoint_data:
+            logger.warning(
+                "Sport %s stays off: artifact for %s is missing or unreadable (%s)",
+                sport,
+                row.version_tag,
+                row.artifact_path,
+            )
+            continue
+        version_tag = predictor.checkpoint_data.get("version_tag")
+        if row.status == "ACTIVE":
+            active[sport] = predictor
+            logger.info("Loaded active %s predictor (%s)", sport, version_tag)
+        else:
+            shadow.setdefault(sport, []).append(predictor)
+            logger.info("Loaded shadow %s predictor (%s)", sport, version_tag)
+    return active, shadow
+
+
+def _save_prediction(session, evt, sport_code: str, predictor: MLPredictor, f_vec, odds_a, odds_b, is_shadow: bool) -> bool:
+    from db.models.predictions import MLPrediction as DBMLPrediction
+
+    res = predictor.predict(f_vec, odds_a=odds_a, odds_b=odds_b, is_shadow=is_shadow)
+    best = next(
+        (item for item in res.outcomes if item.outcome == res.best_outcome),
+        None,
+    )
+    if best is None and res.outcomes:
+        best = max(res.outcomes, key=lambda item: item.edge)
+    if best is None:
+        return False
+
+    session.add(
+        DBMLPrediction(
+            event_id=evt.id,
+            sport_code=sport_code,
+            model_version=res.model_version,
+            market=res.market or "match_winner",
+            predicted_outcome=best.outcome,
+            model_probability=best.model_probability,
+            bookmaker_odds=best.bookmaker_odds,
+            fair_odds=best.fair_odds,
+            edge=best.edge,
+            expected_value=best.expected_value,
+            confidence=best.confidence,
+            has_positive_edge=res.has_positive_edge,
+            is_shadow=res.is_shadow,
+            outcomes_detail={
+                "outcomes": [
+                    {
+                        "outcome": item.outcome,
+                        "probability": item.model_probability,
+                        "fair_odds": item.fair_odds,
+                    }
+                    for item in res.outcomes
+                ]
+            },
+        )
+    )
+    return True
+
+
+def evaluate_pending_events(
+    predictors: Dict[str, MLPredictor],
+    shadow_predictors: Dict[str, List[MLPredictor]] | None = None,
+) -> int:
     """
     Finds active events in the database that don't have predictions yet,
     computes calibrated ML probabilities and edge, and writes them to ml_predictions.
     """
+    shadows = shadow_predictors or {}
     try:
-        from sqlalchemy import or_
+        from sqlalchemy import and_, or_
+        from sqlalchemy.orm import aliased
 
         from db.connection import SessionLocal
-        from db.models.events import Event
+        from db.models.events import Event, EventStateSnapshot
+        from db.models.odds import OddsSnapshot
         from db.models.predictions import MLPrediction as DBMLPrediction
-        from contracts import FeatureVector
+        from features import registry as feature_registry
     except ImportError as e:
         logger.debug("Database models not available for inference: %s", e)
         return 0
@@ -52,12 +170,16 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
                 Event.source_event_id.like("evt_%"),
                 Event.source_event_id.like("dr_%"),
             )
+            combat = aliased(DBMLPrediction)
             active_events = (
                 session.query(Event)
-                .outerjoin(DBMLPrediction, DBMLPrediction.event_id == Event.id)
+                .outerjoin(
+                    combat,
+                    and_(combat.event_id == Event.id, combat.is_shadow.is_(False)),
+                )
                 .filter(Event.status.in_(["live", "prematch"]))
                 .filter(~synthetic)
-                .filter(DBMLPrediction.id.is_(None))
+                .filter(combat.id.is_(None))
                 .order_by(Event.is_live.desc(), Event.created_at.desc())
                 .limit(30)
                 .all()
@@ -65,10 +187,24 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
             if not active_events:
                 return 0
 
+            cutoff = datetime.now(timezone.utc)
             for evt in active_events:
-                sport_code = (evt.sport_code or "tennis").lower()
-                predictor = predictors.get(sport_code) or predictors.get("tennis")
+                sport_code = (evt.sport_code or "").strip().lower()
+                if not sport_code:
+                    _log_skip_once("empty-sport", "Skip events with an empty sport code")
+                    continue
+                predictor = predictors.get(sport_code)
                 if not predictor or not predictor.checkpoint_data:
+                    _log_skip_once(
+                        f"off:{sport_code}",
+                        f"Skip {sport_code} events: no active model for this sport",
+                    )
+                    continue
+                if feature_registry.get(sport_code) is None:
+                    _log_skip_once(
+                        f"features:{sport_code}",
+                        f"Skip {sport_code} events: no feature builder for this sport",
+                    )
                     continue
 
                 odds_a, odds_b = _latest_outcome_odds(session, evt.id)
@@ -76,69 +212,44 @@ def evaluate_pending_events(predictors: Dict[str, MLPredictor]) -> int:
                     logger.debug("Skip event %s: no match-winner odds snapshot", evt.id)
                     continue
 
-                feature_names = predictor.checkpoint_data.get("feature_names", [])
-                features_dict = {}
-                for name in feature_names:
-                    lowered = name.lower()
-                    if "odds" in lowered:
-                        if lowered.endswith("_b") or "player_b" in lowered or "team_b" in lowered:
-                            features_dict[name] = odds_b
-                        else:
-                            features_dict[name] = odds_a
-                    elif "win_rate" in lowered:
-                        features_dict[name] = 0.55
-                    elif "h2h" in lowered:
-                        features_dict[name] = 0.50
-                    elif "score" in lowered or "games" in lowered:
-                        features_dict[name] = 1.0
-                    else:
-                        features_dict[name] = 0.0
-
-                f_vec = FeatureVector(
-                    event_id=str(evt.id),
-                    sport_code=sport_code,
-                    feature_version="1.0.0",
-                    features=features_dict,
-                )
-
-                try:
-                    res = predictor.predict(f_vec, odds_a=odds_a, odds_b=odds_b)
-                    best = next(
-                        (item for item in res.outcomes if item.outcome == res.best_outcome),
-                        None,
+                states = (
+                    session.query(EventStateSnapshot)
+                    .filter(
+                        EventStateSnapshot.event_id == evt.id,
+                        EventStateSnapshot.observed_at <= cutoff,
                     )
-                    if best is None and res.outcomes:
-                        best = max(res.outcomes, key=lambda item: item.edge)
-                    if best is None:
-                        continue
-
-                    db_pred = DBMLPrediction(
+                    .order_by(EventStateSnapshot.observed_at.asc())
+                    .all()
+                )
+                odds_rows = (
+                    session.query(OddsSnapshot)
+                    .filter(
+                        OddsSnapshot.event_id == evt.id,
+                        OddsSnapshot.observed_at <= cutoff,
+                    )
+                    .order_by(OddsSnapshot.observed_at.asc())
+                    .all()
+                )
+                try:
+                    f_vec = feature_registry.build(
                         event_id=evt.id,
                         sport_code=sport_code,
-                        model_version=res.model_version,
-                        market=res.market or "match_winner",
-                        predicted_outcome=best.outcome,
-                        model_probability=best.model_probability,
-                        bookmaker_odds=best.bookmaker_odds,
-                        fair_odds=best.fair_odds,
-                        edge=best.edge,
-                        expected_value=best.expected_value,
-                        confidence=best.confidence,
-                        has_positive_edge=res.has_positive_edge,
-                        is_shadow=res.is_shadow,
-                        outcomes_detail={
-                            "outcomes": [
-                                {
-                                    "outcome": item.outcome,
-                                    "probability": item.model_probability,
-                                    "fair_odds": item.fair_odds,
-                                }
-                                for item in res.outcomes
-                            ]
-                        },
+                        cutoff_time=cutoff,
+                        event_snapshots=states,
+                        odds_snapshots=odds_rows,
                     )
-                    session.add(db_pred)
-                    evaluated_count += 1
+                except Exception as ex:
+                    logger.debug("Skip event %s: feature build failed: %s", evt.id, ex)
+                    continue
+
+                try:
+                    if _save_prediction(session, evt, sport_code, predictor, f_vec, odds_a, odds_b, False):
+                        evaluated_count += 1
+                    for shadow_predictor in shadows.get(sport_code, []):
+                        if _save_prediction(
+                            session, evt, sport_code, shadow_predictor, f_vec, odds_a, odds_b, True
+                        ):
+                            evaluated_count += 1
                 except Exception as ex:
                     logger.debug("Prediction error for event %s: %s", evt.id, ex)
 
@@ -215,16 +326,9 @@ async def main():
     available_ckpts = [f for f in os.listdir(chk_dir) if f.endswith(".joblib")]
     logger.info("Discovered %d model checkpoints in %s: %s", len(available_ckpts), chk_dir, available_ckpts[:5])
 
-    # Pre-load latest models for all supported sports
-    predictors: Dict[str, MLPredictor] = {}
-    for sport in ["tennis", "football", "basketball", "hockey", "volleyball"]:
-        try:
-            pred = MLPredictor.load_latest(sport, market="match_winner", model_type="gb", checkpoint_dir=chk_dir)
-            if pred and pred.checkpoint_data:
-                predictors[sport] = pred
-                logger.info("Loaded active %s GB predictor (%s)", sport, pred.checkpoint_data.get("version_tag"))
-        except Exception as e:
-            logger.warning("Could not load predictor for %s: %s", sport, e)
+    predictors, shadow_predictors = load_registry_predictors()
+    if not predictors:
+        logger.warning("No active sport models loaded. Live inference stays off until an ACTIVE artifact is readable.")
 
     # Start embedded metrics HTTP server for Prometheus scraping on port 8000
     try:
@@ -275,7 +379,7 @@ async def main():
                 f.write(datetime.now(timezone.utc).isoformat())
 
             # Evaluate any events currently awaiting ML prediction
-            evaluate_pending_events(predictors)
+            evaluate_pending_events(predictors, shadow_predictors)
         except Exception as exc:
             logger.error("Unhandled error in neural main loop: %s", exc)
 
