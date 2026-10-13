@@ -17,9 +17,11 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
     """
     Upsert tennis events from a collector snapshot.
 
-    An empty snapshot does not finish live rows: a failed Fonbet poll must not
-    clear the board. When the snapshot contains events, tennis rows that
-    disappeared from the feed are marked finished. Synthetic fixtures are ignored.
+    An empty snapshot does not clear live rows: a failed Fonbet poll must not
+    wipe the board. When the snapshot contains events, tennis rows missing from
+    the feed for >90s leave the live board as ``interrupted`` while waiting for
+    an official Fonbet result. Only settlement sync may set ``finished``.
+    Synthetic fixtures are ignored. Last known score is preserved.
     """
     events = payload.get("events") or []
     if not isinstance(events, list) or not events:
@@ -54,17 +56,19 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
 
         if seen_ids:
             # Grace window: a single partial/jittered Fonbet poll must not wipe the board.
-            # Only finish live rows that have not been seen for long enough.
+            # Only take live rows off the board after they have been unseen long enough.
+            # Do not mark finished or wipe current_score — that requires official results.
             from datetime import timedelta
 
             now = datetime.now(timezone.utc)
             stale_before = now - timedelta(seconds=90)
-            finished = (
+            awaiting = (
                 session.query(Event)
                 .filter(
                     Event.sport_code == "tennis",
                     Event.source == "fonbet",
                     Event.is_live.is_(True),
+                    Event.status == "live",
                     ~Event.source_event_id.in_(seen_ids),
                     Event.last_seen_at.isnot(None),
                     Event.last_seen_at < stale_before,
@@ -76,17 +80,17 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
                 .update(
                     {
                         Event.is_live: False,
-                        Event.status: "finished",
-                        Event.finished_at: now,
+                        Event.status: "interrupted",
                     },
                     synchronize_session=False,
                 )
             )
             session.commit()
-            if finished:
+            if awaiting:
                 logger.info(
-                    "Marked %d tennis events finished; missing from live snapshot for >90s.",
-                    finished,
+                    "Moved %d tennis events to interrupted (awaiting official result); "
+                    "missing from live snapshot for >90s.",
+                    awaiting,
                 )
 
     logger.info("Persisted %d tennis events from Fonbet snapshot.", persisted)

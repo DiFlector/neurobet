@@ -13,6 +13,14 @@ class ResearchConfig:
         self.max_text_size: int = int(os.getenv("RESEARCH_MAX_TEXT_SIZE", "30000"))
         self.timeout_seconds: float = float(os.getenv("RESEARCH_TIMEOUT_SECONDS", "10.0"))
         self.cache_ttl_seconds: int = int(os.getenv("RESEARCH_CACHE_TTL_SECONDS", "3600"))
+        # ddg | searxng | hybrid (оба параллельно) | mock
+        self.search_backend: str = os.getenv("RESEARCH_SEARCH_BACKEND", "hybrid").strip().lower()
+        self.searxng_url: str = os.getenv("RESEARCH_SEARXNG_URL", "").strip()
+        self.persist_to_db: bool = os.getenv("RESEARCH_PERSIST_DB", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
         # MinIO
         self.minio_host: str = os.getenv("MINIO_HOST", "minio")

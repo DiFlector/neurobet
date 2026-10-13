@@ -4,8 +4,9 @@ import abc
 import json
 import logging
 import os
+import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from contracts import LLMAnalysisInput, LLMStructuredVerdict
 from .config import config
 from .hardware import HardwareManager
@@ -13,6 +14,75 @@ from .parser import LLMOutputParser
 from .prompt import PROMPT_VERSION, SYSTEM_INSTRUCTION, format_user_prompt
 
 logger = logging.getLogger("llm.engine")
+
+_CYR_MAP = str.maketrans(
+    {
+        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+        "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+        "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+        "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+        "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    }
+)
+
+
+def _participant_tokens(name: str) -> Set[str]:
+    tokens: Set[str] = set()
+    for part in re.split(r"[/|,]+", name or ""):
+        for w in re.findall(r"[A-Za-zА-Яа-яЁё]{3,}", part):
+            low = w.lower()
+            tokens.add(low)
+            lat = low.translate(_CYR_MAP)
+            if len(lat) >= 3:
+                tokens.add(lat)
+    return tokens
+
+
+def _signal_about_participants(
+    title: str,
+    snippet: str,
+    participant_names: Sequence[str],
+    keywords: Iterable[str],
+    window_words: int = 4,
+) -> bool:
+    """Injury/fatigue only if attributed to home/away, not a third player."""
+    low = f"{title} {snippet}".lower()
+    tokens: Set[str] = set()
+    for name in participant_names:
+        tokens |= _participant_tokens(name)
+    if not tokens:
+        return False
+
+    subjects: List[str] = []
+    for pat in (
+        r"injured\s+([a-zа-яё]+(?:[\s\-]+[a-zа-яё]+)?)",
+        r"([a-zа-яё]+(?:[\s\-]+[a-zа-яё]+)?)\s+(?:retired|withdrawn|withdrew)",
+        r"травм\w*\s+(?:у\s+)?([a-zа-яё]+)",
+        r"([a-zа-яё]+)\s+травм",
+        r"дисквалифицир\w*\s+([a-zа-яё]+)",
+        r"([a-zа-яё]+)\s+дисквалифицир",
+    ):
+        for m in re.finditer(pat, low, flags=re.IGNORECASE):
+            subjects.append(m.group(1))
+    if subjects:
+        for sub in subjects:
+            sub_l = sub.lower()
+            sub_lat = sub_l.translate(_CYR_MAP)
+            if any(tok in sub_l or tok in sub_lat for tok in tokens):
+                return True
+        return False
+
+    words = re.findall(r"[a-zа-яё0-9]+", low)
+    kw_set = {k.lower() for k in keywords}
+    for i, w in enumerate(words):
+        if not any(kw in w or w.startswith(kw) for kw in kw_set):
+            continue
+        lo, hi = max(0, i - window_words), min(len(words), i + window_words + 1)
+        window = " ".join(words[lo:hi])
+        window_lat = window.translate(_CYR_MAP)
+        if any(tok in window or tok in window_lat for tok in tokens):
+            return True
+    return False
 
 
 class BaseInferenceEngine(abc.ABC):
@@ -73,15 +143,22 @@ class DeterministicEngine(BaseInferenceEngine):
         has_injury_risk = False
         has_fatigue_risk = False
         evidence_list = []
+        participants = [input_data.event.home, input_data.event.away]
 
         for r in input_data.research:
-            text = (r.title + " " + r.snippet).lower()
-            if any(kw in text for kw in injury_keywords):
+            title = r.title or ""
+            snippet = r.snippet or ""
+            # Только сигнал про участников этого матча — не чужая травма из той же статьи.
+            if _signal_about_participants(title, snippet, participants, injury_keywords):
                 has_injury_risk = True
-                evidence_list.append({"url": None, "domain": r.domain, "note": f"Injury signal: {r.snippet[:80]}"})
-            if any(kw in text for kw in fatigue_keywords):
+                evidence_list.append(
+                    {"url": None, "domain": r.domain, "note": f"Injury signal: {snippet[:80]}"}
+                )
+            if _signal_about_participants(title, snippet, participants, fatigue_keywords):
                 has_fatigue_risk = True
-                evidence_list.append({"url": None, "domain": r.domain, "note": f"Fatigue signal: {r.snippet[:80]}"})
+                evidence_list.append(
+                    {"url": None, "domain": r.domain, "note": f"Fatigue signal: {snippet[:80]}"}
+                )
 
         reason_codes = []
         contradictions = []

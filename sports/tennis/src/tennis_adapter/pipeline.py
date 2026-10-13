@@ -96,6 +96,34 @@ class TennisPipeline:
     def __init__(self, adapter: Optional[TennisSportAdapter] = None):
         self.adapter = adapter or TennisSportAdapter()
 
+    @staticmethod
+    def _official_result_is_definitive(metadata: Optional[Dict[str, Any]]) -> bool:
+        """True when metadata carries a definitive Fonbet official result."""
+        if not isinstance(metadata, dict):
+            return False
+        payload = metadata.get("fonbet_official_result")
+        if not isinstance(payload, dict):
+            return False
+        try:
+            from contracts import CanonicalMatchResult
+            from bankroll.settlement import EventResultMatcher
+
+            return EventResultMatcher.result_is_definitive(
+                CanonicalMatchResult.model_validate(payload)
+            )
+        except Exception:
+            return False
+
+    @staticmethod
+    def _clear_premature_official_result(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Drop mid-match / review official markers that must not stick on a live row."""
+        meta = dict(metadata or {})
+        meta.pop("fonbet_official_result", None)
+        meta.pop("pending_official_result", None)
+        meta.pop("settlement_review_required", None)
+        meta.pop("settlement_review_reason", None)
+        return meta
+
     def process_and_persist(
         self,
         session: Session,
@@ -111,6 +139,8 @@ class TennisPipeline:
            - If odds unchanged: skips redundant snapshot insertion.
            - If odds changed: creates new OddsSnapshot in hypertable and records OddsChangeEvent.
         Returns (EventContract, EventStateContract, OddsSnapshotContract, odds_changed: bool).
+
+        Rows already closed with a definitive official result are never resurrected to live.
         """
         now = observed_at or datetime.now(timezone.utc)
 
@@ -151,10 +181,36 @@ class TennisPipeline:
             session.flush()  # Generates db_event.id UUID
             logger.debug("Created new DBEvent: %s (source_id=%s)", db_event.id, db_event.source_event_id)
         else:
+            has_definitive = self._official_result_is_definitive(db_event.metadata_json)
+            terminal = db_event.status in ("finished", "cancelled") or db_event.finished_at is not None
+
+            if has_definitive and terminal:
+                # Official result already sealed the match — never resurrect to live.
+                db_event.last_seen_at = now
+                db_event.is_live = False
+                session.flush()
+                logger.debug(
+                    "Skip live overwrite for sealed event %s (source_id=%s)",
+                    db_event.id,
+                    db_event.source_event_id,
+                )
+                session.commit()
+                return event_contract, state_contract, odds_contract, False
+
+            # Match still (or again) on the live board: drop premature official markers.
+            if event_contract.is_live and db_event.metadata_json:
+                official = (db_event.metadata_json or {}).get("fonbet_official_result")
+                pending = (db_event.metadata_json or {}).get("pending_official_result")
+                if official or pending or (db_event.metadata_json or {}).get("settlement_review_required"):
+                    if not has_definitive:
+                        db_event.metadata_json = self._clear_premature_official_result(
+                            db_event.metadata_json
+                        )
+
             db_event.is_live = event_contract.is_live
             db_event.status = event_contract.status
             db_event.last_seen_at = now
-            # Collector re-saw the match: clear stale settlement/finish markers.
+            # Collector re-saw the match: clear heuristic finish/interrupted markers only.
             if event_contract.is_live:
                 db_event.finished_at = None
             db_event.current_period = state_contract.current_period

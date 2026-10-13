@@ -66,6 +66,14 @@ def health() -> Dict[str, Any]:
         "max_pages": config.max_pages,
         "allowlist_count": len(config.allowlist),
         "cache_ttl_seconds": config.cache_ttl_seconds,
+        "search_backend": config.search_backend,
+        "search_engines": (
+            ["searxng", "ddg"]
+            if config.search_backend in ("hybrid", "both", "all")
+            else [config.search_backend]
+        ),
+        "searxng_configured": bool(config.searxng_url),
+        "persist_to_db": config.persist_to_db,
         "utc_time": datetime.now(timezone.utc).isoformat(),
     }
 

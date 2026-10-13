@@ -64,6 +64,29 @@ class FonbetResultsParser:
 
         return None
 
+    @staticmethod
+    def tennis_sets_from_score(score_str: str) -> Optional[Tuple[int, int]]:
+        """Parse leading set score like '2:1 (6-4 ...)' into (sets_a, sets_b)."""
+        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", str(score_str or "").strip())
+        if not match:
+            return None
+        return int(match.group(1)), int(match.group(2))
+
+    @classmethod
+    def tennis_match_is_complete(cls, sets_a: int, sets_b: int) -> bool:
+        """
+        True when one side has enough sets to win the match.
+        Best-of-3 ends at 2 sets; best-of-5 at 3. A single set (1:0 / 0:1) is never enough.
+        """
+        leader = max(sets_a, sets_b)
+        trailer = min(sets_a, sets_b)
+        if leader < 2:
+            return False
+        # Best-of-3: 2-0 or 2-1. Best-of-5: 3-0 / 3-1 / 3-2.
+        if leader == 2:
+            return trailer <= 1
+        return leader >= 3 and trailer < leader
+
     @classmethod
     def parse_tennis_winner_and_status(
         cls,
@@ -73,6 +96,9 @@ class FonbetResultsParser:
         """
         Extract winner ('player_a' or 'player_b') and status from tennis score.
         Returns: (winner, status, is_retired, is_walkover)
+
+        A leading set score of 1:0 / 0:1 without retirement is an in-progress
+        match, not FINISHED — Fonbet results feed often publishes that mid-match.
         """
         clean_score = str(score_str or "").strip()
         all_text = f"{clean_score} {comments_str}".lower()
@@ -84,10 +110,9 @@ class FonbetResultsParser:
             return None, "CANCELLED", False, True
 
         # Check sets score pattern at start, e.g. '2:1 (6-4 3-6 6-1)' or '0-2 (4-6 2-6)'
-        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", clean_score)
-        if match:
-            sets_a = int(match.group(1))
-            sets_b = int(match.group(2))
+        sets = cls.tennis_sets_from_score(clean_score)
+        if sets is not None:
+            sets_a, sets_b = sets
 
             if is_retired:
                 # If retired with established winner in official result
@@ -98,9 +123,13 @@ class FonbetResultsParser:
                 else:
                     return None, "VOID", True, False
 
+            # Mid-match one-set leads must not close the event.
+            if not cls.tennis_match_is_complete(sets_a, sets_b):
+                return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
+
             if sets_a > sets_b:
                 return "player_a", "FINISHED", False, False
-            elif sets_b > sets_a:
+            if sets_b > sets_a:
                 return "player_b", "FINISHED", False, False
 
         if is_retired:
@@ -242,6 +271,14 @@ class FonbetResultsParser:
 
         return None, "SETTLEMENT_REVIEW_REQUIRED", False, False
 
+    FONBET_SPORT_TARGETS: Tuple[Tuple[int, str], ...] = (
+        (FONBET_TENNIS_SPORT_ID, "tennis"),
+        (FONBET_FOOTBALL_SPORT_ID, "football"),
+        (FONBET_HOCKEY_SPORT_ID, "hockey"),
+        (FONBET_BASKETBALL_SPORT_ID, "basketball"),
+        (FONBET_VOLLEYBALL_SPORT_ID, "volleyball"),
+    )
+
     @classmethod
     def parse_feed(
         cls,
@@ -310,7 +347,6 @@ class FonbetResultsParser:
                         comments_str=comments,
                     )
 
-
                 canonical = CanonicalMatchResult(
                     source_event_id=str(event_data.get("id")),
                     sport_code=sport_code,
@@ -331,4 +367,14 @@ class FonbetResultsParser:
             len(results),
             sport_code,
         )
+        return results
+
+    @classmethod
+    def parse_all_sports(cls, data: Dict[str, Any]) -> List[CanonicalMatchResult]:
+        """Parse results for every supported Fonbet sport id in one pass."""
+        results: List[CanonicalMatchResult] = []
+        for sport_id, sport_code in cls.FONBET_SPORT_TARGETS:
+            results.extend(
+                cls.parse_feed(data, target_sport_id=sport_id, sport_code=sport_code)
+            )
         return results

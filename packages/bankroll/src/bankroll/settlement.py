@@ -7,7 +7,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.events import Event
@@ -29,14 +29,118 @@ class EventResultMatcher:
 
     @staticmethod
     def normalize_name(name: str) -> str:
-        """Strip initials and common prefixes for fuzzy participant matching."""
+        """Strip punctuation for participant matching."""
         return " ".join(re.findall(r"\w+", name.lower())) if name else ""
+
+    @classmethod
+    def names_match(cls, left: str, right: str) -> bool:
+        """True when one normalized name contains the other (order-safe substring)."""
+        a = cls.normalize_name(left)
+        b = cls.normalize_name(right)
+        if not a or not b:
+            return False
+        return a in b or b in a
+
+    @classmethod
+    def participants_match(
+        cls,
+        event_a: str,
+        event_b: str,
+        result_a: str,
+        result_b: str,
+    ) -> bool:
+        """Match both participants, allowing swapped sides."""
+        direct = cls.names_match(event_a, result_a) and cls.names_match(event_b, result_b)
+        swapped = cls.names_match(event_a, result_b) and cls.names_match(event_b, result_a)
+        return direct or swapped
+
+    @classmethod
+    def _canonical_from_metadata(cls, payload: Any) -> Optional[CanonicalMatchResult]:
+        """Best-effort rebuild of CanonicalMatchResult from stored metadata JSON."""
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return CanonicalMatchResult.model_validate(payload)
+        except Exception:
+            return None
+
+    @classmethod
+    def find_event_for_result(
+        cls,
+        session: Session,
+        result: CanonicalMatchResult,
+        *,
+        allow_live: bool = False,
+    ) -> Optional[Event]:
+        """
+        Resolve a DB event for an official result.
+
+        Fonbet results.json uses internal ids that do not match live source_event_id,
+        so name matching is the primary production path after the id lookup.
+        """
+        stmt = select(Event).where(
+            Event.source == "fonbet",
+            Event.source_event_id == str(result.source_event_id),
+        )
+        event = session.execute(stmt).scalars().first()
+        if event:
+            return event
+
+        candidates_stmt = select(Event).where(
+            Event.sport_code == result.sport_code,
+            Event.source == "fonbet",
+        )
+        if not allow_live:
+            candidates_stmt = candidates_stmt.where(
+                Event.is_live.is_(False),
+                Event.status != "live",
+            )
+        candidates = session.execute(candidates_stmt).scalars().all()
+        matched = [
+            e
+            for e in candidates
+            if cls.participants_match(
+                e.participant_a_name or "",
+                e.participant_b_name or "",
+                result.participant_a,
+                result.participant_b,
+            )
+        ]
+        if not matched:
+            return None
+        if len(matched) == 1:
+            return matched[0]
+
+        # Prefer rows still missing an official result, then most recently seen.
+        def _rank(e: Event) -> Tuple[int, float]:
+            has_official = 1 if (e.metadata_json or {}).get("fonbet_official_result") else 0
+            ts = e.last_seen_at or e.updated_at or e.created_at
+            epoch = ts.timestamp() if ts is not None else 0.0
+            return (has_official, -epoch)
+
+        matched.sort(key=_rank)
+        return matched[0]
+
+    @classmethod
+    def _tennis_set_total(cls, score: Optional[str]) -> int:
+        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", str(score or "").strip())
+        if not match:
+            return 0
+        return int(match.group(1)) + int(match.group(2))
+
+    @classmethod
+    def _tennis_set_leader(cls, score: Optional[str]) -> int:
+        match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", str(score or "").strip())
+        if not match:
+            return 0
+        return max(int(match.group(1)), int(match.group(2)))
 
     @classmethod
     def result_is_definitive(cls, result: CanonicalMatchResult) -> bool:
         """
         True only when the official result is safe to remove a match from the live board.
         Placeholder rows (0:0 / review / no winner) must not wipe in-play events.
+        Tennis one-set leads (1:0 / 0:1) are mid-match and never definitive.
         """
         if result.status in ("CANCELLED", "VOID"):
             return True
@@ -51,7 +155,43 @@ class EventResultMatcher:
             return False
         if score_head.startswith("0:0") or score_head.startswith("0-0"):
             return False
+
+        if result.sport_code == "tennis" and result.status == "FINISHED" and not result.is_retired:
+            try:
+                from sports_core.results_parser import FonbetResultsParser
+
+                sets = FonbetResultsParser.tennis_sets_from_score(result.final_score or "")
+                if sets is None or not FonbetResultsParser.tennis_match_is_complete(*sets):
+                    return False
+            except Exception:
+                # Fail closed: without a complete set score tennis must not finish.
+                if cls._tennis_set_leader(result.final_score) < 2:
+                    return False
         return True
+
+    @classmethod
+    def _result_is_weaker_than_existing(
+        cls,
+        incoming: CanonicalMatchResult,
+        existing: CanonicalMatchResult,
+    ) -> bool:
+        """True when incoming would degrade an already stored definitive result."""
+        if not cls.result_is_definitive(existing):
+            return False
+        if not cls.result_is_definitive(incoming):
+            return True
+        if incoming.sport_code == "tennis" and existing.sport_code == "tennis":
+            incoming_sets = cls._tennis_set_total(incoming.final_score)
+            existing_sets = cls._tennis_set_total(existing.final_score)
+            if incoming_sets < existing_sets:
+                return True
+            if (
+                incoming_sets == existing_sets
+                and cls._tennis_set_leader(incoming.final_score)
+                < cls._tennis_set_leader(existing.final_score)
+            ):
+                return True
+        return False
 
     @classmethod
     def match_and_complete_event(
@@ -61,35 +201,17 @@ class EventResultMatcher:
     ) -> Optional[Event]:
         """
         Find event in DB by source_event_id or participant names and mark finished.
-        Incomplete / review-only results never force a still-live event off the board.
+        Incomplete / review-only results never force a still-live event off the board
+        and never overwrite an already stored definitive score.
         """
-        # 1. Primary lookup by source_event_id
-        stmt = select(Event).where(
-            Event.source == "fonbet",
-            Event.source_event_id == str(result.source_event_id),
+        # Official results feed ids != live source_event_id; name match is required.
+        # Allow live only for definitive results so a just-finished match can close.
+        definitive_preview = cls.result_is_definitive(result)
+        event = cls.find_event_for_result(
+            session,
+            result,
+            allow_live=definitive_preview,
         )
-        event = session.execute(stmt).scalars().first()
-
-        # 2. Secondary fallback: fuzzy names only among already non-live rows
-        #    (never steal an active live match via 4-char prefix collision).
-        if not event:
-            stmt_fuzzy = select(Event).where(
-                Event.sport_code == result.sport_code,
-                Event.source == "fonbet",
-                Event.is_live.is_(False),
-                Event.status != "live",
-                or_(
-                    and_(
-                        Event.participant_a_name.ilike(f"%{result.participant_a[:4]}%"),
-                        Event.participant_b_name.ilike(f"%{result.participant_b[:4]}%"),
-                    ),
-                    and_(
-                        Event.participant_a_name.ilike(f"%{result.participant_b[:4]}%"),
-                        Event.participant_b_name.ilike(f"%{result.participant_a[:4]}%"),
-                    ),
-                ),
-            )
-            event = session.execute(stmt_fuzzy).scalars().first()
 
         if not event:
             logger.debug(
@@ -102,25 +224,36 @@ class EventResultMatcher:
 
         definitive = cls.result_is_definitive(result)
         still_live = bool(event.is_live) or (event.status == "live")
+        meta = dict(event.metadata_json or {})
+        existing_official = cls._canonical_from_metadata(meta.get("fonbet_official_result"))
 
-        # Incomplete official rows (often 0:0 placeholders) must not clear the live board.
-        if still_live and not definitive:
-            meta = dict(event.metadata_json or {})
+        # Incomplete official rows must not finish the event or wipe a good score.
+        if not definitive:
             meta["pending_official_result"] = result.model_dump(mode="json")
             if result.status == "SETTLEMENT_REVIEW_REQUIRED":
                 meta["settlement_review_required"] = True
                 meta["settlement_review_reason"] = (
-                    f"Incomplete official score while event still live: {result.final_score}"
+                    f"Incomplete official score: {result.final_score}"
                 )
             event.metadata_json = meta
             session.flush()
             logger.info(
-                "Skip finishing live event %s (%s vs %s): non-definitive result score=%s status=%s",
+                "Skip finishing event %s (%s vs %s): non-definitive result score=%s status=%s live=%s",
                 event.id,
                 event.participant_a_name,
                 event.participant_b_name,
                 result.final_score,
                 result.status,
+                still_live,
+            )
+            return event
+
+        if existing_official and cls._result_is_weaker_than_existing(result, existing_official):
+            logger.info(
+                "Keep stronger official result for event %s: existing=%s incoming=%s",
+                event.id,
+                existing_official.final_score,
+                result.final_score,
             )
             return event
 
@@ -135,8 +268,10 @@ class EventResultMatcher:
             "is_retired": result.is_retired,
             "is_walkover": result.is_walkover,
         }
-        meta = dict(event.metadata_json or {})
         meta["fonbet_official_result"] = result.model_dump(mode="json")
+        meta.pop("pending_official_result", None)
+        meta.pop("settlement_review_required", None)
+        meta.pop("settlement_review_reason", None)
         event.metadata_json = meta
         session.flush()
 

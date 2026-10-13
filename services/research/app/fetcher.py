@@ -1,6 +1,7 @@
 """Sandboxed HTTP Fetcher with strict GET-only enforcement and anti-bot boundaries."""
 
 import logging
+import re
 from typing import Dict, Optional, Tuple
 try:
     import httpx
@@ -85,10 +86,18 @@ class SandboxedFetcher:
                 logger.warning(f"Error fetching '{url}': {e}")
                 return None, f"FETCH_ERROR: {str(e)}"
 
-        # 4. Check CAPTCHA / Cloudflare challenge markers
+        # 4. CAPTCHA / Cloudflare: только явный challenge, не сам факт наличия CF-скриптов
+        # (у многих сайтов в HTML есть "challenge-platform", но страница уже отдана).
         body_lower = body.lower()
-        captcha_signatures = ["cf-browser-verification", "g-recaptcha", "hcaptcha", "challenge-platform"]
-        if any(sig in body_lower for sig in captcha_signatures):
+        hard_challenge = (
+            "cf-browser-verification" in body_lower
+            or "just a moment..." in body_lower
+            or "checking your browser before accessing" in body_lower
+            or "attention required! | cloudflare" in body_lower
+        )
+        soft_widgets = ("g-recaptcha" in body_lower) or ("hcaptcha" in body_lower)
+        textish_len = len(re.sub(r"<[^>]+>", " ", body))
+        if hard_challenge or (soft_widgets and textish_len < 800):
             logger.warning(f"CAPTCHA signature detected on '{url}'. Aborting without bypass.")
             return None, "CAPTCHA_CHALLENGE_ABORTED"
 

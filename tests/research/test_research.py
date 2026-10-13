@@ -209,10 +209,17 @@ def test_research_cache_ttl_and_idempotency():
     print("test_research_cache_ttl_and_idempotency: OK")
 
 
+def test_search_does_not_invent_urls_without_backend():
+    """Without mocks, mock backend must return empty — no fake tennis.com paths."""
+    search = SearchBackend(backend="mock")
+    assert search.search("Medvedev vs Alcaraz tennis injury") == []
+    print("test_search_does_not_invent_urls_without_backend: OK")
+
+
 def test_end_to_end_research_pipeline():
     """Verify WebResearchService executes search, extraction, and packet packaging."""
     fetcher = SandboxedFetcher()
-    search = SearchBackend()
+    search = SearchBackend(backend="mock")
     cache = ResearchCache()
 
     # Setup mock URLs
@@ -321,6 +328,7 @@ if __name__ == "__main__":
     test_security_gates_get_only_and_captcha_abort()
     test_live_score_authority_guard()
     test_research_cache_ttl_and_idempotency()
+    test_search_does_not_invent_urls_without_backend()
     test_end_to_end_research_pipeline()
     test_backend_api_endpoints()
     print("\nALL WEB RESEARCH TESTS PASSED SUCCESSFULLY!")

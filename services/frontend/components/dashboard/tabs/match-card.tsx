@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { EventItem, PredictionItem } from "@/lib/types";
+import { BetItem, EventItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
 import { MatchTimer, stakeKindFromMarket } from "@/components/dashboard/match-timer";
@@ -19,11 +19,27 @@ import { MatchClock } from "@/components/dashboard/match-clock";
 import { FitText } from "@/components/dashboard/fit-text";
 import { HintTooltip, qualityScoreHint } from "@/components/dashboard/hint-tooltip";
 
+export type BetOutcomeTone = "won" | "lost" | "void";
+
 interface MatchCardProps {
   event: EventItem;
   predictions: PredictionItem[];
   onInspect: (eventId: string) => void;
+  betOutcome?: BetOutcomeTone | null;
 }
+
+/** Card fills for a settled bet on a finished match. */
+const OUTCOME_CARD: Record<BetOutcomeTone, string> = {
+  won: "border-[#22c55e] bg-[#14532d]",
+  lost: "border-[#ef4444] bg-[#7f1d1d]",
+  void: "border-[#a1a1aa] bg-[#3f3f46]",
+};
+
+const OUTCOME_LABEL: Record<BetOutcomeTone, string> = {
+  won: "Победа",
+  lost: "Поражение",
+  void: "Возврат",
+};
 
 function matchesParticipant(
   outcomeStr: string,
@@ -69,7 +85,7 @@ function matchesParticipant(
   return false;
 }
 
-export function MatchCard({ event, predictions, onInspect }: MatchCardProps) {
+export function MatchCard({ event, predictions, onInspect, betOutcome = null }: MatchCardProps) {
   const primaryPred =
     predictions.find((p) => p.has_positive_edge) || predictions[0] || null;
 
@@ -103,13 +119,16 @@ export function MatchCard({ event, predictions, onInspect }: MatchCardProps) {
 
   const stakePlayer = isPredictedA ? playerA : isPredictedB ? playerB : null;
   const hasEdge = isLive && primaryPred && primaryPred.has_positive_edge;
+  const outcomeTone = isFinished ? betOutcome : null;
 
   return (
     <Card
       className={`border transition-all hover:shadow-md ${
-        hasEdge
-          ? "border-emerald-500/50 bg-emerald-500/[0.02] dark:bg-emerald-950/[0.15]"
-          : "border-border/60 bg-card/80"
+        outcomeTone
+          ? OUTCOME_CARD[outcomeTone]
+          : hasEdge
+            ? "border-emerald-500/50 bg-emerald-500/[0.02] dark:bg-emerald-950/[0.15]"
+            : "border-border/60 bg-card/80"
       }`}
     >
       <CardContent className="p-4 space-y-3.5">
@@ -151,7 +170,25 @@ export function MatchCard({ event, predictions, onInspect }: MatchCardProps) {
                 Линия
               </Badge>
             )}
-            {isFinished && (
+            {isFinished && outcomeTone === "won" && (
+              <Badge className="border-[#22c55e] bg-[#22c55e] text-white gap-1 text-[11px] font-medium px-2 py-0.5 hover:bg-[#22c55e]">
+                <CheckCircle2 className="h-3 w-3" />
+                {OUTCOME_LABEL.won}
+              </Badge>
+            )}
+            {isFinished && outcomeTone === "lost" && (
+              <Badge className="border-[#ef4444] bg-[#ef4444] text-white gap-1 text-[11px] font-medium px-2 py-0.5 hover:bg-[#ef4444]">
+                <CheckCircle2 className="h-3 w-3" />
+                {OUTCOME_LABEL.lost}
+              </Badge>
+            )}
+            {isFinished && outcomeTone === "void" && (
+              <Badge className="border-[#a1a1aa] bg-[#a1a1aa] text-[#18181b] gap-1 text-[11px] font-medium px-2 py-0.5 hover:bg-[#a1a1aa]">
+                <CheckCircle2 className="h-3 w-3" />
+                {OUTCOME_LABEL.void}
+              </Badge>
+            )}
+            {isFinished && !outcomeTone && (
               <Badge
                 variant="outline"
                 className="bg-muted text-muted-foreground border-border gap-1 text-[11px] font-medium px-2 py-0.5"

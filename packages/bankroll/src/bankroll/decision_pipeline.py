@@ -3,8 +3,9 @@
 from datetime import datetime, timezone, timedelta
 import logging
 import os
+import re
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from sqlalchemy.orm import Session
 
 from contracts import (
@@ -27,6 +28,75 @@ from db.models.predictions import LLMDecision
 
 logger = logging.getLogger("bankroll.decision_pipeline")
 
+_CYR_MAP = str.maketrans(
+    {
+        "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+        "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+        "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+        "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+        "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    }
+)
+
+
+def _participant_tokens(name: str) -> Set[str]:
+    tokens: Set[str] = set()
+    for part in re.split(r"[/|,]+", name or ""):
+        for w in re.findall(r"[A-Za-zА-Яа-яЁё]{3,}", part):
+            low = w.lower()
+            tokens.add(low)
+            lat = low.translate(_CYR_MAP)
+            if len(lat) >= 3:
+                tokens.add(lat)
+    return tokens
+
+
+def _research_signal_about_match(
+    title: str,
+    snippet: str,
+    participant_names: Sequence[str],
+    keywords: Iterable[str],
+    window_words: int = 4,
+) -> bool:
+    """True when signal is attributed to home/away, not a third player."""
+    low = f"{title} {snippet}".lower()
+    tokens: Set[str] = set()
+    for name in participant_names:
+        tokens |= _participant_tokens(name)
+    if not tokens:
+        return False
+
+    subjects: List[str] = []
+    for pat in (
+        r"injured\s+([a-zа-яё]+(?:[\s\-]+[a-zа-яё]+)?)",
+        r"([a-zа-яё]+(?:[\s\-]+[a-zа-яё]+)?)\s+(?:retired|withdrawn|withdrew)",
+        r"травм\w*\s+(?:у\s+)?([a-zа-яё]+)",
+        r"([a-zа-яё]+)\s+травм",
+        r"дисквалифицир\w*\s+([a-zа-яё]+)",
+        r"([a-zа-яё]+)\s+дисквалифицир",
+    ):
+        for m in re.finditer(pat, low, flags=re.IGNORECASE):
+            subjects.append(m.group(1))
+    if subjects:
+        for sub in subjects:
+            sub_l = sub.lower()
+            sub_lat = sub_l.translate(_CYR_MAP)
+            if any(tok in sub_l or tok in sub_lat for tok in tokens):
+                return True
+        return False
+
+    words = re.findall(r"[a-zа-яё0-9]+", low)
+    kw_set = {k.lower() for k in keywords}
+    for i, w in enumerate(words):
+        if not any(kw in w or w.startswith(kw) for kw in kw_set):
+            continue
+        lo, hi = max(0, i - window_words), min(len(words), i + window_words + 1)
+        window = " ".join(words[lo:hi])
+        window_lat = window.translate(_CYR_MAP)
+        if any(tok in window or tok in window_lat for tok in tokens):
+            return True
+    return False
+
 
 class HttpLlmClient:
     """HTTP client for the local LLM /api/analyze endpoint."""
@@ -48,8 +118,8 @@ class HttpLlmClient:
 def fetch_research_snippets(
     candidate: CandidateItem,
     research_url: Optional[str] = None,
-    timeout: float = 25.0,
-    max_pages: int = 3,
+    timeout: float = 60.0,
+    max_pages: int = 5,
 ) -> List[Dict[str, str]]:
     """Fetches qualitative research evidence for a candidate from the research service."""
     import httpx
@@ -316,11 +386,16 @@ class CombinedDecisionPipeline:
         except Exception as exc:
             logger.warning("HTTP LLM unavailable (%s); using deterministic fallback", exc)
 
-        # Check for injury keywords in research
+        # Injury only if keyword is near home/away name (not a third player).
         injury_keywords = ["травм", "боль", "снялся", "снялась", "injury", "retire"]
         has_injury = False
         for r in llm_input.research:
-            if any(k in r.snippet.lower() for k in injury_keywords):
+            if _research_signal_about_match(
+                r.title or "",
+                r.snippet or "",
+                [llm_input.event.home, llm_input.event.away],
+                injury_keywords,
+            ):
                 has_injury = True
                 break
 

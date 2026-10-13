@@ -14,13 +14,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { EventItem, PredictionItem, SportItem } from "@/lib/types";
+import { BetItem, EventItem, PredictionItem, SportItem } from "@/lib/types";
+import { BetOutcomeTone } from "./match-card";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
 import { MatchCard } from "./match-card";
 
 interface MatchesTabProps {
   events: EventItem[];
   predictions: Record<string, PredictionItem[]>;
+  bets?: BetItem[];
   sports: SportItem[];
   activeSport: string;
   onSelectSport: (sportCode: string) => void;
@@ -32,9 +34,29 @@ interface MatchesTabProps {
   loading?: boolean;
 }
 
+function settleBetTone(eventBets: BetItem[]): BetOutcomeTone | null {
+  const settled = eventBets.filter(
+    (bet) => bet.status === "WON" || bet.status === "LOST" || bet.status === "VOID"
+  );
+  if (settled.length === 0) return null;
+  const wonStake = settled
+    .filter((bet) => bet.status === "WON")
+    .reduce((sum, bet) => sum + Number(bet.stake || 0), 0);
+  const lostStake = settled
+    .filter((bet) => bet.status === "LOST")
+    .reduce((sum, bet) => sum + Number(bet.stake || 0), 0);
+  if (wonStake > 0 && lostStake === 0) return "won";
+  if (lostStake > 0 && wonStake === 0) return "lost";
+  if (wonStake === 0 && lostStake === 0) return "void";
+  if (wonStake > lostStake) return "won";
+  if (lostStake > wonStake) return "lost";
+  return "void";
+}
+
 export function MatchesTab({
   events,
   predictions,
+  bets = [],
   sports,
   activeSport,
   onSelectSport,
@@ -90,6 +112,22 @@ export function MatchesTab({
       return true;
     });
   }, [events]);
+
+  const betOutcomeByEvent = React.useMemo(() => {
+    const grouped = new Map<string, BetItem[]>();
+    for (const bet of bets) {
+      if (!bet.event_id) continue;
+      const list = grouped.get(bet.event_id) || [];
+      list.push(bet);
+      grouped.set(bet.event_id, list);
+    }
+    const tones = new Map<string, BetOutcomeTone>();
+    for (const [eventId, eventBets] of grouped) {
+      const tone = settleBetTone(eventBets);
+      if (tone) tones.set(eventId, tone);
+    }
+    return tones;
+  }, [bets]);
 
   const eventsWithPredictionsCount = React.useMemo(() => {
     return deduplicatedEvents.filter(
@@ -296,6 +334,7 @@ export function MatchesTab({
               key={evt.id}
               event={evt}
               predictions={predictions[evt.id] || []}
+              betOutcome={betOutcomeByEvent.get(evt.id) || null}
               onInspect={onInspectEvent}
             />
           ))}

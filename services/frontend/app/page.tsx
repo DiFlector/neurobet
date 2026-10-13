@@ -90,11 +90,13 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       if (activeTab === "matches") {
-        const [evs, preds] = await Promise.all([
+        const [evs, preds, bList] = await Promise.all([
           fetchEvents(activeSport, activeStatus, searchQuery),
           fetchPredictions(),
+          fetchBets(500),
         ]);
         if (evs) setEvents(evs);
+        if (bList.length > 0) setBets(bList);
         if (preds && preds.length > 0) {
           const pMap: Record<string, PredictionItem[]> = {};
           preds.forEach((p) => {
@@ -172,12 +174,14 @@ export default function DashboardPage() {
       if (perf) setPerformance(perf);
 
       if (view.activeTab === "matches") {
-        const [evs, preds] = await Promise.all([
+        const [evs, preds, bList] = await Promise.all([
           fetchEvents(view.activeSport, view.activeStatus, view.searchQuery),
           fetchPredictions(),
+          fetchBets(500),
         ]);
         // Keep previous board on empty/failed polls so the live list does not flicker away.
         if (evs && evs.length > 0) setEvents(evs);
+        if (bList.length > 0) setBets(bList);
         if (preds && preds.length > 0) applyPredictions(preds);
         if (view.modalOpen && view.eventId) {
           const details = await fetchEventDetails(view.eventId);
@@ -365,6 +369,7 @@ export default function DashboardPage() {
             <MatchesTab
               events={events}
               predictions={predictions}
+              bets={bets}
               sports={sports}
               activeSport={activeSport}
               onSelectSport={setActiveSport}

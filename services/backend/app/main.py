@@ -1474,8 +1474,12 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
     raw_data = payload or {}
     results_list = []
 
+    parse_results = getattr(FonbetResultsParser, "parse_all_sports", None)
+    if parse_results is None:
+        parse_results = FonbetResultsParser.parse_feed
+
     if "events" in raw_data and "sections" in raw_data:
-        results_list = FonbetResultsParser.parse_feed(raw_data)
+        results_list = parse_results(raw_data)
     else:
         import subprocess
         for url in [
@@ -1491,20 +1495,24 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
                 if proc.returncode == 0 and proc.stdout:
                     parsed_feed = json.loads(proc.stdout.decode("utf-8", errors="replace"))
                     if "events" in parsed_feed and "sections" in parsed_feed:
-                        results_list = FonbetResultsParser.parse_feed(parsed_feed)
+                        results_list = parse_results(parsed_feed)
                         break
             except Exception:
                 pass
 
     events_matched = 0
+    events_finished = 0
     bets_settled = 0
     with SessionLocal() as session:
         for res in results_list:
             matched_evt = EventResultMatcher.match_and_complete_event(session, res)
             if matched_evt:
                 events_matched += 1
-                settlements = BetSettlementEngine.settle_event_bets(session, matched_evt, res)
-                bets_settled += len(settlements)
+                definitive = EventResultMatcher.result_is_definitive(res)
+                if definitive and matched_evt.status in ("finished", "cancelled"):
+                    events_finished += 1
+                    settlements = BetSettlementEngine.settle_event_bets(session, matched_evt, res)
+                    bets_settled += len(settlements)
 
         session.commit()
         review_queue = BetSettlementEngine.get_review_queue(session)
@@ -1512,6 +1520,7 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
             "status": "success",
             "results_parsed": len(results_list),
             "events_matched": events_matched,
+            "events_finished": events_finished,
             "bets_settled": bets_settled,
             "review_queue_count": len(review_queue),
         }

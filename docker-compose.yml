@@ -303,6 +303,42 @@ services:
       start_period: 5s
 
   # ============================================================================
+  # Infrastructure: SearXNG (private search for research service)
+  # ============================================================================
+  searxng:
+    image: searxng/searxng:latest
+    container_name: neurobet_searxng
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-neurobet_searxng_change_me}
+    volumes:
+      - ./infra/searxng:/etc/searxng:rw
+    networks:
+      - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || wget -qO- http://127.0.0.1:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================================
   # Core Platform: Web Research
   # ============================================================================
   research:
@@ -315,6 +351,17 @@ services:
       - .env
     environment:
       TZ: ${TZ:-UTC}
+      RESEARCH_SEARCH_BACKEND: ${RESEARCH_SEARCH_BACKEND:-hybrid}
+      RESEARCH_SEARXNG_URL: ${RESEARCH_SEARXNG_URL:-http://searxng:8080}
+      RESEARCH_PERSIST_DB: ${RESEARCH_PERSIST_DB:-true}
+      RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-15}
+      POSTGRES_HOST: postgres
+      POSTGRES_INTERNAL_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      searxng:
+        condition: service_started
     networks:
       - neurobet-public
       - neurobet-internal

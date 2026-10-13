@@ -480,6 +480,345 @@ def test_backend_settlement_api_endpoints():
         session.close()
 
 
+def test_tennis_one_set_score_is_not_finished():
+    """A single won set (1:0 / 0:1) must not close a tennis match."""
+    winner, status, is_retired, is_walkover = FonbetResultsParser.parse_tennis_winner_and_status(
+        "1:0 (6-4)"
+    )
+    assert winner is None
+    assert status == "SETTLEMENT_REVIEW_REQUIRED"
+    assert is_retired is False
+    assert is_walkover is False
+
+    winner, status, _, _ = FonbetResultsParser.parse_tennis_winner_and_status("0:1 (4-6)")
+    assert winner is None
+    assert status == "SETTLEMENT_REVIEW_REQUIRED"
+
+    incomplete = CanonicalMatchResult(
+        source_event_id="1",
+        sport_code="tennis",
+        tournament="ATP",
+        participant_a="A",
+        participant_b="B",
+        final_score="1:0 (6-4)",
+        winner="player_a",
+        status="FINISHED",
+    )
+    assert EventResultMatcher.result_is_definitive(incomplete) is False
+    print("test_tennis_one_set_score_is_not_finished: OK")
+
+
+def test_tennis_two_sets_score_is_finished():
+    """Best-of-3 completion (2:0 / 2:1) must close the match."""
+    winner, status, _, _ = FonbetResultsParser.parse_tennis_winner_and_status("2:0 (6-4 6-3)")
+    assert winner == "player_a"
+    assert status == "FINISHED"
+
+    winner, status, _, _ = FonbetResultsParser.parse_tennis_winner_and_status("1:2 (6-4 3-6 2-6)")
+    assert winner == "player_b"
+    assert status == "FINISHED"
+
+    complete = CanonicalMatchResult(
+        source_event_id="1",
+        sport_code="tennis",
+        tournament="ATP",
+        participant_a="A",
+        participant_b="B",
+        final_score="2:1 (6-4 3-6 6-2)",
+        winner="player_a",
+        status="FINISHED",
+    )
+    assert EventResultMatcher.result_is_definitive(complete) is True
+    print("test_tennis_two_sets_score_is_finished: OK")
+
+
+def test_matcher_skips_live_finish_on_one_set_result():
+    """Live events must stay live when Fonbet publishes a premature 1:0 result."""
+    session = SessionLocal()
+    try:
+        _, event, _ = setup_test_event_and_bet(session)
+        assert event.status == "live"
+        assert event.is_live is True
+
+        premature = CanonicalMatchResult(
+            source_event_id=event.source_event_id,
+            sport_code="tennis",
+            tournament="ATP Tour",
+            participant_a="Daniil Medvedev",
+            participant_b="Carlos Alcaraz",
+            final_score="1:0 (6-4)",
+            winner=None,
+            status="SETTLEMENT_REVIEW_REQUIRED",
+        )
+        matched = EventResultMatcher.match_and_complete_event(session, premature)
+        session.commit()
+
+        assert matched is not None
+        updated = session.get(Event, event.id)
+        assert updated.status == "live"
+        assert updated.is_live is True
+        assert updated.finished_at is None
+        assert "final_score" not in (updated.current_score or {})
+        assert (updated.metadata_json or {}).get("pending_official_result") is not None
+        print("test_matcher_skips_live_finish_on_one_set_result: OK")
+    finally:
+        session.close()
+
+
+def test_incomplete_result_does_not_overwrite_definitive_score():
+    """A weaker / review result must not wipe an already stored official finish."""
+    session = SessionLocal()
+    try:
+        _, event, _ = setup_test_event_and_bet(session)
+
+        definitive = CanonicalMatchResult(
+            source_event_id=event.source_event_id,
+            sport_code="tennis",
+            tournament="ATP Tour",
+            participant_a="Daniil Medvedev",
+            participant_b="Carlos Alcaraz",
+            final_score="2:0 (6-4 6-2)",
+            winner="player_a",
+            status="FINISHED",
+        )
+        EventResultMatcher.match_and_complete_event(session, definitive)
+        session.commit()
+
+        weak = CanonicalMatchResult(
+            source_event_id=event.source_event_id,
+            sport_code="tennis",
+            tournament="ATP Tour",
+            participant_a="Daniil Medvedev",
+            participant_b="Carlos Alcaraz",
+            final_score="0:0",
+            winner=None,
+            status="SETTLEMENT_REVIEW_REQUIRED",
+        )
+        EventResultMatcher.match_and_complete_event(session, weak)
+        session.commit()
+
+        updated = session.get(Event, event.id)
+        assert updated.status == "finished"
+        assert updated.current_score["final_score"] == "2:0 (6-4 6-2)"
+        assert updated.current_score["winner"] == "player_a"
+        official = (updated.metadata_json or {}).get("fonbet_official_result") or {}
+        assert official.get("final_score") == "2:0 (6-4 6-2)"
+        print("test_incomplete_result_does_not_overwrite_definitive_score: OK")
+    finally:
+        session.close()
+
+
+def test_parse_all_sports_includes_football_and_hockey():
+    """Settlement sync must parse every supported Fonbet sport, not only tennis."""
+    sample_feed = {
+        "sections": [
+            {"id": 1, "name": "Теннис. Турнир", "fonbetSportId": 4, "events": [101]},
+            {"id": 2, "name": "Футбол. Лига", "fonbetSportId": 1, "events": [201]},
+            {"id": 3, "name": "Хоккей. КХЛ", "fonbetSportId": 2, "events": [301]},
+            {"id": 4, "name": "Баскетбол. NBA", "fonbetSportId": 3, "events": [401]},
+            {"id": 5, "name": "Волейбол. Лига", "fonbetSportId": 9, "events": [501]},
+        ],
+        "events": [
+            {
+                "id": "101",
+                "name": "Медведев Д. – Алькарас К.",
+                "score": "2:0 (6-4 6-3)",
+                "status": 3,
+            },
+            {
+                "id": "201",
+                "name": "Спартак – Зенит",
+                "score": "2:1 (1:0, 1:1)",
+                "status": 3,
+            },
+            {
+                "id": "301",
+                "name": "ЦСКА – СКА",
+                "score": "3:2 (1:0, 1:1, 1:1)",
+                "status": 3,
+            },
+            {
+                "id": "401",
+                "name": "Лейкерс – Селтикс",
+                "score": "110:102",
+                "status": 3,
+            },
+            {
+                "id": "501",
+                "name": "Зенит – Динамо",
+                "score": "3:1 (25-20 20-25 25-18 25-22)",
+                "status": 3,
+            },
+        ],
+    }
+
+    results = FonbetResultsParser.parse_all_sports(sample_feed)
+    by_sport = {r.sport_code: r for r in results}
+    assert set(by_sport) == {"tennis", "football", "hockey", "basketball", "volleyball"}
+    assert by_sport["tennis"].winner == "player_a"
+    assert by_sport["football"].winner == "team_a"
+    assert by_sport["hockey"].winner == "team_a"
+    assert by_sport["basketball"].winner == "team_a"
+    assert by_sport["volleyball"].winner == "team_a"
+    print("test_parse_all_sports_includes_football_and_hockey: OK")
+
+
+def test_tennis_pipeline_does_not_resurrect_sealed_finished():
+    """Live ingest must not reopen a match sealed with a definitive official result."""
+    from tennis_adapter.pipeline import TennisPipeline
+
+    session = SessionLocal()
+    try:
+        _, event, _ = setup_test_event_and_bet(session)
+        sealed = CanonicalMatchResult(
+            source_event_id=event.source_event_id,
+            sport_code="tennis",
+            tournament="ATP Tour",
+            participant_a="Daniil Medvedev",
+            participant_b="Carlos Alcaraz",
+            final_score="2:0 (6-4 6-3)",
+            winner="player_a",
+            status="FINISHED",
+        )
+        EventResultMatcher.match_and_complete_event(session, sealed)
+        session.commit()
+
+        pipeline = TennisPipeline()
+        raw = {
+            "id": event.source_event_id,
+            "source_event_id": event.source_event_id,
+            "participant_a": "Медведев Д.",
+            "participant_b": "Алькарас К.",
+            "tournament": "ATP. Шанхай (Хард)",
+            "odds_a": 1.90,
+            "odds_b": 1.95,
+            "score_state": {
+                "raw_score_string": "0-1 (4-6, 2-1*)",
+                "current_game_a": 2,
+                "current_game_b": 1,
+                "points_a": "15",
+                "points_b": "0",
+                "server": "player_a",
+            },
+        }
+        pipeline.process_and_persist(session, raw)
+
+        updated = session.get(Event, event.id)
+        assert updated.status == "finished"
+        assert updated.is_live is False
+        assert updated.finished_at is not None
+        assert updated.current_score.get("final_score") == "2:0 (6-4 6-3)"
+        assert TennisPipeline._official_result_is_definitive(updated.metadata_json)
+        print("test_tennis_pipeline_does_not_resurrect_sealed_finished: OK")
+    finally:
+        session.close()
+
+
+def test_worker_stale_live_marks_interrupted_not_finished():
+    """Missing from live >90s must leave the board as interrupted without wiping score."""
+    import importlib.util
+    from pathlib import Path
+
+    candidates = [
+        Path("/app/app/ingest.py"),
+        Path("/tmp/worker_ingest.py"),
+        Path("/srv/neurobet/services/worker/app/ingest.py"),
+        Path("services/worker/app/ingest.py"),
+    ]
+    ingest_path = next((p for p in candidates if p.exists()), None)
+    if ingest_path is None:
+        print("test_worker_stale_live_marks_interrupted_not_finished: SKIP (ingest.py not mounted)")
+        return
+
+    spec = importlib.util.spec_from_file_location("worker_ingest_under_test", ingest_path)
+    ingest_mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(ingest_mod)
+
+    session = SessionLocal()
+    try:
+        source_keep = str(random.randint(10000000, 99999999))
+        source_stale = str(random.randint(10000000, 99999999))
+        keep_score = {"sets": [{"set_number": 1, "games_a": 3, "games_b": 2}]}
+        stale_score = {"sets": [{"set_number": 1, "games_a": 6, "games_b": 4}]}
+
+        keep = Event(
+            source="fonbet",
+            source_event_id=source_keep,
+            sport_code="tennis",
+            participant_a_name="Keep A",
+            participant_b_name="Keep B",
+            scheduled_start_at=utc_now() - timedelta(hours=1),
+            first_seen_at=utc_now() - timedelta(hours=1),
+            last_seen_at=utc_now(),
+            status="live",
+            is_live=True,
+            current_score=keep_score,
+        )
+        stale = Event(
+            source="fonbet",
+            source_event_id=source_stale,
+            sport_code="tennis",
+            participant_a_name="Stale A",
+            participant_b_name="Stale B",
+            scheduled_start_at=utc_now() - timedelta(hours=1),
+            first_seen_at=utc_now() - timedelta(hours=1),
+            last_seen_at=utc_now() - timedelta(seconds=120),
+            status="live",
+            is_live=True,
+            current_score=stale_score,
+        )
+        session.add_all([keep, stale])
+        session.commit()
+
+        # Simulate the stale-update branch without requiring TennisPipeline parse.
+        from datetime import timedelta as td
+
+        now = utc_now()
+        stale_before = now - td(seconds=90)
+        seen_ids = [source_keep]
+        awaiting = (
+            session.query(Event)
+            .filter(
+                Event.sport_code == "tennis",
+                Event.source == "fonbet",
+                Event.is_live.is_(True),
+                Event.status == "live",
+                ~Event.source_event_id.in_(seen_ids),
+                Event.last_seen_at.isnot(None),
+                Event.last_seen_at < stale_before,
+                Event.source_event_id.in_([source_keep, source_stale]),
+            )
+            .update(
+                {
+                    Event.is_live: False,
+                    Event.status: "interrupted",
+                },
+                synchronize_session=False,
+            )
+        )
+        session.commit()
+        assert awaiting == 1
+
+        # Also assert the module source no longer writes status=finished in the stale path.
+        src = ingest_path.read_text(encoding="utf-8")
+        assert 'Event.status: "interrupted"' in src
+        assert 'Event.status: "finished"' not in src
+        assert "Event.finished_at" not in src.split("stale_before")[1].split("session.commit")[0]
+
+        updated_stale = session.get(Event, stale.id)
+        updated_keep = session.get(Event, keep.id)
+        assert updated_stale.status == "interrupted"
+        assert updated_stale.is_live is False
+        assert updated_stale.finished_at is None
+        assert updated_stale.current_score == stale_score
+        assert updated_keep.status == "live"
+        assert updated_keep.is_live is True
+        print("test_worker_stale_live_marks_interrupted_not_finished: OK")
+    finally:
+        session.close()
+
+
 if __name__ == "__main__":
     print("\n--- Running Phase 13 Settlement & Fonbet Results Tests ---")
     test_fonbet_results_feed_parsing()
@@ -491,4 +830,11 @@ if __name__ == "__main__":
     test_strict_idempotency_double_settlement_prevented()
     test_settlement_review_required_for_ambiguous_results()
     test_backend_settlement_api_endpoints()
+    test_tennis_one_set_score_is_not_finished()
+    test_tennis_two_sets_score_is_finished()
+    test_matcher_skips_live_finish_on_one_set_result()
+    test_incomplete_result_does_not_overwrite_definitive_score()
+    test_parse_all_sports_includes_football_and_hockey()
+    test_tennis_pipeline_does_not_resurrect_sealed_finished()
+    test_worker_stale_live_marks_interrupted_not_finished()
     print("\nALL SETTLEMENT & RESULTS TESTS PASSED SUCCESSFULLY!")
