@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -472,6 +473,7 @@ def get_predictions(event_id: Optional[str] = None, limit: int = 50) -> List[Dic
                 "edge": float(p.edge),
                 "confidence": float(p.confidence),
                 "has_positive_edge": p.has_positive_edge,
+                "is_shadow": bool(p.is_shadow),
                 "created_at": p.created_at.isoformat(),
             }
             for p in preds
@@ -1559,6 +1561,9 @@ async def live_stream_updates(request: Request, max_heartbeats: Optional[int] = 
 # --------------------------------------------------------------------------
 # 11. Settlement, Decision Layer & Scheduler Endpoints (Phase 13, 16, 17)
 # --------------------------------------------------------------------------
+_settlement_sync_lock = threading.Lock()
+
+
 @app.post("/api/settlement/sync")
 def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
@@ -1567,6 +1572,16 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
     """
     if not SessionLocal or not FonbetResultsParser or not EventResultMatcher or not BetSettlementEngine:
         return {"error": "Settlement engine unavailable"}
+
+    if not _settlement_sync_lock.acquire(blocking=False):
+        return {
+            "status": "busy",
+            "results_parsed": 0,
+            "events_matched": 0,
+            "events_finished": 0,
+            "bets_settled": 0,
+            "review_queue_count": 0,
+        }
 
     raw_data = payload or {}
     results_list = []
@@ -1600,19 +1615,24 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
     events_matched = 0
     events_finished = 0
     bets_settled = 0
-    with SessionLocal() as session:
+    try:
+        with SessionLocal() as session:
+            index = EventResultMatcher.build_index(session)
         for res in results_list:
-            matched_evt = EventResultMatcher.match_and_complete_event(session, res)
-            if matched_evt:
-                events_matched += 1
-                definitive = EventResultMatcher.result_is_definitive(res)
-                if definitive and matched_evt.status in ("finished", "cancelled"):
-                    events_finished += 1
-                    settlements = BetSettlementEngine.settle_event_bets(session, matched_evt, res)
-                    bets_settled += len(settlements)
-
-        session.commit()
-        review_queue = BetSettlementEngine.get_review_queue(session)
+            definitive = EventResultMatcher.result_is_definitive(res)
+            if EventResultMatcher.find_indexed_event(index, res, allow_live=definitive) is None:
+                continue
+            with SessionLocal() as session:
+                matched_evt = EventResultMatcher.match_and_complete_event(session, res, index=index)
+                if matched_evt:
+                    events_matched += 1
+                    if definitive and matched_evt.status in ("finished", "cancelled"):
+                        events_finished += 1
+                        settlements = BetSettlementEngine.settle_event_bets(session, matched_evt, res)
+                        bets_settled += len(settlements)
+                session.commit()
+        with SessionLocal() as session:
+            review_queue = BetSettlementEngine.get_review_queue(session)
         return {
             "status": "success",
             "results_parsed": len(results_list),
@@ -1621,6 +1641,8 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
             "bets_settled": bets_settled,
             "review_queue_count": len(review_queue),
         }
+    finally:
+        _settlement_sync_lock.release()
 
 
 @app.get("/api/settlement/review-queue")
@@ -1960,19 +1982,46 @@ def sync_ml_predictions_to_llm(limit: int = 15, dispatch: bool = True) -> Dict[s
 
 @app.get("/api/scheduler/queue")
 def get_scheduled_queue() -> List[Dict[str, Any]]:
-    """Returns currently queued candidates ordered by composite priority score."""
-    if not global_candidate_scheduler:
-        return []
-    items = global_candidate_scheduler.priority_queue.items()
-    return [it.model_dump() for it in items]
+    """Returns matches waiting for web search or currently being searched."""
+    from .research_queue import list_search_queue
+
+    return list_search_queue()
 
 
 @app.get("/api/scheduler/stats")
 def get_scheduler_stats() -> Dict[str, Any]:
-    """Returns real-time scheduler metrics (queue size, cooldowns, cache hits)."""
-    if not global_candidate_scheduler:
-        return {"error": "Scheduler unavailable"}
-    return global_candidate_scheduler.get_status_report().model_dump()
+    """Returns scheduler metrics plus the persistent search queue counts."""
+    from .research_queue import research_counts
+
+    counts = research_counts()
+    report: Dict[str, Any] = {}
+    if global_candidate_scheduler:
+        report = global_candidate_scheduler.get_status_report().model_dump()
+    report.update(
+        {
+            "queue_length": counts["queued"] + counts["running"],
+            "queued_count": counts["queued"],
+            "running_count": counts["running"],
+            "processed_total": counts["completed"],
+        }
+    )
+    return report
+
+
+@app.post("/api/research/queue/sync")
+def sync_research_search_queue(limit: int = 3) -> Dict[str, Any]:
+    """Puts live and prematch matches into the search queue and starts a few lookups."""
+    from .research_queue import sync_search_queue
+
+    return sync_search_queue(limit=limit)
+
+
+@app.get("/api/events/{event_id}/research/status")
+def get_research_status(event_id: str) -> Dict[str, str]:
+    """queued, running, empty, or ready — without changing the evidence list contract."""
+    from .research_queue import match_research_status
+
+    return match_research_status(event_id)
 
 
 @app.post("/api/scheduler/cooldowns/clear")

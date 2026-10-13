@@ -441,7 +441,7 @@ def test_models_registry_and_training_runs():
         mv = ModelVersion(
             id=uuid.uuid4(),
             model_name="tennis_gbdt",
-            version_tag=f"test_v1.0.0_{uuid.uuid4().hex[:6]}",
+            version_tag=f"test_tennis_v1.0.0_{uuid.uuid4().hex[:6]}",
             sport_code="tennis",
             market="match_winner",
             artifact_path="/models/checkpoints/tennis_gbdt.joblib",

@@ -129,7 +129,7 @@ def register_tools(client: NeurobetClient) -> Tuple[List[Dict[str, Any]], Dict[s
             "properties": {
                 "candidate_version_tag": {
                     "type": "string",
-                    "description": "Version tag of the candidate model (e.g. 'v1.0.1')",
+                    "description": "Version tag of the candidate model (e.g. 'tennis_v1.0.1')",
                 },
                 "sport_code": {
                     "type": "string",

@@ -46,7 +46,7 @@ def main():
         "--bump",
         default="patch",
         choices=["patch", "minor", "major"],
-        help="Version step: patch v1.0.0->v1.0.1, minor v1.0.0->v1.1.0, major v1.0.0->v2.0.0",
+        help="Version step: patch tennis_v1.0.0->tennis_v1.0.1, minor tennis_v1.0.0->tennis_v1.1.0, major tennis_v1.0.0->tennis_v2.0.0",
     )
     args = parser.parse_args()
 

@@ -90,6 +90,101 @@ def _contains_token(text: str, tokens: Set[str]) -> bool:
     return False
 
 
+_VERSUS_SPLIT = re.compile(
+    r"\s+(?:vs\.?|v\.?|против)\s+|[–—/]|(?<!\w)\s-\s",
+    re.IGNORECASE,
+)
+_PERSON_URL = re.compile(r"/person/([^/?#]+)", re.IGNORECASE)
+
+
+def _fold_name(token: str) -> str:
+    """Латиница и испанское -ez/-es, чтобы «Мартинес» совпал с Martinez."""
+    folded = _transliterate((token or "").lower())
+    if folded.endswith("ez"):
+        folded = folded[:-2] + "es"
+    return folded
+
+
+def _name_words(text: str) -> List[str]:
+    return re.findall(r"[A-Za-zА-Яа-яЁё]+", text or "")
+
+
+def _parse_participant(name: str) -> Tuple[Set[str], Set[str]]:
+    """Фамильные токены и допустимые первые буквы имени.
+
+    «Мартинес Т» — фамилия и инициал. «Daniil Medvedev» — фамилия последняя,
+    буква имени берётся из первого слова.
+    """
+    words = _name_words(name)
+    initials = [w for w in words if len(w) == 1]
+    longs = [w for w in words if len(w) >= 3]
+    if initials or len(longs) < 2:
+        surname_words = longs
+        given_words = []
+    else:
+        given_words = [longs[0]]
+        surname_words = longs[1:]
+    surnames = {_fold_name(w) for w in surname_words if len(_fold_name(w)) >= 4}
+    letters: Set[str] = set()
+    for w in initials + given_words:
+        low = w.lower()
+        letters.add(low[0])
+        lat = _transliterate(low)
+        if lat:
+            letters.add(lat[0])
+    return surnames, letters
+
+
+def _is_surname_word(word: str, surnames: Set[str]) -> bool:
+    folded = _fold_name(word)
+    return len(folded) >= 4 and folded in surnames
+
+
+def _given_matches(word: str, letters: Set[str]) -> bool:
+    if not letters:
+        return True
+    low = word.lower()
+    if low[0] in letters:
+        return True
+    lat = _transliterate(low)
+    return bool(lat) and lat[0] in letters
+
+
+def _subject_text(title: str, url: str) -> str:
+    """Имя, о котором страница: slug /person/ или заголовок до двоеточия."""
+    match = _PERSON_URL.search(url or "")
+    if match:
+        return match.group(1).replace("-", " ").replace("_", " ")
+    return re.split(r"[:|]", title or "", maxsplit=1)[0]
+
+
+def identity_conflict(participant: str, title: str, url: str = "") -> bool:
+    """Страница о другом человеке с той же фамилией.
+
+    «Мартинес Т» не совпадает с «Педро Мартинес» и «Кончита Мартинес».
+    Фамилия без чужого имени рядом конфликтом не считается.
+    """
+    surnames, letters = _parse_participant(participant)
+    if not surnames or not letters:
+        return False
+    sides = [part for part in _VERSUS_SPLIT.split(_subject_text(title, url)) if part.strip()]
+    saw_conflict = False
+    saw_compatible = False
+    for side in sides:
+        words = _name_words(side)
+        for index, word in enumerate(words):
+            if not _is_surname_word(word, surnames):
+                continue
+            if index == 0 or _is_surname_word(words[index - 1], surnames):
+                saw_compatible = True
+                continue
+            if _given_matches(words[index - 1], letters):
+                saw_compatible = True
+            else:
+                saw_conflict = True
+    return saw_conflict and not saw_compatible
+
+
 def is_noise(title: str, snippet: str, url: str = "") -> bool:
     # Карточка матча sports.ru часто называется «онлайн-трансляция», но внутри
     # H2H/форма/статистика — это не шум, а приоритетный источник.
@@ -124,8 +219,10 @@ def score_relevance(
     tokens_b = participant_tokens(participant_b)
     text = f"{title} {snippet}"
 
-    hit_a = _contains_token(text, tokens_a)
-    hit_b = _contains_token(text, tokens_b)
+    conflict_a = identity_conflict(participant_a, title, url)
+    conflict_b = identity_conflict(participant_b, title, url)
+    hit_a = _contains_token(text, tokens_a) and not conflict_a
+    hit_b = _contains_token(text, tokens_b) and not conflict_b
     noise = is_noise(title, snippet, url)
     signal = has_quality_signal(title, snippet)
 
@@ -166,6 +263,8 @@ def score_relevance(
         "signal": signal,
         "signal_about_match": about_match,
         "match_hub": match_hub,
+        "conflict_a": conflict_a,
+        "conflict_b": conflict_b,
     }
     return score, meta
 

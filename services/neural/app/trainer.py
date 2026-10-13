@@ -54,14 +54,7 @@ class ModelTrainer:
         started_at = datetime.now(timezone.utc)
         sport_code = sport_code.lower()
 
-        # 1. Build dataset using sport-specific point-in-time builder
-        dataset_builder = get_dataset_builder(sport_code)
-        X_train, y_train, X_val, y_val, feature_names, ds_meta = dataset_builder.build_from_db(
-            session=session,
-            save_dir=self.checkpoint_dir,
-        )
-
-        # 2. Build model architecture & hyperparameters
+        # 1. Build model architecture. The same estimator chooses the one training snapshot.
         if model_type == "lr":
             model_name = f"{sport_code}_logistic_regression"
             hyperparameters = {
@@ -94,7 +87,15 @@ class ModelTrainer:
         else:
             raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', or 'gbdt'")
 
-        # 3. Train calibrated model
+        # 2. One committed snapshot per finished match, then the chronological split.
+        dataset_builder = get_dataset_builder(sport_code)
+        X_train, y_train, X_val, y_val, feature_names, ds_meta = dataset_builder.build_from_db(
+            session=session,
+            estimator=estimator,
+            save_dir=self.checkpoint_dir,
+        )
+
+        # 3. Train calibrated model on the committed snapshots only.
         estimator.fit(X_train, y_train)
 
         # 4. Evaluate metrics
@@ -118,9 +119,9 @@ class ModelTrainer:
                 .all()
             ]
             if bump == "test":
-                version_tag = allocate_test_version(existing_tags)
+                version_tag = allocate_test_version(existing_tags, sport_code)
             else:
-                version_tag = next_release_version(existing_tags, bump)
+                version_tag = next_release_version(existing_tags, bump, sport_code)
         artifact_filename = f"{sport_code}_{market}_{model_name}_{version_tag}.joblib"
         artifact_path = os.path.join(self.checkpoint_dir, artifact_filename)
 

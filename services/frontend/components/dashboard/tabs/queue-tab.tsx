@@ -22,8 +22,8 @@ interface QueueTabProps {
 
 export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
   const queueLength = stats?.queue_length ?? queue.length;
-  const processedTotal = stats?.processed_total ?? 142;
-  const avgLatency = stats?.avg_processing_time_ms ?? 45;
+  const processedTotal = stats?.processed_total ?? 0;
+  const runningCount = stats?.running_count ?? queue.filter((item) => item.status === "PROCESSING").length;
 
   return (
     <div className="space-y-6">
@@ -58,8 +58,8 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
         <Card className="border-border/60 bg-card/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground font-medium">Среднее время расчёта</p>
-              <p className="text-2xl font-bold font-mono text-foreground">{avgLatency} мс</p>
+              <p className="text-xs text-muted-foreground font-medium">Поиск работает</p>
+              <p className="text-2xl font-bold font-mono text-foreground">{runningCount}</p>
             </div>
             <div className="p-3 rounded-lg bg-purple-500/10 text-purple-500">
               <Zap className="h-5 w-5" />
@@ -74,11 +74,11 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-emerald-500" />
             <CardTitle className="text-base font-semibold">
-              Приоритетная очередь сканирования
+              Очередь поиска
             </CardTitle>
           </div>
           <CardDescription className="text-xs">
-            Ранжирование спортивных событий по общему баллу, перевесу и динамике коэффициентов
+            Матчи, для которых идёт или ожидается поиск источников в интернете
           </CardDescription>
         </CardHeader>
 
@@ -87,10 +87,7 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/60 text-xs">
-                  <TableHead className="font-semibold">Номер события</TableHead>
-                  <TableHead className="font-semibold">Приоритет</TableHead>
-                  <TableHead className="font-semibold text-right">Расчётный перевес</TableHead>
-                  <TableHead className="font-semibold text-right">Доверие</TableHead>
+                  <TableHead className="font-semibold">Матч</TableHead>
                   <TableHead className="font-semibold text-center">Статус в очереди</TableHead>
                 </TableRow>
               </TableHeader>
@@ -98,10 +95,10 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
                 {queue.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={2}
                       className="text-center text-muted-foreground py-8 text-xs"
                     >
-                      Очередь приоритетов пуста: все события уже обработаны
+                      Очередь поиска пуста: для текущих матчей поиск не требуется
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -110,17 +107,8 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
                       key={item.event_id}
                       className="border-border/50 text-xs hover:bg-muted/40"
                     >
-                      <TableCell className="font-mono text-muted-foreground">
-                        {item.event_id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell className="font-semibold text-foreground">
-                        {(Number(item.composite_score) * 100).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="font-mono text-right font-medium text-emerald-600 dark:text-emerald-400">
-                        +{(Number(item.edge) * 100).toFixed(1)}%
-                      </TableCell>
-                      <TableCell className="font-mono text-right text-muted-foreground">
-                        {(Number(item.confidence) * 100).toFixed(0)}%
+                      <TableCell className="font-medium text-foreground">
+                        {item.label || item.event_id.slice(0, 8)}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge
@@ -128,8 +116,8 @@ export function QueueTab({ queue, stats, loading = false }: QueueTabProps) {
                           className="bg-muted text-[10px] font-mono py-0"
                         >
                           {{
-                            QUEUED: "В очереди",
-                            PROCESSING: "В работе",
+                            QUEUED: "В ожидании обработки",
+                            PROCESSING: "Поиск работает",
                             DONE: "Готово",
                             COMPLETED: "Готово",
                           }[(item.status || "QUEUED").toUpperCase()] || "В очереди"}

@@ -11,7 +11,7 @@ from .config import config
 from .domain_filter import DomainFilter
 from .fetcher import SandboxedFetcher
 from .html_extractor import HTMLExtractor
-from .persistence import persist_research_packet
+from .persistence import begin_research_run, load_completed_evidence, persist_research_packet
 from .relevance import score_relevance, should_keep
 from .search_backend import SearchBackend
 from .storage import ResearchStorage
@@ -67,7 +67,38 @@ class WebResearchService:
                 )
                 return cached_packet
 
+        if not request.force_refresh:
+            stored = load_completed_evidence(request.event_id)
+            if stored is not None:
+                evidence = [
+                    ResearchEvidence(
+                        evidence_id=f"ev_{uuid.uuid4().hex[:12]}",
+                        url=item["url"] or "",
+                        normalized_url=item["url"] or "",
+                        domain=item["domain"] or "unknown",
+                        title=item["title"] or "Source",
+                        published_at=item["published_at"],
+                        retrieved_at=item["retrieved_at"] or datetime.now(timezone.utc),
+                        snippet=item["snippet"] or "",
+                        content_hash=item["content_hash"] or "stored",
+                        is_live_score_authority=False,
+                    )
+                    for item in stored
+                    if (item.get("snippet") or "").strip()
+                ]
+                return ResearchPacket(
+                    packet_id=f"pkt_{uuid.uuid4().hex[:12]}",
+                    event_id=request.event_id,
+                    sport_code=request.sport_code,
+                    query=primary_query,
+                    evidence=evidence,
+                    summary="Search already completed for this match.",
+                    cached=True,
+                    created_at=datetime.now(timezone.utc),
+                )
+
         logger.info(f"Executing network research for event '{request.event_id}' (query: '{primary_query}')")
+        begin_research_run(request.event_id, primary_query)
 
         # 2. Search for URLs (hybrid = SearXNG∥DDG → общий пул)
         candidate_urls: List[str] = []
@@ -219,7 +250,6 @@ class WebResearchService:
             evidence_count=len(packet.evidence),
             cache_hit=False,
         )
-        if packet.evidence:
-            persist_research_packet(packet, query=primary_query)
+        persist_research_packet(packet, query=primary_query)
 
         return packet

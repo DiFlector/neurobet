@@ -13,20 +13,122 @@ from .config import config
 logger = logging.getLogger("research.persistence")
 
 
+def _event_uuid(event_id: str) -> Optional[uuid.UUID]:
+    try:
+        return uuid.UUID(str(event_id))
+    except (ValueError, TypeError):
+        return None
+
+
+def _open_run(session, event_uuid: uuid.UUID):
+    from db.models.research import WebResearchRun
+
+    return (
+        session.query(WebResearchRun)
+        .filter(
+            WebResearchRun.event_id == event_uuid,
+            WebResearchRun.status.in_(("queued", "running")),
+        )
+        .order_by(WebResearchRun.created_at.desc())
+        .first()
+    )
+
+
+def load_completed_evidence(event_id: str) -> Optional[list]:
+    """Evidence already stored for a finished search. None if this match was not searched yet."""
+    if not config.persist_to_db:
+        return None
+    event_uuid = _event_uuid(event_id)
+    if event_uuid is None:
+        return None
+    try:
+        from db.connection import SessionLocal
+        from db.models.research import WebDocument, WebEvidence, WebResearchRun
+    except ImportError:
+        return None
+    try:
+        with SessionLocal() as session:
+            run = (
+                session.query(WebResearchRun)
+                .filter(
+                    WebResearchRun.event_id == event_uuid,
+                    WebResearchRun.status == "completed",
+                )
+                .order_by(WebResearchRun.created_at.desc())
+                .first()
+            )
+            if run is None:
+                return None
+            rows = (
+                session.query(WebEvidence, WebDocument)
+                .join(WebDocument, WebEvidence.document_id == WebDocument.id)
+                .filter(WebEvidence.event_id == event_uuid)
+                .all()
+            )
+            return [
+                {
+                    "url": doc.url,
+                    "title": doc.title,
+                    "domain": doc.source_domain,
+                    "snippet": evidence.snippet,
+                    "content_hash": doc.content_hash,
+                    "published_at": doc.published_at,
+                    "retrieved_at": doc.fetched_at,
+                }
+                for evidence, doc in rows
+            ]
+    except Exception as exc:
+        logger.warning("Failed to read stored research for %s: %s", event_id, exc)
+        return None
+
+
+def begin_research_run(event_id: str, query: Optional[str] = None) -> None:
+    """Marks the match search as running so the queue can show that work has started."""
+    if not config.persist_to_db:
+        return
+    event_uuid = _event_uuid(event_id)
+    if event_uuid is None:
+        return
+    try:
+        from db.connection import SessionLocal
+        from db.models.research import WebResearchRun
+    except ImportError as exc:
+        logger.warning("DB package unavailable, research not persisted: %s", exc)
+        return
+
+    run_query = (query or "research")[:255]
+    try:
+        with SessionLocal() as session:
+            run = _open_run(session, event_uuid)
+            if run is None:
+                run = WebResearchRun(
+                    id=uuid.uuid4(),
+                    event_id=event_uuid,
+                    query=run_query,
+                    status="running",
+                    documents_found=0,
+                )
+                session.add(run)
+            else:
+                run.status = "running"
+                if query:
+                    run.query = run_query
+            session.commit()
+    except Exception as exc:
+        logger.warning("Failed to mark research running for %s: %s", event_id, exc)
+
+
 def persist_research_packet(packet: ResearchPacket, query: Optional[str] = None) -> None:
     """
     Writes packet evidence into neurobet DB so the frontend / MCP can show sources.
+    An empty packet still closes the run: the match was searched and nothing was found.
     No-op for non-UUID event ids (unit tests) or when DB is unavailable.
     """
     if not config.persist_to_db:
         return
-    if not packet.evidence:
-        # Auditable empty run still useful? Skip noise from stubs.
-        return
 
-    try:
-        event_uuid = uuid.UUID(str(packet.event_id))
-    except (ValueError, TypeError):
+    event_uuid = _event_uuid(packet.event_id)
+    if event_uuid is None:
         logger.debug("Skip DB persist: event_id=%s is not a UUID", packet.event_id)
         return
 
@@ -41,14 +143,22 @@ def persist_research_packet(packet: ResearchPacket, query: Optional[str] = None)
 
     try:
         with SessionLocal() as session:
-            run = WebResearchRun(
-                id=uuid.uuid4(),
-                event_id=event_uuid,
-                query=run_query,
-                status="completed",
-                documents_found=len(packet.evidence),
-            )
-            session.add(run)
+            run = _open_run(session, event_uuid)
+            found = len(packet.evidence)
+            if run is None:
+                run = WebResearchRun(
+                    id=uuid.uuid4(),
+                    event_id=event_uuid,
+                    query=run_query,
+                    status="completed",
+                    documents_found=found,
+                )
+                session.add(run)
+            else:
+                run.status = "completed"
+                run.documents_found = found
+                if query:
+                    run.query = run_query
             session.flush()
 
             for ev in packet.evidence:

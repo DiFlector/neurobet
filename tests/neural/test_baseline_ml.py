@@ -105,7 +105,7 @@ def test_training_and_artifact_serialization():
         # Train Logistic Regression
         res_lr = trainer.train_model(session=session, model_type="lr", sport_code="tennis", bump="test")
         assert res_lr["model_name"] == "tennis_logistic_regression"
-        assert res_lr["version_tag"].startswith("test_v1.0.0")
+        assert res_lr["version_tag"].startswith("test_tennis_v1.0.0")
         assert os.path.exists(res_lr["artifact_path"])
         assert res_lr["metrics_val"]["log_loss"] > 0.0
 

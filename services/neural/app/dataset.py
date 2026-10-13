@@ -3,9 +3,11 @@
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
+from sklearn.base import clone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,16 @@ from db.models import Event, EventStateSnapshot, OddsSnapshot, TrainingDataset
 logger = logging.getLogger("neural.dataset")
 
 from features import FeatureBuilder, TennisFeatureBuilder, registry as feature_registry
+
+from .commit import MIN_COMMIT_EDGE, committed_rows
+
+
+@dataclass
+class MatchSnapshots:
+    """Chronological feature rows of one finished match, sharing one final-winner label."""
+
+    rows: List[List[float]]
+    label: int
 
 
 class SportDatasetBuilder:
@@ -35,14 +47,19 @@ class SportDatasetBuilder:
     def build_from_db(
         self,
         session: Session,
+        estimator: Any,
         train_ratio: float = 0.7,
         dataset_name: Optional[str] = None,
         save_dir: str = "/app/models/checkpoints",
         min_samples_required: int = 5,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str], Dict[str, Any]]:
         """
-        Extracts completed real matches for this sport from database and constructs chronological train/val splits.
-        Never generates synthetic data: raises ValueError if real events are insufficient.
+        Extracts completed real matches and keeps one row per match.
+
+        A provisional copy of the estimator, fit only on the first snapshot of each
+        training match, replays the match in time. The saved row is the first snapshot
+        whose edge reaches MIN_COMMIT_EDGE. A match that never reaches it is omitted.
+        The label stays the final winner. Train and validation are split by match.
         """
         events_stmt = (
             select(Event)
@@ -53,10 +70,9 @@ class SportDatasetBuilder:
         )
         events = list(session.execute(events_stmt).scalars())
 
-        rows: List[List[float]] = []
-        labels: List[int] = []
+        matches: List[MatchSnapshots] = []
         feature_names: List[str] = []
-        matches_used = 0
+        snapshot_count = 0
 
         if not events:
             raise ValueError(
@@ -123,9 +139,8 @@ class SportDatasetBuilder:
                 # Without real odds, point-in-time market betting feature cannot be formed
                 continue
 
-            matches_used += 1
-
-            # 3. Point-in-time extraction: evaluate features at observed cutoffs
+            # Every snapshot stays a candidate. The side is chosen later, once per match.
+            match_rows: List[List[float]] = []
             if states:
                 for snapshot in states:
                     cutoff = snapshot.observed_at
@@ -139,9 +154,7 @@ class SportDatasetBuilder:
                     if not feature_names:
                         feature_names = sorted(list(vec.features.keys()))
 
-                    feature_vals = [float(vec.features.get(k, 0.0)) for k in feature_names]
-                    rows.append(feature_vals)
-                    labels.append(y_label)
+                    match_rows.append([float(vec.features.get(k, 0.0)) for k in feature_names])
             else:
                 # Pre-match observation snapshot using real odds snapshot
                 cutoff = odds[-1].observed_at
@@ -155,35 +168,74 @@ class SportDatasetBuilder:
                 if not feature_names:
                     feature_names = sorted(list(vec.features.keys()))
 
-                feature_vals = [float(vec.features.get(k, 0.0)) for k in feature_names]
-                rows.append(feature_vals)
-                labels.append(y_label)
+                match_rows.append([float(vec.features.get(k, 0.0)) for k in feature_names])
 
-            if matches_used == 1 or matches_used % 10 == 0:
+            if not match_rows:
+                continue
+            matches.append(MatchSnapshots(rows=match_rows, label=y_label))
+            snapshot_count += len(match_rows)
+            if len(matches) == 1 or len(matches) % 10 == 0:
                 logger.info(
-                    "Dataset %s: %d matches, %d rows",
+                    "Dataset %s: %d matches, %d snapshots",
                     self.sport_code,
-                    matches_used,
-                    len(rows),
+                    len(matches),
+                    snapshot_count,
                 )
 
-        if len(rows) < min_samples_required:
+        if estimator is None:
+            raise ValueError("Обучение требует модель, чтобы выбрать один срез матча с перевесом не меньше 2%.")
+
+        if len(matches) < min_samples_required + 1:
             raise ValueError(
                 f"Недостаточно реальных завершенных событий с котировками в базе данных для вида спорта '{self.sport_code}' "
-                f"(найдено {len(rows)} срезов, требуется минимум {min_samples_required}). "
+                f"(найдено {len(matches)} матчей, требуется минимум {min_samples_required + 1}). "
                 f"Синтетические данные отключены: дождитесь накопления реальных наблюдений коллектора."
             )
 
-        X = np.asarray(rows, dtype=float)
-        y = np.asarray(labels, dtype=int)
+        # Split by match, then pick the first snapshot where this model would commit a side.
+        split_idx = max(1, int(len(matches) * train_ratio))
+        if split_idx >= len(matches):
+            split_idx = len(matches) - 1
+        train_matches = matches[:split_idx]
+        val_matches = matches[split_idx:]
 
-        # Chronological time split
-        n_samples = len(X)
-        split_idx = max(1, int(n_samples * train_ratio))
-        if split_idx >= n_samples:
-            split_idx = n_samples - 1
-        X_train, X_val = X[:split_idx], X[split_idx:]
-        y_train, y_val = y[:split_idx], y[split_idx:]
+        provisional = clone(estimator)
+        first_rows = np.asarray([match.rows[0] for match in train_matches], dtype=float)
+        first_labels = np.asarray([match.label for match in train_matches], dtype=int)
+        if len(set(first_labels.tolist())) < 2:
+            raise ValueError(
+                f"На первых срезах матчей '{self.sport_code}' есть только один класс победителя, "
+                f"поэтому нельзя выбрать сторону."
+            )
+        provisional.fit(first_rows, first_labels)
+
+        def probabilities_for_match(match_rows: List[List[float]]):
+            probs = provisional.predict_proba(np.asarray(match_rows, dtype=float))
+            return [(float(row[1]), float(row[0])) for row in probs]
+
+        train_rows, train_labels = committed_rows(
+            [(match.rows, match.label) for match in train_matches],
+            probabilities_for_match,
+            feature_names,
+        )
+        val_rows, val_labels = committed_rows(
+            [(match.rows, match.label) for match in val_matches],
+            probabilities_for_match,
+            feature_names,
+        )
+        if len(train_rows) < min_samples_required or not val_rows:
+            raise ValueError(
+                f"После правила одного выбора на матч для '{self.sport_code}' осталось "
+                f"{len(train_rows)} обучающих и {len(val_rows)} проверочных матчей "
+                f"(нужно минимум {min_samples_required} и 1). "
+                f"Матч попадает в выборку только в первый момент, когда перевес не меньше {MIN_COMMIT_EDGE:.0%}."
+            )
+
+        X_train = np.asarray(train_rows, dtype=float)
+        y_train = np.asarray(train_labels, dtype=int)
+        X_val = np.asarray(val_rows, dtype=float)
+        y_val = np.asarray(val_labels, dtype=int)
+        n_samples = len(train_rows) + len(val_rows)
 
         # Save real artifact and register in training_datasets table
         dt_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -215,7 +267,11 @@ class SportDatasetBuilder:
             "name": name,
             "row_count": n_samples,
             "storage_path": storage_path,
-            "match_count": matches_used,
+            "match_count": len(matches),
+            "snapshot_count": snapshot_count,
+            "committed_matches": n_samples,
+            "min_commit_edge": MIN_COMMIT_EDGE,
+            "one_decision_per_match": True,
             "train_samples": len(X_train),
             "val_samples": len(X_val),
             "feature_count": len(feature_names),

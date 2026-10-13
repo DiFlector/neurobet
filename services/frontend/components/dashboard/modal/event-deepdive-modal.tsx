@@ -191,7 +191,7 @@ export function EventDeepdiveModal({
 }: EventDeepdiveModalProps) {
   if (!data || !data.evt) return null;
 
-  const { evt, timeline: rawTimeline, odds, preds, research, llm = [] } = data;
+  const { evt, timeline: rawTimeline, odds, preds, research, research_status, llm = [] } = data;
   const timeline = collapseTimeline(rawTimeline);
   const marginByMoment = marginsByMoment(odds);
 
@@ -202,7 +202,14 @@ export function EventDeepdiveModal({
   const playerA = getLocalizedParticipantName(rawA, evt.sport_code);
   const playerB = getLocalizedParticipantName(rawB, evt.sport_code);
 
-  const primaryPred = preds.find((p) => p.has_positive_edge) || preds[0] || null;
+  const byFirstChoice = (items: PredictionItem[]) =>
+    [...items].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  const primaryPred =
+    byFirstChoice(preds.filter((p) => !p.is_shadow && p.has_positive_edge))[0] || null;
+  const shadowPreds = byFirstChoice(
+    preds.filter((p) => p.is_shadow && p.has_positive_edge),
+  ).filter((p, index, rows) => rows.findIndex((row) => row.model_version === p.model_version) === index);
+  const orderedPreds = primaryPred ? [primaryPred, ...shadowPreds] : shadowPreds;
   const primaryLlm: LLMDecisionItem | null = llm[0] || null;
 
   const outcomeStr =
@@ -382,7 +389,7 @@ export function EventDeepdiveModal({
             </TabsTrigger>
             <TabsTrigger value="ml" className="text-xs gap-1.5 py-2 px-2.5">
               <BrainCircuit className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">ML Анализ ({preds.length})</span>
+              <span className="truncate">ML Анализ ({orderedPreds.length})</span>
             </TabsTrigger>
             <TabsTrigger value="llm" className="text-xs gap-1.5 py-2 px-2.5">
               <Bot className="h-3.5 w-3.5 shrink-0" />
@@ -450,26 +457,36 @@ export function EventDeepdiveModal({
 
           {/* 2. ML Анализ */}
           <TabsContent value="ml" className="mt-3 space-y-3">
-            {preds.length === 0 ? (
+            {orderedPreds.length === 0 ? (
               <div className="text-center text-muted-foreground py-8 text-xs border rounded-md border-border/60">
                 Модель рассчитывает вектор вероятностей для данного матча...
               </div>
             ) : (
-              preds.map((p, idx) => (
+              orderedPreds.map((p, idx) => (
                 <div
-                  key={idx}
+                  key={p.id || idx}
                   className="rounded-md border border-border/60 p-3.5 bg-muted/20 space-y-2.5"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold text-sm text-foreground">
                       Рынок: {p.market}
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[11px]"
-                    >
-                      {p.model_version || "tennis_v1.0"}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      {p.is_shadow && (
+                        <Badge
+                          variant="outline"
+                          className="border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[11px]"
+                        >
+                          Тень
+                        </Badge>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[11px]"
+                      >
+                        {p.model_version || "tennis_v1.0"}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 py-1 text-center">
@@ -579,7 +596,11 @@ export function EventDeepdiveModal({
               </div>
               {research.length === 0 ? (
                 <div className="text-center text-muted-foreground py-4 text-xs border rounded-md border-border/40">
-                  Для этого матча внешние источники ещё не собраны
+                  {research_status === "running"
+                    ? "Поиск работает"
+                    : research_status === "empty"
+                      ? "Нет информации о матче в интернете"
+                      : "В ожидании обработки"}
                 </div>
               ) : (
                 research.map((r) => (

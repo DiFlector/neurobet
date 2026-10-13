@@ -93,7 +93,9 @@ function matchesParticipant(
 
 export function MatchCard({ event, predictions, onInspect, betOutcome = null }: MatchCardProps) {
   const primaryPred =
-    predictions.find((p) => p.has_positive_edge) || predictions[0] || null;
+    [...predictions]
+      .filter((p) => !p.is_shadow && p.has_positive_edge)
+      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))[0] || null;
 
   const isLive = event.status === "live";
   const isPrematch = event.status === "prematch";
@@ -239,7 +241,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                 <Badge
                   variant="outline"
                   className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
-                  title={`Выбор ML (${Math.round(primaryPred.model_probability * 100)}%)`}
+                  title={`Выбор ML (${Math.round((primaryPred?.model_probability ?? 0) * 100)}%)`}
                 >
                   Выбор ML
                 </Badge>
@@ -274,7 +276,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                 <Badge
                   variant="outline"
                   className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
-                  title={`Выбор ML (${Math.round(primaryPred.model_probability * 100)}%)`}
+                  title={`Выбор ML (${Math.round((primaryPred?.model_probability ?? 0) * 100)}%)`}
                 >
                   Выбор ML
                 </Badge>

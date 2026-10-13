@@ -19,6 +19,27 @@ from .exceptions import InvalidSettlementError, BetNotFoundError
 logger = logging.getLogger("bankroll.settlement")
 
 
+@dataclass
+class IndexedEvent:
+    """Снимок события для сопоставления результата без повторного чтения всей таблицы."""
+
+    id: uuid.UUID
+    source_event_id: str
+    sport_code: str
+    participant_a_name: str
+    participant_b_name: str
+    is_live: bool
+    status: str
+    has_official: bool
+    last_seen_epoch: float
+
+
+@dataclass
+class FonbetEventIndex:
+    by_source_id: Dict[str, IndexedEvent]
+    by_sport: Dict[str, List[IndexedEvent]]
+
+
 class EventResultMatcher:
     """
     Matches canonical results from https://fon.bet/results with platform events,
@@ -122,6 +143,60 @@ class EventResultMatcher:
         return matched[0]
 
     @classmethod
+    def build_index(cls, session: Session) -> FonbetEventIndex:
+        """Один проход по событиям Fonbet. Дальше сверка результатов идёт в памяти."""
+        rows = session.execute(select(Event).where(Event.source == "fonbet")).scalars().all()
+        by_source_id: Dict[str, IndexedEvent] = {}
+        by_sport: Dict[str, List[IndexedEvent]] = {}
+        for event in rows:
+            ts = event.last_seen_at or event.updated_at or event.created_at
+            indexed = IndexedEvent(
+                id=event.id,
+                source_event_id=str(event.source_event_id or ""),
+                sport_code=event.sport_code or "",
+                participant_a_name=event.participant_a_name or "",
+                participant_b_name=event.participant_b_name or "",
+                is_live=bool(event.is_live),
+                status=event.status or "",
+                has_official=1 if (event.metadata_json or {}).get("fonbet_official_result") else 0,
+                last_seen_epoch=ts.timestamp() if ts is not None else 0.0,
+            )
+            if indexed.source_event_id:
+                by_source_id[indexed.source_event_id] = indexed
+            by_sport.setdefault(indexed.sport_code, []).append(indexed)
+        return FonbetEventIndex(by_source_id=by_source_id, by_sport=by_sport)
+
+    @classmethod
+    def find_indexed_event(
+        cls,
+        index: FonbetEventIndex,
+        result: CanonicalMatchResult,
+        *,
+        allow_live: bool = False,
+    ) -> Optional[IndexedEvent]:
+        """То же правило, что у find_event_for_result, но по уже загруженному снимку."""
+        by_id = index.by_source_id.get(str(result.source_event_id))
+        if by_id is not None:
+            return by_id
+        candidates = []
+        for event in index.by_sport.get(result.sport_code or "", []):
+            if not allow_live and (event.is_live or event.status == "live"):
+                continue
+            if cls.participants_match(
+                event.participant_a_name,
+                event.participant_b_name,
+                result.participant_a,
+                result.participant_b,
+            ):
+                candidates.append(event)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        candidates.sort(key=lambda event: (event.has_official, -event.last_seen_epoch))
+        return candidates[0]
+
+    @classmethod
     def _tennis_set_total(cls, score: Optional[str]) -> int:
         match = re.search(r"^\s*(\d+)\s*[:\-]\s*(\d+)", str(score or "").strip())
         if not match:
@@ -198,6 +273,7 @@ class EventResultMatcher:
         cls,
         session: Session,
         result: CanonicalMatchResult,
+        index: Optional[FonbetEventIndex] = None,
     ) -> Optional[Event]:
         """
         Find event in DB by source_event_id or participant names and mark finished.
@@ -207,11 +283,19 @@ class EventResultMatcher:
         # Official results feed ids != live source_event_id; name match is required.
         # Allow live only for definitive results so a just-finished match can close.
         definitive_preview = cls.result_is_definitive(result)
-        event = cls.find_event_for_result(
-            session,
-            result,
-            allow_live=definitive_preview,
-        )
+        if index is not None:
+            indexed = cls.find_indexed_event(
+                index,
+                result,
+                allow_live=definitive_preview,
+            )
+            event = session.get(Event, indexed.id) if indexed is not None else None
+        else:
+            event = cls.find_event_for_result(
+                session,
+                result,
+                allow_live=definitive_preview,
+            )
 
         if not event:
             logger.debug(

@@ -69,6 +69,52 @@ def test_injury_only_near_participant():
     )
 
 
+def test_same_surname_different_person_dropped():
+    score, meta = score_relevance(
+        title="Педро Мартинес: теннисист, 29 лет, рост, вес, новости",
+        snippet="Педро Мартинес Портеро. Гражданство Испания.",
+        url="https://www.sports.ru/tennis/person/pedro-martinez-portero/",
+        participant_a="Шенекенберг Г",
+        participant_b="Мартинес Т",
+    )
+    assert meta["conflict_b"] is True
+    assert meta["hit_b"] is False
+    assert should_keep(score, meta) is False
+
+    score, meta = score_relevance(
+        title="Кончита Мартинес: теннисистка, 54 года",
+        snippet="Инмакулада Консепсьон Мартинес Бернат.",
+        url="https://www.sports.ru/tennis/person/inmaculada-concepcion-martinez-bernat/",
+        participant_a="Шенекенберг Г",
+        participant_b="Мартинес Т",
+    )
+    assert meta["hit_b"] is False
+    assert should_keep(score, meta) is False
+
+
+def test_matching_initial_still_kept():
+    _, meta = score_relevance(
+        title="Томас Мартинес — превью матча",
+        snippet="Томас Мартинес вышел в четвертьфинал.",
+        url="https://www.sports.ru/tennis/news/tomas-martinez-preview/",
+        participant_a="Шенекенберг Г",
+        participant_b="Мартинес Т",
+    )
+    assert meta["conflict_b"] is False
+    assert meta["hit_b"] is True
+
+    score, meta = score_relevance(
+        title="Шенекенберг — Мартинес: онлайн-трансляция",
+        snippet="Личные встречи и статистика.",
+        url="https://www.sports.ru/tennis/match/68893260/",
+        participant_a="Шенекенберг Г",
+        participant_b="Мартинес Т",
+    )
+    assert meta["conflict_a"] is False
+    assert meta["conflict_b"] is False
+    assert should_keep(score, meta) is True
+
+
 def test_min_relevance_constant():
     assert 0.0 < MIN_RELEVANCE < 0.5
 
@@ -78,5 +124,7 @@ if __name__ == "__main__":
     test_noise_stream_page_dropped()
     test_unrelated_player_article_low()
     test_injury_only_near_participant()
+    test_same_surname_different_person_dropped()
+    test_matching_initial_still_kept()
     test_min_relevance_constant()
     print("ALL RELEVANCE TESTS OK")

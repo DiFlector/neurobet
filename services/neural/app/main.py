@@ -100,12 +100,13 @@ def _save_prediction(session, evt, sport_code: str, predictor: MLPredictor, f_ve
     from db.models.predictions import MLPrediction as DBMLPrediction
 
     res = predictor.predict(f_vec, odds_a=odds_a, odds_b=odds_b, is_shadow=is_shadow)
+    # И боевая модель, и тень пишут сторону один раз и только при своём перевесе.
+    if not res.has_positive_edge:
+        return False
     best = next(
         (item for item in res.outcomes if item.outcome == res.best_outcome),
         None,
     )
-    if best is None and res.outcomes:
-        best = max(res.outcomes, key=lambda item: item.edge)
     if best is None:
         return False
 
@@ -144,8 +145,8 @@ def evaluate_pending_events(
     shadow_predictors: Dict[str, List[MLPredictor]] | None = None,
 ) -> int:
     """
-    Finds active events in the database that don't have predictions yet,
-    computes calibrated ML probabilities and edge, and writes them to ml_predictions.
+    Следит за live и prematch, пока боевая модель или тень ещё не зафиксировали сторону.
+    Каждая пишет свой выбор один раз, только при собственном перевесе, и больше его не меняет.
     """
     shadows = shadow_predictors or {}
     try:
@@ -171,15 +172,33 @@ def evaluate_pending_events(
                 Event.source_event_id.like("dr_%"),
             )
             combat = aliased(DBMLPrediction)
+            shadow_row = aliased(DBMLPrediction)
+            shadow_sports = list(shadows.keys())
+            waiting_shadow = and_(
+                Event.sport_code.in_(shadow_sports),
+                shadow_row.id.is_(None),
+            ) if shadow_sports else combat.id.is_(None)
             active_events = (
                 session.query(Event)
                 .outerjoin(
                     combat,
-                    and_(combat.event_id == Event.id, combat.is_shadow.is_(False)),
+                    and_(
+                        combat.event_id == Event.id,
+                        combat.is_shadow.is_(False),
+                        combat.has_positive_edge.is_(True),
+                    ),
+                )
+                .outerjoin(
+                    shadow_row,
+                    and_(
+                        shadow_row.event_id == Event.id,
+                        shadow_row.is_shadow.is_(True),
+                        shadow_row.has_positive_edge.is_(True),
+                    ),
                 )
                 .filter(Event.status.in_(["live", "prematch"]))
                 .filter(~synthetic)
-                .filter(combat.id.is_(None))
+                .filter(or_(combat.id.is_(None), waiting_shadow))
                 .order_by(Event.is_live.desc(), Event.created_at.desc())
                 .limit(30)
                 .all()
@@ -243,9 +262,33 @@ def evaluate_pending_events(
                     continue
 
                 try:
-                    if _save_prediction(session, evt, sport_code, predictor, f_vec, odds_a, odds_b, False):
+                    combat_done = (
+                        session.query(DBMLPrediction.id)
+                        .filter(
+                            DBMLPrediction.event_id == evt.id,
+                            DBMLPrediction.is_shadow.is_(False),
+                            DBMLPrediction.has_positive_edge.is_(True),
+                        )
+                        .first()
+                    )
+                    if combat_done is None and _save_prediction(
+                        session, evt, sport_code, predictor, f_vec, odds_a, odds_b, False
+                    ):
                         evaluated_count += 1
                     for shadow_predictor in shadows.get(sport_code, []):
+                        version = (shadow_predictor.checkpoint_data or {}).get("version_tag")
+                        shadow_done = (
+                            session.query(DBMLPrediction.id)
+                            .filter(
+                                DBMLPrediction.event_id == evt.id,
+                                DBMLPrediction.is_shadow.is_(True),
+                                DBMLPrediction.has_positive_edge.is_(True),
+                                DBMLPrediction.model_version == version,
+                            )
+                            .first()
+                        )
+                        if shadow_done is not None:
+                            continue
                         if _save_prediction(
                             session, evt, sport_code, shadow_predictor, f_vec, odds_a, odds_b, True
                         ):

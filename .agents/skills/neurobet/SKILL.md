@@ -103,7 +103,7 @@ neural (ML вероятности & edge)     research (Web поиск, конт
 
 ## 4. Жизненный цикл ML-модели (Training, Shadow Mode, Rollback)
 
-Имя версии и порядок выпуска — в [`.agents/rules/model-release.md`](file:///srv/neurobet/.agents/rules/model-release.md). Тег боевой линии имеет вид `v1.0.1`. Тестовый тег — `test_v1.0.0`.
+Имя версии и порядок выпуска — в [`.agents/rules/model-release.md`](file:///srv/neurobet/.agents/rules/model-release.md). Тег боевой линии имеет вид `tennis_v1.0.1`. Тестовый тег — `test_tennis_v1.0.0`.
 
 Каждая модель проходит строгий регламент жизненного цикла:
 

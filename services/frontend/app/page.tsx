@@ -194,7 +194,7 @@ export default function DashboardPage() {
         if (lList.length > 0) setLedger(lList);
       } else if (view.activeTab === "scheduler") {
         const [qList, qSt] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats()]);
-        if (qList.length > 0) setQueue(qList);
+        setQueue(qList);
         if (qSt) setQueueStats(qSt);
       }
     } catch (err) {

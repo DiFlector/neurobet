@@ -144,6 +144,18 @@ async def main():
                             (llm_data.get("dispatch") or {}).get("dispatched_count"),
                             llm_data.get("queue_size"),
                         )
+
+                    search_data = await asyncio.to_thread(
+                        _post_json,
+                        f"{backend_url}/api/research/queue/sync?limit=3",
+                        20.0,
+                    )
+                    logger.info(
+                        "Research queue: started=%s queued=%s running=%s",
+                        search_data.get("started"),
+                        search_data.get("queued"),
+                        search_data.get("running"),
+                    )
                 except Exception as ex:
                     logger.warning("Settlement/LLM sync request failed: %s", ex)
 
