@@ -9,6 +9,7 @@ import numpy as np
 from contracts import FeatureVector, MLPrediction, OutcomePrediction
 
 from .commit import MIN_COMMIT_EDGE, best_edge, side_odds
+from .strategy import certainty
 
 
 class MLPredictor:
@@ -49,6 +50,8 @@ class MLPredictor:
         odds_b: Optional[float] = None,
         min_edge_threshold: float = MIN_COMMIT_EDGE,
         is_shadow: bool = False,
+        peer_probabilities: Optional[List[float]] = None,
+        segment_reliability: Optional[float] = None,
     ) -> MLPrediction:
         """
         Calculates calibrated prediction from FeatureVector.
@@ -95,9 +98,16 @@ class MLPredictor:
         ev_a = round(prob_a * (bm_odds_a - 1.0) - (1.0 - prob_a), 4)
         ev_b = round(prob_b * (bm_odds_b - 1.0) - (1.0 - prob_b), 4)
 
-        # Confidence: distance from random 0.5
-        conf_a = round(min(1.0, abs(prob_a - 0.5) * 2.0), 4)
-        conf_b = round(min(1.0, abs(prob_b - 0.5) * 2.0), 4)
+        # Confidence is agreement across models, scaled by calibration reliability.
+        # Distance from 0.5 is not a measure of uncertainty.
+        if peer_probabilities is not None or segment_reliability is not None:
+            reliability = 1.0 if segment_reliability is None else segment_reliability
+            conf = certainty([prob_a, *[float(item) for item in (peer_probabilities or [])]], reliability)
+            conf_a = conf
+            conf_b = conf
+        else:
+            conf_a = round(min(1.0, abs(prob_a - 0.5) * 2.0), 4)
+            conf_b = round(min(1.0, abs(prob_b - 0.5) * 2.0), 4)
 
         is_team_sport = feature_vector.sport_code in ("basketball", "football", "hockey", "volleyball")
         outcome_a = "team_a" if is_team_sport else "player_a"

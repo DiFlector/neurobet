@@ -23,6 +23,65 @@ from .surfaces import detect_tennis_surface
 logger = logging.getLogger("tennis.adapter")
 
 
+def set_winner_from_games(games_a: Any, games_b: Any) -> Optional[str]:
+    """Winner of a closed tennis set. An unfinished or tied score stays unlabeled."""
+    try:
+        left = int(games_a)
+        right = int(games_b)
+    except (TypeError, ValueError):
+        return None
+    if left == right:
+        return None
+    high, low = max(left, right), min(left, right)
+    if high < 6 or high > 7:
+        return None
+    if high == 6 and high - low < 2:
+        return None
+    if high == 7 and low < 5:
+        return None
+    return "player_a" if left > right else "player_b"
+
+
+def closed_set_winners(set_lines: Any) -> Dict[str, str]:
+    """Set number to winner. The live set is not closed yet."""
+    winners: Dict[str, str] = {}
+    for index, line in enumerate(set_lines or [], start=1):
+        if not isinstance(line, dict) or line.get("live"):
+            continue
+        winner = set_winner_from_games(line.get("games_a"), line.get("games_b"))
+        if winner:
+            winners[str(index)] = winner
+    return winners
+
+
+def final_set_winners(set_lines: Any) -> Dict[str, str]:
+    """Closed sets plus a live set whose score is already a finished set."""
+    winners = closed_set_winners(set_lines)
+    for index, line in enumerate(set_lines or [], start=1):
+        key = str(index)
+        if key in winners or not isinstance(line, dict) or not line.get("live"):
+            continue
+        winner = set_winner_from_games(line.get("games_a"), line.get("games_b"))
+        if winner:
+            winners[key] = winner
+    return winners
+
+
+def winners_from_score_text(text: Any) -> Dict[str, str]:
+    """Winners inside a final score such as ``0:2 (3-6 4-6)``."""
+    raw = str(text or "")
+    start, end = raw.find("("), raw.rfind(")")
+    if start < 0 or end <= start:
+        return {}
+    winners: Dict[str, str] = {}
+    for index, pair in enumerate(re.finditer(r"(\d+)\s*[-:]\s*(\d+)", raw[start + 1:end]), start=1):
+        winner = set_winner_from_games(pair.group(1), pair.group(2))
+        if winner is None:
+            break
+        winners[str(index)] = winner
+    return winners
+
+
 class TennisSportAdapter:
     """
     Tennis Sport Adapter for Neurobet.
@@ -249,85 +308,92 @@ class TennisSportAdapter:
         )
 
     def parse_odds(self, raw_payload: Dict[str, Any]) -> OddsSnapshot:
-        """Construct OddsSnapshot contract containing MVP match_winner market and selections."""
+        """Match winner and every quoted set. A missing side is left out, not replaced by 1.01."""
         source_id = str(raw_payload.get("source_event_id") or raw_payload.get("id") or "unknown")
         event_id = raw_payload.get("event_id") or f"fonbet_tennis_{source_id}"
-
         player_a = self.normalize_player_name(raw_payload.get("participant_a") or raw_payload.get("team1") or "Игрок А")
         player_b = self.normalize_player_name(raw_payload.get("participant_b") or raw_payload.get("team2") or "Игрок Б")
 
-        # Extract match winner odds
-        odds_a: Optional[float] = None
-        odds_b: Optional[float] = None
-
-        if "markets" in raw_payload:
-            for m in raw_payload["markets"]:
-                if m.get("market_type") == "match_winner":
-                    for s in m.get("selections", []):
-                        if s.get("outcome") == "player_a":
-                            odds_a = float(s["odds"])
-                        elif s.get("outcome") == "player_b":
-                            odds_b = float(s["odds"])
-
-        if odds_a is None:
-            raw_p1 = raw_payload.get("odds_a") or raw_payload.get("p1")
-            if raw_p1:
-                odds_a = float(raw_p1)
-        if odds_b is None:
-            raw_p2 = raw_payload.get("odds_b") or raw_payload.get("p2")
-            if raw_p2:
-                odds_b = float(raw_p2)
-
-        # Default fallback if market is suspended
-        is_suspended = odds_a is None or odds_b is None or odds_a <= 1.0 or odds_b <= 1.0
-        final_odds_a = odds_a if odds_a and odds_a > 1.0 else 1.01
-        final_odds_b = odds_b if odds_b and odds_b > 1.0 else 1.01
-
-        prob_a = round(1.0 / final_odds_a, 4)
-        prob_b = round(1.0 / final_odds_b, 4)
-
-        selections = [
-            Selection(
-                selection_id=f"{source_id}_p1",
-                outcome="player_a",
-                name=player_a,
-                odds=final_odds_a,
-                probability_implied=prob_a,
-            ),
-            Selection(
-                selection_id=f"{source_id}_p2",
-                outcome="player_b",
-                name=player_b,
-                odds=final_odds_b,
-                probability_implied=prob_b,
-            ),
+        markets = self._markets_from_payload(source_id, player_a, player_b, raw_payload)
+        hash_payload = [
+            {
+                "market_id": market.market_id,
+                "line": getattr(market, "line_value", None),
+                "prices": [selection.odds for selection in market.selections],
+            }
+            for market in markets
         ]
-
-        market = Market(
-            market_id=f"{source_id}_match_winner",
-            market_type="match_winner",
-            name="Победитель матча",
-            status="suspended" if is_suspended else "active",
-            selections=selections,
-        )
-
-        # Calculate exact SHA-256 content hash of the odds
-        hash_payload = {
-            "market_id": market.market_id,
-            "p1_odds": final_odds_a,
-            "p2_odds": final_odds_b,
-            "is_suspended": is_suspended,
-        }
         raw_hash_bytes = json.dumps(hash_payload, sort_keys=True).encode("utf-8")
         content_hash = f"sha256:{hashlib.sha256(raw_hash_bytes).hexdigest()}"
-
-        snapshot_id = f"snap_tennis_{source_id}_{content_hash[7:19]}"
-
         return OddsSnapshot(
-            snapshot_id=snapshot_id,
+            snapshot_id=f"snap_tennis_{source_id}_{content_hash[7:19]}",
             event_id=event_id,
-            markets=[market],
+            markets=markets,
             content_hash=content_hash,
+        )
+
+    def _markets_from_payload(self, source_id: str, player_a: str, player_b: str, raw_payload: Dict[str, Any]) -> List[Market]:
+        found: List[Market] = []
+        seen = set()
+        for raw in raw_payload.get("markets") or []:
+            market = self._market_from_raw(source_id, player_a, player_b, raw)
+            if market is None or market.market_id in seen:
+                continue
+            seen.add(market.market_id)
+            found.append(market)
+        if not any(market.market_type == "match_winner" for market in found):
+            fallback = self._market_from_raw(source_id, player_a, player_b, {
+                "market_type": "match_winner",
+                "name": "Победитель матча",
+                "selections": [
+                    {"outcome": "player_a", "name": player_a, "odds": raw_payload.get("odds_a") or raw_payload.get("p1")},
+                    {"outcome": "player_b", "name": player_b, "odds": raw_payload.get("odds_b") or raw_payload.get("p2")},
+                ],
+            })
+            if fallback is not None:
+                found.insert(0, fallback)
+        return found
+
+    def _market_from_raw(self, source_id: str, player_a: str, player_b: str, raw: Dict[str, Any]) -> Optional[Market]:
+        market_type = str(raw.get("market_type") or "match_winner")
+        prices: Dict[str, float] = {}
+        for selection in raw.get("selections") or []:
+            outcome = str(selection.get("outcome") or "")
+            try:
+                price = float(selection.get("odds"))
+            except (TypeError, ValueError):
+                continue
+            if outcome in ("player_a", "player_b") and price > 1.0:
+                prices[outcome] = price
+        if "player_a" not in prices or "player_b" not in prices:
+            return None
+        line_value = raw.get("line_value")
+        suffix = "match" if market_type == "match_winner" else f"set{int(line_value or 0)}"
+        name = raw.get("name") or ("Победитель матча" if market_type == "match_winner" else f"Победа в сете {line_value}")
+        selections = [
+            Selection(
+                selection_id=f"{source_id}_{suffix}_p1",
+                outcome="player_a",
+                name=player_a,
+                odds=prices["player_a"],
+                probability_implied=round(1.0 / prices["player_a"], 4),
+            ),
+            Selection(
+                selection_id=f"{source_id}_{suffix}_p2",
+                outcome="player_b",
+                name=player_b,
+                odds=prices["player_b"],
+                probability_implied=round(1.0 / prices["player_b"], 4),
+            ),
+        ]
+        parsed_line = None if line_value in (None, "") else int(line_value)
+        return Market(
+            market_id=str(raw.get("market_id") or f"{source_id}_{suffix}"),
+            market_type=market_type,
+            name=str(name),
+            status="active",
+            selections=selections,
+            line_value=parsed_line,
         )
 
     def parse_result(

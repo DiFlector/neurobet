@@ -93,6 +93,10 @@ class BetValidationPipeline:
             edge = float(proposal["edge"])
             sport_code = str(proposal.get("sport_code") or "tennis").lower()
             market_name = str(proposal["market"])
+            set_number = proposal.get("set_number", proposal.get("line_value"))
+            if market_name == "set_winner" and set_number not in (None, ""):
+                market_name = f"set_winner:{int(float(set_number))}"
+                proposal["market"] = market_name
             outcome = str(proposal["outcome"])
         except (ValueError, TypeError) as ex:
             failed.append("SCHEMA_VALIDATION")

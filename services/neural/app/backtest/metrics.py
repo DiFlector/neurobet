@@ -52,6 +52,12 @@ class BacktestSummary:
     edge_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
     freshness_buckets: Dict[str, BucketMetrics] = field(default_factory=dict)
     error_analysis: Dict[str, Any] = field(default_factory=dict)
+    mean_clv: float = 0.0
+    roi_low: float = 0.0
+    roi_high: float = 0.0
+    clv_low: float = 0.0
+    clv_high: float = 0.0
+    rejected_stale: int = 0
 
 
 
@@ -96,6 +102,7 @@ class BacktestMetricsCalculator:
         statistical_metrics: Optional[Dict[str, float]] = None,
         calibration_curve: Optional[Dict[str, Any]] = None,
         error_analysis: Optional[Dict[str, Any]] = None,
+        execution_stats: Optional[Dict[str, float]] = None,
     ) -> BacktestSummary:
 
         """
@@ -185,8 +192,13 @@ class BacktestMetricsCalculator:
             edge_buckets=edge_buckets,
             freshness_buckets=freshness_buckets,
             error_analysis=error_analysis or {},
+            mean_clv=round(float((execution_stats or {}).get("mean_clv", 0.0)), 4),
+            roi_low=round(float((execution_stats or {}).get("roi_low", 0.0)), 4),
+            roi_high=round(float((execution_stats or {}).get("roi_high", 0.0)), 4),
+            clv_low=round(float((execution_stats or {}).get("clv_low", 0.0)), 4),
+            clv_high=round(float((execution_stats or {}).get("clv_high", 0.0)), 4),
+            rejected_stale=int((execution_stats or {}).get("rejected_stale", 0)),
         )
-
 
     @staticmethod
     def _compute_bucket(name: str, bets: List[SimulatedBet]) -> BucketMetrics:
@@ -220,3 +232,13 @@ class BacktestMetricsCalculator:
             avg_odds=round(avg_odds, 2),
             avg_edge=round(avg_edge, 4),
         )
+
+
+def bootstrap_interval(values: List[float], seed: int = 42, draws: int = 400) -> Tuple[float, float, float]:
+    """Mean and the 95% interval of the mean, resampled by match."""
+    if not values:
+        return 0.0, 0.0, 0.0
+    data = np.asarray(values, dtype=float)
+    rng = np.random.default_rng(seed)
+    means = [float(data[rng.integers(0, len(data), len(data))].mean()) for _ in range(draws)]
+    return float(data.mean()), float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))

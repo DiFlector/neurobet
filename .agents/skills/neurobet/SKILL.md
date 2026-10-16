@@ -87,6 +87,7 @@ neural (ML вероятности & edge)     research (Web поиск, конт
   - `neurobet_promote_model`: перевод теневой модели в статус ACTIVE.
   - `neurobet_rollback_model`: экстренный откат модели к предыдущей версии при выявлении дрейфа.
   - `neurobet_simulate_inference`: безопасный расчет вероятностей и edge на произвольном векторе признаков (sandbox-тестирование).
+  - `neurobet_trigger_backtest`: исторический replay одной модели или всех ACTIVE/SHADOW спорта. Регламент — `docs/historical-backtest.md`.
 - **Беттинг и аудит**:
   - `neurobet_get_bankroll_summary`: проверка баланса, свободных средств и экспозиции.
   - `neurobet_list_bet_proposals`: аудит отклоненных/принятых ставок и причин срабатывания гейтов риска.

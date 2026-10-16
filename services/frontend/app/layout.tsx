@@ -26,7 +26,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-background text-foreground antialiased selection:bg-emerald-500/20 selection:text-emerald-500">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          <TooltipProvider>
+          <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             {children}
           </TooltipProvider>
         </ThemeProvider>

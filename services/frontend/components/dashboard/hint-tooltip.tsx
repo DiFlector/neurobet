@@ -22,13 +22,13 @@ export function HintTooltip({
   children,
   className,
   side = "top",
-  delay = 200,
+  delay = 0,
 }: HintTooltipProps) {
   return (
     <Tooltip>
       <TooltipTrigger
         delay={delay}
-        render={<span />}
+        render={<span tabIndex={0} />}
         className={cn("inline-flex cursor-help items-center", className)}
       >
         {children}
@@ -43,11 +43,10 @@ export function HintTooltip({
   );
 }
 
-export function qualityScoreHint(score: number): string {
+export function qualityScoreHint(score: number, reasons?: string[]): string {
   const pct = Number.isFinite(score) ? score.toFixed(0) : "100";
-  return (
-    `К — индекс качества данных (${pct}%). ` +
-    `Показывает, насколько полный и согласованный снимок матча: поля, порядок времени, котировки Fonbet. ` +
-    `100% — критических аномалий не найдено; чем ниже, тем больше ошибок или пропусков в данных.`
-  );
+  const detail = reasons && reasons.length > 0
+    ? reasons.join(". ")
+    : "Полнота снимка матча, найденные источники и ответ контекста модели";
+  return `К — ${pct}%. ${detail}.`;
 }

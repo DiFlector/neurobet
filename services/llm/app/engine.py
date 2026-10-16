@@ -160,6 +160,12 @@ class DeterministicEngine(BaseInferenceEngine):
                     {"url": None, "domain": r.domain, "note": f"Fatigue signal: {snippet[:80]}"}
                 )
 
+        injury_risk_score = 0.8 if has_injury_risk else 0.0
+        fatigue_risk_score = 0.8 if has_fatigue_risk else 0.0
+        news_risk_score = 0.7 if (has_injury_risk or has_fatigue_risk) else 0.0
+        context_side_a = 0.5
+        pending = input_data.ml.model_version == "pending"
+
         reason_codes = []
         contradictions = []
 
@@ -172,7 +178,20 @@ class DeterministicEngine(BaseInferenceEngine):
             "team_b": "команда 2",
         }.get(str(selection).lower(), selection)
 
-        if has_injury_risk:
+        if pending and not has_injury_risk and not has_fatigue_risk:
+            if input_data.research:
+                verdict = "BET"
+                reason_codes.append("NO_NEGATIVE_SIGNALS")
+                stake_fraction = 0.0
+                qual_conf = 0.4
+                summary = f"{matchup}: внешний контекст без явного перевеса стороны."
+            else:
+                verdict = "INSUFFICIENT_DATA"
+                reason_codes.append("INSUFFICIENT_DATA")
+                stake_fraction = 0.0
+                qual_conf = 0.0
+                summary = f"{matchup}: в источниках нет информации о матче."
+        elif has_injury_risk:
             verdict = "NO_BET"
             reason_codes.append("INJURY_RISK")
             contradictions.append(
@@ -232,6 +251,10 @@ class DeterministicEngine(BaseInferenceEngine):
             latency_ms=round(elapsed_ms, 2),
             model_identifier=self._model_identifier,
             prompt_version=PROMPT_VERSION,
+            context_side_a=context_side_a,
+            injury_risk_score=injury_risk_score,
+            fatigue_risk_score=fatigue_risk_score,
+            news_risk_score=news_risk_score,
         )
 
     def complete(self, messages: List[Dict[str, str]], temperature: float = 0.1, max_tokens: int = 512) -> str:

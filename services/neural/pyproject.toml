@@ -19,6 +19,8 @@ dependencies = [
     "neurobet-contracts>=0.1.0",
     "neurobet-db>=0.1.0",
     "neurobet-features>=0.1.0",
+    "catboost>=1.2.0",
+    "torch>=2.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]

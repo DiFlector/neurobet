@@ -136,9 +136,18 @@ class LLMStructuredVerdict(BaseContract):
         description="Exact model name/path used for inference",
     )
     prompt_version: str = Field(
-        default="neurobet_llm_v1.0",
+        default="neurobet_llm_v1.1",
         description="Version of prompt template",
     )
+    context_side_a: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="How far external context favors participant A. 0.5 means no lean.",
+    )
+    injury_risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    fatigue_risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    news_risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @classmethod
     def create_insufficient_data_fallback(

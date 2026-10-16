@@ -14,6 +14,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
+from .strategy import MAX_STAKE_ODDS, MIN_STAKE_ODDS
+
 from contracts import (
     ScientificExperimentConfig,
     ScientificExperimentResultContract,
@@ -62,7 +64,7 @@ class ScientificExperimentRunner:
             min_stake=100.0,
             min_edge=0.03,
             min_probability=0.40,
-            max_odds=10.0,
+            max_odds=MAX_STAKE_ODDS,
             execution_latency_sec=2.0,
             max_odds_staleness_sec=15.0,
             allow_slippage=True,
@@ -104,6 +106,7 @@ class ScientificExperimentRunner:
             min_stake=exp_cfg.min_stake,
             min_edge=exp_cfg.min_edge,
             min_probability=exp_cfg.min_probability,
+            min_odds=MIN_STAKE_ODDS,
             max_odds=exp_cfg.max_odds,
             execution_latency_sec=exp_cfg.execution_latency_sec,
             max_odds_staleness_sec=exp_cfg.max_odds_staleness_sec,
@@ -276,6 +279,7 @@ class ScientificExperimentRunner:
             min_stake=llm_cfg.min_stake,
             min_edge=llm_cfg.min_edge,
             min_probability=llm_cfg.min_probability,
+            min_odds=MIN_STAKE_ODDS,
             max_odds=llm_cfg.max_odds,
             execution_latency_sec=llm_cfg.execution_latency_sec,
             max_odds_staleness_sec=llm_cfg.max_odds_staleness_sec,

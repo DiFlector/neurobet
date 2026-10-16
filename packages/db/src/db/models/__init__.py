@@ -2,7 +2,7 @@ from .quality import DataQualityIssue
 from .sports import Sport, League, Participant, ParticipantAlias
 from .events import Event, EventStateSnapshot, RawSnapshot
 from .odds import Market, MarketSelection, OddsSnapshot, OddsChangeEvent
-from .predictions import FeatureSnapshot, MLPrediction, LLMDecision
+from .predictions import FeatureSnapshot, MLPrediction, LLMDecision, ModelBetJournal
 from .research import WebResearchRun, WebDocument, WebEvidence
 from .betting import (
     VirtualAccount,
@@ -12,11 +12,21 @@ from .betting import (
     Bet,
     BetSettlement,
 )
+from .external_tennis import (
+    ExtTennisCanonicalMatch,
+    ExtTennisCanonicalPlayer,
+    ExtTennisMatch,
+    ExtTennisPlayer,
+    ExtTennisRanking,
+    ExtTennisServeLog,
+)
 from .ml_registry import (
     ModelVersion,
     TrainingDataset,
     TrainingRun,
     ExperimentResult,
+    BacktestRun,
+    BacktestRunResult,
     AuditLog,
 )
 
@@ -36,6 +46,7 @@ __all__ = [
     "FeatureSnapshot",
     "MLPrediction",
     "LLMDecision",
+    "ModelBetJournal",
     "WebResearchRun",
     "WebDocument",
     "WebEvidence",
@@ -49,5 +60,13 @@ __all__ = [
     "TrainingDataset",
     "TrainingRun",
     "ExperimentResult",
+    "BacktestRun",
+    "BacktestRunResult",
     "AuditLog",
+    "ExtTennisPlayer",
+    "ExtTennisMatch",
+    "ExtTennisRanking",
+    "ExtTennisServeLog",
+    "ExtTennisCanonicalPlayer",
+    "ExtTennisCanonicalMatch",
 ]

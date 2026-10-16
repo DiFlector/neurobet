@@ -22,9 +22,26 @@ RUN pip install --no-cache-dir /app/packages/db
 COPY packages/features /app/packages/features
 RUN pip install --no-cache-dir /app/packages/features
 
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
+COPY sports/tennis /app/sports/tennis
+RUN pip install --no-cache-dir /app/sports/tennis
+
 COPY services/neural/pyproject.toml /app/
 COPY services/neural/app /app/app
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 \
+    && pip install --no-cache-dir --no-deps . \
+    && pip install --no-cache-dir \
+        "pydantic>=2.7.0" \
+        "numpy>=1.26.0" \
+        "scipy>=1.12.0" \
+        "scikit-learn>=1.4.0" \
+        "joblib>=1.3.0" \
+        "redis>=5.0.4" \
+        "sqlalchemy>=2.0.30" \
+        "psycopg2-binary>=2.9.9" \
+        "catboost>=1.2.0"
 
 RUN mkdir -p /app/models/checkpoints
 

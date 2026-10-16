@@ -47,6 +47,9 @@ dist/
 # Storage & Data
 data/raw/*
 !data/raw/.gitkeep
+# Local tennis dumps (~1GB). Keep the index note; raw files stay on disk.
+OnlineData/*
+!OnlineData/README.md
 data/processed/*
 !data/processed/.gitkeep
 data/snapshots/*

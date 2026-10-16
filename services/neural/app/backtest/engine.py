@@ -5,9 +5,18 @@ import numpy as np
 
 from .config import BacktestConfig
 from .temporal import WalkForwardSplitter
-from .execution import ExecutionSimulator, SimulatedOddsSnapshot, OrderExecutionResult
+from .execution import (
+    ExecutionSimulator,
+    OrderExecutionResult,
+    SimulatedOddsSnapshot,
+    logit_clv,
+    no_vig_probability,
+    quote_as_of,
+)
 from .bankroll import BacktestBankroll, SimulatedBet
-from .metrics import BacktestMetricsCalculator, BacktestSummary
+from .metrics import BacktestMetricsCalculator, BacktestSummary, bootstrap_interval
+from ..commit import confirming_index
+from ..strategy import stake_gate
 from ..models import build_gradient_boosting_pipeline, build_logistic_regression_pipeline
 from ..metrics import compute_classification_metrics
 from db import SessionLocal
@@ -28,6 +37,8 @@ class BacktestSample:
         p2_odds: float,
         odds_snapshots: List[SimulatedOddsSnapshot],
         actual_winner: str,  # "p1" or "p2" or "void"
+        finished_at: Optional[datetime] = None,
+        market: str = "match_winner",
         research_published_at: Optional[datetime] = None,
         research_retrieved_at: Optional[datetime] = None,
         adverse_fatigue_injury_p1: bool = False,
@@ -41,6 +52,8 @@ class BacktestSample:
         self.p2_odds = p2_odds
         self.odds_snapshots = odds_snapshots
         self.actual_winner = actual_winner
+        self.finished_at = finished_at
+        self.market = market
         self.research_published_at = research_published_at
         self.research_retrieved_at = research_retrieved_at
         self.adverse_fatigue_injury_p1 = adverse_fatigue_injury_p1
@@ -48,6 +61,91 @@ class BacktestSample:
         self.research_summary = research_summary
         # Label: 1 if p1 won, 0 if p2 won
         self.label = 1 if actual_winner == "p1" else 0
+
+
+def split_by_event(samples: List[BacktestSample], n_splits: int) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """Expanding folds that never put two snapshots of one match on different sides."""
+    events: List[str] = []
+    buckets: Dict[str, List[int]] = {}
+    for index, sample in enumerate(samples):
+        if sample.event_id not in buckets:
+            events.append(sample.event_id)
+            buckets[sample.event_id] = []
+        buckets[sample.event_id].append(index)
+    if len(events) < (n_splits + 1) * 2:
+        raise ValueError(
+            f"Нужно минимум {(n_splits + 1) * 2} матчей для {n_splits} фолдов, сейчас {len(events)}."
+        )
+    chunk = len(events) // (n_splits + 1)
+    splits = []
+    for fold in range(n_splits):
+        test_start = (fold + 1) * chunk
+        test_end = (fold + 2) * chunk if fold < n_splits - 1 else len(events)
+        train_idx = [index for event_id in events[:test_start] for index in buckets[event_id]]
+        test_idx = [index for event_id in events[test_start:test_end] for index in buckets[event_id]]
+        splits.append((np.asarray(train_idx, dtype=int), np.asarray(test_idx, dtype=int)))
+    return splits
+
+
+def confirming_bet_indices(
+    model,
+    samples: List[BacktestSample],
+    test_idx,
+    min_edge: float,
+    min_interval_sec: float = 0.0,
+    required: int = 2,
+    sport_code: str = "",
+) -> set:
+    """Sample positions where this fitted model confirms the same side twice."""
+    groups: Dict[str, List[int]] = {}
+    for idx in test_idx:
+        groups.setdefault(samples[int(idx)].event_id, []).append(int(idx))
+    allowed = set()
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        probabilities = []
+        odds = []
+        for idx in indices:
+            sample = samples[idx]
+            raw = model.predict_proba(np.asarray(sample.feature_vector, dtype=float).reshape(1, -1))[0]
+            classes = [int(item) for item in getattr(model, "classes_", [0, 1])]
+            prob_a = float(raw[classes.index(1)]) if 1 in classes else float(raw[-1])
+            probabilities.append((prob_a, 1.0 - prob_a))
+            odds.append((float(sample.p1_odds), float(sample.p2_odds)))
+        times = [samples[idx].decision_timestamp for idx in indices]
+        chosen = confirming_index(
+            probabilities,
+            odds,
+            min_edge,
+            times,
+            min_interval_sec,
+            required,
+            str(samples[indices[0]].market or "match_winner"),
+            sport_code,
+        )
+        if chosen is not None:
+            allowed.add(indices[chosen])
+    return allowed
+
+
+def _thinned_indices(samples: List[BacktestSample], indices, limit: int = 12) -> List[int]:
+    """Keep an even spread of each match, including its first and last snapshot."""
+    groups: Dict[str, List[int]] = {}
+    for idx in indices:
+        groups.setdefault(samples[int(idx)].event_id, []).append(int(idx))
+    chosen: List[int] = []
+    for group in groups.values():
+        if len(group) <= limit:
+            chosen.extend(group)
+            continue
+        last = None
+        for slot in range(limit):
+            pick = group[int(round(slot * (len(group) - 1) / (limit - 1)))]
+            if pick != last:
+                chosen.append(pick)
+                last = pick
+    return chosen
 
 
 class WalkForwardBacktester:
@@ -93,11 +191,15 @@ class WalkForwardBacktester:
         samples = sorted(samples, key=lambda s: s.decision_timestamp)
         timestamps = [s.decision_timestamp for s in samples]
 
-        splits = self.splitter.split(timestamps)
+        if self.config.group_by_event:
+            splits = split_by_event(samples, self.config.n_splits)
+        else:
+            splits = self.splitter.split(timestamps)
         logger.info(f"Starting Walk-Forward Backtest with {len(splits)} folds on {len(samples)} samples.")
 
         total_orders_considered = 0
         total_orders_rejected = 0
+        rejection_counts: Dict[str, int] = {}
         all_test_y_true: List[int] = []
         all_test_y_prob: List[float] = []
 
@@ -115,9 +217,10 @@ class WalkForwardBacktester:
         for fold_idx, (train_idx, test_idx) in enumerate(splits):
             logger.info(f"--- Fold {fold_idx + 1}/{len(splits)}: Train={len(train_idx)}, Test={len(test_idx)} ---")
 
-            # 1. Prepare training matrix
-            X_train = np.array([samples[i].feature_vector for i in train_idx], dtype=np.float32)
-            y_train = np.array([samples[i].label for i in train_idx], dtype=np.int32)
+            # 1. Prepare training matrix. Long matches are thinned so one timeline cannot dominate.
+            fit_idx = _thinned_indices(samples, train_idx) if self.config.group_by_event else train_idx
+            X_train = np.array([samples[i].feature_vector for i in fit_idx], dtype=np.float32)
+            y_train = np.array([samples[i].label for i in fit_idx], dtype=np.int32)
 
             # 2. Train baseline model on train fold
             if model_type == "logistic_regression":
@@ -126,10 +229,24 @@ class WalkForwardBacktester:
                 model = build_gradient_boosting_pipeline(random_state=self.config.random_seed)
 
             model.fit(X_train, y_train)
+            bet_indices = (
+                confirming_bet_indices(
+                    model,
+                    samples,
+                    test_idx,
+                    self.config.min_edge,
+                    self.config.min_confirm_interval_sec,
+                    self.config.confirmations,
+                    self.config.sport_code,
+                )
+                if self.config.confirm_side
+                else {int(idx) for idx in test_idx}
+            )
 
             # 3. Step sequentially through out-of-sample test fold
             for idx in test_idx:
                 sample = samples[idx]
+                self.bankroll.release_due(sample.decision_timestamp)
                 feat = sample.feature_vector.reshape(1, -1)
 
                 # Predict probabilities
@@ -139,6 +256,8 @@ class WalkForwardBacktester:
 
                 all_test_y_true.append(sample.label)
                 all_test_y_prob.append(prob_p1)
+                if int(idx) not in bet_indices:
+                    continue
 
                 # Check edge for P1 and P2
                 edge_p1 = (prob_p1 * sample.p1_odds) - 1.0
@@ -150,19 +269,17 @@ class WalkForwardBacktester:
                 target_odds = 0.0
                 target_edge = 0.0
 
-                if edge_p1 >= self.config.min_edge and prob_p1 >= self.config.min_probability:
-                    if sample.p1_odds <= self.config.max_odds:
-                        target_outcome = "p1"
-                        target_prob = prob_p1
-                        target_odds = sample.p1_odds
-                        target_edge = edge_p1
+                if edge_p1 >= self.config.min_edge and stake_gate(prob_p1, sample.p1_odds, sample.market, self.config.sport_code)[0]:
+                    target_outcome = "p1"
+                    target_prob = prob_p1
+                    target_odds = sample.p1_odds
+                    target_edge = edge_p1
 
-                elif edge_p2 >= self.config.min_edge and prob_p2 >= self.config.min_probability:
-                    if sample.p2_odds <= self.config.max_odds:
-                        target_outcome = "p2"
-                        target_prob = prob_p2
-                        target_odds = sample.p2_odds
-                        target_edge = edge_p2
+                elif edge_p2 >= self.config.min_edge and stake_gate(prob_p2, sample.p2_odds, sample.market, self.config.sport_code)[0]:
+                    target_outcome = "p2"
+                    target_prob = prob_p2
+                    target_odds = sample.p2_odds
+                    target_edge = edge_p2
 
                 if not target_outcome:
                     continue  # No profitable edge identified
@@ -210,6 +327,8 @@ class WalkForwardBacktester:
 
                 if not exec_result.is_executed:
                     total_orders_rejected += 1
+                    code = exec_result.rejection_code or "REJECTED"
+                    rejection_counts[code] = rejection_counts.get(code, 0) + 1
                     logger.debug(f"Order rejected: {exec_result.rejection_code}")
                     continue
 
@@ -252,20 +371,33 @@ class WalkForwardBacktester:
                     total_orders_rejected += 1
                     continue
 
-                # 6. Settle bet after match completion (simulated event conclusion)
-                # Event conclusion time is after the last snapshot or +30 mins
-                match_end_time = sample.decision_timestamp + timedelta(minutes=45)
-                self.bankroll.settle_bet(
-                    bet_id=bet.bet_id,
-                    actual_winner=sample.actual_winner,
-                    settled_at=match_end_time,
-                )
-
+                # 6. Hold the stake until the recorded finish. Samples without one close after 45 minutes.
+                match_end_time = sample.finished_at or (sample.decision_timestamp + timedelta(minutes=45))
+                if match_end_time < exec_result.execution_timestamp:
+                    match_end_time = exec_result.execution_timestamp
+                executed = quote_as_of(sample.odds_snapshots, exec_result.execution_timestamp)
+                closed = quote_as_of(sample.odds_snapshots, match_end_time)
+                if executed and closed:
+                    bet.clv = logit_clv(
+                        no_vig_probability(closed.p1_odds, closed.p2_odds, target_outcome),
+                        no_vig_probability(executed.p1_odds, executed.p2_odds, target_outcome),
+                    )
                 if self.config.use_llm:
+                    self.bankroll.settle_bet(bet.bet_id, sample.actual_winner, match_end_time)
+                else:
+                    bet.pending_winner = sample.actual_winner
+                    bet.due_at = match_end_time
+
+                if self.config.use_llm and bet.status in ("WON", "LOST"):
                     if bet.status == "WON":
                         true_positives += 1
                     elif bet.status == "LOST":
                         false_positives += 1
+
+        horizon = max(
+            (sample.finished_at or sample.decision_timestamp) for sample in samples
+        )
+        self.bankroll.release_due(horizon + timedelta(days=1))
 
         # 7. Calculate statistical probabilistic metrics and calibration curve
         stat_metrics = {}
@@ -324,6 +456,31 @@ class WalkForwardBacktester:
             "net_veto_value_pnl": round(net_veto_value_pnl, 2),
         }
 
+        by_event: Dict[str, List[SimulatedBet]] = {}
+        for settled in self.bankroll.settled_bets:
+            by_event.setdefault(settled.event_id, []).append(settled)
+        event_roi = []
+        event_clv = []
+        for bets in by_event.values():
+            turnover = sum(bet.stake for bet in bets)
+            if turnover > 0:
+                event_roi.append(sum(bet.net_profit for bet in bets) / turnover)
+            clv_values = [bet.clv for bet in bets if bet.clv is not None]
+            if clv_values:
+                event_clv.append(sum(clv_values) / len(clv_values))
+        roi_mean, roi_low, roi_high = bootstrap_interval(event_roi, seed=self.config.random_seed)
+        clv_mean, clv_low, clv_high = bootstrap_interval(event_clv, seed=self.config.random_seed)
+        execution_stats = {
+            "mean_clv": clv_mean,
+            "roi_low": roi_low,
+            "roi_high": roi_high,
+            "clv_low": clv_low,
+            "clv_high": clv_high,
+            "rejected_stale": rejection_counts.get("STALE_ODDS", 0),
+            "event_roi": roi_mean,
+        }
+        error_analysis_data["rejections"] = rejection_counts
+
         # 9. Calculate complete summary metrics
         summary = BacktestMetricsCalculator.compute_summary(
             initial_bankroll=self.bankroll.initial_balance,
@@ -334,6 +491,7 @@ class WalkForwardBacktester:
             statistical_metrics=stat_metrics,
             calibration_curve=calibration_curve_data,
             error_analysis=error_analysis_data,
+            execution_stats=execution_stats,
         )
 
         logger.info(

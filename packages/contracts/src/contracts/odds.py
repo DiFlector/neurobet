@@ -32,6 +32,7 @@ class Market(BaseContract):
         description="Market availability status",
     )
     selections: List[Selection] = Field(..., min_length=2, description="Available outcomes")
+    line_value: Optional[float] = Field(default=None, description="Set number for set_winner. Empty for the match.")
 
 
 class OddsSnapshot(BaseContract):

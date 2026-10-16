@@ -14,6 +14,7 @@ import {
   Database,
   Layers,
   Settings,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,6 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { getApiBase } from "@/lib/api";
 import { getSportNameRu } from "@/lib/formatters";
+import { AdminBacktestPanel } from "@/components/dashboard/admin-backtest-panel";
+import { AdminModelDetail } from "@/components/dashboard/admin-model-detail";
 
 // Хеш SHA-256 от пароля пользователя "!Zz128500246315"
 // Пароль нигде не хранится в открытом виде.
@@ -49,12 +52,19 @@ interface AdminModalProps {
 interface ModelLiveRecord {
   id: string;
   model_name: string;
+  display_name?: string;
+  is_composite?: boolean;
+  components?: { id?: string; label?: string }[];
   version_tag: string;
   sport_code: string;
   status: string;
   settled: number;
   wins: number;
   win_rate: number | null;
+  match_settled?: number;
+  match_win_rate?: number | null;
+  set_settled?: number;
+  set_win_rate?: number | null;
 }
 
 function winRateLabel(rate: number | null, settled: number): string {
@@ -84,6 +94,8 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
   const [modelRows, setModelRows] = React.useState<ModelLiveRecord[] | null>(null);
   const [modelsLoading, setModelsLoading] = React.useState(false);
+  const [section, setSection] = React.useState<"overview" | "backtest">("overview");
+  const [expandedModelId, setExpandedModelId] = React.useState<string | null>(null);
 
   // Проверка сессии при открытии
   React.useEffect(() => {
@@ -98,23 +110,28 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
   React.useEffect(() => {
     if (!open || !isAuthenticated) return;
     let cancelled = false;
-    setModelsLoading(true);
-    fetch(`${getApiBase()}/models/live-record`, { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        return res.json();
-      })
-      .then((data) => {
-        if (!cancelled) setModelRows(Array.isArray(data.models) ? data.models : []);
-      })
-      .catch(() => {
-        if (!cancelled) setModelRows([]);
-      })
-      .finally(() => {
-        if (!cancelled) setModelsLoading(false);
-      });
+    const load = (first: boolean) => {
+      if (first) setModelsLoading(true);
+      fetch(`${getApiBase()}/models/live-record`, { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(String(res.status));
+          return res.json();
+        })
+        .then((data) => {
+          if (!cancelled) setModelRows(Array.isArray(data.models) ? data.models : []);
+        })
+        .catch(() => {
+          if (!cancelled && first) setModelRows([]);
+        })
+        .finally(() => {
+          if (!cancelled && first) setModelsLoading(false);
+        });
+    };
+    load(true);
+    const timer = window.setInterval(() => load(false), 5000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [open, isAuthenticated]);
 
@@ -183,7 +200,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="border-b border-border/50 pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -261,6 +278,37 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
         ) : (
           /* Панель администратора */
           <div className="space-y-4 py-2">
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={section === "overview" ? "default" : "outline"}
+                className="h-8 text-xs"
+                onClick={() => setSection("overview")}
+              >
+                Обзор
+              </Button>
+              <Button
+                size="sm"
+                variant={section === "backtest" ? "default" : "outline"}
+                className="h-8 text-xs"
+                onClick={() => setSection("backtest")}
+              >
+                Бэктест
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Выйти</span>
+              </Button>
+            </div>
+            {section === "backtest" ? (
+              <AdminBacktestPanel />
+            ) : (
+            <>
             <div className="space-y-2">
               <div className="text-xs font-semibold text-foreground">Модели</div>
               <div className="overflow-x-auto rounded-lg border border-border/60">
@@ -272,20 +320,22 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                       <th className="px-3 py-2 text-left font-medium">Роль</th>
                       <th className="px-3 py-2 text-right font-medium">Завершено</th>
                       <th className="px-3 py-2 text-right font-medium">Побед</th>
-                      <th className="px-3 py-2 text-right font-medium">% побед</th>
+                      <th className="px-3 py-2 text-right font-medium">% побед в матче</th>
+                      <th className="px-3 py-2 text-right font-medium">% побед в сете</th>
+                      <th className="px-3 py-2 text-right font-medium">Общий % побед</th>
                     </tr>
                   </thead>
                   <tbody>
                     {modelsLoading && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
                           Считаю результаты…
                         </td>
                       </tr>
                     )}
                     {!modelsLoading && (modelRows || []).length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
                           Активных и теневых моделей нет
                         </td>
                       </tr>
@@ -294,11 +344,28 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                       (modelRows || []).map((row) => {
                         const status = (row.status || "").toUpperCase();
                         const combat = status === "ACTIVE";
+                        const expanded = expandedModelId === row.id;
                         return (
-                          <tr key={row.id} className="border-t border-border/50">
-                            <td className="px-3 py-2">{getSportNameRu(row.sport_code)}</td>
+                          <React.Fragment key={row.id}>
+                          <tr
+                            className="cursor-pointer border-t border-border/50 hover:bg-muted/40"
+                            onClick={() => setExpandedModelId(expanded ? null : row.id)}
+                          >
                             <td className="px-3 py-2">
-                              <div className="font-medium text-foreground">{row.model_name}</div>
+                              <span className="inline-flex items-center gap-1">
+                                <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                                {getSportNameRu(row.sport_code)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-foreground">
+                                {row.is_composite ? row.display_name || "Составная модель" : row.model_name}
+                              </div>
+                              {row.is_composite && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  Состав: {(row.components || []).map((item) => item.label).filter(Boolean).join(" · ")}
+                                </div>
+                              )}
                               <div className="font-mono text-[10px] text-muted-foreground" title={row.version_tag}>
                                 {row.version_tag}
                               </div>
@@ -318,18 +385,36 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                             <td className="px-3 py-2 text-right font-mono">{row.settled}</td>
                             <td className="px-3 py-2 text-right font-mono">{row.wins}</td>
                             <td
+                              className={`px-3 py-2 text-right font-mono font-semibold ${winRateClass(row.match_win_rate ?? null, row.match_settled || 0)}`}
+                            >
+                              {winRateLabel(row.match_win_rate ?? null, row.match_settled || 0)}
+                            </td>
+                            <td
+                              className={`px-3 py-2 text-right font-mono font-semibold ${winRateClass(row.set_win_rate ?? null, row.set_settled || 0)}`}
+                            >
+                              {winRateLabel(row.set_win_rate ?? null, row.set_settled || 0)}
+                            </td>
+                            <td
                               className={`px-3 py-2 text-right font-mono font-semibold ${winRateClass(row.win_rate, row.settled)}`}
                             >
                               {winRateLabel(row.win_rate, row.settled)}
                             </td>
                           </tr>
+                          {expanded && (
+                            <tr className="border-t border-border/40 bg-muted/20">
+                              <td colSpan={8}>
+                                <AdminModelDetail modelId={row.id} composite={Boolean(row.is_composite)} />
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         );
                       })}
                   </tbody>
                 </table>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Процент побед — доля завершённых матчей, где прогноз стороны совпал с победителем. Пока матч не закончился, он в счёт не входит.
+                Процент побед — доля решённых ставок, где сторона модели совпала с исходом. Матч и сет считаются отдельно, общий процент складывает их. Строку можно развернуть: там периоды, график побед и средние показатели. Возвраты и ещё не закрытые ставки в процент не входят. Цифры обновляются каждые 5 секунд, пока это окно открыто.
               </p>
             </div>
 
@@ -475,6 +560,8 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                 <span>Выйти</span>
               </Button>
             </div>
+            </>
+            )}
           </div>
         )}
       </DialogContent>

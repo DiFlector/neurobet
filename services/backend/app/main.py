@@ -45,11 +45,18 @@ try:
     from db.connection import SessionLocal
     from db.models.events import Event, EventStateSnapshot
     from db.models.odds import Market, MarketSelection, OddsSnapshot
-    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision
+    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision, ModelBetJournal
     from db.models.betting import (
         VirtualAccount, LedgerEntry, Bet, BetSettlement, BetProposal, BetValidationResult
     )
-    from db.models.ml_registry import ModelVersion, TrainingRun, TrainingDataset, ExperimentResult
+    from db.models.ml_registry import (
+        ModelVersion,
+        TrainingRun,
+        TrainingDataset,
+        ExperimentResult,
+        BacktestRun,
+        BacktestRunResult,
+    )
     from db.models.research import WebResearchRun, WebDocument, WebEvidence
 except ImportError:
     DataQualityEngine = None
@@ -62,6 +69,7 @@ except ImportError:
     MLPrediction = None
     FeatureSnapshot = None
     LLMDecision = None
+    ModelBetJournal = None
     VirtualAccount = None
     LedgerEntry = None
     Bet = None
@@ -72,6 +80,8 @@ except ImportError:
     TrainingRun = None
     TrainingDataset = None
     ExperimentResult = None
+    BacktestRun = None
+    BacktestRunResult = None
     WebResearchRun = None
     WebDocument = None
     WebEvidence = None
@@ -273,6 +283,9 @@ def get_events(
 
         total = q.count()
         events = q.order_by(Event.scheduled_start_at.desc()).offset(offset).limit(limit).all()
+        from .quality_display import quality_by_event
+
+        quality = quality_by_event(session, events)
 
         return {
             "total": total,
@@ -293,7 +306,11 @@ def get_events(
                     "scheduled_start_at": e.scheduled_start_at.isoformat() if e.scheduled_start_at else None,
                     "started_at": e.started_at.isoformat() if e.started_at else None,
                     "finished_at": e.finished_at.isoformat() if e.finished_at else None,
-                    "quality_score": float(e.quality_score) if e.quality_score is not None else 100.0,
+                    "quality_score": quality.get(e.id, {}).get(
+                        "quality_score",
+                        float(e.quality_score) if e.quality_score is not None else 100.0,
+                    ),
+                    "quality_reasons": quality.get(e.id, {}).get("quality_reasons", []),
                 }
                 for e in events
             ],
@@ -350,6 +367,9 @@ def get_event_detail(event_id: str) -> Dict[str, Any]:
         if not evt:
             raise HTTPException(status_code=404, detail="Event not found")
 
+        from .quality_display import quality_by_event
+
+        shown = quality_by_event(session, [evt]).get(evt.id, {})
         return {
             "id": str(evt.id),
             "sport_code": evt.sport_code,
@@ -364,7 +384,11 @@ def get_event_detail(event_id: str) -> Dict[str, Any]:
             "scheduled_start_at": evt.scheduled_start_at.isoformat() if evt.scheduled_start_at else None,
             "started_at": evt.started_at.isoformat() if evt.started_at else None,
             "finished_at": evt.finished_at.isoformat() if evt.finished_at else None,
-            "quality_score": float(evt.quality_score) if evt.quality_score is not None else 100.0,
+            "quality_score": shown.get(
+                "quality_score",
+                float(evt.quality_score) if evt.quality_score is not None else 100.0,
+            ),
+            "quality_reasons": shown.get("quality_reasons", []),
             "metadata_json": evt.metadata_json,
         }
 
@@ -440,6 +464,52 @@ def get_event_odds_history(
         ]
 
 
+def _public_composite(detail: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """One visible model state. Inner lines stay inside this object."""
+    raw = (detail or {}).get("composite") if isinstance(detail, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    components = []
+    for item in raw.get("components") or []:
+        if not isinstance(item, dict):
+            continue
+        confirmed = bool(item.get("confirmed"))
+        reason = str(item.get("reason") or "")
+        side = item.get("confirmed_side") or item.get("side")
+        if confirmed and side:
+            verdict = f"подтвердила {side}"
+        elif reason:
+            verdict = reason
+        elif side:
+            verdict = f"смотрит {side}"
+        else:
+            verdict = "ещё нет"
+        components.append(
+            {
+                "component_id": str(item.get("id") or item.get("component_id") or ""),
+                "label": str(item.get("label") or ""),
+                "side": side,
+                "confirmed": confirmed,
+                "probability": float(item.get("probability") or 0.0),
+                "edge": float(item.get("edge") or 0.0),
+                "reason": reason,
+                "verdict": verdict,
+            }
+        )
+    selected = bool(raw.get("selected"))
+    return {
+        "schema_version": "1.0.0",
+        "label": raw.get("label") or "Составная модель",
+        "phase": raw.get("phase") or "0/3",
+        "display_phase": raw.get("display_phase") or ("Выбрано" if selected else raw.get("phase") or "0/3"),
+        "selected": selected,
+        "market": raw.get("market") or "",
+        "side": raw.get("side"),
+        "agreement_count": int(raw.get("agreement_count") or 0),
+        "components": components,
+    }
+
+
 # --------------------------------------------------------------------------
 # 5. ML Predictions & Web Research
 # --------------------------------------------------------------------------
@@ -473,10 +543,75 @@ def get_predictions(event_id: Optional[str] = None, limit: int = 50) -> List[Dic
                 "edge": float(p.edge),
                 "confidence": float(p.confidence),
                 "has_positive_edge": p.has_positive_edge,
+                "decision_eligible": (p.outcomes_detail or {}).get("decision_eligible", p.has_positive_edge),
+                "decision_reason": str((p.outcomes_detail or {}).get("decision_reason") or ""),
                 "is_shadow": bool(p.is_shadow),
+                "model_name": str((p.outcomes_detail or {}).get("model_name") or ""),
+                "composite": _public_composite(p.outcomes_detail),
                 "created_at": p.created_at.isoformat(),
             }
             for p in preds
+        ]
+
+
+@app.get("/api/model-bets")
+def list_model_bets(
+    event_id: Optional[str] = None,
+    sport_code: Optional[str] = None,
+    model_name: Optional[str] = None,
+    is_shadow: Optional[bool] = None,
+    market: Optional[str] = None,
+    result_status: Optional[str] = None,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    """Statistical journal of model sides, including shadows and decisions with no stake."""
+    if not SessionLocal or not ModelBetJournal or not Event:
+        return []
+    with SessionLocal() as session:
+        query = session.query(ModelBetJournal, Event).join(Event, Event.id == ModelBetJournal.event_id)
+        if event_id:
+            try:
+                query = query.filter(ModelBetJournal.event_id == uuid.UUID(event_id))
+            except ValueError:
+                return []
+        if sport_code:
+            query = query.filter(ModelBetJournal.sport_code == sport_code)
+        if model_name:
+            query = query.filter(ModelBetJournal.model_name == model_name)
+        if is_shadow is not None:
+            query = query.filter(ModelBetJournal.is_shadow.is_(is_shadow))
+        if market:
+            query = query.filter(ModelBetJournal.market == market)
+        if result_status:
+            query = query.filter(ModelBetJournal.result_status == result_status)
+        rows = query.order_by(ModelBetJournal.decided_at.desc()).limit(min(limit, 500)).all()
+        return [
+            {
+                "id": str(row.id),
+                "event_id": str(row.event_id),
+                "sport_code": row.sport_code,
+                "participant_a": event.participant_a_name,
+                "participant_b": event.participant_b_name,
+                "model_name": row.model_name,
+                "model_version": row.model_version,
+                "is_shadow": bool(row.is_shadow),
+                "market": row.market,
+                "outcome": row.outcome,
+                "model_probability": float(row.model_probability),
+                "bookmaker_odds": float(row.bookmaker_odds),
+                "fair_odds": float(row.fair_odds),
+                "edge": float(row.edge),
+                "expected_value": float(row.expected_value),
+                "confidence": float(row.confidence),
+                "stake_amount": float(row.stake_amount),
+                "reason": row.reason,
+                "detail": row.detail or {},
+                "decided_at": row.decided_at.isoformat(),
+                "result_status": row.result_status,
+                "result_winner": row.result_winner,
+                "settled_at": row.settled_at.isoformat() if row.settled_at else None,
+            }
+            for row, event in rows
         ]
 
 
@@ -882,20 +1017,20 @@ def get_portfolio_performance(include_synthetic: bool = False) -> Dict[str, Any]
 # --------------------------------------------------------------------------
 # 8. ML Models & Training Runs Registry
 # --------------------------------------------------------------------------
-def _event_winner(event: Any) -> Optional[str]:
-    meta = getattr(event, "metadata_json", None) or {}
-    score = getattr(event, "current_score", None) or {}
-    winner = meta.get("winner") or meta.get("participant_winner") or score.get("winner")
-    if winner is None:
-        return None
-    text = str(winner).strip().lower()
-    return text or None
+def _journal_market_family(market: str) -> str:
+    """Match and set lines are scored separately. Any other market stays in the total only."""
+    text = str(market or "")
+    if text == "match_winner" or text.startswith("match_winner:"):
+        return "match"
+    if text == "set_winner" or text.startswith("set_winner:"):
+        return "set"
+    return "other"
 
 
 @app.get("/api/models/live-record")
 def get_model_live_record() -> Dict[str, Any]:
-    """Win rate of ACTIVE and SHADOW models on finished matches."""
-    if not SessionLocal or not ModelVersion or not MLPrediction or not Event:
+    """Win rate of ACTIVE and SHADOW models. Match, set, and the total are separate. Voids are excluded."""
+    if not SessionLocal or not ModelVersion or not ModelBetJournal:
         return {"models": []}
 
     with SessionLocal() as session:
@@ -913,54 +1048,199 @@ def get_model_live_record() -> Dict[str, Any]:
             )
             .all()
         )
-        version_tags = [m.version_tag for m in models]
-        stats: Dict[str, Dict[str, int]] = {
-            tag: {"settled": 0, "wins": 0} for tag in version_tags
-        }
-        if version_tags:
-            rows = (
-                session.query(MLPrediction, Event)
-                .join(Event, Event.id == MLPrediction.event_id)
-                .filter(
-                    MLPrediction.model_version.in_(version_tags),
-                    Event.status == "finished",
-                )
-                .order_by(MLPrediction.created_at.desc())
-                .all()
+        stats: Dict[tuple[str, str], Dict[str, int]] = {}
+        rows = (
+            session.query(
+                ModelBetJournal.model_name,
+                ModelBetJournal.model_version,
+                ModelBetJournal.market,
+                ModelBetJournal.result_status,
+                func.count(ModelBetJournal.id),
             )
-            seen: set[tuple[str, str]] = set()
-            for prediction, event in rows:
-                key = (str(event.id), prediction.model_version)
-                if key in seen:
-                    continue
-                seen.add(key)
-                winner = _event_winner(event)
-                if not winner:
-                    continue
-                bucket = stats.setdefault(prediction.model_version, {"settled": 0, "wins": 0})
-                bucket["settled"] += 1
-                predicted = (prediction.predicted_outcome or "").strip().lower()
-                if predicted == winner:
-                    bucket["wins"] += 1
+            .filter(ModelBetJournal.result_status.in_(["won", "lost"]))
+            .group_by(
+                ModelBetJournal.model_name,
+                ModelBetJournal.model_version,
+                ModelBetJournal.market,
+                ModelBetJournal.result_status,
+            )
+            .all()
+        )
+        for model_name, version, market, status, count in rows:
+            bucket = stats.setdefault(
+                (model_name, version),
+                {"settled": 0, "wins": 0, "match_settled": 0, "match_wins": 0, "set_settled": 0, "set_wins": 0},
+            )
+            amount = int(count)
+            bucket["settled"] += amount
+            won = status == "won"
+            if won:
+                bucket["wins"] += amount
+            family = _journal_market_family(market)
+            if family == "match":
+                bucket["match_settled"] += amount
+                if won:
+                    bucket["match_wins"] += amount
+            elif family == "set":
+                bucket["set_settled"] += amount
+                if won:
+                    bucket["set_wins"] += amount
 
+        empty = {"settled": 0, "wins": 0, "match_settled": 0, "match_wins": 0, "set_settled": 0, "set_wins": 0}
         payload = []
         for model in models:
-            bucket = stats.get(model.version_tag, {"settled": 0, "wins": 0})
+            bucket = stats.get((model.model_name, model.version_tag), empty)
             settled = bucket["settled"]
             wins = bucket["wins"]
             payload.append(
                 {
                     "id": str(model.id),
                     "model_name": model.model_name,
+                    "display_name": (model.hyperparameters or {}).get("display_label") or model.model_name,
+                    "is_composite": (model.hyperparameters or {}).get("kind") == "composite",
+                    "components": (model.hyperparameters or {}).get("components") or [],
                     "version_tag": model.version_tag,
                     "sport_code": model.sport_code,
                     "status": model.status,
                     "settled": settled,
                     "wins": wins,
                     "win_rate": round(wins / settled, 4) if settled else None,
+                    "match_settled": bucket["match_settled"],
+                    "match_wins": bucket["match_wins"],
+                    "match_win_rate": round(bucket["match_wins"] / bucket["match_settled"], 4) if bucket["match_settled"] else None,
+                    "set_settled": bucket["set_settled"],
+                    "set_wins": bucket["set_wins"],
+                    "set_win_rate": round(bucket["set_wins"] / bucket["set_settled"], 4) if bucket["set_settled"] else None,
                 }
             )
         return {"models": payload}
+
+
+def _journal_period_stats(rows: list) -> Dict[str, Any]:
+    """Win rates and averages for one time window. Voids stay out of the win rate."""
+    settled = wins = losses = voids = pending = 0
+    match_settled = match_wins = set_settled = set_wins = 0
+    probability = odds = edge = expected = 0.0
+    counted = 0
+    curve: list[Dict[str, int]] = []
+    bets = won = 0
+    for market, status, probability_value, odds_value, edge_value, expected_value in rows:
+        counted += 1
+        probability += float(probability_value or 0)
+        odds += float(odds_value or 0)
+        edge += float(edge_value or 0)
+        expected += float(expected_value or 0)
+        if status == "pending":
+            pending += 1
+            continue
+        if status == "void":
+            voids += 1
+            continue
+        if status not in ("won", "lost"):
+            continue
+        settled += 1
+        bets += 1
+        is_win = status == "won"
+        if is_win:
+            wins += 1
+            won += 1
+        else:
+            losses += 1
+        family = _journal_market_family(str(market or ""))
+        if family == "match":
+            match_settled += 1
+            if is_win:
+                match_wins += 1
+        elif family == "set":
+            set_settled += 1
+            if is_win:
+                set_wins += 1
+        curve.append({"bets": bets, "wins": won})
+    return {
+        "committed": counted,
+        "settled": settled,
+        "wins": wins,
+        "losses": losses,
+        "voids": voids,
+        "pending": pending,
+        "win_rate": round(wins / settled, 4) if settled else None,
+        "match_settled": match_settled,
+        "match_wins": match_wins,
+        "match_win_rate": round(match_wins / match_settled, 4) if match_settled else None,
+        "set_settled": set_settled,
+        "set_wins": set_wins,
+        "set_win_rate": round(set_wins / set_settled, 4) if set_settled else None,
+        "avg_probability": round(probability / counted, 4) if counted else None,
+        "avg_odds": round(odds / counted, 4) if counted else None,
+        "avg_edge": round(edge / counted, 4) if counted else None,
+        "avg_expected_value": round(expected / counted, 4) if counted else None,
+        "curve": _thin_curve(curve),
+    }
+
+
+def _thin_curve(points: list[Dict[str, int]], limit: int = 240) -> list[Dict[str, int]]:
+    if len(points) <= limit:
+        return points
+    step = (len(points) - 1) / (limit - 1)
+    thinned = [points[int(index * step)] for index in range(limit - 1)]
+    thinned.append(points[-1])
+    return thinned
+
+
+@app.get("/api/models/{model_id}/journal-stats")
+def get_model_journal_stats(model_id: str) -> Dict[str, Any]:
+    """Live journal of one registered model. A composite checkpoint is one model, not its parts."""
+    if not SessionLocal or not ModelVersion or not ModelBetJournal:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        parsed = uuid.UUID(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="model_id must be a UUID") from exc
+    now = datetime.now(timezone.utc)
+    windows = {
+        "all": None,
+        "week": now - timedelta(days=7),
+        "day": now - timedelta(days=1),
+    }
+    with SessionLocal() as session:
+        model = session.get(ModelVersion, parsed)
+        if model is None:
+            raise HTTPException(status_code=404, detail="Model not found")
+        stored = (
+            session.query(
+                ModelBetJournal.market,
+                ModelBetJournal.result_status,
+                ModelBetJournal.decided_at,
+                ModelBetJournal.model_probability,
+                ModelBetJournal.bookmaker_odds,
+                ModelBetJournal.edge,
+                ModelBetJournal.expected_value,
+            )
+            .filter(
+                ModelBetJournal.model_name == model.model_name,
+                ModelBetJournal.model_version == model.version_tag,
+            )
+            .order_by(ModelBetJournal.decided_at.asc(), ModelBetJournal.id.asc())
+            .all()
+        )
+        periods = {}
+        for name, start in windows.items():
+            selected = []
+            for market, status, decided_at, probability, odds, edge, expected in stored:
+                moment = decided_at
+                if moment is not None and moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=timezone.utc)
+                if start is not None and (moment is None or moment < start):
+                    continue
+                selected.append((market, status, probability, odds, edge, expected))
+            periods[name] = _journal_period_stats(selected)
+        return {
+            "id": str(model.id),
+            "model_name": model.model_name,
+            "version_tag": model.version_tag,
+            "is_composite": (model.hyperparameters or {}).get("kind") == "composite",
+            "periods": periods,
+        }
 
 
 @app.get("/api/models")
@@ -991,6 +1271,8 @@ def get_model_versions() -> List[Dict[str, Any]]:
                 "status": m.status,
                 "metrics": m.metrics,
                 "hyperparameters": m.hyperparameters,
+                "display_name": (m.hyperparameters or {}).get("display_label") or m.model_name,
+                "is_composite": (m.hyperparameters or {}).get("kind") == "composite",
                 "created_at": m.created_at.isoformat(),
             }
             for m in models
@@ -1065,6 +1347,9 @@ def get_shadow_models_status(sport_code: str = "tennis") -> Dict[str, Any]:
                 "id": str(shadow_model.id),
                 "version_tag": shadow_model.version_tag,
                 "model_name": shadow_model.model_name,
+                "display_name": (shadow_model.hyperparameters or {}).get("display_label") or shadow_model.model_name,
+                "is_composite": (shadow_model.hyperparameters or {}).get("kind") == "composite",
+                "components": (shadow_model.hyperparameters or {}).get("components") or [],
                 "metrics": shadow_model.metrics,
                 "created_at": shadow_model.created_at.isoformat(),
                 "observation_days": shadow_period_days,
@@ -1128,23 +1413,29 @@ def get_shadow_evaluation_report(
         if MLPrediction:
             active_preds = (
                 session.query(MLPrediction)
-                .filter(MLPrediction.is_shadow.is_(False))
+                .filter(
+                    MLPrediction.is_shadow.is_(False),
+                    MLPrediction.model_version == active_tag,
+                )
                 .order_by(MLPrediction.created_at.desc())
                 .limit(500)
                 .all()
             )
             shadow_preds = (
                 session.query(MLPrediction)
-                .filter(MLPrediction.is_shadow.is_(True))
+                .filter(
+                    MLPrediction.is_shadow.is_(True),
+                    MLPrediction.model_version == shadow_tag,
+                )
                 .order_by(MLPrediction.created_at.desc())
                 .limit(500)
                 .all()
             )
 
-            act_by_event = {str(p.event_id): p for p in active_preds}
+            act_by_event = {(str(p.event_id), p.market): p for p in active_preds}
             for s_pred in shadow_preds:
                 evt_id_str = str(s_pred.event_id)
-                a_pred = act_by_event.get(evt_id_str)
+                a_pred = act_by_event.get((evt_id_str, s_pred.market))
                 if a_pred and OutcomePrediction and MLPredictionContract:
                     def to_contract(db_p, is_shd: bool):
                         outcomes = []
@@ -1294,6 +1585,8 @@ def promote_shadow_model(req: ShadowPromoteRequest) -> Dict[str, Any]:
         )
         if not candidate:
             raise HTTPException(status_code=404, detail=f"Candidate model {req.shadow_version_tag} not found")
+        if str(candidate.version_tag or "").startswith("test_"):
+            raise HTTPException(status_code=400, detail="A test version cannot be promoted")
 
         if candidate.status != "SHADOW" and not req.force:
             raise HTTPException(
@@ -1348,12 +1641,41 @@ def promote_shadow_model(req: ShadowPromoteRequest) -> Dict[str, Any]:
 
 @app.post("/api/models/train")
 def trigger_model_training(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Triggers ML model training job for a sport."""
-    sport_code = (payload or {}).get("sport_code", "tennis")
+    """Puts a real training job on the Redis stream. The neural service fits the model."""
+    import redis
+    from streams import STREAM_TRAINING_JOBS, StreamPublisher
+
+    body = payload or {}
+    sport_code = str(body.get("sport_code") or "tennis").lower()
+    model_type = str(body.get("model_type") or "gb").lower()
+    if model_type not in ("lr", "gb", "gbdt", "all"):
+        raise HTTPException(status_code=400, detail="model_type must be lr, gb, gbdt, or all")
+    bump = str(body.get("bump") or "patch")
+    if bump not in ("patch", "minor", "major", "test"):
+        raise HTTPException(status_code=400, detail="bump must be patch, minor, major, or test")
+    hyperparameters = body.get("hyperparameters") if isinstance(body.get("hyperparameters"), dict) else {}
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    try:
+        client = redis.Redis.from_url(redis_url, socket_timeout=2)
+        client.ping()
+        envelope = StreamPublisher(client, producer="backend").publish(
+            STREAM_TRAINING_JOBS,
+            {
+                "sport_code": sport_code,
+                "model_type": model_type,
+                "hyperparameters": hyperparameters,
+                "bump": bump,
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Training queue is unavailable: {exc}") from exc
     return {
         "status": "queued",
         "sport_code": sport_code,
-        "message": f"Training job for {sport_code} submitted to training pipeline",
+        "model_type": model_type,
+        "bump": bump,
+        "message_id": envelope.message_id,
+        "message": f"Training job for {sport_code} is queued for the neural service",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1459,6 +1781,211 @@ def trigger_experiment_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+
+def _backtest_hash(body: Dict[str, Any]) -> str:
+    import hashlib
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: strip(item) for key, item in value.items() if key not in ("timestamp", "schema_version")}
+        if isinstance(value, list):
+            return [strip(item) for item in value]
+        return value
+
+    raw = json.dumps(strip(body), sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _backtest_payload(run, results, include_bets: bool) -> Dict[str, Any]:
+    rows = []
+    for result in results:
+        summary = dict(result.summary or {})
+        if not include_bets:
+            summary.pop("bet_records", None)
+        summary["model_version_id"] = str(result.model_version_id) if result.model_version_id else summary.get("model_version_id")
+        rows.append(summary)
+    return {
+        "id": str(run.id),
+        "status": run.status,
+        "sport_code": run.sport_code,
+        "scope": run.scope,
+        "request": run.request_json,
+        "error": run.error,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "results": rows,
+    }
+
+
+@app.get("/api/sports/tennis/policy")
+def get_tennis_policy() -> Dict[str, Any]:
+    """Numbers from sports/tennis/tennis.cfg. The form may change them for one replay."""
+    from tennis_adapter.policy import load_tennis_policy
+
+    return load_tennis_policy().as_dict()
+
+
+@app.post("/api/backtests/run")
+def trigger_backtest_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Queue a historical replay of ACTIVE/SHADOW checkpoints. Production bets are not created."""
+    import redis
+    from contracts import BacktestRunRequest
+    from streams import STREAM_BACKTEST_JOBS, StreamPublisher
+
+    if not SessionLocal or not BacktestRun or not ModelVersion:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        request = BacktestRunRequest.model_validate(payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    body = request.model_dump(mode="json")
+    sport = request.selector.sport_code.strip().lower()
+    if sport != "tennis":
+        raise HTTPException(status_code=400, detail="Historical replay is available for tennis only")
+    body["selector"]["sport_code"] = sport
+    digest = _backtest_hash({"selector": body["selector"], "config": body["config"]})
+    with SessionLocal() as session:
+        if request.selector.scope == "model":
+            try:
+                model_id = uuid.UUID(str(request.selector.model_version_id))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="model_version_id must be a UUID") from exc
+            model = session.get(ModelVersion, model_id)
+            if model is None or model.status not in ("ACTIVE", "SHADOW"):
+                raise HTTPException(status_code=400, detail="Select an ACTIVE or SHADOW model")
+            if str(model.version_tag or "").startswith("test_"):
+                raise HTTPException(status_code=400, detail="A test tag cannot be replayed")
+            if model.sport_code != sport:
+                raise HTTPException(status_code=400, detail="Model sport does not match sport_code")
+        existing = (
+            session.query(BacktestRun)
+            .filter(BacktestRun.config_hash == digest, BacktestRun.status.in_(["queued", "running"]))
+            .first()
+        )
+        if existing is not None:
+            return _backtest_payload(existing, [], include_bets=False) | {"deduplicated": True}
+        _trim_backtest_history(session, keep=24)
+        run = BacktestRun(
+            status="queued",
+            sport_code=sport,
+            scope=request.selector.scope,
+            model_version_id=uuid.UUID(str(request.selector.model_version_id)) if request.selector.scope == "model" else None,
+            request_json=body,
+            config_hash=digest,
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        run_id = str(run.id)
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    try:
+        client = redis.Redis.from_url(redis_url, socket_timeout=2)
+        client.ping()
+        envelope = StreamPublisher(client, producer="backend").publish(
+            STREAM_BACKTEST_JOBS,
+            {"run_id": run_id},
+            idempotency_key=f"backtest:{digest}:{run_id}",
+        )
+    except Exception as exc:
+        with SessionLocal() as session:
+            failed = session.get(BacktestRun, uuid.UUID(run_id))
+            if failed is not None:
+                failed.status = "failed"
+                failed.error = f"Queue unavailable: {exc}"[:2000]
+                session.commit()
+        raise HTTPException(status_code=503, detail=f"Backtest queue is unavailable: {exc}") from exc
+    return {
+        "id": run_id,
+        "status": "queued",
+        "sport_code": sport,
+        "scope": request.selector.scope,
+        "message_id": envelope.message_id,
+        "deduplicated": False,
+    }
+
+
+@app.get("/api/backtests/runs")
+def list_backtest_runs(
+    sport_code: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=100),
+) -> List[Dict[str, Any]]:
+    """Recent historical replays without the full bet list."""
+    if not SessionLocal or not BacktestRun:
+        return []
+    with SessionLocal() as session:
+        _trim_backtest_history(session, keep=25)
+        session.commit()
+        query = session.query(BacktestRun)
+        if sport_code:
+            query = query.filter(BacktestRun.sport_code == sport_code.lower())
+        runs = query.order_by(BacktestRun.created_at.desc()).limit(limit).all()
+        payloads = []
+        for run in runs:
+            results = []
+            if BacktestRunResult is not None:
+                results = session.query(BacktestRunResult).filter(BacktestRunResult.run_id == run.id).all()
+            payloads.append(_backtest_payload(run, results, include_bets=False))
+        return payloads
+
+
+@app.get("/api/backtests/runs/{run_id}")
+def get_backtest_run(run_id: str) -> Dict[str, Any]:
+    """One historical replay, including paper bets and the copied JSON report."""
+    if not SessionLocal or not BacktestRun or not BacktestRunResult:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        run_uuid = uuid.UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid backtest run id") from exc
+    with SessionLocal() as session:
+        run = session.get(BacktestRun, run_uuid)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Backtest run not found")
+        results = session.query(BacktestRunResult).filter(BacktestRunResult.run_id == run.id).all()
+        return _backtest_payload(run, results, include_bets=True)
+
+
+def _trim_backtest_history(session, keep: int) -> None:
+    """Keep at most `keep` replays. A queued or running replay is not removed."""
+    if not BacktestRun:
+        return
+    total = session.query(BacktestRun).count()
+    extra = total - keep
+    if extra <= 0:
+        return
+    doomed = (
+        session.query(BacktestRun)
+        .filter(BacktestRun.status.notin_(["queued", "running"]))
+        .order_by(BacktestRun.created_at.asc(), BacktestRun.id.asc())
+        .limit(extra)
+        .all()
+    )
+    for old in doomed:
+        if BacktestRunResult is not None:
+            session.query(BacktestRunResult).filter(BacktestRunResult.run_id == old.id).delete()
+        session.delete(old)
+
+
+@app.delete("/api/backtests/runs/{run_id}")
+def delete_backtest_run(run_id: str) -> Dict[str, Any]:
+    """Remove a historical replay and its paper results. Production bets stay untouched."""
+    if not SessionLocal or not BacktestRun:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        run_uuid = uuid.UUID(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid backtest run id") from exc
+    with SessionLocal() as session:
+        run = session.get(BacktestRun, run_uuid)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Backtest run not found")
+        status = run.status
+        if BacktestRunResult is not None:
+            session.query(BacktestRunResult).filter(BacktestRunResult.run_id == run.id).delete()
+        session.delete(run)
+        session.commit()
+    return {"id": run_id, "deleted": True, "status": status}
 
 
 # --------------------------------------------------------------------------
@@ -2072,12 +2599,16 @@ def rollback_model_version(req: ModelRollbackRequest) -> Dict[str, Any]:
                 .filter(
                     ModelVersion.sport_code == req.sport_code,
                     ModelVersion.status.in_(["RETIRED", "STAGING", "SHADOW"]),
+                    ~ModelVersion.version_tag.startswith("test_"),
                 )
                 .order_by(desc(ModelVersion.created_at))
                 .first()
             )
             if not target:
                 raise HTTPException(status_code=400, detail=f"No previous model versions found to rollback to for {req.sport_code}")
+
+        if str(target.version_tag or "").startswith("test_"):
+            raise HTTPException(status_code=400, detail="A test version cannot become active")
 
         if current_active and current_active.id == target.id:
             raise HTTPException(status_code=400, detail="Target model is already the active model")

@@ -69,6 +69,7 @@ def run_tests():
         "neurobet_get_event_timeline",
         "neurobet_get_event_odds",
         "neurobet_get_predictions",
+        "neurobet_list_model_bets",
         "neurobet_get_research_packet",
         "neurobet_get_bankroll_summary",
         "neurobet_list_virtual_bets",
@@ -76,6 +77,9 @@ def run_tests():
         "neurobet_sync_settlements",
         "neurobet_get_data_quality_report",
         "neurobet_get_scheduler_stats",
+        "neurobet_trigger_backtest",
+        "neurobet_get_backtest_run",
+        "neurobet_list_backtest_runs",
     ]
     for exp in expected_tools:
         assert exp in tool_names, f"Missing tool in schema: {exp}"
@@ -139,6 +143,18 @@ def run_tests():
     models_res = server.handle_request(call_models)
     assert not models_res["result"]["isError"], "List models tool returned error"
     print("✓ 6. Tool call: neurobet_list_models passed")
+
+    call_journal = {
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "tools/call",
+        "params": {"name": "neurobet_list_model_bets", "arguments": {"sport_code": "tennis", "limit": 5}},
+    }
+    journal_res = server.handle_request(call_journal)
+    assert not journal_res["result"]["isError"], "Model bet journal returned error"
+    journal_rows = json.loads(journal_res["result"]["content"][0]["text"])
+    assert isinstance(journal_rows, list), "Model bet journal is not a list"
+    print("✓ 6b. Tool call: neurobet_list_model_bets passed")
 
     # 7. Call Tool: Simulate Inference
     call_sim = {

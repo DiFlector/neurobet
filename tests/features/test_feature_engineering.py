@@ -118,7 +118,7 @@ def test_tennis_feature_builder_context_and_windows():
     assert isinstance(vector, FeatureVector)
     assert vector.event_id == ev_id
     assert vector.sport_code == "tennis"
-    assert vector.feature_version == "1.0.0"
+    assert vector.feature_version == "1.1.0"
     assert vector.feature_cutoff_timestamp == cutoff
 
     f = vector.features
@@ -261,6 +261,99 @@ def test_critical_reproducibility_and_isolation():
     assert v1_run1.features["games_diff"] != v2.features["games_diff"]
 
 
+def test_nested_score_and_match_line_filter():
+    """Live snapshots store games in set_lines and points in current_game. Set prices stay out of the match line."""
+    from features.tennis import match_is_decided, set_is_open
+
+    builder = TennisFeatureBuilder()
+    t0 = datetime(2026, 10, 14, 12, 0, 0, tzinfo=timezone.utc)
+    state = MockSnapshot(
+        observed_at=t0,
+        current_period=2,
+        status="live",
+        score_detail={
+            "current_game": {"points_a": "40", "points_b": "30", "is_tiebreak": False},
+            "stats": {
+                "sets_a": 1,
+                "sets_b": 0,
+                "set_lines": [
+                    {"games_a": 6, "games_b": 4, "live": False},
+                    {"games_a": 3, "games_b": 2, "live": True, "detail": "40-30"},
+                ],
+            },
+            "server": "player_b",
+            "is_break_point": True,
+        },
+        sport_state={
+            "server": "player_b",
+            "is_break_point": True,
+            "stats": {
+                "sets_a": 1,
+                "sets_b": 0,
+                "set_lines": [
+                    {"games_a": 6, "games_b": 4, "live": False},
+                    {"games_a": 3, "games_b": 2, "live": True},
+                ],
+            },
+        },
+    )
+    odds = [
+        MockSnapshot(observed_at=t0, outcome="player_a", odds=1.50, market_type="match_winner"),
+        MockSnapshot(observed_at=t0, outcome="player_b", odds=2.50, market_type="match_winner"),
+        MockSnapshot(observed_at=t0, outcome="player_a", odds=9.00, market_type="set_winner", line_value=2),
+        MockSnapshot(observed_at=t0, outcome="player_b", odds=1.05, market_type="set_winner", line_value=2),
+    ]
+    vector = builder.build_features("evt", t0, [state], odds)
+    features = vector.features
+    assert features["sets_diff"] == 1.0
+    assert features["games_diff"] == 1.0
+    assert features["points_diff"] == 1.0
+    assert features["is_tiebreak"] == 0.0
+    assert features["current_odds_player_a"] == 1.50
+    assert features["paren_set_1_diff"] == 2.0
+    assert not match_is_decided(state)
+    assert not set_is_open(state, 1)
+    assert set_is_open(state, 2)
+
+    closed = MockSnapshot(
+        observed_at=t0,
+        current_period=2,
+        score_detail={"stats": {"sets_a": 2, "sets_b": 0, "set_lines": [
+            {"games_a": 6, "games_b": 3, "live": False},
+            {"games_a": 6, "games_b": 4, "live": True},
+        ]}},
+        sport_state={},
+    )
+    assert match_is_decided(closed)
+    assert not set_is_open(closed, 2)
+
+
+def test_player_history_stops_at_cutoff():
+    """A match that finishes after the cutoff does not change either player's rate."""
+    import sys
+    neural_app = "/srv/neurobet/services/neural"
+    if neural_app not in sys.path:
+        sys.path.insert(0, neural_app)
+    from app.players import PlayerHistory
+
+    early = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    late = datetime(2026, 10, 13, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 10, 10, tzinfo=timezone.utc)
+    history = PlayerHistory([
+        {"event_id": "old", "finished_at": early, "name_a": "Игрок А", "name_b": "Игрок Б", "side_a_won": True},
+        {"event_id": "future", "finished_at": late, "name_a": "Игрок А", "name_b": "Игрок В", "side_a_won": False},
+        {"event_id": "self", "finished_at": early, "name_a": "Игрок А", "name_b": "Игрок Г", "side_a_won": True},
+    ])
+    features = history.features("Игрок А", "Игрок Б", cutoff, exclude_event_id="self")
+    assert features["player_prior_matches_a"] == 1.0
+    assert features["h2h_matches"] == 1.0
+    assert features["player_win_rate_a"] == (1.0 + 2.0) / (1.0 + 4.0)
+    assert features["player_prior_matches_b"] == 1.0
+    empty = history.features("Новый", "Тоже новый", cutoff)
+    assert empty["player_prior_matches_a"] == 0.0
+    assert empty["player_win_rate_a"] == 0.5
+
+
 if __name__ == "__main__":
     test_base_math_calculations()
     print("test_base_math_calculations: OK")
@@ -270,4 +363,8 @@ if __name__ == "__main__":
     print("test_critical_zero_data_leakage: OK")
     test_critical_reproducibility_and_isolation()
     print("test_critical_reproducibility_and_isolation: OK")
+    test_nested_score_and_match_line_filter()
+    print("test_nested_score_and_match_line_filter: OK")
+    test_player_history_stops_at_cutoff()
+    print("test_player_history_stops_at_cutoff: OK")
     print("ALL FEATURE ENGINEERING TESTS PASSED!")

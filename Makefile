@@ -1,4 +1,4 @@
-.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train clean test-basketball test-volleyball test-hockey test-football test-performance test-dr backup simulation-gate
+.PHONY: up down infra-up infra-down logs ps test test-api test-frontend lint migrate train compare clean test-basketball test-volleyball test-hockey test-football test-performance test-dr backup simulation-gate
 
 # Environment variables
 COMPOSE = docker compose
@@ -176,6 +176,10 @@ train:
 # Run ML model training across all supported sports
 train-all:
 	docker exec -i neurobet_neural python -m app.train --sport all --model all
+
+# Compare tennis models on a frozen later period. Does not register a betting line.
+compare:
+	docker exec -i neurobet_neural python -m app.compare --sport tennis --phase all
 
 # Run walk-forward backtest
 backtest:

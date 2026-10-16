@@ -409,6 +409,11 @@ class BetSettlementEngine:
             return settlements
 
         for bet in bets:
+            if str(bet.market or "").startswith("set_winner:"):
+                settled = cls._settle_one_set_bet(session, event, bet)
+                if settled is not None:
+                    settlements.append(settled)
+                continue
             # 1. Idempotency Check: if bet is already settled, return existing settlement
             if bet.status != "PENDING":
                 existing = session.query(BetSettlement).filter(BetSettlement.bet_id == bet.id).first()
@@ -472,6 +477,52 @@ class BetSettlementEngine:
 
         session.flush()
         return settlements
+
+    @classmethod
+    def settle_known_set_bets(cls, session: Session, event: Event) -> List[BetSettlement]:
+        """Settle set bets whose set has a winner. The match may still be running."""
+        winners = (event.metadata_json or {}).get("set_winners") or {}
+        if not winners:
+            return []
+        bets = session.execute(select(Bet).where(Bet.event_id == event.id, Bet.status == "PENDING")).scalars().all()
+        settlements: List[BetSettlement] = []
+        for bet in bets:
+            if not str(bet.market or "").startswith("set_winner:"):
+                continue
+            settled = cls._settle_one_set_bet(session, event, bet)
+            if settled is not None:
+                settlements.append(settled)
+        session.flush()
+        return settlements
+
+    @classmethod
+    def _settle_one_set_bet(cls, session: Session, event: Event, bet: Bet):
+        if bet.status != "PENDING":
+            return session.query(BetSettlement).filter(BetSettlement.bet_id == bet.id).first()
+        set_no = str(bet.market).split(":", 1)[1]
+        winner = str(((event.metadata_json or {}).get("set_winners") or {}).get(set_no) or "")
+        status_name = str(event.status or "").lower()
+        finished = status_name in ("finished", "completed", "ended", "cancelled") or event.finished_at is not None
+        played = len((event.metadata_json or {}).get("set_winners") or {})
+        if winner not in ("player_a", "player_b"):
+            if finished and set_no.isdigit() and int(set_no) > played:
+                winner = ""
+            else:
+                return None
+        status = "VOID" if winner == "" else ("WON" if bet.outcome == winner else "LOST")
+        reason = f"SET_{set_no}_NOT_PLAYED" if status == "VOID" else f"SET_{set_no}_COMPLETED - Winner: {winner}"
+        try:
+            _bet, settlement = BankrollService.settle_bet(
+                session=session,
+                bet_id=bet.id,
+                status=status,
+                reason=reason,
+            )
+            return settlement
+        except InvalidSettlementError as ex:
+            if "already settled" in str(ex).lower():
+                return session.query(BetSettlement).filter(BetSettlement.bet_id == bet.id).first()
+            raise
 
     @classmethod
     def get_review_queue(cls, session: Session) -> List[Dict[str, Any]]:

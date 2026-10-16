@@ -436,48 +436,60 @@ def test_bankroll_bets_proposals_and_performance():
 
 
 def test_models_registry_and_training_runs():
-    """Verify ML model versions and training runs endpoints."""
-    with SessionLocal() as session:
-        mv = ModelVersion(
-            id=uuid.uuid4(),
-            model_name="tennis_gbdt",
-            version_tag=f"test_tennis_v1.0.0_{uuid.uuid4().hex[:6]}",
-            sport_code="tennis",
-            market="match_winner",
-            artifact_path="/models/checkpoints/tennis_gbdt.joblib",
-            metrics={"brier_score": 0.18, "roc_auc": 0.76},
-            hyperparameters={"learning_rate": 0.05, "max_depth": 5},
-            status="ACTIVE",
-        )
-        session.add(mv)
-        session.flush()
+    """Verify ML model versions and training runs endpoints.
 
-        tr = TrainingRun(
-            id=uuid.uuid4(),
-            model_version_id=mv.id,
-            sport_code="tennis",
-            status="completed",
-            metrics_train={"loss": 0.42},
-            metrics_val={"loss": 0.48},
-        )
-        session.add(tr)
-        session.commit()
+    The fixture is a shadow test tag and is removed afterwards. A test row must not stay ACTIVE.
+    """
+    version_id = uuid.uuid4()
+    version_tag = f"test_tennis_v1.0.0_{uuid.uuid4().hex[:6]}"
+    try:
+        with SessionLocal() as session:
+            mv = ModelVersion(
+                id=version_id,
+                model_name="tennis_gbdt",
+                version_tag=version_tag,
+                sport_code="tennis",
+                market="match_winner",
+                artifact_path="/models/checkpoints/tennis_gbdt.joblib",
+                metrics={"brier_score": 0.18, "roc_auc": 0.76},
+                hyperparameters={"learning_rate": 0.05, "max_depth": 5},
+                status="SHADOW",
+            )
+            session.add(mv)
+            session.flush()
 
-    resp_models = client.get("/api/models")
-    assert resp_models.status_code == 200
-    models = resp_models.json()
-    assert len(models) >= 1
-    assert any(m["model_name"] == "tennis_gbdt" for m in models)
+            tr = TrainingRun(
+                id=uuid.uuid4(),
+                model_version_id=mv.id,
+                sport_code="tennis",
+                status="completed",
+                metrics_train={"loss": 0.42},
+                metrics_val={"loss": 0.48},
+            )
+            session.add(tr)
+            session.commit()
 
-    resp_runs = client.get("/api/training/runs")
-    assert resp_runs.status_code == 200
-    runs = resp_runs.json()
-    assert len(runs) >= 1
+        resp_models = client.get("/api/models")
+        assert resp_models.status_code == 200
+        models = resp_models.json()
+        assert len(models) >= 1
+        listed = next(m for m in models if m["version_tag"] == version_tag)
+        assert listed["status"] == "SHADOW"
 
-    resp_train = client.post("/api/models/train", json={"sport_code": "tennis"})
-    assert resp_train.status_code == 200
-    assert resp_train.json()["status"] == "queued"
-    print("✓ test_models_registry_and_training_runs passed")
+        resp_runs = client.get("/api/training/runs")
+        assert resp_runs.status_code == 200
+        runs = resp_runs.json()
+        assert len(runs) >= 1
+
+        resp_train = client.post("/api/models/train", json={"sport_code": "tennis"})
+        assert resp_train.status_code == 200
+        assert resp_train.json()["status"] == "queued"
+        print("✓ test_models_registry_and_training_runs passed")
+    finally:
+        with SessionLocal() as session:
+            session.query(TrainingRun).filter(TrainingRun.model_version_id == version_id).delete()
+            session.query(ModelVersion).filter(ModelVersion.id == version_id).delete()
+            session.commit()
 
 
 def test_simulation_reset_endpoint():

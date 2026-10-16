@@ -368,6 +368,35 @@ def register_tools(client: NeurobetClient) -> Tuple[List[Dict[str, Any]], Dict[s
         )),
     )
 
+    add_tool(
+        name="neurobet_list_model_bets",
+        description=(
+            "Statistical history of sides committed by models: active and shadow, including decisions with no stake. "
+            "Each row stores when, who, market, outcome, probability, odds, edge, and why. This is not the bankroll."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "Optional event ID"},
+                "sport_code": {"type": "string", "description": "Optional sport filter"},
+                "model_name": {"type": "string", "description": "Optional model line, for example tennis_gradient_boosting"},
+                "is_shadow": {"type": "boolean", "description": "Optional shadow filter"},
+                "market": {"type": "string", "description": "Optional market, match_winner or set_winner:N"},
+                "result_status": {"type": "string", "description": "Optional pending, won, lost, or void"},
+                "limit": {"type": "integer", "default": 100},
+            },
+        },
+        handler=lambda args: format_json(client.list_model_bets(
+            event_id=args.get("event_id"),
+            sport_code=args.get("sport_code"),
+            model_name=args.get("model_name"),
+            is_shadow=args.get("is_shadow"),
+            market=args.get("market"),
+            result_status=args.get("result_status"),
+            limit=int(args.get("limit", 100)),
+        )),
+    )
+
     # 19. Get Research Packet
     add_tool(
         name="neurobet_get_research_packet",
@@ -438,6 +467,92 @@ def register_tools(client: NeurobetClient) -> Tuple[List[Dict[str, Any]], Dict[s
         description="Returns priority queue length, candidate dispatch rates, and cooldown cache statistics.",
         parameters={"type": "object", "properties": {}},
         handler=lambda args: format_json(client.get_scheduler_stats()),
+    )
+
+    add_tool(
+        name="neurobet_trigger_backtest",
+        description=(
+            "Queues a historical replay of one ACTIVE/SHADOW model or every ACTIVE/SHADOW model of a sport. "
+            "Uses the full finished-match tape and stored context. Does not place production bets or change the paper bankroll. "
+            "Defaults: last 100 matches, 5000 RUB, 100 RUB stake, bankruptcy below 100 RUB restores 5000. "
+            "Poll neurobet_get_backtest_run with the returned id."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["model", "sport"], "default": "model"},
+                "sport_code": {"type": "string", "default": "tennis"},
+                "model_version_id": {"type": "string", "description": "Registry UUID. Required when scope is model."},
+                "markets": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["match_winner", "set_winner"]},
+                    "description": "Tennis markets to score. Default is match and set. A checkpoint that cannot score sets skips set_winner.",
+                },
+                "min_edge": {"type": "number", "default": 0.02},
+                "min_probability": {"type": "number", "default": 0.40},
+                "odds_gate_mode": {"type": "string", "enum": ["live", "range"], "default": "live"},
+                "min_odds": {"type": "number", "default": 1.30},
+                "max_odds": {"type": "number", "default": 2.40},
+                "confirmations": {"type": "integer", "default": 2},
+                "max_odds_staleness_sec": {"type": "number", "default": 15},
+                "execution_latency_sec": {"type": "number", "default": 2},
+                "allow_slippage": {"type": "boolean", "default": True},
+                "initial_bankroll": {"type": "number", "default": 5000},
+                "fixed_stake": {"type": "number", "default": 100},
+                "bankruptcy_threshold": {"type": "number", "default": 100},
+            },
+            "required": ["scope", "sport_code"],
+        },
+        handler=lambda args: format_json(client.trigger_backtest({
+            "selector": {
+                "scope": args.get("scope", "model"),
+                "sport_code": args.get("sport_code", "tennis"),
+                "model_version_id": args.get("model_version_id"),
+            },
+            "config": {
+                "match_limit": int(args.get("match_limit", 100)),
+                "markets": args.get("markets") or ["match_winner", "set_winner"],
+                "min_edge": float(args.get("min_edge", 0.02)),
+                "min_probability": float(args.get("min_probability", 0.40)),
+                "odds_gate_mode": args.get("odds_gate_mode", "live"),
+                "min_odds": float(args.get("min_odds", 1.30)),
+                "max_odds": float(args.get("max_odds", 2.40)),
+                "confirmations": int(args.get("confirmations", 2)),
+                "max_odds_staleness_sec": float(args.get("max_odds_staleness_sec", 15)),
+                "execution_latency_sec": float(args.get("execution_latency_sec", 2)),
+                "allow_slippage": bool(args.get("allow_slippage", True)),
+                "initial_bankroll": float(args.get("initial_bankroll", 5000)),
+                "fixed_stake": float(args.get("fixed_stake", 100)),
+                "bankruptcy_threshold": float(args.get("bankruptcy_threshold", 100)),
+            },
+        })),
+    )
+
+    add_tool(
+        name="neurobet_get_backtest_run",
+        description="Returns status, paper ROI, wins, balance, bankruptcies, and bets for one historical replay.",
+        parameters={
+            "type": "object",
+            "properties": {"run_id": {"type": "string", "description": "Backtest run UUID"}},
+            "required": ["run_id"],
+        },
+        handler=lambda args: format_json(client.get_backtest_run(args["run_id"])),
+    )
+
+    add_tool(
+        name="neurobet_list_backtest_runs",
+        description="Lists recent historical replays. Bet rows are omitted; open one run for the full report.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "sport_code": {"type": "string"},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+        handler=lambda args: format_json(client.list_backtest_runs(
+            sport_code=args.get("sport_code"),
+            limit=int(args.get("limit", 20)),
+        )),
     )
 
     return tools, handlers

@@ -169,6 +169,7 @@
 - [x] Извлекать server (кто сейчас подает).
 - [x] Извлекать tennis stats (aces, double faults, break points).
 - [x] Извлекать доступные markets (MVP: `match_winner`).
+- [x] Извлекать победу в сете 1–5 как `set_winner` с номером сета. Модель этой логики — `tennis_v2.0.0`; её обучают только когда в истории есть свои котировки сетов.
 - [x] Извлекать selections (`player_a`, `player_b`).
 - [x] Извлекать odds.
 - [x] Извлекать market status/suspension.
@@ -773,6 +774,40 @@
 ---
 
 
+# PHASE 34 — Tennis model comparison
+
+- [x] Убрать калибровку по случайным строкам одного матча. Калибратор учится на последних 20% матчей окна, веса срезов передаются в `fit`. Смена схемы поднимает версию на minor и оставляет модель в `SHADOW`.
+- [x] Загрузить внешнюю историю в `ext_tennis_matches`, `ext_tennis_players`, `ext_tennis_rankings`, `ext_tennis_serve_logs` с полем `available_at`.
+- [x] Связать имена Fonbet с внешними игроками через транслитерацию и `participant_aliases.link_confidence`. Неоднозначные пары не связывать.
+- [x] Стенд `python -m app.compare` и `make compare`: рынок, Elo/Glicko, логистическая регрессия, HistGradientBoosting, CatBoost на CPU, Markov, стек.
+- [x] Разбиение train/validation/test по матчам, embargo, замороженный тест, калибраторы none/sigmoid/isotonic.
+- [x] Отчёт: log loss, Brier, ECE, reliability, ROC-AUC, ROI, yield, просадка, число ставок, интервал разницы с рынком. Отчёт в `experiment_results`, без записи в реестр моделей и без ставки на баланс.
+
+### Acceptance
+
+- [x] Ни один матч не попадает сразу в обучение и в тест.
+- [x] Калибратор не видит тестовые матчи. Isotonic не выбирается, если независимых матчей меньше 1000.
+- [x] Рейтинг и внешняя статистика на срезе используют только записи с `available_at <= cutoff`.
+- [x] `tests/neural/test_model_comparison.py` проверяет разбиение, Маркова и воспроизводимость.
+
+---
+
+# PHASE 35 — Canonical tennis history and market residual
+
+- [x] Сырые выгрузки лежат в `OnlineData/raw`, рабочая копия — `OnlineData/canonical` и таблицы `ext_tennis_canonical_*`.
+- [x] Повторы TML и Sackmann склеиваются в одну строку матча. Сырые строки не удаляются.
+- [x] Имена Fonbet связываются с каноническим игроком. Неоднозначные пары остаются без связи.
+- [x] Остаток сдвигает логит линии не больше чем на 0.35. Markov — признак, его вероятность ограничена.
+- [x] `beats_market` не ставит модель в реестр. Победа требует интервал log loss ниже нуля, Brier не хуже линии больше чем на 0.02 и не меньше 100 тестовых матчей.
+
+### Acceptance
+
+- [x] Два написания одного матча дают одну каноническую строку.
+- [x] Остаток на синтетике не равен константе 0.5 и не выходит за клип.
+- [x] Markov не возвращает 0 или 1.
+
+---
+
 # Recommended first milestone
 
 Не пытаться сразу сделать весь roadmap.
@@ -899,3 +934,22 @@ ML + LLM experiment
 3. **Learning loop:** settled history → dataset → walk-forward training → model registry → inference.
 
 Именно такое разделение позволит добавлять новые виды спорта, не смешивая их модели и правила, и одновременно сохранить полную историю для экспериментов.
+
+---
+
+# PHASE 36 — Historical replay of registered models
+
+- [x] Контракт запроса replay: одна ACTIVE/SHADOW модель или все ACTIVE/SHADOW выбранного спорта.
+- [x] Отдельные таблицы `backtest_runs` и `backtest_run_results`, без записи в production ledger.
+- [x] Очередь `backtest.jobs` и выполнение в `neural` на полной ленте завершённых матчей.
+- [x] Бумажный баланс с фиксированной ставкой и счётчиком банкротств.
+- [x] Админка: форма гейтов, таблица результата и копирование JSON.
+- [x] MCP: `neurobet_trigger_backtest`, `neurobet_get_backtest_run`, `neurobet_list_backtest_runs`.
+- [x] Регламент запуска в `docs/historical-backtest.md`.
+
+### Acceptance
+
+- [x] Прогон не создаёт `bets`, `ledger_entries` и `ml_predictions`.
+- [x] Признаки среза ограничены `observed_at <= decision_timestamp`.
+- [x] Падение баланса ниже порога увеличивает банкротства, возвращает начальный баланс и продолжает прогон.
+

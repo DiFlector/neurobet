@@ -25,6 +25,14 @@ from .scheduling import (
     CandidatePriorityItem,
     QueueStatusReport,
 )
+from .backtests import (
+    BacktestReplayConfig,
+    BacktestModelSelector,
+    BacktestRunRequest,
+    BacktestBetRecord,
+    BacktestModelResult,
+    BacktestRunStatus,
+)
 from .experiments import (
     CalibrationPoint,
     CalibrationCurveReport,
@@ -42,6 +50,7 @@ from .shadow import (
     ShadowEvaluationReport,
 )
 from .shadow_engine import ShadowEngine
+from .composite import CompositeComponentVote, CompositeModelState
 
 
 
@@ -91,11 +100,19 @@ __all__ = [
     "FreshnessBucketMetrics",
     "LLMErrorAnalysis",
     "LLMExperimentComparisonReport",
+    "BacktestReplayConfig",
+    "BacktestModelSelector",
+    "BacktestRunRequest",
+    "BacktestBetRecord",
+    "BacktestModelResult",
+    "BacktestRunStatus",
     "ShadowConfig",
     "ShadowPredictionPair",
     "DriftAnalysisReport",
     "SegmentPerformance",
     "ShadowEvaluationReport",
     "ShadowEngine",
+    "CompositeComponentVote",
+    "CompositeModelState",
 ]
 

@@ -28,6 +28,7 @@ from .constants import (
     STREAM_RESEARCH_REQUESTS,
     STREAM_RESEARCH_RESULTS,
     STREAM_TRAINING_JOBS,
+    STREAM_BACKTEST_JOBS,
 )
 from .consumer import AsyncStreamConsumerGroup, StreamConsumerGroup
 from .envelope import MessageEnvelope
@@ -61,6 +62,7 @@ __all__ = [
     "STREAM_RESEARCH_REQUESTS",
     "STREAM_RESEARCH_RESULTS",
     "STREAM_TRAINING_JOBS",
+    "STREAM_BACKTEST_JOBS",
     "MessageEnvelope",
     "StreamPublisher",
     "AsyncStreamPublisher",

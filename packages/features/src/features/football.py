@@ -9,7 +9,7 @@ from contracts import FeatureVector
 from .base import (
     ROLLING_WINDOWS,
     calculate_line_drift,
-    calculate_no_vig_probabilities,
+    last_quoted_odds,
     calculate_odds_delta,
     calculate_odds_velocity,
     calculate_volatility,
@@ -61,27 +61,30 @@ class FootballFeatureBuilder:
         odds_x_records = [o for o in valid_odds if getattr(o, "outcome", "") in ("draw", "x", "X")]
         odds_t2_records = [o for o in valid_odds if getattr(o, "outcome", "") in ("team_b", "2", "away", "player_b")]
 
-        latest_t1_odds = float(odds_t1_records[-1].odds) if odds_t1_records else 2.10
-        latest_x_odds = float(odds_x_records[-1].odds) if odds_x_records else 3.20
-        latest_t2_odds = float(odds_t2_records[-1].odds) if odds_t2_records else 3.50
-        is_missing_odds = float(not bool(odds_t1_records and odds_t2_records))
+        latest_t1_odds = last_quoted_odds(odds_t1_records)
+        latest_x_odds = last_quoted_odds(odds_x_records)
+        latest_t2_odds = last_quoted_odds(odds_t2_records)
+        is_missing_odds = float(latest_t1_odds <= 1.0 or latest_t2_odds <= 1.0)
 
         features["current_odds_team_a"] = round(latest_t1_odds, 4)
         features["current_odds_draw"] = round(latest_x_odds, 4)
         features["current_odds_team_b"] = round(latest_t2_odds, 4)
         features["is_missing_odds"] = is_missing_odds
 
-        # 3. No-vig probabilities and margin
-        # Two-way fallback and three-way handling
-        prob_1 = 1.0 / max(1.001, latest_t1_odds)
-        prob_x = 1.0 / max(1.001, latest_x_odds)
-        prob_2 = 1.0 / max(1.001, latest_t2_odds)
+        # 3. No-vig probabilities and margin. A missing side contributes nothing.
+        prob_1 = 1.0 / latest_t1_odds if latest_t1_odds > 1.0 else 0.0
+        prob_x = 1.0 / latest_x_odds if latest_x_odds > 1.0 else 0.0
+        prob_2 = 1.0 / latest_t2_odds if latest_t2_odds > 1.0 else 0.0
         total_implied = prob_1 + prob_x + prob_2
         margin = max(0.0, total_implied - 1.0)
 
-        no_vig_a = round(prob_1 / total_implied, 4) if total_implied > 0 else 0.45
-        no_vig_x = round(prob_x / total_implied, 4) if total_implied > 0 else 0.28
-        no_vig_b = round(prob_2 / total_implied, 4) if total_implied > 0 else 0.27
+        if total_implied > 0 and latest_t1_odds > 1.0 and latest_t2_odds > 1.0:
+            no_vig_a = round(prob_1 / total_implied, 4)
+            no_vig_x = round(prob_x / total_implied, 4)
+            no_vig_b = round(prob_2 / total_implied, 4)
+        else:
+            no_vig_a, no_vig_x, no_vig_b = 0.5, 0.0, 0.5
+            margin = 0.0
 
         features["no_vig_prob_team_a"] = no_vig_a
         features["no_vig_prob_draw"] = no_vig_x

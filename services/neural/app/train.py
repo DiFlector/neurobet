@@ -81,15 +81,25 @@ def main():
                 ]
 
     logger.info("=== TRAINING RUN SUMMARY ===")
+    registered = []
     for res in results:
+        if res.get("skipped"):
+            logger.info(
+                "Skipped %s: a training run for this model is already running.",
+                res.get("model_name"),
+            )
+            continue
+        registered.append(res)
         m = res["metrics_val"]
         ds = res.get("dataset_meta") or {}
         logger.info(
-            "Dataset: matches=%s rows=%s train=%s val=%s",
+            "Dataset: matches=%s snapshots=%s train=%s val=%s mode=%s decisions=%s",
             ds.get("match_count"),
-            ds.get("row_count"),
+            ds.get("snapshot_count"),
             ds.get("train_samples"),
             ds.get("val_samples"),
+            ds.get("validation"),
+            ds.get("decision_rows"),
         )
         logger.info(
             "Sport: %s | Model: %s | Version: %s | LogLoss: %.4f | Brier: %.4f | Acc: %.4f | AUC: %.4f | ECE: %.4f",
@@ -102,11 +112,24 @@ def main():
             m.get("roc_auc", 0.0),
             m.get("expected_calibration_error", 0.0),
         )
+        families = (ds.get("metrics_by_market_family") or {})
+        for family, metrics in families.items():
+            logger.info(
+                "Walk-forward %s: count=%s log_loss=%s brier=%s ece=%s",
+                family,
+                metrics.get("count"),
+                metrics.get("log_loss"),
+                metrics.get("brier_score"),
+                metrics.get("expected_calibration_error"),
+            )
         logger.info("Saved Checkpoint: %s", res["artifact_path"])
         logger.info("Registered in DB: ModelVersion ID=%s, TrainingRun ID=%s", res["model_version_id"], res["training_run_id"])
 
-    logger.info("Total models trained and registered: %d", len(results))
-    logger.info("Training completed successfully.")
+    logger.info("Total models trained and registered: %d", len(registered))
+    if registered:
+        logger.info("Training completed successfully.")
+    else:
+        logger.info("No new model. The requested training was already running.")
 
 
 if __name__ == "__main__":

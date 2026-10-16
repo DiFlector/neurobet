@@ -99,6 +99,9 @@ python3 tests/mcp/test_mcp_server.py
 | `neurobet_sync_settlements` | Запуск расчета завершенных матчей | `{}` |
 | `neurobet_get_data_quality_report` | Аудит монотонности времени и отсутствия leakage | `{}` |
 | `neurobet_get_scheduler_stats` | Очередь и статистика диспетчеризации кандидатов | `{}` |
+| `neurobet_trigger_backtest` | Исторический replay ACTIVE/SHADOW модели или всего спорта. Боевой баланс не меняется | `scope`, `sport_code`, `model_version_id`, гейты и банкролл |
+| `neurobet_get_backtest_run` | Статус и полный отчёт replay, включая ставки | `run_id` |
+| `neurobet_list_backtest_runs` | Последние replay без списка ставок | `sport_code`, `limit` |
 
 ---
 

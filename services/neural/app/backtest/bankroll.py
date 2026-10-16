@@ -23,6 +23,9 @@ class SimulatedBet:
     research_age_seconds: Optional[float] = None
     research_freshness_bucket: Optional[str] = None
     llm_verdict: Optional[str] = None
+    due_at: Optional[datetime] = None
+    pending_winner: Optional[str] = None
+    clv: Optional[float] = None
 
 
 @dataclass
@@ -106,9 +109,9 @@ class BacktestBankroll:
 
         return round(stake, 2)
 
-    def can_place_bet(self, stake: float) -> Tuple[bool, Optional[str]]:
+    def can_place_bet(self, stake: float, event_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
         """
-        Check if stake meets cash and portfolio exposure limits.
+        Check if stake meets cash, portfolio exposure, and one-open-bet-per-match limits.
         """
         if stake <= 0:
             return False, "STAKE_TOO_LOW"
@@ -124,8 +127,18 @@ class BacktestBankroll:
 
         if projected_exposure > max_allowed_exposure:
             return False, "EXPOSURE_LIMIT_BREACHED"
+        if event_id and any(bet.event_id == event_id for bet in self.active_bets.values()):
+            return False, "EVENT_EXPOSURE"
 
         return True, None
+
+    def release_due(self, now: datetime) -> int:
+        """Settle bets whose match finished at or before ``now``."""
+        due = [bet for bet in self.active_bets.values() if bet.due_at is not None and bet.due_at <= now]
+        due.sort(key=lambda bet: (bet.due_at, bet.bet_id))
+        for bet in due:
+            self.settle_bet(bet.bet_id, bet.pending_winner or "void", bet.due_at)
+        return len(due)
 
     def place_bet(
         self,
@@ -144,7 +157,7 @@ class BacktestBankroll:
         """
         Deduct stake from available balance and register active bet.
         """
-        can_place, reason = self.can_place_bet(stake)
+        can_place, reason = self.can_place_bet(stake, event_id)
         if not can_place:
             return None
 

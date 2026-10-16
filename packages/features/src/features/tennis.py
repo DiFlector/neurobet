@@ -1,6 +1,6 @@
 """Tennis Feature Builder with rolling windows, no-vig calculations, and zero data leakage."""
 
-import statistics
+import bisect
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -10,10 +10,265 @@ from .base import (
     ROLLING_WINDOWS,
     calculate_line_drift,
     calculate_no_vig_probabilities,
+    last_quoted_odds,
     calculate_odds_delta,
     calculate_odds_velocity,
     calculate_volatility,
 )
+
+
+def _empty_tape() -> Dict[str, float]:
+    tape = {
+        "tape_points_a": 0.0,
+        "tape_points_b": 0.0,
+        "tape_serve_won_a": 0.0,
+        "tape_return_won_a": 0.0,
+        "tape_serve_won_b": 0.0,
+        "tape_return_won_b": 0.0,
+        "tape_point_streak": 0.0,
+        "tape_points_even": 0.0,
+        "tape_current_set_points_a": 0.0,
+        "tape_current_set_points_b": 0.0,
+    }
+    for index in range(1, 6):
+        tape[f"paren_set_{index}_diff"] = 0.0
+    return tape
+
+
+class ScoreTape:
+    """Point path built once as the replay walks forward. Same numbers as a full rescan."""
+
+    def __init__(self, builder: "TennisFeatureBuilder"):
+        self.builder = builder
+        self.previous = None
+        self.streak = 0
+        self.current_set_points = [0.0, 0.0]
+        self.base = _empty_tape()
+        self.last_state = None
+        self.seen = 0
+        self._noted = 0
+        self._state_times: List[datetime] = []
+        self._state_flags: List[int] = []
+
+    def note_states(self, states: List[Any]) -> None:
+        for state in states[self._noted :]:
+            self._state_times.append(_as_utc(state.observed_at))
+            self._state_flags.append(1 if state.status in ("suspended", "paused", "delayed") else 0)
+        self._noted = len(states)
+
+    def suspensions(self, cutoff_dt: datetime, window_seconds: int) -> int:
+        start = bisect.bisect_left(self._state_times, cutoff_dt - timedelta(seconds=window_seconds))
+        return sum(self._state_flags[start:])
+
+    def extend(self, states: List[Any]) -> None:
+        for state in states[self.seen :]:
+            self._add(state)
+            self.last_state = state
+        self.seen = len(states)
+
+    def _add(self, state: Any) -> None:
+        frame = self.builder._frame(state)
+        previous = self.previous
+        if previous is not None:
+            winner = self.builder._point_winner(previous, frame)
+            if winner is not None:
+                server = previous["server"]
+                if winner == "a":
+                    self.base["tape_points_a"] += 1
+                    self.current_set_points[0] += 1
+                    if server == "player_a":
+                        self.base["tape_serve_won_a"] += 1
+                    elif server == "player_b":
+                        self.base["tape_return_won_a"] += 1
+                    self.streak = self.streak + 1 if self.streak > 0 else 1
+                else:
+                    self.base["tape_points_b"] += 1
+                    self.current_set_points[1] += 1
+                    if server == "player_b":
+                        self.base["tape_serve_won_b"] += 1
+                    elif server == "player_a":
+                        self.base["tape_return_won_b"] += 1
+                    self.streak = self.streak - 1 if self.streak < 0 else -1
+            if frame["set_no"] != previous["set_no"]:
+                self.current_set_points = [0.0, 0.0]
+        self.previous = frame
+
+    def as_features(self) -> Dict[str, float]:
+        tape = dict(self.base)
+        tape["tape_point_streak"] = float(self.streak)
+        tape["tape_current_set_points_a"] = self.current_set_points[0]
+        tape["tape_current_set_points_b"] = self.current_set_points[1]
+        total = tape["tape_points_a"] + tape["tape_points_b"]
+        tape["tape_points_even"] = 1.0 if total >= 4 and abs(tape["tape_points_a"] - tape["tape_points_b"]) <= 1 else 0.0
+        if self.last_state is not None:
+            lines = self.builder._set_lines(self.last_state)
+            for index, line in enumerate(lines[:5], start=1):
+                try:
+                    tape[f"paren_set_{index}_diff"] = float(line.get("games_a") or 0) - float(line.get("games_b") or 0)
+                except (TypeError, ValueError):
+                    tape[f"paren_set_{index}_diff"] = 0.0
+        return tape
+
+
+class MarketQuotes:
+    """Quotes of one market, appended in time order. Replay reuses this across cutoffs."""
+
+    def __init__(self):
+        self.seen = 0
+        self.quotes: List[Any] = []
+        self.side_a: List[Any] = []
+        self.side_b: List[Any] = []
+        self.times_a: List[datetime] = []
+        self.times_b: List[datetime] = []
+
+    def extend(self, odds_snapshots: List[Any], cutoff_dt: datetime, market_type: str, line_value: Optional[int]) -> None:
+        for row in odds_snapshots[self.seen :]:
+            if _as_utc(row.observed_at) > cutoff_dt:
+                break
+            self.seen += 1
+            market = getattr(row, "market_type", None)
+            if market_type == "match_winner":
+                if market not in (None, "", "match_winner"):
+                    continue
+            else:
+                if market != market_type:
+                    continue
+                raw_line = getattr(row, "line_value", None)
+                if raw_line is None or line_value is None:
+                    continue
+                try:
+                    if int(float(raw_line)) != int(line_value):
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            self.quotes.append(row)
+            outcome = getattr(row, "outcome", None)
+            moment = _as_utc(row.observed_at)
+            if outcome in ("player_a", "1", "p1"):
+                self.side_a.append(row)
+                self.times_a.append(moment)
+            elif outcome in ("player_b", "2", "p2"):
+                self.side_b.append(row)
+                self.times_b.append(moment)
+
+
+def _as_utc(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _state_parts(state: Any) -> tuple:
+    detail = state.score_detail if isinstance(getattr(state, "score_detail", None), dict) else {}
+    sport = state.sport_state if isinstance(getattr(state, "sport_state", None), dict) else {}
+    stats = sport.get("stats") if isinstance(sport.get("stats"), dict) else {}
+    if not stats and isinstance(detail.get("stats"), dict):
+        stats = detail["stats"]
+    raw_lines = stats.get("set_lines") or detail.get("set_lines") or []
+    lines = [line for line in raw_lines if isinstance(line, dict)]
+    return detail, sport, stats, lines
+
+
+def games_complete(games_a: Any, games_b: Any) -> bool:
+    """A set line that already has a winner. 6-6 is a tiebreak still in progress."""
+    left = int(_as_float(games_a))
+    right = int(_as_float(games_b))
+    if left == 6 and right == 6:
+        return False
+    if max(left, right) >= 6 and abs(left - right) >= 2:
+        return True
+    return max(left, right) == 7 and min(left, right) in (5, 6)
+
+
+def score_board(state: Any) -> Dict[str, Any]:
+    """Sets, the live game line, and points from the stored snapshot shape.
+
+    Live snapshots keep sets and games under stats.set_lines and points under
+    current_game. Flat keys from older tests stay as a fallback.
+    """
+    detail, _sport, stats, lines = _state_parts(state)
+    live = next((line for line in lines if line.get("live")), None)
+    closed = [line for line in lines if line is not live]
+    if live is None and lines:
+        live = lines[-1]
+        closed = lines[:-1]
+
+    sets_a = stats.get("sets_a", detail.get("sets_a"))
+    sets_b = stats.get("sets_b", detail.get("sets_b"))
+    if sets_a is None or sets_b is None:
+        sets_a = sum(1 for line in closed if _as_float(line.get("games_a")) > _as_float(line.get("games_b")))
+        sets_b = sum(1 for line in closed if _as_float(line.get("games_b")) > _as_float(line.get("games_a")))
+    else:
+        sets_a = _as_float(sets_a)
+        sets_b = _as_float(sets_b)
+
+    if live is not None:
+        games_a = _as_float(live.get("games_a"))
+        games_b = _as_float(live.get("games_b"))
+    else:
+        games_a = _as_float(detail.get("current_game_a"))
+        games_b = _as_float(detail.get("current_game_b"))
+
+    game = detail.get("current_game") if isinstance(detail.get("current_game"), dict) else {}
+    points_a = str(game.get("points_a", detail.get("points_a", "0")))
+    points_b = str(game.get("points_b", detail.get("points_b", "0")))
+    current_set = int(
+        _as_float(
+            getattr(state, "current_period", None)
+            or detail.get("current_period")
+            or detail.get("current_set")
+            or 1
+        )
+    )
+    return {
+        "sets_a": sets_a,
+        "sets_b": sets_b,
+        "games_a": games_a,
+        "games_b": games_b,
+        "points_a": points_a,
+        "points_b": points_b,
+        "current_set": current_set,
+        "lines": lines,
+        "tiebreak": bool(game.get("is_tiebreak")) or (games_a == 6.0 and games_b == 6.0),
+    }
+
+
+def match_is_decided(state: Any) -> bool:
+    """True when one side already has the sets required to win this match."""
+    board = score_board(state)
+    sets_a = board["sets_a"]
+    sets_b = board["sets_b"]
+    current = board["current_set"]
+    best_of_five = current >= 4 or (sets_a >= 2 and sets_b >= 2) or len(board["lines"]) >= 4
+    need = 3 if best_of_five else 2
+    if max(sets_a, sets_b) < need:
+        return False
+    # A new set has started, so the previous tally did not end the match.
+    if current > sets_a + sets_b:
+        return False
+    return True
+
+
+def set_is_open(state: Any, number: int) -> bool:
+    """True while this set is still being played or has not started."""
+    board = score_board(state)
+    if board["current_set"] > number:
+        return False
+    lines = board["lines"]
+    if 0 <= number - 1 < len(lines):
+        line = lines[number - 1]
+        if not line.get("live") and number < len(lines):
+            return False
+        if games_complete(line.get("games_a"), line.get("games_b")):
+            return False
+    return True
 
 
 class TennisFeatureBuilder:
@@ -23,7 +278,7 @@ class TennisFeatureBuilder:
     """
 
     sport_code: str = "tennis"
-    feature_version: str = "1.0.0"
+    feature_version: str = "1.1.0"
 
     POINT_MAPPING = {
         "0": 0.0,
@@ -39,6 +294,8 @@ class TennisFeatureBuilder:
         cutoff_time: datetime,
         event_snapshots: List[Any],
         odds_snapshots: List[Any],
+        tape: Optional[ScoreTape] = None,
+        line: Optional[MarketQuotes] = None,
     ) -> FeatureVector:
         """
         Builds feature vector strictly using snapshots with observed_at <= cutoff_time.
@@ -50,86 +307,40 @@ class TennisFeatureBuilder:
         else:
             cutoff_dt = cutoff_time
 
-        # 1. Strict point-in-time filter
-        valid_states = [
-            s for s in event_snapshots
-            if (s.observed_at.replace(tzinfo=timezone.utc) if s.observed_at.tzinfo is None else s.observed_at) <= cutoff_dt
-        ]
-        valid_odds = [
-            o for o in odds_snapshots
-            if (o.observed_at.replace(tzinfo=timezone.utc) if o.observed_at.tzinfo is None else o.observed_at) <= cutoff_dt
-        ]
-
-        # Sort chronologically
-        valid_states.sort(key=lambda s: s.observed_at)
-        valid_odds.sort(key=lambda o: o.observed_at)
+        # Replay passes a growing prefix and keeps the tape and the match line.
+        # A live call still filters and sorts, so a future row cannot get in.
+        if tape is None:
+            valid_states = [
+                s for s in event_snapshots
+                if (s.observed_at.replace(tzinfo=timezone.utc) if s.observed_at.tzinfo is None else s.observed_at) <= cutoff_dt
+            ]
+            valid_odds = [
+                o for o in odds_snapshots
+                if (o.observed_at.replace(tzinfo=timezone.utc) if o.observed_at.tzinfo is None else o.observed_at) <= cutoff_dt
+            ]
+            valid_states.sort(key=lambda s: s.observed_at)
+            valid_odds.sort(key=lambda o: o.observed_at)
+        else:
+            valid_states = event_snapshots
+            valid_odds = odds_snapshots
 
         features: Dict[str, float] = {}
+        self.apply_market_line(features, valid_odds, cutoff_dt, market_type="match_winner", cursor=line)
 
-        # 2. Extract latest odds at cutoff
-        odds_p1_records = [o for o in valid_odds if o.outcome in ("player_a", "1", "p1")]
-        odds_p2_records = [o for o in valid_odds if o.outcome in ("player_b", "2", "p2")]
-
-        latest_p1_odds = float(odds_p1_records[-1].odds) if odds_p1_records else 1.85
-        latest_p2_odds = float(odds_p2_records[-1].odds) if odds_p2_records else 1.95
-        is_missing_odds = float(not bool(odds_p1_records and odds_p2_records))
-
-        features["current_odds_player_a"] = round(latest_p1_odds, 4)
-        features["current_odds_player_b"] = round(latest_p2_odds, 4)
-        features["is_missing_odds"] = is_missing_odds
-
-        # 3. No-vig probabilities and market margin
-        no_vig_a, no_vig_b, margin = calculate_no_vig_probabilities(latest_p1_odds, latest_p2_odds)
-        features["no_vig_prob_player_a"] = no_vig_a
-        features["no_vig_prob_player_b"] = no_vig_b
-        features["bookmaker_margin"] = margin
-
-        # 4. Rolling window calculations (5s, 10s, 30s, 60s, 300s)
-        for w in ROLLING_WINDOWS:
-            window_start = cutoff_dt - timedelta(seconds=w)
-
-            # Filter snapshots in window [cutoff - w, cutoff]
-            p1_in_window = [
-                float(o.odds) for o in odds_p1_records
-                if (o.observed_at.replace(tzinfo=timezone.utc) if o.observed_at.tzinfo is None else o.observed_at) >= window_start
-            ]
-            p2_in_window = [
-                float(o.odds) for o in odds_p2_records
-                if (o.observed_at.replace(tzinfo=timezone.utc) if o.observed_at.tzinfo is None else o.observed_at) >= window_start
-            ]
-
-            # Delta & Velocity for player_a
-            past_p1 = p1_in_window[0] if p1_in_window else latest_p1_odds
-            delta_p1 = calculate_odds_delta(latest_p1_odds, past_p1)
-            velocity_p1 = calculate_odds_velocity(delta_p1, w)
-            volatility_p1 = calculate_volatility(p1_in_window)
-            drift_p1 = calculate_line_drift(delta_p1)
-
-            # Delta & Velocity for player_b
-            past_p2 = p2_in_window[0] if p2_in_window else latest_p2_odds
-            delta_p2 = calculate_odds_delta(latest_p2_odds, past_p2)
-            velocity_p2 = calculate_odds_velocity(delta_p2, w)
-            volatility_p2 = calculate_volatility(p2_in_window)
-            drift_p2 = calculate_line_drift(delta_p2)
-
-            features[f"odds_delta_player_a_{w}s"] = delta_p1
-            features[f"odds_velocity_player_a_{w}s"] = velocity_p1
-            features[f"odds_volatility_player_a_{w}s"] = volatility_p1
-            features[f"line_drift_player_a_{w}s"] = drift_p1
-
-            features[f"odds_delta_player_b_{w}s"] = delta_p2
-            features[f"odds_velocity_player_b_{w}s"] = velocity_p2
-            features[f"odds_volatility_player_b_{w}s"] = volatility_p2
-            features[f"line_drift_player_b_{w}s"] = drift_p2
-
-            # Suspension count in window
-            states_in_window = [
-                s for s in valid_states
-                if (s.observed_at.replace(tzinfo=timezone.utc) if s.observed_at.tzinfo is None else s.observed_at) >= window_start
-            ]
-            suspensions = sum(1 for s in states_in_window if s.status in ("suspended", "paused", "delayed"))
-            features[f"suspension_frequency_{w}s"] = float(suspensions)
-            features[f"is_missing_odds_window_{w}s"] = float(len(p1_in_window) < 1)
+        # Suspension count uses the score timeline, not the quoted market.
+        if tape is None:
+            for w in ROLLING_WINDOWS:
+                window_start = cutoff_dt - timedelta(seconds=w)
+                states_in_window = [
+                    s for s in valid_states
+                    if _as_utc(s.observed_at) >= window_start
+                ]
+                suspensions = sum(1 for s in states_in_window if s.status in ("suspended", "paused", "delayed"))
+                features[f"suspension_frequency_{w}s"] = float(suspensions)
+        else:
+            tape.note_states(valid_states)
+            for w in ROLLING_WINDOWS:
+                features[f"suspension_frequency_{w}s"] = float(tape.suspensions(cutoff_dt, w))
 
         # 5. Tennis Score Differentials & Context
         latest_state = valid_states[-1] if valid_states else None
@@ -137,25 +348,15 @@ class TennisFeatureBuilder:
             features["is_missing_state"] = 0.0
             score_detail = latest_state.score_detail or {}
             sport_state = latest_state.sport_state or {}
-
-            # Sets
-            curr_period = float(latest_state.current_period or 1)
-            sets_a = float(score_detail.get("sets_a", 0))
-            sets_b = float(score_detail.get("sets_b", 0))
-            features["current_set"] = curr_period
-            features["sets_diff"] = sets_a - sets_b
-
-            # Games in current set
-            games_a = float(score_detail.get("current_game_a", 0))
-            games_b = float(score_detail.get("current_game_b", 0))
+            board = score_board(latest_state)
+            games_a = board["games_a"]
+            games_b = board["games_b"]
+            features["current_set"] = float(board["current_set"])
+            features["sets_diff"] = board["sets_a"] - board["sets_b"]
             features["games_diff"] = games_a - games_b
             features["total_games_current_set"] = games_a + games_b
-
-            # Points
-            pts_a_str = str(score_detail.get("points_a", "0"))
-            pts_b_str = str(score_detail.get("points_b", "0"))
-            pts_a_val = self.POINT_MAPPING.get(pts_a_str, 0.0)
-            pts_b_val = self.POINT_MAPPING.get(pts_b_str, 0.0)
+            pts_a_val = self.POINT_MAPPING.get(board["points_a"], 0.0)
+            pts_b_val = self.POINT_MAPPING.get(board["points_b"], 0.0)
             features["points_diff"] = pts_a_val - pts_b_val
 
             # Server
@@ -165,8 +366,8 @@ class TennisFeatureBuilder:
             features["is_missing_server"] = 1.0 if not server else 0.0
 
             # Break point & tiebreak
-            features["is_break_point"] = 1.0 if sport_state.get("is_break_point") else 0.0
-            features["is_tiebreak"] = 1.0 if (games_a == 6.0 and games_b == 6.0) else 0.0
+            features["is_break_point"] = 1.0 if sport_state.get("is_break_point") or score_detail.get("is_break_point") else 0.0
+            features["is_tiebreak"] = 1.0 if board["tiebreak"] else 0.0
 
             # Match clock
             elapsed = float(getattr(latest_state, "match_clock_seconds", None) or 0)
@@ -197,6 +398,12 @@ class TennisFeatureBuilder:
             features["double_faults_diff"] = 0.0
             features["is_missing_stats"] = 1.0
 
+        if tape is None:
+            features.update(self._score_tape(valid_states))
+        else:
+            tape.extend(valid_states)
+            features.update(tape.as_features())
+
         return FeatureVector(
             event_id=str(event_id),
             sport_code=self.sport_code,
@@ -204,3 +411,128 @@ class TennisFeatureBuilder:
             feature_cutoff_timestamp=cutoff_dt,
             features=features,
         )
+
+    def apply_market_line(
+        self,
+        features: Dict[str, float],
+        odds_snapshots: List[Any],
+        cutoff_time: datetime,
+        market_type: str = "match_winner",
+        line_value: Optional[int] = None,
+        cursor: Optional[MarketQuotes] = None,
+    ) -> None:
+        """Overwrite the line block with quotes of one market at or before the cutoff.
+
+        A row without market_type counts as the match line, so older tests stay valid.
+        Set rows must pass market_type='set_winner' and the set number.
+        """
+        cutoff_dt = _as_utc(cutoff_time)
+        if cursor is not None:
+            cursor.extend(odds_snapshots, cutoff_dt, market_type, line_value)
+            side_a = cursor.side_a
+            side_b = cursor.side_b
+            times_a = cursor.times_a
+            times_b = cursor.times_b
+        else:
+            quotes = []
+            for row in odds_snapshots:
+                if _as_utc(row.observed_at) > cutoff_dt:
+                    continue
+                market = getattr(row, "market_type", None)
+                if market_type == "match_winner":
+                    if market not in (None, "", "match_winner"):
+                        continue
+                else:
+                    if market != market_type:
+                        continue
+                    raw_line = getattr(row, "line_value", None)
+                    if raw_line is None or line_value is None:
+                        continue
+                    try:
+                        if int(float(raw_line)) != int(line_value):
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                quotes.append(row)
+            quotes.sort(key=lambda row: row.observed_at)
+            side_a = [row for row in quotes if row.outcome in ("player_a", "1", "p1")]
+            side_b = [row for row in quotes if row.outcome in ("player_b", "2", "p2")]
+            times_a = None
+            times_b = None
+
+        latest_a = last_quoted_odds(side_a)
+        latest_b = last_quoted_odds(side_b)
+        features["current_odds_player_a"] = round(latest_a, 4)
+        features["current_odds_player_b"] = round(latest_b, 4)
+        features["is_missing_odds"] = float(latest_a <= 1.0 or latest_b <= 1.0)
+        no_vig_a, no_vig_b, margin = calculate_no_vig_probabilities(latest_a, latest_b)
+        features["no_vig_prob_player_a"] = no_vig_a
+        features["no_vig_prob_player_b"] = no_vig_b
+        features["bookmaker_margin"] = margin
+
+        for window in ROLLING_WINDOWS:
+            window_start = cutoff_dt - timedelta(seconds=window)
+            if times_a is None:
+                prices_a = [float(row.odds) for row in side_a if _as_utc(row.observed_at) >= window_start]
+                prices_b = [float(row.odds) for row in side_b if _as_utc(row.observed_at) >= window_start]
+            else:
+                prices_a = [float(row.odds) for row in side_a[bisect.bisect_left(times_a, window_start) :]]
+                prices_b = [float(row.odds) for row in side_b[bisect.bisect_left(times_b, window_start) :]]
+            past_a = prices_a[0] if prices_a else latest_a
+            past_b = prices_b[0] if prices_b else latest_b
+            delta_a = calculate_odds_delta(latest_a, past_a)
+            delta_b = calculate_odds_delta(latest_b, past_b)
+            features[f"odds_delta_player_a_{window}s"] = delta_a
+            features[f"odds_velocity_player_a_{window}s"] = calculate_odds_velocity(delta_a, window)
+            features[f"odds_volatility_player_a_{window}s"] = calculate_volatility(prices_a)
+            features[f"line_drift_player_a_{window}s"] = calculate_line_drift(delta_a)
+            features[f"odds_delta_player_b_{window}s"] = delta_b
+            features[f"odds_velocity_player_b_{window}s"] = calculate_odds_velocity(delta_b, window)
+            features[f"odds_volatility_player_b_{window}s"] = calculate_volatility(prices_b)
+            features[f"line_drift_player_b_{window}s"] = calculate_line_drift(delta_b)
+            features[f"is_missing_odds_window_{window}s"] = float(len(prices_a) < 1)
+
+    def _score_tape(self, states: List[Any]) -> Dict[str, float]:
+        """Point-by-point path and the parenthesis lines of every set, up to this cutoff."""
+        cursor = ScoreTape(self)
+        cursor.extend(states)
+        return cursor.as_features()
+
+    def _frame(self, state: Any) -> Dict[str, Any]:
+        detail = state.score_detail if isinstance(state.score_detail, dict) else {}
+        sport = state.sport_state if isinstance(state.sport_state, dict) else {}
+        game = detail.get("current_game") if isinstance(detail.get("current_game"), dict) else {}
+        points_a = self.POINT_MAPPING.get(str(game.get("points_a", detail.get("points_a", "0"))), 0.0)
+        points_b = self.POINT_MAPPING.get(str(game.get("points_b", detail.get("points_b", "0"))), 0.0)
+        lines = self._set_lines(state)
+        live = next((line for line in lines if line.get("live")), lines[-1] if lines else {})
+        try:
+            games_a = float(live.get("games_a") if live else detail.get("current_game_a") or 0)
+            games_b = float(live.get("games_b") if live else detail.get("current_game_b") or 0)
+        except (TypeError, ValueError):
+            games_a, games_b = 0.0, 0.0
+        return {
+            "set_no": int(float(getattr(state, "current_period", None) or detail.get("current_period") or detail.get("current_set") or 1)),
+            "games_a": games_a,
+            "games_b": games_b,
+            "points_a": points_a,
+            "points_b": points_b,
+            "server": sport.get("server") or detail.get("server"),
+        }
+
+    def _point_winner(self, previous: Dict[str, Any], frame: Dict[str, Any]) -> Optional[str]:
+        if frame["set_no"] == previous["set_no"] and frame["games_a"] == previous["games_a"] and frame["games_b"] == previous["games_b"]:
+            if frame["points_a"] == previous["points_a"] + 1 and frame["points_b"] == previous["points_b"]:
+                return "a"
+            if frame["points_b"] == previous["points_b"] + 1 and frame["points_a"] == previous["points_a"]:
+                return "b"
+            return None
+        if frame["set_no"] == previous["set_no"] and frame["games_a"] == previous["games_a"] + 1:
+            return "a"
+        if frame["set_no"] == previous["set_no"] and frame["games_b"] == previous["games_b"] + 1:
+            return "b"
+        return None
+
+    def _set_lines(self, state: Any) -> List[Dict[str, Any]]:
+        _detail, _sport, _stats, lines = _state_parts(state)
+        return lines

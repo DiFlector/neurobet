@@ -40,13 +40,14 @@ def get_redis_client():
 
 def test_streams_constants_definition():
     """Verify all 15 canonical streams plus dead-letter queue are defined."""
-    assert len(ALL_CORE_STREAMS) == 16
-    assert len(ALL_STREAMS) == 17
+    assert len(ALL_CORE_STREAMS) == 17
+    assert len(ALL_STREAMS) == 18
     assert STREAM_DEAD_LETTER in ALL_STREAMS
     assert STREAM_FONBET_RESULTS in ALL_STREAMS
     assert "fonbet.raw" in ALL_STREAMS
     assert "bet.validated" in ALL_STREAMS
     assert "training.jobs" in ALL_STREAMS
+    assert "backtest.jobs" in ALL_STREAMS
     print("test_streams_constants_definition: OK")
 
 

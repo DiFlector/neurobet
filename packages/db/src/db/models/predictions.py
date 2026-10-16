@@ -58,6 +58,50 @@ class MLPrediction(Base, UUIDPrimaryKeyMixin):
     )
 
 
+class ModelBetJournal(Base, UUIDPrimaryKeyMixin):
+    """
+    Statistical log of a side a model committed to.
+    Shadows and zero-stake decisions are included. This is not the bankroll ledger.
+    """
+
+    __tablename__ = "model_bet_journal"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    sport_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_shadow: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    market: Mapped[str] = mapped_column(String(64), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_probability: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    bookmaker_odds: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
+    fair_odds: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
+    edge: Mapped[float] = mapped_column(Numeric(8, 4), nullable=False)
+    expected_value: Mapped[float] = mapped_column(Numeric(8, 4), default=0, nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(6, 4), default=0, nullable=False)
+    stake_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    reason: Mapped[str] = mapped_column(String(1024), nullable=False)
+    detail: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    result_status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    result_winner: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_model_bet_journal_event", "event_id", "decided_at"),
+        Index("idx_model_bet_journal_model", "model_name", "model_version", "decided_at"),
+        Index(
+            "uq_model_bet_journal_decision",
+            "event_id",
+            "model_name",
+            "model_version",
+            "is_shadow",
+            "market",
+            unique=True,
+        ),
+    )
+
+
 class LLMDecision(Base, UUIDPrimaryKeyMixin):
     """
     Qualitative verdict and risk assessments from local LLM inference.

@@ -50,6 +50,19 @@ def calculate_line_drift(delta: float, threshold: float = 0.01) -> float:
     return 0.0
 
 
+def last_quoted_odds(records: List[Any]) -> float:
+    """Last price strictly above 1. A missing quote stays 0 and cannot clear the commit edge."""
+    if not records:
+        return 0.0
+    try:
+        price = float(records[-1].odds)
+    except (TypeError, ValueError):
+        return 0.0
+    if price <= 1.0:
+        return 0.0
+    return price
+
+
 def calculate_no_vig_probabilities(odds_a: float, odds_b: float) -> Tuple[float, float, float]:
     """
     Computes fair no-vig implied probabilities and margin (overround).

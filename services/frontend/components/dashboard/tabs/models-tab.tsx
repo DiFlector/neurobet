@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ModelItem, TrainingRun } from "@/lib/types";
+import { compositeMemberLabels, compositeModelTitle, isCompositeModel } from "@/lib/composite-label";
 import { formatDate, getSportNameRu } from "@/lib/formatters";
 
 interface ModelsTabProps {
@@ -26,7 +27,9 @@ export function ModelsTab({
   trainingRuns,
   loading = false,
 }: ModelsTabProps) {
-  const orderedModels = [...models].sort((left, right) => {
+  const orderedModels = [...models]
+    .filter((model) => (model.sport_code || "").trim().toLowerCase() === "tennis")
+    .sort((left, right) => {
     const rank = (status?: string) => {
       const code = (status || "").trim().toUpperCase();
       if (code === "ACTIVE") return 0;
@@ -88,7 +91,12 @@ export function ModelsTab({
                         className="border-border/50 text-xs hover:bg-muted/40"
                       >
                         <TableCell className="font-semibold text-foreground">
-                          {m.model_name}
+                          <div>{isCompositeModel(m) ? compositeModelTitle(m) : m.model_name}</div>
+                          {isCompositeModel(m) && (
+                            <div className="mt-1 font-normal text-[11px] text-muted-foreground">
+                              Состав: {compositeMemberLabels(m).join(" · ") || "Логистическая · Бустинг · Residual MLP 64→32"}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-muted-foreground">
                           {m.version_tag}

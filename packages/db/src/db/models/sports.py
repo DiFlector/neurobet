@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Index
+from sqlalchemy import String, Boolean, DateTime, Float, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
@@ -62,6 +62,7 @@ class ParticipantAlias(Base, UUIDPrimaryKeyMixin):
     participant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"), nullable=False)
     source: Mapped[str] = mapped_column(String(32), default="fonbet", nullable=False)
     alias: Mapped[str] = mapped_column(String(255), nullable=False)
+    link_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     participant: Mapped["Participant"] = relationship(back_populates="aliases")

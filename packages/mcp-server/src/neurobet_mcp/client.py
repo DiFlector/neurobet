@@ -101,6 +101,29 @@ class NeurobetClient:
             return self._request(f"{self.base_url}/api/events/{event_id}/predictions")
         return self._request(f"{self.base_url}/api/predictions", params={"sport_code": sport_code, "limit": limit})
 
+    def list_model_bets(
+        self,
+        event_id: Optional[str] = None,
+        sport_code: Optional[str] = None,
+        model_name: Optional[str] = None,
+        is_shadow: Optional[bool] = None,
+        market: Optional[str] = None,
+        result_status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        return self._request(
+            f"{self.base_url}/api/model-bets",
+            params={
+                "event_id": event_id,
+                "sport_code": sport_code,
+                "model_name": model_name,
+                "is_shadow": is_shadow,
+                "market": market,
+                "result_status": result_status,
+                "limit": limit,
+            },
+        )
+
     def get_research(self, event_id: Optional[str] = None) -> Any:
         if event_id:
             return self._request(f"{self.base_url}/api/events/{event_id}/research")
@@ -181,6 +204,19 @@ class NeurobetClient:
 
     def get_scheduler_stats(self) -> Dict[str, Any]:
         return self._request(f"{self.base_url}/api/scheduler/stats")
+
+    def trigger_backtest(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Queue a historical replay. The production bankroll is not changed."""
+        return self._request(f"{self.base_url}/api/backtests/run", method="POST", data=payload)
+
+    def get_backtest_run(self, run_id: str) -> Dict[str, Any]:
+        return self._request(f"{self.base_url}/api/backtests/runs/{run_id}")
+
+    def list_backtest_runs(self, sport_code: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+        return self._request(
+            f"{self.base_url}/api/backtests/runs",
+            params={"sport_code": sport_code, "limit": limit},
+        )
 
     # Prometheus API
     def query_prometheus(self, query: str) -> Dict[str, Any]:

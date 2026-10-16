@@ -30,6 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { decisionStatus } from "@/lib/decision-status";
+import { compositeVerdict, isCompositePrediction } from "@/lib/composite-label";
 import { EventDetailData, EventItem, LLMDecisionItem, OddItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu, formatTime } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
@@ -206,9 +208,11 @@ export function EventDeepdiveModal({
     [...items].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
   const primaryPred =
     byFirstChoice(preds.filter((p) => !p.is_shadow && p.has_positive_edge))[0] || null;
-  const shadowPreds = byFirstChoice(
-    preds.filter((p) => p.is_shadow && p.has_positive_edge),
-  ).filter((p, index, rows) => rows.findIndex((row) => row.model_version === p.model_version) === index);
+  const lineKey = (row: PredictionItem) =>
+    `${row.market || "match"}:${row.model_name || ""}:${row.model_version}:${row.is_shadow ? "s" : "c"}`;
+  const shadowPreds = [...preds.filter((p) => p.is_shadow && (p.model_probability || 0) > 0)]
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
+    .filter((p, index, rows) => rows.findIndex((row) => lineKey(row) === lineKey(p)) === index);
   const orderedPreds = primaryPred ? [primaryPred, ...shadowPreds] : shadowPreds;
   const primaryLlm: LLMDecisionItem | null = llm[0] || null;
 
@@ -250,7 +254,7 @@ export function EventDeepdiveModal({
                 № {evt.source_event_id || evt.id.slice(0, 8)}
               </span>
               <span>•</span>
-              <HintTooltip content={qualityScoreHint(Number(evt.quality_score || 100))}>
+              <HintTooltip content={qualityScoreHint(Number(evt.quality_score || 100), evt.quality_reasons)}>
                 <span className="font-mono">
                   К: {Number(evt.quality_score || 100).toFixed(0)}%
                 </span>
@@ -472,6 +476,18 @@ export function EventDeepdiveModal({
                       Рынок: {p.market}
                     </div>
                     <div className="flex items-center gap-1.5">
+                      <HintTooltip content={isCompositePrediction(p) ? compositeVerdict(p, playerA, playerB) : decisionStatus(p, evt.sport_code).title}>
+                        <Badge
+                          variant="outline"
+                          className={
+                            decisionStatus(p, evt.sport_code).chosen
+                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px]"
+                              : "text-muted-foreground text-[11px]"
+                          }
+                        >
+                          {decisionStatus(p, evt.sport_code).label}
+                        </Badge>
+                      </HintTooltip>
                       {p.is_shadow && (
                         <Badge
                           variant="outline"
@@ -516,6 +532,13 @@ export function EventDeepdiveModal({
                       </div>
                     </div>
                   </div>
+                  {isCompositePrediction(p) && (
+                    <HintTooltip content={compositeVerdict(p, playerA, playerB)} side="bottom">
+                      <div className="rounded border border-indigo-500/30 bg-indigo-500/5 px-2 py-1.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+                        Составная модель — {decisionStatus(p, evt.sport_code).label}
+                      </div>
+                    </HintTooltip>
+                  )}
                 </div>
               ))
             )}

@@ -10,6 +10,7 @@ from .base import (
     ROLLING_WINDOWS,
     calculate_line_drift,
     calculate_no_vig_probabilities,
+    last_quoted_odds,
     calculate_odds_delta,
     calculate_odds_velocity,
     calculate_volatility,
@@ -60,9 +61,9 @@ class BasketballFeatureBuilder:
         odds_t1_records = [o for o in valid_odds if getattr(o, "outcome", "") in ("team_a", "1", "home", "player_a")]
         odds_t2_records = [o for o in valid_odds if getattr(o, "outcome", "") in ("team_b", "2", "away", "player_b")]
 
-        latest_t1_odds = float(odds_t1_records[-1].odds) if odds_t1_records else 1.90
-        latest_t2_odds = float(odds_t2_records[-1].odds) if odds_t2_records else 1.90
-        is_missing_odds = float(not bool(odds_t1_records and odds_t2_records))
+        latest_t1_odds = last_quoted_odds(odds_t1_records)
+        latest_t2_odds = last_quoted_odds(odds_t2_records)
+        is_missing_odds = float(latest_t1_odds <= 1.0 or latest_t2_odds <= 1.0)
 
         features["current_odds_team_a"] = round(latest_t1_odds, 4)
         features["current_odds_team_b"] = round(latest_t2_odds, 4)

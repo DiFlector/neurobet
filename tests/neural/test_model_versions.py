@@ -1,6 +1,6 @@
 """Version tags name the sport family: tennis_v1.0.0, tests use test_tennis_v1.0.0."""
 
-from app.versioning import allocate_test_version, next_release_version
+from app.versioning import allocate_test_version, is_test_tag, next_release_version
 
 
 def test_first_release_is_sport_v1():
@@ -20,6 +20,8 @@ def test_canonical_test_tag():
     assert allocate_test_version([], "tennis") == "test_tennis_v1.0.0"
     assert allocate_test_version(["test_tennis_v1.0.0"], "tennis") == "test_tennis_v1.0.0_2"
     assert allocate_test_version(["test_tennis_v1.0.0", "test_tennis_v1.0.0_2"], "tennis") == "test_tennis_v1.0.0_3"
+    assert is_test_tag("test_tennis_v1.0.0_71c9a2")
+    assert not is_test_tag("tennis_v2.3.0")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,10 @@ logger = logging.getLogger("collector.parser")
 
 # Tennis sport identifier in Fonbet (sportId 4 is Tennis)
 FONBET_TENNIS_SPORT_IDS = {4, 104, 114}
+_SET_NUMBER = re.compile(
+    r"(?:(\d+)\s*(?:[-–]?\s*[ййя]|st|nd|rd|th)?\s*сет)|(?:(?:set|сет)\s*(\d+))",
+    re.IGNORECASE,
+)
 
 
 class FonbetLiveTennisParser:
@@ -124,43 +128,35 @@ class FonbetLiveTennisParser:
             score_raw = str(card_data.get("score") or card_data.get("comment") or card_data.get("score_str") or "")
             score_state = cls.parse_score_string(score_raw)
 
-            # 4. Extract markets and odds
+            # 4. Extract markets and odds. A side without a price is omitted, never replaced.
             markets = []
-            selections = []
-
-            # Check for Match Winner odds (P1 / P2)
+            match_prices = cls._two_sided_prices(card_data.get("factors"))
             odds_a = card_data.get("odds_a") or card_data.get("p1")
             odds_b = card_data.get("odds_b") or card_data.get("p2")
-
-            # Check Fonbet custom factors table if provided
-            factors = card_data.get("factors", [])
-            for f in factors:
-                f_type = f.get("f") or f.get("type")
-                f_val = f.get("v") or f.get("odds")
-                if f_type in (921, "p1", "1") and f_val:
-                    odds_a = float(f_val)
-                elif f_type in (923, "p2", "2") and f_val:
-                    odds_b = float(f_val)
-
-            if odds_a and odds_b:
-                selections.append({
-                    "selection_id": f"{source_id}_p1",
-                    "outcome": "player_a",
-                    "name": player_a,
-                    "odds": float(odds_a),
-                })
-                selections.append({
-                    "selection_id": f"{source_id}_p2",
-                    "outcome": "player_b",
-                    "name": player_b,
-                    "odds": float(odds_b),
-                })
-                markets.append({
-                    "market_id": f"{source_id}_match_winner",
-                    "market_type": "match_winner",
-                    "name": "Победитель матча",
-                    "selections": selections,
-                })
+            if match_prices is not None:
+                odds_a, odds_b = match_prices
+            match_market = cls._winner_market(
+                source_id, "match_winner", "Победитель матча", player_a, player_b, odds_a, odds_b, None
+            )
+            if match_market is not None:
+                markets.append(match_market)
+            for set_market in card_data.get("set_markets") or []:
+                number = set_market.get("set_number")
+                prices = cls._two_sided_prices(set_market.get("factors"))
+                if prices is None or number is None:
+                    continue
+                built = cls._winner_market(
+                    source_id,
+                    "set_winner",
+                    f"Победа в сете {int(number)}",
+                    player_a,
+                    player_b,
+                    prices[0],
+                    prices[1],
+                    int(number),
+                )
+                if built is not None:
+                    markets.append(built)
 
             return {
                 "event_id": f"fonbet_{source_id}",
@@ -318,7 +314,8 @@ class FonbetLiveTennisParser:
             if isinstance(item, dict)
         }
 
-        cards: List[Dict[str, Any]] = []
+        parents: List[Dict[str, Any]] = []
+        children: List[Dict[str, Any]] = []
         for event in feed.get("events") or []:
             if not isinstance(event, dict):
                 continue
@@ -326,8 +323,28 @@ class FonbetLiveTennisParser:
                 continue
             if event.get("sportId") not in tennis_ids:
                 continue
+            if event.get("parentId"):
+                children.append(event)
+                continue
             if not event.get("team1") or not event.get("team2"):
                 continue
+            parents.append(event)
+
+        parent_ids = {event.get("id") for event in parents}
+        sets_by_parent: Dict[Any, List[Dict[str, Any]]] = {}
+        for child in children:
+            if child.get("parentId") not in parent_ids:
+                continue
+            number = cls._set_number(child)
+            if number is None:
+                continue
+            sets_by_parent.setdefault(child.get("parentId"), []).append({
+                "set_number": number,
+                "factors": factors_by_event.get(child.get("id"), []),
+            })
+
+        cards: List[Dict[str, Any]] = []
+        for event in parents:
             sport = sports.get(event.get("sportId")) or {}
             info = info_by_event.get(event.get("id")) or {}
             misc = misc_by_event.get(event.get("id")) or {}
@@ -340,9 +357,68 @@ class FonbetLiveTennisParser:
                 "score": cls._score_from_live_info(info),
                 "fonbet_score": cls._live_score(info),
                 "factors": factors_by_event.get(event.get("id"), []),
+                "set_markets": sets_by_parent.get(event.get("id"), []),
                 "fonbet_clock": cls._clock_from_line(event, info, misc),
             })
         return {"events": cards}
+
+    @staticmethod
+    def _set_number(event: Dict[str, Any]) -> Optional[int]:
+        text = " ".join(str(event.get(key) or "") for key in ("name", "nameRu", "kindName"))
+        match = _SET_NUMBER.search(text)
+        if match is None:
+            return None
+        raw = match.group(1) or match.group(2)
+        number = int(raw)
+        if 1 <= number <= 5:
+            return number
+        return None
+
+    @staticmethod
+    def _two_sided_prices(factors: Any) -> Optional[tuple]:
+        odds_a = None
+        odds_b = None
+        for factor in factors or []:
+            if not isinstance(factor, dict):
+                continue
+            kind = factor.get("f") if factor.get("f") is not None else factor.get("type")
+            raw = factor.get("v") if factor.get("v") is not None else factor.get("odds")
+            if raw in (None, ""):
+                continue
+            try:
+                price = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if price <= 1.0:
+                continue
+            if kind in (921, "p1", "1"):
+                odds_a = price
+            elif kind in (923, "p2", "2"):
+                odds_b = price
+        if odds_a is None or odds_b is None:
+            return None
+        return odds_a, odds_b
+
+    @staticmethod
+    def _winner_market(source_id, market_type, name, player_a, player_b, odds_a, odds_b, set_number):
+        try:
+            price_a = float(odds_a)
+            price_b = float(odds_b)
+        except (TypeError, ValueError):
+            return None
+        if price_a <= 1.0 or price_b <= 1.0:
+            return None
+        suffix = "match" if set_number is None else f"set{int(set_number)}"
+        return {
+            "market_id": f"{source_id}_{suffix}",
+            "market_type": market_type,
+            "name": name,
+            "line_value": None if set_number is None else int(set_number),
+            "selections": [
+                {"selection_id": f"{source_id}_{suffix}_p1", "outcome": "player_a", "name": player_a, "odds": price_a},
+                {"selection_id": f"{source_id}_{suffix}_p2", "outcome": "player_b", "name": player_b, "odds": price_b},
+            ],
+        }
 
     @staticmethod
     def _clock_from_line(event: Dict[str, Any], info: Dict[str, Any], misc: Dict[str, Any]) -> Dict[str, Any]:

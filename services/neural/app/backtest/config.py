@@ -33,7 +33,8 @@ class BacktestConfig(BaseModel):
     # Strategy hurdle parameters
     min_edge: float = Field(default=0.03, ge=0.0, description="Minimum required edge (3%) to consider betting")
     min_probability: float = Field(default=0.40, ge=0.0, le=1.0, description="Minimum model probability")
-    max_odds: float = Field(default=10.0, gt=1.0, description="Maximum bookmaker odds to bet on")
+    min_odds: float = Field(default=1.60, gt=1.0, description="Minimum bookmaker odds to bet on")
+    max_odds: float = Field(default=2.40, gt=1.0, description="Maximum bookmaker odds to bet on")
     
     # Execution realism parameters
     execution_latency_sec: float = Field(default=2.0, ge=0.0, description="Simulated execution latency in seconds")
@@ -41,6 +42,20 @@ class BacktestConfig(BaseModel):
     allow_slippage: bool = Field(default=True, description="Whether odds movement during latency period affects execution")
     
     # Temporal & Walk-forward parameters
+    confirm_side: bool = Field(
+        default=False,
+        description="Bet only the snapshot that repeats the same side at min_edge",
+    )
+    confirmations: int = Field(default=2, ge=2, le=3, description="Agreeing snapshots required before a bet")
+    min_confirm_interval_sec: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Minimum seconds between snapshots that count as confirmation",
+    )
+    group_by_event: bool = Field(
+        default=False,
+        description="Keep every snapshot of a match inside one walk-forward side",
+    )
     n_splits: int = Field(default=4, ge=2, description="Number of chronological walk-forward splits")
     split_mode: Literal["EXPANDING", "ROLLING"] = Field(default="EXPANDING", description="Walk-forward window mode")
     purge_window_sec: float = Field(default=300.0, ge=0.0, description="Purge/embargo time gap between train and test folds (seconds)")

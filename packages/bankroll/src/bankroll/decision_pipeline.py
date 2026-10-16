@@ -363,7 +363,9 @@ class CombinedDecisionPipeline:
                 )
             else:
                 # Fallback to ML-only
-                proposal = self._create_proposal(session, candidate, llm_decision_id=llm_decision_record.id)
+                proposal = self._create_proposal(
+                    session, candidate, llm_decision_id=llm_decision_record.id, verdict=verdict
+                )
                 return DecisionResult(
                     candidate=candidate,
                     status="PROPOSED",
@@ -477,7 +479,7 @@ class CombinedDecisionPipeline:
             evt_uuid = uuid.uuid4()
 
         fair_odds = round(1.0 / candidate.model_probability, 4) if candidate.model_probability > 0 else candidate.odds
-        suggested_stake = 1000.0  # Base stake in simulation
+        suggested_stake = self._suggested_stake(session, candidate, verdict)
 
         proposal = BetProposal(
             id=uuid.uuid4(),
@@ -497,6 +499,27 @@ class CombinedDecisionPipeline:
         session.add(proposal)
         session.flush()
         return proposal
+
+    def _suggested_stake(self, session: Session, candidate: CandidateItem, verdict: Optional[LLMStructuredVerdict]) -> float:
+        """Fraction of the current paper balance, scaled by how far LLM context agrees with the side."""
+        try:
+            from .service import BankrollService
+
+            account = BankrollService.get_or_create_account(session)
+            balance = float(account.balance or 0.0)
+        except Exception:
+            balance = 0.0
+        fraction = min(float(self.config.max_stake_fraction), 0.20)
+        base = balance * fraction
+        if verdict is None:
+            return round(base, 2)
+        if verdict.verdict == "NO_BET":
+            return 0.0
+        if max(verdict.injury_risk_score, verdict.fatigue_risk_score, verdict.news_risk_score) >= 0.7:
+            return 0.0
+        side_a = str(candidate.selection).lower() in ("player_a", "team_a", "home", "1")
+        alignment = verdict.context_side_a if side_a else (1.0 - float(verdict.context_side_a))
+        return round(base * alignment, 2)
 
 
 class LLMStrategyComparator:

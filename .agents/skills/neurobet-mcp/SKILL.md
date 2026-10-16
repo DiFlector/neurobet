@@ -17,7 +17,7 @@ This skill explains how to use and verify the Neurobet Model Context Protocol (M
   - Cursor IDE: `.cursor/mcp.json`
   - Root: `mcp.json`
 
-## Available Tools (25)
+## Available Tools (29)
 
 1. **Cluster Health & Observability**:
    - `neurobet_get_system_health`: Real-time health of 13 microservices, database, and Redis.
@@ -36,11 +36,15 @@ This skill explains how to use and verify the Neurobet Model Context Protocol (M
    - `neurobet_list_training_runs`: Lists past and current training jobs.
    - `neurobet_list_experiments`: Lists scientific backtests and baseline experiments.
    - `neurobet_compare_experiments`: Statistical comparison of experiments.
+   - `neurobet_trigger_backtest`: Replay one ACTIVE/SHADOW model or all ACTIVE/SHADOW models of a sport. See `docs/historical-backtest.md`.
+   - `neurobet_get_backtest_run`: Status and full paper report for a replay.
+   - `neurobet_list_backtest_runs`: Recent replays without individual bet rows.
 4. **Events, Lines & Context**:
    - `neurobet_list_live_events`: Live events tracked by Fonbet collector.
    - `neurobet_get_event_timeline`: Score snapshots and states.
    - `neurobet_get_event_odds`: Real-time and historical odds snapshots.
    - `neurobet_get_predictions`: Recent ML predictions and expected value/edge.
+   - `neurobet_list_model_bets`: Statistical sides of active and shadow models, including decisions with no stake. Not the bankroll.
    - `neurobet_get_research_packet`: Web research evidence and team news.
 5. **Virtual Bankroll & Risk Management**:
    - `neurobet_get_bankroll_summary`: Virtual balance, available cash, exposure, total equity.

@@ -32,6 +32,7 @@ STREAM_GROUPS = {
     "bet.executed": ["cg.bet_manager", "cg.worker"],
     "bet.settled": ["cg.bet_manager", "cg.neural"],
     "training.jobs": ["cg.neural", "cg.worker"],
+    "backtest.jobs": ["cg.neural"],
     "streams.dead_letter": ["cg.monitor"],
 }
 

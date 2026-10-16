@@ -20,6 +20,11 @@ def test_tag(sport_code: str) -> str:
     return f"test_{_sport_token(sport_code)}_v1.0.0"
 
 
+def is_test_tag(version_tag: str) -> bool:
+    """A test tag is for a check run. It is never a production model."""
+    return str(version_tag or "").startswith("test_")
+
+
 def _sport_token(sport_code: str) -> str:
     sport = (sport_code or "").strip().lower()
     if not _SPORT.fullmatch(sport):

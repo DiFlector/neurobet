@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { decisionStatus, stakeReason } from "@/lib/decision-status";
 import { BetItem, EventItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
@@ -18,6 +19,7 @@ import { MatchTimer, stakeKindFromMarket } from "@/components/dashboard/match-ti
 import { MatchClock } from "@/components/dashboard/match-clock";
 import { FitText } from "@/components/dashboard/fit-text";
 import { HintTooltip, qualityScoreHint } from "@/components/dashboard/hint-tooltip";
+import { compositeVerdict, isCompositePrediction } from "@/lib/composite-label";
 
 export type BetOutcomeTone = "won" | "lost" | "void";
 
@@ -91,11 +93,89 @@ function matchesParticipant(
   return false;
 }
 
+function lineLabel(pred: PredictionItem): string {
+  const name = pred.model_name || "";
+  const set = /^set_winner:(\d+)$/.exec(pred.market || "");
+  const market = set ? `Сет ${set[1]}` : "Матч";
+  if (isCompositePrediction(pred)) return `${market} · Составная модель`;
+  if (name.includes("logistic")) return `${market} · Логистическая`;
+  if (name.includes("gradient")) return `${market} · Градиент`;
+  return `${market} · ${pred.model_version || "Модель"}`;
+}
+
+function sideChoiceHint(
+  lines: PredictionItem[],
+  rawName: string,
+  playerName: string,
+  side: "a" | "b",
+  playerA: string,
+  playerB: string,
+  sportCode?: string,
+) {
+  const picks = lines.filter((line) => {
+    const outcome = line.predicted_outcome || line.outcome || line.selection || "";
+    return matchesParticipant(outcome, rawName, playerName, side);
+  });
+  if (picks.length === 0) {
+    return `${playerName}. Ни одна модель не выбрала эту сторону.`;
+  }
+  return (
+    <span className="block space-y-1">
+      <span className="block font-medium">{playerName}</span>
+      {picks.map((line) => (
+        <span key={line.id || lineKey(line)} className="block">
+          {lineLabel(line)} — {decisionStatus(line, sportCode).label}
+          {isCompositePrediction(line) ? compositeVerdict(line, playerA, playerB) : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function lineKey(row: PredictionItem): string {
+  return `${row.market || "match"}:${row.model_name || row.model_version || row.id || "line"}`;
+}
+
+function scoredLines(predictions: PredictionItem[], shadow: boolean): PredictionItem[] {
+  const rows = predictions.filter(
+    (p) => Boolean(p.is_shadow) === shadow && (p.model_probability || 0) > 0,
+  );
+  const byLine = new Map<string, PredictionItem>();
+  for (const row of rows) {
+    const key = lineKey(row);
+    const prev = byLine.get(key);
+    if (!prev) {
+      byLine.set(key, row);
+      continue;
+    }
+    if ((row.created_at || "") > (prev.created_at || "")) {
+      byLine.set(key, row);
+      continue;
+    }
+    if ((row.created_at || "") === (prev.created_at || "") && row.has_positive_edge && !prev.has_positive_edge) {
+      byLine.set(key, row);
+    }
+  }
+  return [...byLine.values()].sort((a, b) => lineKey(a).localeCompare(lineKey(b)));
+}
+
 export function MatchCard({ event, predictions, onInspect, betOutcome = null }: MatchCardProps) {
-  const primaryPred =
+  const combatPred =
     [...predictions]
       .filter((p) => !p.is_shadow && p.has_positive_edge)
       .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))[0] || null;
+  const analysisLines = combatPred ? [combatPred] : scoredLines(predictions, true);
+  const chosenLines = analysisLines.filter(
+    (line) =>
+      line.has_positive_edge &&
+      !stakeReason(line.model_probability, line.bookmaker_odds, line.market, event.sport_code),
+  );
+  const primaryPred = chosenLines[0] || null;
+  const stakeMarket = primaryPred?.market;
+  const visibleLines = stakeMarket
+    ? analysisLines.filter((line) => (line.market || "match_winner") === stakeMarket)
+    : analysisLines;
+  const shadowOnly = !combatPred && visibleLines.length > 0;
 
   const isLive = event.status === "live";
   const isPrematch = event.status === "prematch";
@@ -115,18 +195,14 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
   const playerA = getLocalizedParticipantName(rawNameA, event.sport_code);
   const playerB = getLocalizedParticipantName(rawNameB, event.sport_code);
 
-  const outcomeStr =
-    primaryPred?.predicted_outcome || primaryPred?.outcome || primaryPred?.selection || "";
+  const linePicks = (line: PredictionItem, rawName: string, playerName: string, side: "a" | "b") => {
+    const outcome = line.predicted_outcome || line.outcome || line.selection || "";
+    return matchesParticipant(outcome, rawName, playerName, side);
+  };
+  const isPredictedA = chosenLines.some((line) => linePicks(line, rawNameA, playerA, "a"));
+  const isPredictedB = chosenLines.some((line) => linePicks(line, rawNameB, playerB, "b"));
 
-  const isPredictedA = primaryPred
-    ? matchesParticipant(outcomeStr, rawNameA, playerA, "a")
-    : false;
-  const isPredictedB = primaryPred
-    ? matchesParticipant(outcomeStr, rawNameB, playerB, "b")
-    : false;
-
-  const stakePlayer = isPredictedA ? playerA : isPredictedB ? playerB : null;
-  const hasEdge = isLive && primaryPred && primaryPred.has_positive_edge;
+  const hasEdge = isLive && Boolean(combatPred && combatPred.has_positive_edge);
   const outcomeTone = isFinished ? betOutcome : null;
 
   return (
@@ -158,7 +234,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
           <FitText className="min-w-0 flex-1 font-mono text-muted-foreground" maxPx={11} minPx={9}>
             № {event.source_event_id || event.id.slice(0, 8)}
           </FitText>
-          <HintTooltip content={qualityScoreHint(Number(event.quality_score || 100))}>
+          <HintTooltip content={qualityScoreHint(Number(event.quality_score || 100), event.quality_reasons)}>
             <span className="shrink-0 rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px] text-muted-foreground/80">
               К: {Number(event.quality_score || 100).toFixed(0)}%
             </span>
@@ -226,28 +302,32 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                 : ""
             }`}
           >
-            <div className="flex flex-col items-start gap-1">
-              <div
-                className={`line-clamp-2 text-[13px] font-semibold leading-4 ${
-                  isPredictedA
-                    ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                    : "text-foreground"
-                }`}
-                title={playerA}
-              >
-                {playerA}
-              </div>
-              {isPredictedA && (
-                <Badge
-                  variant="outline"
-                  className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
-                  title={`Выбор ML (${Math.round((primaryPred?.model_probability ?? 0) * 100)}%)`}
+            <HintTooltip
+              className="w-full max-w-full flex-col items-start"
+              side="bottom"
+              content={sideChoiceHint(visibleLines, rawNameA, playerA, "a", playerA, playerB, event.sport_code)}
+            >
+              <span className="flex w-full flex-col items-start gap-1">
+                <span
+                  className={`line-clamp-2 text-[13px] font-semibold leading-4 ${
+                    isPredictedA
+                      ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                      : "text-foreground"
+                  }`}
                 >
-                  Выбор ML
-                </Badge>
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">{roleA}</div>
+                  {playerA}
+                </span>
+                {isPredictedA && (
+                  <Badge
+                    variant="outline"
+                    className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
+                  >
+                    Выбрала
+                  </Badge>
+                )}
+                <span className="mt-0.5 text-[11px] font-normal text-muted-foreground">{roleA}</span>
+              </span>
+            </HintTooltip>
           </div>
 
           {/* Match Score & Live Timer */}
@@ -261,74 +341,110 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                 : ""
             }`}
           >
-            <div className="flex flex-col items-end gap-1">
-              <div
-                className={`line-clamp-2 w-full text-right text-[13px] font-semibold leading-4 ${
-                  isPredictedB
-                    ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                    : "text-foreground"
-                }`}
-                title={playerB}
-              >
-                {playerB}
-              </div>
-              {isPredictedB && (
-                <Badge
-                  variant="outline"
-                  className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
-                  title={`Выбор ML (${Math.round((primaryPred?.model_probability ?? 0) * 100)}%)`}
+            <HintTooltip
+              className="w-full max-w-full flex-col items-end"
+              side="bottom"
+              content={sideChoiceHint(visibleLines, rawNameB, playerB, "b", playerA, playerB, event.sport_code)}
+            >
+              <span className="flex w-full flex-col items-end gap-1">
+                <span
+                  className={`line-clamp-2 w-full text-right text-[13px] font-semibold leading-4 ${
+                    isPredictedB
+                      ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                      : "text-foreground"
+                  }`}
                 >
-                  Выбор ML
-                </Badge>
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">{roleB}</div>
+                  {playerB}
+                </span>
+                {isPredictedB && (
+                  <Badge
+                    variant="outline"
+                    className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
+                  >
+                    Выбрала
+                  </Badge>
+                )}
+                <span className="mt-0.5 text-[11px] font-normal text-muted-foreground">{roleB}</span>
+              </span>
+            </HintTooltip>
           </div>
         </div>
 
         {/* Odds & Value Matrix */}
         <div className="rounded-md border border-border/50 bg-muted/30 p-2.5">
-          {primaryPred ? (
-            <div className="grid grid-cols-4 gap-1.5 text-center text-xs">
-              <div>
-                <div className="text-[10px] text-muted-foreground">Ставка</div>
-                <div
-                  className="mt-0.5 truncate font-medium text-foreground"
-                  title={
-                    stakePlayer
-                      ? `Победа в матче: ${stakePlayer}`
-                      : primaryPred.market || "Победа в матче"
-                  }
-                >
-                  {stakePlayer || "Матч"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground">Вер. ML</div>
-                <div className="font-mono font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {(primaryPred.model_probability * 100).toFixed(1)}%
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground">Коэф.</div>
-                <div className="font-mono font-semibold text-foreground mt-0.5">
-                  {Number(primaryPred.bookmaker_odds).toFixed(2)}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-muted-foreground">Перевес</div>
-                <div
-                  className={`font-mono font-semibold mt-0.5 flex items-center justify-center gap-0.5 ${
-                    primaryPred.edge > 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {primaryPred.edge > 0 && <TrendingUp className="h-3 w-3" />}
-                  {primaryPred.edge > 0 ? "+" : ""}
-                  {(primaryPred.edge * 100).toFixed(1)}%
-                </div>
-              </div>
+          {visibleLines.length > 0 ? (
+            <div className="space-y-2">
+              {visibleLines.map((line) => {
+                const lineSide = line.predicted_outcome || line.outcome || line.selection || "";
+                const linePlayer = matchesParticipant(lineSide, rawNameA, playerA, "a")
+                  ? playerA
+                  : matchesParticipant(lineSide, rawNameB, playerB, "b")
+                    ? playerB
+                    : "—";
+                return (
+                  <div key={line.id || line.model_name || line.model_version} className="grid grid-cols-4 gap-1.5 text-center text-xs">
+                    <div>
+                      <HintTooltip
+                        content={
+                          isCompositePrediction(line)
+                            ? compositeVerdict(line, playerA, playerB)
+                            : lineLabel(line)
+                        }
+                        side="bottom"
+                      >
+                        <div className="text-[10px] text-muted-foreground">
+                          {shadowOnly ? lineLabel(line) : "Ставка"}
+                        </div>
+                      </HintTooltip>
+                      <div className="mt-0.5 truncate font-medium text-foreground" title={linePlayer}>
+                        {linePlayer}
+                      </div>
+                      <HintTooltip
+                        content={
+                          isCompositePrediction(line)
+                            ? compositeVerdict(line, playerA, playerB)
+                            : decisionStatus(line, event.sport_code).title
+                        }
+                        side="bottom"
+                      >
+                        <span
+                          className={`mt-0.5 text-[10px] font-medium ${
+                            decisionStatus(line, event.sport_code).chosen
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {decisionStatus(line, event.sport_code).label}
+                        </span>
+                      </HintTooltip>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Вер. ML</div>
+                      <div className="font-mono font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {(line.model_probability * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Коэф.</div>
+                      <div className="font-mono font-semibold text-foreground mt-0.5">
+                        {Number(line.bookmaker_odds).toFixed(2)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">Перевес</div>
+                      <div
+                        className={`font-mono font-semibold mt-0.5 flex items-center justify-center gap-0.5 ${
+                          line.edge > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                        }`}
+                      >
+                        {line.edge > 0 && <TrendingUp className="h-3 w-3" />}
+                        {line.edge > 0 ? "+" : ""}
+                        {(line.edge * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-muted/40 text-[11px]">
@@ -343,6 +459,13 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
             {hasEdge ? (
               <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] px-2 py-0 font-medium">
                 Ценная ставка
+              </Badge>
+            ) : shadowOnly ? (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-2 py-0 border-indigo-500/40 text-indigo-600 dark:text-indigo-400"
+              >
+                Тень, без ставки
               </Badge>
             ) : isLive ? (
               <Badge
