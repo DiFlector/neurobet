@@ -38,15 +38,15 @@ def _has_cyrillic(text: str) -> bool:
 class SearchBackend:
     """Manages sports search query generation and URL discovery."""
 
-    # Приоритет доменов: чаще отдают нормальные превью/новости.
+    # Сначала новости о снятии и травме, карточки матча не впереди.
     PRIORITY_DOMAINS = (
-        "sports.ru",
         "championat.com",
-        "sport-express.ru",
-        "tennis.com",
         "atptour.com",
         "wtatennis.com",
+        "sport-express.ru",
+        "tennis.com",
         "tennismajors.com",
+        "sports.ru",
         "espn.com",
         "bbc.com",
         "theguardian.com",
@@ -76,26 +76,28 @@ class SearchBackend:
         participant_b: str,
         tournament: str = None,
     ) -> List[str]:
-        """Focused search queries for match context (injuries, form, preview)."""
+        """News of withdrawal and injury. Match-hub pages are not the first query."""
         sport = (sport_code or "tennis").strip().lower() or "tennis"
         a = (participant_a or "").strip()
         b = (participant_b or "").strip()
-        # Сначала карточки матча sports.ru — H2H/форма/факты.
-        queries: List[str] = [
-            f"site:sports.ru/{sport}/match {a} {b}",
-            f"site:sports.ru {a} {b} матч",
-            f"{a} vs {b} {sport}",
-            f"{a} {b} {sport} injury OR withdrawal OR preview",
-        ]
-        if tournament:
-            queries.append(f"{a} {tournament} {sport} form")
-        # Латинский вариант для англоязычных сайтов allowlist.
+        la, lb = a, b
         if _has_cyrillic(a) or _has_cyrillic(b):
             la, lb = _transliterate(a), _transliterate(b)
-            if la and lb:
-                queries.insert(1, f"site:sports.ru/{sport}/match {la} {lb}")
-                queries.append(f"{la} vs {lb} {sport}")
-                queries.append(f"{la} {sport} injury")
+        if sport == "tennis":
+            queries = [
+                f"site:championat.com {a} {b} снялся OR травма",
+                f"site:atptour.com {la} {lb} withdrawal OR injury",
+                f"site:wtatennis.com {la} {lb} withdrawal OR injury",
+                f"{la} {lb} withdrawal OR injury OR снялся",
+            ]
+        else:
+            queries = [
+                f"site:championat.com {a} {b} травма OR снялся",
+                f"site:sport-express.ru {a} {b} травма",
+                f"{a} {b} injury OR withdrawal",
+            ]
+        if tournament:
+            queries.append(f"{a} {tournament} снялся OR травма OR withdrawal")
         # Уникальные, без пустых
         seen = set()
         out: List[str] = []
@@ -215,8 +217,7 @@ class SearchBackend:
             for domain in domains[:4]:
                 attempts.append(f"{query} site:{domain}")
         else:
-            # Один быстрый добор по русским СМИ (обычно без anti-bot).
-            for domain in ("sports.ru", "sport-express.ru"):
+            for domain in ("championat.com", "atptour.com", "wtatennis.com"):
                 if domain in domains:
                     attempts.append(f"{query} site:{domain}")
                     break

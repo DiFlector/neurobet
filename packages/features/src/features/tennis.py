@@ -187,6 +187,35 @@ def games_complete(games_a: Any, games_b: Any) -> bool:
     return max(left, right) == 7 and min(left, right) in (5, 6)
 
 
+def closed_set_winner(games_a: Any, games_b: Any) -> Optional[str]:
+    """Winner of a finished set: 6 with a two-game margin, or 7-5 / 7-6."""
+    try:
+        left = int(games_a)
+        right = int(games_b)
+    except (TypeError, ValueError):
+        return None
+    if left == right:
+        return None
+    high, low = max(left, right), min(left, right)
+    if high < 6 or high > 7:
+        return None
+    if high == 6 and high - low < 2:
+        return None
+    if high == 7 and low < 5:
+        return None
+    return "player_a" if left > right else "player_b"
+
+
+def is_one_set_lead(sets_a: Any, sets_b: Any) -> bool:
+    """1:0 and 0:1 are not a finished tennis match."""
+    try:
+        left = int(sets_a)
+        right = int(sets_b)
+    except (TypeError, ValueError):
+        return False
+    return (left, right) in ((1, 0), (0, 1))
+
+
 def score_board(state: Any) -> Dict[str, Any]:
     """Sets, the live game line, and points from the stored snapshot shape.
 

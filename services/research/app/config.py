@@ -45,6 +45,7 @@ class ResearchConfig:
             "apnews.com",
             "sport-express.ru",
             "tennisuptodate.com",
+            "tennisabstract.com",
         }
 
         # Domain Denylist: betting sites, prediction-selling sites, shady aggregators

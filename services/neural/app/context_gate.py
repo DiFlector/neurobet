@@ -54,11 +54,11 @@ def context_scores(
         return None, False
     stored = _stored_scores(session, event.id)
     if stored is not None:
-        return stored, False
+        return _overlay_abstract(session, event, stored), False
     if not allow_llm_request:
         return None, False
     fresh = _ask_llm(session, event, odds_a, odds_b, with_sources=state == "ready")
-    return fresh or dict(NEUTRAL_CONTEXT), True
+    return _overlay_abstract(session, event, fresh or dict(NEUTRAL_CONTEXT)), True
 
 
 def apply_context_features(feature_vector, predictor, scores: Dict[str, float]) -> None:
@@ -93,6 +93,58 @@ def _stored_scores(session, event_id) -> Optional[Dict[str, float]]:
         "fatigue_risk_score": _unit(chosen.get("fatigue_risk_score"), 0.0),
         "news_risk_score": _unit(chosen.get("news_risk_score"), 0.0),
     }
+
+
+def _overlay_abstract(session, event, scores: Dict[str, float]) -> Dict[str, float]:
+    """Replace the neutral side with the Tennis Abstract match probability when the pair is listed."""
+    from .abstract_forecast import match_win_probability
+
+    meta = event.metadata_json if isinstance(getattr(event, "metadata_json", None), dict) else {}
+    probability = match_win_probability(
+        str(meta.get("raw_tournament") or ""),
+        getattr(event, "participant_a_name", "") or "",
+        getattr(event, "participant_b_name", "") or "",
+    )
+    if probability is None:
+        return scores
+    updated = dict(scores)
+    updated["context_side_a"] = probability
+    if str(getattr(event, "status", "") or "") in ("live", "prematch"):
+        _store_abstract_side(session, event.id, probability)
+    return updated
+
+
+def _store_abstract_side(session, event_id, probability: float) -> None:
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from db.models.predictions import LLMDecision
+
+    rows = (
+        session.query(LLMDecision)
+        .filter(LLMDecision.event_id == event_id)
+        .order_by(LLMDecision.created_at.desc())
+        .all()
+    )
+    chosen = None
+    for row in rows:
+        raw = row.raw_json if isinstance(row.raw_json, dict) else {}
+        if "context_side_a" not in raw:
+            continue
+        chosen = row
+        if raw.get("context_role") == "pre_model":
+            break
+    if chosen is None:
+        return
+    raw = chosen.raw_json if isinstance(chosen.raw_json, dict) else {}
+    current = _unit(raw.get("context_side_a"), 0.5)
+    if abs(current - probability) < 0.01 and raw.get("context_side_source") == "tennis_abstract":
+        return
+    merged = dict(raw)
+    merged["context_side_a"] = probability
+    merged["context_side_source"] = "tennis_abstract"
+    chosen.raw_json = merged
+    flag_modified(chosen, "raw_json")
+    session.flush()
 
 
 def _unit(value: Any, default: float) -> float:

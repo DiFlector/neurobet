@@ -16,7 +16,7 @@ from .relevance import score_relevance, should_keep
 from .search_backend import SearchBackend
 from .storage import ResearchStorage
 from .url_normalizer import URLNormalizer
-from .url_priority import is_match_hub, prioritize_urls, split_match_hubs
+from .url_priority import prioritize_urls, split_match_hubs
 
 logger = logging.getLogger("research.service")
 
@@ -47,7 +47,7 @@ class WebResearchService:
             request.participant_b,
             request.tournament,
         )
-        # hybrid: sports.ru match + матч/травмы (карточка матча — первым запросом).
+        # hybrid: три запроса о снятии и травме, без карточки матча.
         if self.search_backend.backend in ("hybrid", "both", "all"):
             queries = queries[:3]
         primary_query = queries[0] if queries else f"{request.participant_a} vs {request.participant_b}"
@@ -109,8 +109,8 @@ class WebResearchService:
         preferred = list(getattr(self.search_backend, "PRIORITY_DOMAINS", ()))
         candidate_urls = prioritize_urls(candidate_urls, preferred)
         hubs, rest = split_match_hubs(candidate_urls)
-        # Сначала карточки матча, потом остальные — «есть → смотрим, нет → дальше».
-        ordered_urls = hubs + rest
+        # Новости о снятии раньше карточек матча.
+        ordered_urls = rest + hubs
         ordered_urls = ordered_urls[: max(request.max_pages * 5, 10)]
         if hubs:
             logger.info(
@@ -203,21 +203,19 @@ class WebResearchService:
                 is_live_score_authority=False,  # CRITICAL ARCHITECTURAL RULE
             )
             scored.append(
-                (rel, float(doc["freshness_score"] or 0.0), 1 if is_match_hub(raw_url) else 0, ev)
+                (rel, float(doc["freshness_score"] or 0.0), ev)
             )
 
-        for raw_url in hubs:
+        for raw_url in rest:
             _ingest(raw_url)
-        # Если карточек нет или мало — добираем обычные источники.
         if len(scored) < request.max_pages:
-            for raw_url in rest:
+            for raw_url in hubs:
                 if len(scored) >= request.max_pages * 2:
                     break
                 _ingest(raw_url)
 
-        # Сортировка: relevance, затем hub, затем freshness
-        scored.sort(key=lambda row: (row[0], row[2], row[1]), reverse=True)
-        evidence_list = [row[3] for row in scored[: request.max_pages]]
+        scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        evidence_list = [row[2] for row in scored[: request.max_pages]]
 
         # 4. Formulate summary
         if evidence_list:

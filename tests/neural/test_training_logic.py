@@ -18,8 +18,12 @@ from app.commit import is_commit, side_odds, side_odds_from_row
 from app.dataset import (
     MatchSnapshots,
     _context_as_of,
+    choose_canonical_events,
     chronological_folds,
+    collapse_repeated_states,
     decision_scores,
+    line_is_trainable,
+    match_training_exclusion,
     match_winner_label,
     thin_match,
 )
@@ -111,6 +115,87 @@ def test_long_match_keeps_its_first_and_last_snapshot():
     assert thinned.rows[-1][0] == 39.0
 
 
+class _Event:
+    def __init__(self, event_id, source_event_id, odds_count_hint=0, last_seen_at=None):
+        self.id = event_id
+        self.source_event_id = source_event_id
+        self.last_seen_at = last_seen_at
+
+
+class _State:
+    def __init__(self, observed_at, score):
+        self.observed_at = observed_at
+        self.score = score
+        self.current_period = 1
+        self.score_detail = {}
+        self.sport_state = {}
+
+
+class _Quote:
+    def __init__(self, observed_at, outcome, odds, market_type="match_winner", line_value=None):
+        self.observed_at = observed_at
+        self.outcome = outcome
+        self.odds = odds
+        self.market_type = market_type
+        self.line_value = line_value
+
+
+def test_duplicate_source_keeps_the_richer_line():
+    earlier = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    later = earlier + timedelta(hours=2)
+    thin = _Event("a", "100", last_seen_at=later)
+    rich = _Event("b", "100", last_seen_at=earlier)
+    other = _Event("c", "200", last_seen_at=earlier)
+    kept, dropped = choose_canonical_events([thin, rich, other], {"a": 1, "b": 8, "c": 3})
+    assert dropped == 1
+    assert [event.id for event in kept] == ["b", "c"]
+
+
+def test_conflicting_labels_and_retirements_stay_out():
+    agreed = match_training_exclusion(
+        "tennis",
+        metadata={"winner": "player_a"},
+        score={"sets_a": 2, "sets_b": 0},
+        participant_a_name="A",
+        participant_b_name="B",
+    )
+    conflict = match_training_exclusion(
+        "tennis",
+        metadata={"winner": "player_a", "fonbet_official_result": {"winner": "player_b", "status": "FINISHED"}},
+        score={"sets_a": 0, "sets_b": 2},
+        participant_a_name="A",
+        participant_b_name="B",
+    )
+    retired = match_training_exclusion(
+        "tennis",
+        metadata={"fonbet_official_result": {"winner": "player_a", "status": "RETIRED", "is_retired": True}},
+        score={"sets_a": 1, "sets_b": 0, "is_retired": True},
+    )
+    assert agreed is None
+    assert conflict == "label_conflict"
+    assert retired == "retired_or_walkover"
+
+
+def test_extreme_prices_and_repeated_states_drop():
+    assert line_is_trainable(1.5, 2.6) is True
+    assert line_is_trainable(120.0, 1.05) is False
+    assert line_is_trainable(1.01, 1.01) is False
+    moment = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    states = [
+        _State(moment, "1:0 (6-4)"),
+        _State(moment + timedelta(seconds=5), "1:0 (6-4)"),
+        _State(moment + timedelta(seconds=10), "1:1 (6-4 4-6)"),
+    ]
+    quotes = [
+        _Quote(moment, "player_a", 1.8),
+        _Quote(moment, "player_b", 2.0),
+    ]
+    kept, dropped = collapse_repeated_states(states, quotes)
+    assert dropped == 1
+    assert len(kept) == 2
+    assert kept[-1].score == "1:1 (6-4 4-6)"
+
+
 def test_decision_row_is_chosen_by_the_given_model():
     names = ["current_odds_player_a", "current_odds_player_b", "is_missing_odds"]
     match = MatchSnapshots(
@@ -139,5 +224,8 @@ if __name__ == "__main__":
     test_context_after_the_snapshot_is_ignored()
     test_walk_forward_keeps_a_match_on_one_side()
     test_long_match_keeps_its_first_and_last_snapshot()
+    test_duplicate_source_keeps_the_richer_line()
+    test_conflicting_labels_and_retirements_stay_out()
+    test_extreme_prices_and_repeated_states_drop()
     test_decision_row_is_chosen_by_the_given_model()
     print("test_training_logic: OK")

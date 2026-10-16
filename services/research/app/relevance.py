@@ -240,8 +240,6 @@ def score_relevance(
     except ImportError:
         is_match_hub = lambda _u: False  # noqa: E731
     match_hub = is_match_hub(url)
-    if match_hub and (hit_a or hit_b):
-        score += 0.22  # приоритет карточки матча
     if noise:
         score -= 0.45
     # URL path с /online/ /live/ — штраф (не для match hub)

@@ -5,19 +5,21 @@ scores the whole timeline. The 2% confirmation rule is applied later, by that
 same model, and only on matches it has not seen.
 """
 
+import json
 import logging
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db.models import Event, EventStateSnapshot, LLMDecision, OddsSnapshot
 
 from features import FeatureBuilder, TennisFeatureBuilder, registry as feature_registry
-from features.tennis import match_is_decided, set_is_open
+from features.tennis import closed_set_winner, is_one_set_lead, match_is_decided, set_is_open
 
 from .commit import confirming_index, side_odds_from_row
 from .context_gate import NEUTRAL_CONTEXT
@@ -29,6 +31,12 @@ _SIDE_B = {"player_b", "team_b", "away", "2", "p2"}
 _DRAWS = {"draw", "x", "tie", "push", "ничья"}
 _QUOTE_A = _SIDE_A
 _QUOTE_B = _SIDE_B
+_MAX_TRAIN_ODDS = 100.0
+_MIN_OVERROUND = 1.02
+_MAX_OVERROUND = 1.35
+_BLOCKED_RESULTS = {"RETIRED", "VOID", "CANCELLED"}
+_LEADING_SETS = re.compile(r"^\s*(\d+)\s*[:\-]\s*(\d+)")
+_PAREN_GAMES = re.compile(r"(\d+)\s*[-:]\s*(\d+)")
 
 
 @dataclass
@@ -62,6 +70,142 @@ def match_winner_label(
         if folded in _SIDE_B or (participant_b_name and token == participant_b_name):
             return 0
     return _label_from_score(score or {}, sport_code)
+
+
+@dataclass
+class DatasetFilterCounts:
+    """How many matches and rows the training load left out, by reason."""
+
+    duplicate_event: int = 0
+    label_conflict: int = 0
+    retired_or_walkover: int = 0
+    incomplete_tennis: int = 0
+    unlabeled: int = 0
+    broken_line: int = 0
+    repeated_state: int = 0
+    set_label_mismatch: int = 0
+    by_reason: Dict[str, int] = field(default_factory=dict)
+
+    def add_match(self, reason: str) -> None:
+        self.by_reason[reason] = self.by_reason.get(reason, 0) + 1
+        current = getattr(self, reason, None)
+        if isinstance(current, int):
+            setattr(self, reason, current + 1)
+
+    def log(self, sport_code: str) -> None:
+        logger.info(
+            "Dataset %s excluded: matches duplicate=%d label_conflict=%d retired=%d "
+            "incomplete=%d unlabeled=%d; rows broken_line=%d repeated_state=%d set_label_mismatch=%d",
+            sport_code,
+            self.duplicate_event,
+            self.label_conflict,
+            self.retired_or_walkover,
+            self.incomplete_tennis,
+            self.unlabeled,
+            self.broken_line,
+            self.repeated_state,
+            self.set_label_mismatch,
+        )
+
+
+def choose_canonical_events(
+    events: Sequence[Any],
+    odds_counts: Dict[Any, int],
+) -> Tuple[List[Any], int]:
+    """One row per source id. The copy with more line snapshots stays."""
+    groups: Dict[str, List[Any]] = {}
+    order: List[str] = []
+    for event in events:
+        key = str(getattr(event, "source_event_id", "") or "")
+        if key not in groups:
+            order.append(key)
+            groups[key] = []
+        groups[key].append(event)
+    kept: List[Any] = []
+    dropped = 0
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            kept.append(group[0])
+            continue
+        kept.append(max(group, key=_richness(odds_counts)))
+        dropped += len(group) - 1
+    return kept, dropped
+
+
+def match_training_exclusion(
+    sport_code: str,
+    *,
+    metadata: Optional[Dict[str, Any]] = None,
+    score: Optional[Dict[str, Any]] = None,
+    participant_a_name: Optional[str] = None,
+    participant_b_name: Optional[str] = None,
+) -> Optional[str]:
+    """Why a finished match must stay out of training. None means it can be labeled."""
+    meta = metadata or {}
+    board = score or {}
+    official = meta.get("fonbet_official_result")
+    official = official if isinstance(official, dict) else {}
+    if _result_is_blocked(official) or _result_is_blocked(board):
+        return "retired_or_walkover"
+    tally = _set_tally(official) or _set_tally(board)
+    if sport_code == "tennis" and tally is not None and is_one_set_lead(*tally):
+        return "incomplete_tennis"
+    sides = [
+        side
+        for side in (
+            _side_from_token(
+                meta.get("winner") or meta.get("participant_winner") or board.get("winner"),
+                participant_a_name,
+                participant_b_name,
+            ),
+            _side_from_token(official.get("winner"), participant_a_name, participant_b_name),
+            _tally_side(board, sport_code),
+            _tally_side(official, sport_code),
+        )
+        if side is not None
+    ]
+    if len(set(sides)) > 1:
+        return "label_conflict"
+    return None
+
+
+def line_is_trainable(odds_a: float, odds_b: float) -> bool:
+    """Both prices are real and the margin sits inside the training window."""
+    try:
+        left = float(odds_a)
+        right = float(odds_b)
+    except (TypeError, ValueError):
+        return False
+    if left <= 1.0 or right <= 1.0 or left > _MAX_TRAIN_ODDS or right > _MAX_TRAIN_ODDS:
+        return False
+    overround = (1.0 / left) + (1.0 / right)
+    return _MIN_OVERROUND <= overround <= _MAX_OVERROUND
+
+
+def collapse_repeated_states(states: Sequence[Any], odds: Sequence[Any]) -> Tuple[List[Any], int]:
+    """Drop a snapshot that repeats the previous score and the same two-sided prices."""
+    kept: List[Any] = []
+    dropped = 0
+    previous = None
+    for state in states:
+        signature = (_score_fingerprint(state), _book_as_of(odds, state.observed_at))
+        if previous == signature:
+            dropped += 1
+            continue
+        previous = signature
+        kept.append(state)
+    return kept, dropped
+
+
+def set_label_matches(winner: str, games: Optional[Tuple[Any, Any]]) -> bool:
+    """True when the stored set winner agrees with that set's closed games.
+
+    Missing games stay in the sample: there is nothing to disagree with.
+    """
+    if games is None:
+        return True
+    return closed_set_winner(games[0], games[1]) == winner
 
 
 def chronological_folds(
@@ -282,6 +426,17 @@ class SportDatasetBuilder:
                 f"Генерация синтетических данных отключена: система работает только с реальными данными."
             )
 
+        odds_counts = {
+            event_id: int(count)
+            for event_id, count in session.execute(
+                select(OddsSnapshot.event_id, func.count())
+                .where(OddsSnapshot.event_id.in_([event.id for event in events]))
+                .group_by(OddsSnapshot.event_id)
+            ).all()
+        }
+        events, duplicate_matches = choose_canonical_events(events, odds_counts)
+        counts = DatasetFilterCounts(duplicate_event=duplicate_matches)
+
         decisions = list(
             session.execute(
                 select(LLMDecision)
@@ -304,6 +459,16 @@ class SportDatasetBuilder:
             player_history = PlayerHistory.load(session)
 
         for event in events:
+            exclusion = match_training_exclusion(
+                self.sport_code,
+                metadata=event.metadata_json,
+                score=event.current_score,
+                participant_a_name=event.participant_a_name,
+                participant_b_name=event.participant_b_name,
+            )
+            if exclusion is not None:
+                counts.add_match(exclusion)
+                continue
             label = match_winner_label(
                 _winner_token(event),
                 event.participant_a_name,
@@ -312,6 +477,7 @@ class SportDatasetBuilder:
                 self.sport_code,
             )
             if label is None:
+                counts.add_match("unlabeled")
                 continue
 
             states = list(
@@ -330,6 +496,10 @@ class SportDatasetBuilder:
             )
             if not odds:
                 continue
+
+            states, repeated = collapse_repeated_states(states, odds)
+            counts.repeated_state += repeated
+            set_games = _closed_set_games(event, states) if self.sport_code == "tennis" else {}
 
             cutoffs: List[datetime]
             if states:
@@ -378,10 +548,13 @@ class SportDatasetBuilder:
                 row = [float(merged.get(name, 0.0)) for name in feature_names]
                 odds_a, odds_b = side_odds_from_row(row, feature_names)
                 if not decided and odds_a > 1.0 and odds_b > 1.0:
-                    rows.append(row)
-                    observed.append(cutoff)
-                    row_labels.append(label)
-                    row_markets.append("match_winner")
+                    if line_is_trainable(odds_a, odds_b):
+                        rows.append(row)
+                        observed.append(cutoff)
+                        row_labels.append(label)
+                        row_markets.append("match_winner")
+                    else:
+                        counts.broken_line += 1
                 if self.sport_code != "tennis":
                     continue
                 current_set = int(float(merged.get("current_set") or 1))
@@ -395,6 +568,12 @@ class SportDatasetBuilder:
                     if set_label is None or prices is None:
                         continue
                     if state_now is not None and not set_is_open(state_now, number):
+                        continue
+                    if not set_label_matches(str(winner), set_games.get(number)):
+                        counts.set_label_mismatch += 1
+                        continue
+                    if not line_is_trainable(prices[0], prices[1]):
+                        counts.broken_line += 1
                         continue
                     slot = dict(merged)
                     if hasattr(self.feature_builder, "apply_market_line"):
@@ -433,6 +612,7 @@ class SportDatasetBuilder:
                     snapshot_count,
                 )
 
+        counts.log(self.sport_code)
         if len(matches) < 4:
             raise ValueError(
                 f"Недостаточно реальных завершенных событий с котировками в базе данных для вида спорта '{self.sport_code}' "
@@ -608,3 +788,208 @@ def _first_two_sided_time(odds: Sequence[Any]) -> Optional[datetime]:
         if seen_a and seen_b:
             return quote.observed_at
     return None
+
+
+def _richness(odds_counts: Dict[Any, int]):
+    def key(event: Any) -> Tuple[int, float, str]:
+        seen = getattr(event, "last_seen_at", None)
+        stamp = seen.timestamp() if isinstance(seen, datetime) else 0.0
+        return (int(odds_counts.get(getattr(event, "id", None), 0)), stamp, str(getattr(event, "id", "")))
+
+    return key
+
+
+def _side_from_token(
+    winner: Optional[str],
+    participant_a_name: Optional[str],
+    participant_b_name: Optional[str],
+) -> Optional[int]:
+    """Map a winner token to a side. An unknown token is not a side."""
+    token = str(winner).strip() if winner else ""
+    if not token:
+        return None
+    folded = token.lower()
+    if folded in _DRAWS:
+        return None
+    if folded in _SIDE_A or (participant_a_name and token == participant_a_name):
+        return 1
+    if folded in _SIDE_B or (participant_b_name and token == participant_b_name):
+        return 0
+    return None
+
+
+def _result_is_blocked(payload: Any) -> bool:
+    if not isinstance(payload, dict) or not payload:
+        return False
+    if payload.get("is_retired") or payload.get("is_walkover"):
+        return True
+    return str(payload.get("status") or "").upper() in _BLOCKED_RESULTS
+
+
+def _leading_sets(text: Any) -> Optional[Tuple[int, int]]:
+    match = _LEADING_SETS.match(str(text or "").strip())
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _set_tally(payload: Any) -> Optional[Tuple[int, int]]:
+    if not isinstance(payload, dict):
+        return None
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+    left = payload.get("sets_a", stats.get("sets_a"))
+    right = payload.get("sets_b", stats.get("sets_b"))
+    if left is not None and right is not None:
+        try:
+            return int(left), int(right)
+        except (TypeError, ValueError):
+            pass
+    return _leading_sets(payload.get("final_score") or payload.get("score"))
+
+
+def _tally_side(payload: Any, sport_code: str) -> Optional[int]:
+    if not isinstance(payload, dict) or not payload:
+        return None
+    if sport_code in ("tennis", "volleyball"):
+        pair = _set_tally(payload)
+        if pair is not None:
+            return None if pair[0] == pair[1] else (1 if pair[0] > pair[1] else 0)
+    return _label_from_score(payload, sport_code)
+
+
+def _score_fingerprint(state: Any) -> str:
+    detail = getattr(state, "score_detail", None) or {}
+    if not isinstance(detail, dict):
+        detail = {}
+    sport = getattr(state, "sport_state", None) or {}
+    stats = sport.get("stats") if isinstance(sport, dict) else {}
+    if not isinstance(stats, dict):
+        stats = {}
+    payload = {
+        "score": getattr(state, "score", None),
+        "period": getattr(state, "current_period", None),
+        "sets": detail.get("sets"),
+        "game": detail.get("current_game"),
+        "quarters": detail.get("quarters"),
+        "set_lines": stats.get("set_lines") or detail.get("set_lines"),
+        "sets_a": stats.get("sets_a", detail.get("sets_a")),
+        "sets_b": stats.get("sets_b", detail.get("sets_b")),
+        "score_a": detail.get("score_a", stats.get("score_a")),
+        "score_b": detail.get("score_b", stats.get("score_b")),
+    }
+    return json.dumps(payload, sort_keys=True, default=str)
+
+
+def _quote_key(row: Any) -> Optional[Tuple[Tuple[str, int, str], float]]:
+    market = str(getattr(row, "market_type", "") or "match_winner")
+    if market not in ("match_winner", "set_winner"):
+        return None
+    line = getattr(row, "line_value", None)
+    if market == "set_winner":
+        if line is None:
+            return None
+        try:
+            line_key = int(float(line))
+        except (TypeError, ValueError):
+            return None
+    else:
+        line_key = 0
+    outcome = str(getattr(row, "outcome", "") or "").lower()
+    if outcome in _QUOTE_A:
+        side = "a"
+    elif outcome in _QUOTE_B:
+        side = "b"
+    else:
+        return None
+    try:
+        price = round(float(row.odds), 4)
+    except (TypeError, ValueError):
+        return None
+    if price <= 1.0:
+        return None
+    return (market, line_key, side), price
+
+
+def _book_as_of(odds: Sequence[Any], cutoff: datetime) -> Tuple:
+    """Latest two-sided prices at or before cutoff. Odds must be time-ordered."""
+    limit = _as_utc(cutoff)
+    latest: Dict[Tuple[str, int, str], float] = {}
+    for row in odds:
+        observed = getattr(row, "observed_at", None)
+        if observed is None:
+            continue
+        if _as_utc(observed) > limit:
+            break
+        parsed = _quote_key(row)
+        if parsed is None:
+            continue
+        key, price = parsed
+        latest[key] = price
+    books = []
+    markets = sorted({(market, line) for market, line, _side in latest})
+    for market, line in markets:
+        left = latest.get((market, line, "a"))
+        right = latest.get((market, line, "b"))
+        if left is None or right is None:
+            continue
+        books.append((market, line, left, right))
+    return tuple(books)
+
+
+def _paren_games(text: Any) -> Dict[int, Tuple[int, int]]:
+    raw = str(text or "")
+    start, end = raw.find("("), raw.rfind(")")
+    if start < 0 or end <= start:
+        return {}
+    found: Dict[int, Tuple[int, int]] = {}
+    for index, pair in enumerate(_PAREN_GAMES.finditer(raw[start + 1:end]), start=1):
+        found[index] = (int(pair.group(1)), int(pair.group(2)))
+    return found
+
+
+def _index_set_lines(lines: Any) -> Dict[int, Tuple[int, int]]:
+    found: Dict[int, Tuple[int, int]] = {}
+    for index, line in enumerate(lines or [], start=1):
+        if not isinstance(line, dict):
+            continue
+        try:
+            number = int(line.get("set_number") or index)
+            found[number] = (int(line["games_a"]), int(line["games_b"]))
+        except (TypeError, ValueError, KeyError):
+            continue
+    return found
+
+
+def _structured_set_lines(event: Any, states: Sequence[Any]) -> Any:
+    for state in reversed(list(states)):
+        sport = getattr(state, "sport_state", None) or {}
+        stats = sport.get("stats") if isinstance(sport, dict) else {}
+        if isinstance(stats, dict) and stats.get("set_lines"):
+            return stats["set_lines"]
+        detail = getattr(state, "score_detail", None) or {}
+        if isinstance(detail, dict) and (detail.get("set_lines") or detail.get("sets")):
+            return detail.get("set_lines") or detail.get("sets")
+    score = getattr(event, "current_score", None) or {}
+    if isinstance(score, dict):
+        stats = score.get("stats") if isinstance(score.get("stats"), dict) else {}
+        return stats.get("set_lines") or score.get("set_lines") or score.get("sets") or []
+    return []
+
+
+def _closed_set_games(event: Any, states: Sequence[Any]) -> Dict[int, Tuple[int, int]]:
+    """Closed games of each set from the official score, then from the last board."""
+    texts: List[Any] = []
+    score = getattr(event, "current_score", None) or {}
+    meta = getattr(event, "metadata_json", None) or {}
+    official = meta.get("fonbet_official_result") if isinstance(meta, dict) else None
+    if isinstance(official, dict):
+        texts.extend([official.get("final_score"), official.get("score")])
+    if isinstance(score, dict):
+        texts.extend([score.get("final_score"), score.get("score")])
+    for state in reversed(list(states)):
+        texts.append(getattr(state, "score", None))
+    for text in texts:
+        parsed = _paren_games(text)
+        if parsed:
+            return parsed
+    return _index_set_lines(_structured_set_lines(event, states))

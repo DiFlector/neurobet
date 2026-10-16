@@ -15,7 +15,7 @@ for path in (
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from app.dataset import MatchSnapshots, stack_matches, thin_match
+from app.dataset import MatchSnapshots, match_training_exclusion, set_label_matches, stack_matches, thin_match
 from app.set_match import match_verdict, set_is_committable
 from features.tennis import TennisFeatureBuilder
 from tennis_adapter.adapter import closed_set_winners, final_set_winners, set_winner_from_games, winners_from_score_text
@@ -102,6 +102,19 @@ def test_match_waits_when_sets_disagree_and_uses_a_missed_set():
     assert match_verdict({1: "player_a", 2: "player_a"}, {}, False, "player_a", 0.03) == "player_a"
 
 
+def test_one_set_lead_and_wrong_set_label_stay_out():
+    assert match_training_exclusion("tennis", score={"sets_a": 1, "sets_b": 0}) == "incomplete_tennis"
+    assert match_training_exclusion("tennis", score={"sets_a": 0, "sets_b": 1}) == "incomplete_tennis"
+    assert match_training_exclusion(
+        "tennis",
+        metadata={"fonbet_official_result": {"final_score": "2:0 (6-4 6-3)", "winner": "player_a", "status": "FINISHED"}},
+        score={"sets_a": 2, "sets_b": 0},
+    ) is None
+    assert set_label_matches("player_b", (6, 4)) is False
+    assert set_label_matches("player_a", (6, 4)) is True
+    assert set_label_matches("player_a", None) is True
+
+
 def test_set_rows_keep_their_own_label():
     match = MatchSnapshots(
         event_id="1",
@@ -121,5 +134,6 @@ if __name__ == "__main__":
     test_finished_match_closes_last_live_set_and_skips_unplayed()
     test_score_tape_counts_each_point_and_parentheses()
     test_match_waits_when_sets_disagree_and_uses_a_missed_set()
+    test_one_set_lead_and_wrong_set_label_stay_out()
     test_set_rows_keep_their_own_label()
     print("ok")
