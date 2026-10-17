@@ -12,7 +12,7 @@ from contracts import FeatureVector
 from ..backtest.config import BacktestConfig
 from ..backtest.execution import ExecutionSimulator, SimulatedOddsSnapshot
 from ..confirmation import next_watch_action
-from ..context_gate import NEUTRAL_CONTEXT, apply_context_features
+from ..context_gate import NEUTRAL_CONTEXT, apply_context_features, context_side_from_event
 from ..dataset import _context_as_of
 from ..set_match import is_v2, match_verdict, set_is_committable, set_is_observation_only
 from tennis_adapter.policy import model_commits_market, policy_from_mapping, windows_allow
@@ -353,6 +353,9 @@ class ReplayRunner:
         return {"match_winner"}
 
     def _replay_match(self, match, feature_builder) -> None:
+        if getattr(match, "cached_rows", None):
+            self._replay_cached(match)
+            return
         states = list(match.states)
         odds = list(match.odds)
         cutoffs = [state.observed_at for state in states] or [_as_utc(match.started_at)]
@@ -406,12 +409,55 @@ class ReplayRunner:
             if vector.feature_cutoff_timestamp is not None and _as_utc(vector.feature_cutoff_timestamp) > moment:
                 raise RuntimeError("feature cutoff is later than the decision")
             context = _context_as_of(match.decisions, moment) if match.decisions else dict(NEUTRAL_CONTEXT)
+            saved_side = context_side_from_event(getattr(match, "event", None))
+            if saved_side is not None:
+                context["context_side_a"] = saved_side
             vector.features.update(context)
             if match.history_features is not None:
                 vector.features.update(match.history_features(moment))
             apply_context_features(vector, self.predictor, context)
             state = visible_states[-1] if visible_states else None
             self._score_cutoff(match, vector, visible_odds, moment, state)
+
+    def _replay_cached(self, match) -> None:
+        """Score the saved training rows. Quotes for execution still come from the odds table."""
+        from ..commit import side_odds_from_row
+
+        names = list(match.feature_names)
+        odds = list(match.odds)
+        odds_at = 0
+        version = str((self.predictor.checkpoint_data or {}).get("version_tag") or "")
+        line = str((self.predictor.checkpoint_data or {}).get("model_name") or "")
+        self._set_lines = {}
+        self._book = PriceBook()
+        enabled = self._enabled_markets()
+        for index, row in enumerate(match.cached_rows):
+            moment = _as_utc(match.cached_times[index])
+            while odds_at < len(odds) and _as_utc(odds[odds_at].observed_at) <= moment:
+                odds_at += 1
+            visible = odds[:odds_at]
+            self._book.extend(visible, moment)
+            market = str(match.cached_markets[index] or "match_winner")
+            family = "set_winner" if market.startswith("set_winner:") else market
+            if family not in enabled:
+                continue
+            features = {name: float(row[position]) for position, name in enumerate(names)}
+            vector = FeatureVector(
+                event_id=str(match.event_id),
+                sport_code=self.sport_code,
+                feature_version=str(match.feature_version),
+                feature_cutoff_timestamp=moment,
+                features=features,
+            )
+            odds_a, odds_b = side_odds_from_row(row, names)
+            line_value = None
+            observe = False
+            if market.startswith("set_winner:"):
+                line_value = int(market.split(":", 1)[1])
+                observe = set_is_observation_only(line_value, self.sport_code, self.config.get("observe_set")) or not model_commits_market(
+                    line, version, market
+                )
+            self._consider(match, vector, market, odds_a, odds_b, moment, visible, line_value, observe=observe)
 
     def _score_cutoff(self, match, vector: FeatureVector, odds_rows, cutoff: datetime, state=None) -> None:
         version = str((self.predictor.checkpoint_data or {}).get("version_tag") or "")

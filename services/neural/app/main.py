@@ -788,6 +788,15 @@ def evaluate_pending_events(
             if settled:
                 session.commit()
                 logger.info("Settled %d model journal rows with a known winner.", settled)
+            try:
+                from .context_gate import freeze_finished_context
+
+                frozen = freeze_finished_context(session)
+                if frozen:
+                    session.commit()
+                    logger.info("Saved context_side_a on %d finished matches.", frozen)
+            except Exception as exc:
+                logger.info("Could not save match context_side_a: %s", exc)
             counts = journal_market_counts(session)
             if counts:
                 logger.info("Model journal by market: %s", counts)

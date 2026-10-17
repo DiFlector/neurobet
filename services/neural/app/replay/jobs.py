@@ -147,18 +147,22 @@ def _execute(session, run) -> list:
             .limit(limit)
         ).scalars()
     )
+    cached = _cached_by_event(sport, builder, [str(event.id) for event in events])
+    missing = [event for event in events if cached is None or str(event.id) not in cached]
     history = None
-    if sport == "tennis" and events:
+    if missing and sport == "tennis":
         from ..players import PlayerHistory
 
         history = PlayerHistory.load(session)
-    matches = [
-        match
-        for match in (
-            _load_match(session, event, history, EventStateSnapshot, OddsSnapshot, LLMDecision) for event in events
-        )
-        if match is not None
-    ]
+    matches = []
+    for event in events:
+        stored = None if cached is None else cached.get(str(event.id))
+        if stored is None:
+            loaded = _load_match(session, event, history, EventStateSnapshot, OddsSnapshot, LLMDecision)
+        else:
+            loaded = _load_cached_match(session, event, stored, OddsSnapshot)
+        if loaded is not None:
+            matches.append(loaded)
     session.query(BacktestRunResult).filter(BacktestRunResult.run_id == run.id).delete()
     session.commit()
     for row in rows:
@@ -224,6 +228,51 @@ def _load_match(session, event, history, state_model, odds_model, decision_model
         decisions=decisions,
         history_features=history_features if history is not None else None,
         event=event,
+    )
+
+
+def _cached_by_event(sport: str, builder, event_ids: list) -> Optional[Dict[str, Any]]:
+    from ..dataset_cache import read_event_matches
+
+    version = str(getattr(builder, "feature_version", "") or "")
+    if not version or not event_ids:
+        return None
+    try:
+        loaded = read_event_matches(sport, version, event_ids)
+    except Exception:
+        logger.exception("Training tape for %s %s could not be read", sport, version)
+        return None
+    if loaded is None:
+        return None
+    matches, names = loaded
+    found = {match.event_id: (match, names, version) for match in matches}
+    logger.info("Backtest tape covers %d of %d %s matches", len(found), len(event_ids), sport)
+    return found
+
+
+def _load_cached_match(session, event, stored, odds_model):
+    match, names, version = stored
+    odds = (
+        session.query(odds_model)
+        .filter(odds_model.event_id == event.id)
+        .order_by(odds_model.observed_at.asc())
+        .all()
+    )
+    if not odds:
+        return None
+    return SimpleNamespace(
+        event_id=str(event.id),
+        started_at=event.scheduled_start_at or event.created_at,
+        states=[],
+        odds=odds,
+        decisions=[],
+        history_features=None,
+        event=event,
+        cached_rows=match.rows,
+        cached_times=match.observed_at,
+        cached_markets=match.row_markets or [],
+        feature_names=names,
+        feature_version=version,
     )
 
 

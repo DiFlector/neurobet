@@ -102,6 +102,116 @@ def reliability_bins(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 5) ->
     return bins
 
 
+CONFIDENT_MISS_PROBABILITY = 0.75
+OVERFIT_LOG_LOSS_GAP = 0.02
+BRIER_TOLERANCE = 0.02
+
+
+def chosen_side_probability(probability: float) -> float:
+    """Probability of the side the model names. A value of 0.5 stays on side A."""
+    value = float(probability)
+    return value if value >= 0.5 else 1.0 - value
+
+
+def confidence_bucket(probability: float) -> str:
+    """Bucket of the chosen side. The top bucket is a confident call."""
+    chosen = chosen_side_probability(probability)
+    if chosen < 0.60:
+        return "0.50-0.60"
+    if chosen < CONFIDENT_MISS_PROBABILITY:
+        return "0.60-0.75"
+    return "0.75+"
+
+
+def side_is_correct(label: int, probability: float) -> bool:
+    predicted = 1 if float(probability) >= 0.5 else 0
+    return int(label) == predicted
+
+
+def record_in_stake_window(record: Dict[str, Any]) -> bool:
+    """Odds of the chosen side sit in the sport stake window. Tennis reads tennis.cfg."""
+    if "in_bet_window" in record:
+        return bool(record["in_bet_window"])
+    from .strategy import stake_gate
+
+    chosen = chosen_side_probability(record.get("probability") or 0.0)
+    allowed, _reason = stake_gate(
+        chosen,
+        float(record.get("odds") or 0.0),
+        str(record.get("market") or "match_winner"),
+        str(record.get("sport_code") or "tennis"),
+    )
+    return bool(allowed)
+
+
+def is_critical_miss(record: Dict[str, Any]) -> bool:
+    """A confirming decision inside the stake window whose chosen side loses."""
+    if "critical_miss" in record:
+        return bool(record["critical_miss"])
+    wrong = not side_is_correct(int(record.get("label") or 0), float(record.get("probability") or 0.0))
+    return wrong and record_in_stake_window(record)
+
+
+def is_confident_miss(record: Dict[str, Any]) -> bool:
+    """The chosen side is at least 0.75 and the label disagrees."""
+    if "confident_miss" in record:
+        return bool(record["confident_miss"])
+    probability = float(record.get("probability") or 0.0)
+    wrong = not side_is_correct(int(record.get("label") or 0), probability)
+    return wrong and chosen_side_probability(probability) >= CONFIDENT_MISS_PROBABILITY
+
+
+def error_summary(records: list) -> Dict[str, Any]:
+    """Counts of critical and confident misses on confirming decisions."""
+    total = len(records)
+    critical = [row for row in records if is_critical_miss(row)]
+    confident = [row for row in records if is_confident_miss(row)]
+    in_window = [row for row in records if record_in_stake_window(row)]
+    critical_in_window = [row for row in critical if record_in_stake_window(row)]
+    critical_confident = [
+        row for row in critical
+        if chosen_side_probability(row.get("probability") or 0.0) >= CONFIDENT_MISS_PROBABILITY
+    ]
+
+    def rate(count: int) -> float:
+        return round(count / total, 4) if total else 0.0
+
+    return {
+        "decisions": total,
+        "critical_misses": len(critical),
+        "critical_miss_rate": rate(len(critical)),
+        "confident_misses": len(confident),
+        "confident_miss_rate": rate(len(confident)),
+        "in_stake_window": len(in_window),
+        "critical_misses_in_window": len(critical_in_window),
+        "critical_misses_outside_window": len(critical) - len(critical_in_window),
+        "critical_misses_confident": len(critical_confident),
+    }
+
+
+def loss_adjustment(log_loss_gap: float, summary: Dict[str, Any]) -> str:
+    """Regularize when the check is worse than training. Otherwise upweight hard rows."""
+    if float(log_loss_gap) > OVERFIT_LOG_LOSS_GAP:
+        return "regularize"
+    critical = int(summary.get("critical_misses") or 0)
+    if critical <= 0:
+        return "none"
+    in_window = int(summary.get("critical_misses_in_window") or 0) / critical
+    confident = int(summary.get("critical_misses_confident") or 0) / critical
+    if in_window >= 0.5 or confident >= 0.5:
+        return "gamma"
+    return "none"
+
+
+def copy_beats_baseline(baseline: Dict[str, Any], candidate: Dict[str, Any]) -> bool:
+    """The copy must miss less often, and its Brier may not fall behind by more than 0.02."""
+    if float(candidate.get("critical_miss_rate") or 0.0) >= float(baseline.get("critical_miss_rate") or 0.0):
+        return False
+    if float(candidate.get("brier_score") or 0.0) > float(baseline.get("brier_score") or 0.0) + BRIER_TOLERANCE:
+        return False
+    return True
+
+
 def _odds_bucket(odds: float) -> str:
     if odds < 1.2:
         return "below_1.20"
@@ -153,6 +263,8 @@ def sliced_metrics(records: list) -> Dict[str, Any]:
         ]
         if record.get("feature_version"):
             keys.append(f"feature:{record['feature_version']}")
+        keys.append(f"confidence:{confidence_bucket(float(record.get('probability') or 0.0))}")
+        keys.append("window:in_stake_window" if record_in_stake_window(record) else "window:outside_stake_window")
         for key in keys:
             groups.setdefault(key, []).append(record)
     report = {}

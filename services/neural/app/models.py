@@ -15,7 +15,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from .dataset import project_market, stack_matches
+from .dataset import example_weights, positive_probabilities, project_market, stack_matches
 
 CALIBRATION_SCHEME = "temporal_holdout"
 DEFAULT_CALIBRATION_FRACTION = 0.2
@@ -105,6 +105,15 @@ def build_gradient_boosting_pipeline(
     )
 
 
+def weighted_for_gamma(estimator: Any, rows: np.ndarray, labels: np.ndarray, weights: Optional[np.ndarray], gamma: float) -> Optional[np.ndarray]:
+    """Second pass. gamma 0 keeps the weights the caller already built."""
+    if float(gamma) <= 0.0 or weights is None or len(rows) < 8 or not _both_classes(np.asarray(labels)):
+        return weights
+    probe = fit_estimator(clone(estimator), rows, labels, weights)
+    probabilities = positive_probabilities(probe, np.asarray(rows, dtype=float))
+    return example_weights(weights, probabilities, labels, gamma)
+
+
 def fit_estimator(estimator: Any, rows: np.ndarray, labels: np.ndarray, weights: Optional[np.ndarray]) -> Any:
     """Fit a pipeline or a bare classifier. Row weights are optional."""
     if weights is None:
@@ -147,20 +156,24 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
                         rows[cut:], labels[cut:], None if weights is None else weights[cut:])
         return self
 
-    def fit_matches(self, matches: Sequence[Any], feature_names: Optional[Sequence[str]] = None):
+    def fit_matches(self, matches: Sequence[Any], feature_names: Optional[Sequence[str]] = None, loss_gamma: float = 0.0):
         """Fit on whole matches. The last fraction is the calibration holdout.
 
         When rows name their market, the base model still sees every earlier row,
         but match and set each get a calibrator fit only on that family's later rows.
+        loss_gamma 0 is the ordinary log loss. A positive value refits the base
+        model once, with a higher weight on rows the first fit assigned to the wrong side.
+        The calibrator still sees the original row weights.
         """
         ordered = [match for match in matches if len(match.rows) > 0]
+        gamma = float(loss_gamma or 0.0)
         names = list(feature_names or [])
         self.market_feature_index_ = names.index("market_is_set") if "market_is_set" in names else None
         self.base_event_ids_ = []
         self.calibration_event_ids_ = []
         if len(ordered) < 2:
             rows, labels, weights = stack_matches(ordered)
-            self._fit_split(rows, labels, weights, rows[:0], labels[:0], weights[:0] if len(weights) else weights)
+            self._fit_split(rows, labels, weights, rows[:0], labels[:0], weights[:0] if len(weights) else weights, gamma)
             return self
         cut = _holdout_cut(len(ordered), self.calibration_fraction)
         earlier, later = ordered[:cut], ordered[cut:]
@@ -172,9 +185,9 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
             calibration_matches = [project_market(match, "match") for match in later]
             calibration_matches = [match for match in calibration_matches if match.rows] or list(later)
             cal_rows, cal_labels, cal_weights = stack_matches(calibration_matches)
-            self._fit_split(base_rows, base_labels, base_weights, cal_rows, cal_labels, cal_weights)
+            self._fit_split(base_rows, base_labels, base_weights, cal_rows, cal_labels, cal_weights, gamma)
             return self
-        self._fit_market_calibrators(base_rows, base_labels, base_weights, later)
+        self._fit_market_calibrators(base_rows, base_labels, base_weights, later, gamma)
         return self
 
     def predict_proba(self, X):
@@ -187,7 +200,7 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
     def classes_(self):
         return self.model_.classes_
 
-    def _fit_split(self, base_rows, base_labels, base_weights, cal_rows, cal_labels, cal_weights) -> None:
+    def _fit_split(self, base_rows, base_labels, base_weights, cal_rows, cal_labels, cal_weights, loss_gamma: float = 0.0) -> None:
         self.calibrated_ = False
         self.calibration_rows_ = int(len(cal_rows))
         base = clone(self.estimator)
@@ -201,6 +214,7 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
             and _both_classes(base_labels)
             and _both_classes(cal_labels)
         )
+        base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
         if not use_calibration:
             all_rows = base_rows if len(cal_rows) == 0 else np.vstack([base_rows, cal_rows])
             all_labels = base_labels if len(cal_labels) == 0 else np.concatenate([base_labels, cal_labels])
@@ -224,8 +238,9 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
             "set": {"method": None, "rows": 0, "reason": "no_market_split"},
         }
 
-    def _fit_market_calibrators(self, base_rows, base_labels, base_weights, later) -> None:
+    def _fit_market_calibrators(self, base_rows, base_labels, base_weights, later, loss_gamma: float = 0.0) -> None:
         """One base model. Each market family is calibrated only on its own later rows."""
+        base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
         fitted = fit_estimator(clone(self.estimator), base_rows, base_labels, base_weights)
         match_rows, match_labels, match_weights = stack_matches(
             [match for match in (project_market(item, "match") for item in later) if match.rows]

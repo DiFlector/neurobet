@@ -36,7 +36,25 @@ def test_parse_pair_probability_for_side_a():
     assert parse_match_probability(PAGE, "Картал С", "Остапенко Е") == 0.574
     assert parse_match_probability(PAGE, "Остапенко Е", "Картал С") == 0.426
     assert parse_match_probability(PAGE, "Свёнтек И", "Хвалиньская М") == 0.885
+    assert parse_match_probability(PAGE, "Ига Швентек", "Хвалинска М") == 0.885
     assert parse_match_probability(PAGE, "Неизвестный И", "Картал С") is None
+
+
+def test_saved_side_is_the_match_feature():
+    from types import SimpleNamespace
+
+    from app.context_gate import abstract_side_from_decisions, context_side_from_event
+
+    event = SimpleNamespace(metadata_json={"raw_tournament": "WTA. Ухань", "context_side_a": 0.574})
+    assert context_side_from_event(event) == 0.574
+    assert context_side_from_event(SimpleNamespace(metadata_json={})) is None
+    rows = [
+        SimpleNamespace(raw_json={"context_side_a": 0.5, "context_role": "pre_model"}),
+        SimpleNamespace(
+            raw_json={"context_side_a": 0.55, "context_side_source": "tennis_abstract", "context_role": "pre_model"}
+        ),
+    ]
+    assert abstract_side_from_decisions(list(reversed(rows))) == 0.55
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ injury keywords.
 
 from __future__ import annotations
 
+import gzip
 import logging
 import re
 import time
@@ -18,6 +19,7 @@ logger = logging.getLogger("neural.abstract")
 _HOME = "https://www.tennisabstract.com/"
 _CACHE_SECONDS = 1800
 _cache: Dict[str, Tuple[float, str]] = {}
+_result_cache: Dict[Tuple[str, str, str], Tuple[float, Optional[float]]] = {}
 
 _PAGE_RE = re.compile(
     r"<b>([^<]+)</b>\s*<br\s*/?>\s*<a href=\"(https://www\.tennisabstract\.com/current/\d{4}[^\"]+\.html)\"",
@@ -125,18 +127,50 @@ def parse_match_probability(html: str, name_a: str, name_b: str) -> Optional[flo
 
 
 def match_win_probability(tournament: str, name_a: str, name_b: str) -> Optional[float]:
-    """Live fetch. None when the tournament or the pair is not on the current page."""
-    if not (tournament or "").strip() or not (name_a or "").strip() or not (name_b or "").strip():
+    """Live fetch. None when the pair is not on a current forecast page."""
+    if not (name_a or "").strip() or not (name_b or "").strip():
         return None
+    if "пар" in (tournament or "").lower():
+        return None
+    key = (
+        " ".join((tournament or "").lower().split()),
+        " ".join(name_a.lower().split()),
+        " ".join(name_b.lower().split()),
+    )
+    cached = _result_cache.get(key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _CACHE_SECONDS:
+        return cached[1]
     try:
-        pages = list_current_pages(_fetch(_HOME))
-        url = choose_page(tournament, pages)
-        if not url:
-            return None
-        return parse_match_probability(_fetch(url), name_a, name_b)
+        value = _lookup_probability(tournament or "", name_a, name_b)
     except Exception as exc:
         logger.info("Tennis Abstract forecast unavailable: %s", exc)
-        return None
+        value = None
+    _result_cache[key] = (now, value)
+    if value is not None:
+        logger.info("Tennis Abstract P(%s)=%.3f", name_a, value)
+    return value
+
+
+def _lookup_probability(tournament: str, name_a: str, name_b: str) -> Optional[float]:
+    pages = list_current_pages(_fetch(_HOME))
+    chosen = choose_page(tournament, pages)
+    if chosen:
+        probability = parse_match_probability(_fetch(chosen), name_a, name_b)
+        if probability is not None or tournament.strip():
+            return probability
+    for _label, url in pages:
+        if url == chosen:
+            continue
+        try:
+            html = _fetch(url)
+        except Exception as exc:
+            logger.info("Tennis Abstract page skipped %s: %s", url, exc)
+            continue
+        probability = parse_match_probability(html, name_a, name_b)
+        if probability is not None:
+            return probability
+    return None
 
 
 def _place_keys(text: str) -> Tuple[List[str], List[str]]:
@@ -181,12 +215,17 @@ def _name_score(left: str, right: str) -> float:
         return 1.0
     if len(a) >= 5 and len(b) >= 5 and a[:5] == b[:5]:
         return 1.0
-    folded_a = a.replace("w", "v").replace("o", "a")
-    folded_b = b.replace("w", "v").replace("o", "a")
+    folded_a = _fold_surname(a)
+    folded_b = _fold_surname(b)
     return max(
         SequenceMatcher(None, a, b).ratio(),
         SequenceMatcher(None, folded_a, folded_b).ratio(),
     )
+
+
+def _fold_surname(text: str) -> str:
+    folded = text.replace("shch", "s").replace("sh", "s").replace("ch", "h")
+    return folded.replace("w", "v").replace("o", "a").replace("y", "i").replace("j", "i")
 
 
 def _surname(name: str) -> str:
@@ -220,8 +259,15 @@ def _fetch(url: str) -> str:
     cached = _cache.get(url)
     if cached and now - cached[0] < _CACHE_SECONDS:
         return cached[1]
-    req = Request(url, headers={"User-Agent": "neurobet-research/1.0"})
-    with urlopen(req, timeout=8) as resp:
-        body = resp.read().decode("utf-8", "replace")
+    req = Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0", "Accept-Encoding": "gzip"},
+    )
+    with urlopen(req, timeout=12) as resp:
+        raw = resp.read()
+        encoding = (resp.headers.get("Content-Encoding") or "").lower()
+    if encoding == "gzip" or raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    body = raw.decode("utf-8", "replace")
     _cache[url] = (now, body)
     return body

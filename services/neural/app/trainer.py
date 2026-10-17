@@ -23,7 +23,7 @@ from .dataset import (
     stack_matches,
     thin_match,
 )
-from .metrics import compute_classification_metrics, family_metrics, insufficient_metrics, sliced_metrics
+from .metrics import compute_classification_metrics, error_summary, family_metrics, insufficient_metrics, sliced_metrics
 from .models import (
     CALIBRATION_SCHEME,
     _holdout_cut,
@@ -110,6 +110,17 @@ def _match_guard(
         "current_brier": current,
         "degraded": bool(degraded),
     }
+
+
+def _log_loss_gap(metrics_train: Dict[str, Any], metrics_val: Dict[str, Any]) -> Optional[float]:
+    """How much the decision log loss sits above the training log loss. None when the check is empty."""
+    if metrics_val.get("insufficient_validation"):
+        return None
+    train_loss = metrics_train.get("log_loss")
+    val_loss = metrics_val.get("log_loss")
+    if train_loss is None or val_loss is None:
+        return None
+    return round(float(val_loss) - float(train_loss), 4)
 
 
 def training_lock_key(sport_code: str, model_name: str, market: str) -> int:
@@ -356,6 +367,8 @@ class ModelTrainer:
             "train_samples": int(len(X_train)),
             "val_samples": decision_rows,
             "metrics_by_slice": sliced_metrics(decision_log),
+            "error_analysis": error_summary(decision_log),
+            "log_loss_gap": _log_loss_gap(metrics_train, metrics_val),
             "metrics_by_market_family": by_family,
             "calibration_report": calibration_report,
             "match_guard": match_guard,

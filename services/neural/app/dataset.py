@@ -22,7 +22,8 @@ from features import FeatureBuilder, TennisFeatureBuilder, registry as feature_r
 from features.tennis import closed_set_winner, is_one_set_lead, match_is_decided, set_is_open
 
 from .commit import confirming_index, side_odds_from_row
-from .context_gate import NEUTRAL_CONTEXT
+from .strategy import stake_gate
+from .context_gate import NEUTRAL_CONTEXT, context_side_from_event
 
 logger = logging.getLogger("neural.dataset")
 
@@ -279,6 +280,25 @@ def thin_match(match: MatchSnapshots, limit: int = MAX_TRAIN_ROWS) -> MatchSnaps
     )
 
 
+def example_weights(
+    base_weights: np.ndarray,
+    probabilities: Optional[np.ndarray],
+    labels: np.ndarray,
+    gamma: float = 0.0,
+) -> np.ndarray:
+    """Match-equal weights. A positive gamma raises the weight of a row the first fit got wrong.
+
+    gamma 0 returns the base weights unchanged. The multiplier is (1 - p of the true side) ** gamma.
+    """
+    weights = np.asarray(base_weights, dtype=float)
+    if float(gamma) == 0.0 or probabilities is None:
+        return np.array(weights, dtype=float, copy=True)
+    probs = np.clip(np.asarray(probabilities, dtype=float), 1e-6, 1.0 - 1e-6)
+    truth = np.asarray(labels, dtype=int)
+    p_true = np.where(truth == 1, probs, 1.0 - probs)
+    return weights * np.power(1.0 - p_true, float(gamma))
+
+
 def stack_matches(matches: Sequence[MatchSnapshots]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Rows, labels, and equal weights. Long matches are thinned before this call."""
     rows: List[List[float]] = []
@@ -370,14 +390,22 @@ def decision_records(
             label = match.row_labels[index] if match.row_labels else match.label
             chosen_odds = odds[picked][0] if float(p_side_a[picked]) >= 0.5 else odds[picked][1]
             current_set = _named_value(match.rows[index], feature_names, "current_set")
+            probability = float(p_side_a[picked])
+            chosen_probability = probability if probability >= 0.5 else 1.0 - probability
+            correct = (int(label) == 1) == (probability >= 0.5)
+            in_window = bool(stake_gate(chosen_probability, float(chosen_odds or 0.0), market, sport_code)[0])
             records.append({
                 "event_id": match.event_id,
                 "market": market,
                 "market_family": "set" if str(market).startswith("set_winner") else "match",
                 "label": int(label),
-                "probability": float(p_side_a[picked]),
+                "probability": probability,
                 "odds": float(chosen_odds or 0.0),
                 "phase": "unknown" if current_set is None else f"set_{int(current_set)}",
+                "sport_code": sport_code,
+                "in_bet_window": in_window,
+                "critical_miss": (not correct) and in_window,
+                "confident_miss": (not correct) and chosen_probability >= 0.75,
             })
     return records
 
@@ -410,7 +438,19 @@ class SportDatasetBuilder:
                 raise ValueError(f"No feature builder registered for sport '{self.sport_code}'")
 
     def load_matches(self, session: Session) -> Tuple[List[MatchSnapshots], List[str]]:
-        """Finished numeric-id matches, one priced snapshot per observed state, in start order."""
+        """Read the saved training tape. Building rows is the refresh job, not training."""
+        version = str(getattr(self.feature_builder, "feature_version", "0"))
+        from .dataset_cache import read_store
+
+        stored = read_store(self.sport_code, version)
+        if stored is None:
+            raise RuntimeError(
+                f"Сохранённая лента '{self.sport_code}' ещё не собрана. Её пишет dataset_refresh."
+            )
+        return stored
+
+    def list_events(self, session: Session) -> List[Event]:
+        """Finished numeric-id matches in start order, one row per real event."""
         events = list(
             session.execute(
                 select(Event)
@@ -434,8 +474,21 @@ class SportDatasetBuilder:
                 .group_by(OddsSnapshot.event_id)
             ).all()
         }
-        events, duplicate_matches = choose_canonical_events(events, odds_counts)
-        counts = DatasetFilterCounts(duplicate_event=duplicate_matches)
+        events, _duplicate_matches = choose_canonical_events(events, odds_counts)
+        return events
+
+    def build_matches(
+        self,
+        session: Session,
+        events: Sequence[Event],
+        feature_names: Optional[List[str]] = None,
+    ) -> Tuple[List[MatchSnapshots], List[str], List[str]]:
+        """Turn the given matches into training rows. Already saved matches are not passed in."""
+        events = list(events)
+        counts = DatasetFilterCounts()
+        feature_names = list(feature_names or [])
+        if not events:
+            return [], feature_names, []
 
         decisions = list(
             session.execute(
@@ -449,7 +502,6 @@ class SportDatasetBuilder:
             decisions_by_event.setdefault(row.event_id, []).append(row)
 
         matches: List[MatchSnapshots] = []
-        feature_names: List[str] = []
         snapshot_count = 0
         player_history = None
         if self.sport_code == "tennis":
@@ -524,6 +576,9 @@ class SportDatasetBuilder:
                     odds_snapshots=odds,
                 )
                 context = _context_as_of(event_decisions, cutoff)
+                saved_side = context_side_from_event(event)
+                if saved_side is not None:
+                    context["context_side_a"] = saved_side
                 merged = dict(vector.features)
                 merged.update(context)
                 if player_history is not None:
@@ -613,13 +668,9 @@ class SportDatasetBuilder:
                 )
 
         counts.log(self.sport_code)
-        if len(matches) < 4:
-            raise ValueError(
-                f"Недостаточно реальных завершенных событий с котировками в базе данных для вида спорта '{self.sport_code}' "
-                f"(найдено {len(matches)} матчей, требуется минимум 4). "
-                f"Ничьи в выборку не входят. Синтетические данные отключены."
-            )
-        return matches, feature_names
+        built = {match.event_id for match in matches}
+        skipped = [str(event.id) for event in events if str(event.id) not in built]
+        return matches, feature_names, skipped
 
 
 class TennisDatasetBuilder(SportDatasetBuilder):

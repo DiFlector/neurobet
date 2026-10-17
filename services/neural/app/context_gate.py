@@ -12,6 +12,8 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger("neural.context")
 
+_FROZEN_ATTEMPTS: set[str] = set()
+
 NEUTRAL_CONTEXT = {
     "context_side_a": 0.5,
     "injury_risk_score": 0.0,
@@ -59,6 +61,81 @@ def context_scores(
         return None, False
     fresh = _ask_llm(session, event, odds_a, odds_b, with_sources=state == "ready")
     return _overlay_abstract(session, event, fresh or dict(NEUTRAL_CONTEXT)), True
+
+
+def context_side_from_event(event) -> Optional[float]:
+    """The match-level side saved when the match finished. None if it was never stored."""
+    meta = getattr(event, "metadata_json", None)
+    if not isinstance(meta, dict) or "context_side_a" not in meta:
+        return None
+    return _unit(meta.get("context_side_a"), 0.5)
+
+
+def abstract_side_from_decisions(rows) -> Optional[float]:
+    """Latest Tennis Abstract probability already written on this match."""
+    for row in rows:
+        raw = row.raw_json if isinstance(getattr(row, "raw_json", None), dict) else {}
+        if raw.get("context_side_source") != "tennis_abstract":
+            continue
+        if "context_side_a" not in raw:
+            continue
+        return _unit(raw.get("context_side_a"), 0.5)
+    return None
+
+
+def freeze_finished_context(session, limit: int = 5) -> int:
+    """Copy the forecast onto the finished match. One number, no extra document."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from db.models.events import Event
+    from db.models.predictions import LLMDecision
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=18)
+    pending = (
+        session.query(Event)
+        .filter(Event.sport_code == "tennis")
+        .filter(Event.status.in_(("finished", "completed")))
+        .filter(Event.finished_at.isnot(None))
+        .filter(Event.finished_at >= cutoff)
+        .filter(Event.metadata_json["context_side_a"].astext.is_(None))
+        .order_by(Event.finished_at.desc())
+        .limit(max(1, limit))
+        .all()
+    )
+    saved = 0
+    for event in pending:
+        key = str(event.id)
+        if key in _FROZEN_ATTEMPTS:
+            continue
+        _FROZEN_ATTEMPTS.add(key)
+        decisions = (
+            session.query(LLMDecision)
+            .filter(LLMDecision.event_id == event.id)
+            .order_by(LLMDecision.created_at.desc())
+            .all()
+        )
+        side = abstract_side_from_decisions(decisions)
+        if side is None:
+            from .abstract_forecast import match_win_probability
+
+            meta = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+            side = match_win_probability(
+                str(meta.get("raw_tournament") or ""),
+                event.participant_a_name or "",
+                event.participant_b_name or "",
+            )
+        if side is None:
+            continue
+        merged = dict(event.metadata_json or {})
+        merged["context_side_a"] = side
+        event.metadata_json = merged
+        flag_modified(event, "metadata_json")
+        saved += 1
+    if saved:
+        session.flush()
+    return saved
 
 
 def apply_context_features(feature_vector, predictor, scores: Dict[str, float]) -> None:

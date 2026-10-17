@@ -21,9 +21,27 @@ from .candidates.residual import ResidualAblation, ResidualCandidate, markov_pro
 from .candidates.logistic import LogisticCandidate, _matrix
 from .candidates.market import MarketCandidate
 from .candidates.rating import RatingBook, RatingCandidate
+from ..metrics import error_summary, sliced_metrics
 from .report import match_log_losses, score_candidate
 from .rows import CompareRow
 from .splits import assert_disjoint, event_ids, split_fixed_test, split_matches, test_fingerprint
+
+
+def _probability_records(rows: Sequence[CompareRow], probabilities: np.ndarray) -> list:
+    """Same decision fields the walk-forward report slices, one row per priced snapshot."""
+    records = []
+    for row, prob in zip(rows, probabilities):
+        price = row.odds_a if float(prob) >= 0.5 else row.odds_b
+        records.append({
+            "market": "match_winner",
+            "market_family": "match",
+            "label": int(row.label),
+            "probability": float(prob),
+            "odds": float(price or 0.0),
+            "phase": row.phase or "unknown",
+            "sport_code": "tennis",
+        })
+    return records
 
 
 def frozen_test_ids(session: Session) -> set:
@@ -469,6 +487,10 @@ def run_hypothesis(
             lambda: candidate.predict(ordered_val),
             lambda: candidate.predict(test),
         )
+        test_probs = np.asarray(candidate.predict(test), dtype=float)
+        records = _probability_records(test, test_probs)
+        reports[-1]["error_slices"] = sliced_metrics(records)
+        reports[-1]["error_analysis"] = error_summary(records)
 
     finish_network("mlp", MLPCandidate())
     finish_network("residual_mlp", ResidualMLPCandidate())

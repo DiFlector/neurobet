@@ -345,7 +345,7 @@ def _torch_device():
     return torch.device("cuda"), "cuda"
 
 
-def _fit_mlp(train, validation, names, widths, dropout, weight_decay, max_epochs, residual: bool):
+def _fit_mlp(train, validation, names, widths, dropout, weight_decay, max_epochs, residual: bool, gamma: float = 0.0):
     import torch
     from torch.utils.data import DataLoader, TensorDataset
 
@@ -353,6 +353,12 @@ def _fit_mlp(train, validation, names, widths, dropout, weight_decay, max_epochs
     torch.manual_seed(SEED)
     torch.set_num_threads(2)
     x_train, y_train, w_train, _m, odds_train = stack(train, names)
+    if float(gamma) > 0.0 and len(w_train):
+        from ..dataset import example_weights
+
+        prelim = _fit_mlp(train, validation, names, widths, dropout, weight_decay, max_epochs, residual, 0.0)
+        prelim_probs = _mlp_predict(prelim["model"], prelim["scaler"], x_train, odds_train, prelim["device"], residual)
+        w_train = example_weights(w_train, prelim_probs, y_train, gamma)
     x_val, y_val, _w, _m, odds_val = stack(validation, names)
     scaler = StandardScaler().fit(x_train)
     model = _mlp(len(names), widths, dropout).to(device)

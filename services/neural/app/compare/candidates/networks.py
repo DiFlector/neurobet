@@ -104,7 +104,7 @@ def _seed(torch_module) -> None:
         torch_module.cuda.manual_seed_all(SEED)
 
 
-def _fit_tabular(rows, validation, widths, dropout, weight_decay, max_epochs, residual: bool):
+def _fit_tabular(rows, validation, widths, dropout, weight_decay, max_epochs, residual: bool, gamma: float = 0.0):
     import torch
     from torch.utils.data import DataLoader, TensorDataset
 
@@ -112,6 +112,12 @@ def _fit_tabular(rows, validation, widths, dropout, weight_decay, max_epochs, re
     _seed(torch)
     torch.set_num_threads(2)
     x, y, weights, market = _matrix(rows)
+    if float(gamma) > 0.0:
+        from ...dataset import example_weights
+
+        prelim = _fit_tabular(rows, validation, widths, dropout, weight_decay, max_epochs, residual, 0.0)
+        prelim_probs = _predict_tabular(prelim["model"], prelim["scaler"], rows, prelim["device"], residual)
+        weights = example_weights(weights, prelim_probs, y, gamma).astype(np.float32)
     scaler = StandardScaler().fit(x)
     scaled = scaler.transform(x).astype(np.float32)
     model = _MLP(widths, dropout).to(device)
@@ -271,7 +277,7 @@ def _thin(count: int):
     return chosen
 
 
-def _fit_gru(rows, validation, hidden, max_epochs):
+def _fit_gru(rows, validation, hidden, max_epochs, gamma: float = 0.0):
     import torch
     from torch.utils.data import DataLoader, TensorDataset
 
@@ -279,7 +285,14 @@ def _fit_gru(rows, validation, hidden, max_epochs):
     _seed(torch)
     torch.set_num_threads(2)
     scaler = StandardScaler().fit(np.asarray([feature_vector(row) for row in rows], dtype=np.float32))
-    x, y, lengths, weights, _positions = _prefix_samples(rows, scaler)
+    x, y, lengths, weights, positions = _prefix_samples(rows, scaler)
+    if float(gamma) > 0.0 and len(weights):
+        from ...dataset import example_weights
+
+        prelim = _fit_gru(rows, validation, hidden, max_epochs, 0.0)
+        train_probs = _predict_gru(prelim["model"], prelim["scaler"], rows, prelim["device"])
+        ordered = np.asarray([train_probs[int(index)] for index in positions], dtype=float)
+        weights = example_weights(weights, ordered, y, gamma).astype(np.float32)
     model = _GRU(hidden).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
     loader = DataLoader(
