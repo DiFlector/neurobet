@@ -109,6 +109,14 @@ async def main():
             if now_ts - last_settle_sync > 30:
                 last_settle_sync = now_ts
                 try:
+                    bet_data = await asyncio.to_thread(
+                        _post_json,
+                        f"{backend_url}/api/execution/sync?limit=10",
+                        60.0,
+                    )
+                    if bet_data.get("submitted"):
+                        logger.info("Confirmed bets submitted: %s", len(bet_data.get("submitted") or []))
+
                     settle_data = await asyncio.to_thread(
                         _post_json, f"{backend_url}/api/settlement/sync", 30.0
                     )

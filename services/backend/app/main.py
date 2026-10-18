@@ -45,7 +45,7 @@ try:
     from db.connection import SessionLocal
     from db.models.events import Event, EventStateSnapshot
     from db.models.odds import Market, MarketSelection, OddsSnapshot
-    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision, ModelBetJournal
+    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision, ModelBetJournal, ExternalPrediction
     from db.models.betting import (
         VirtualAccount, LedgerEntry, Bet, BetSettlement, BetProposal, BetValidationResult
     )
@@ -717,6 +717,142 @@ def get_event_llm_decisions(event_id: str, limit: int = 5) -> List[Dict[str, Any
         return results
 
 
+@app.get("/api/predictions/external")
+def list_external_predictions(
+    sport_code: Optional[str] = None,
+    status: Optional[str] = None,
+    event_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Returns external pre-match expert predictions aggregated from analytical websites."""
+    if not SessionLocal or not ExternalPrediction:
+        return {"total": 0, "predictions": []}
+
+    with SessionLocal() as session:
+        q = session.query(ExternalPrediction)
+        if sport_code:
+            q = q.filter(ExternalPrediction.sport_code == sport_code)
+        if status:
+            q = q.filter(ExternalPrediction.status == status)
+        if event_id:
+            try:
+                q = q.filter(ExternalPrediction.matched_event_id == uuid.UUID(event_id))
+            except ValueError:
+                return {"total": 0, "predictions": []}
+
+        total = q.count()
+        rows = q.order_by(ExternalPrediction.created_at.desc()).offset(offset).limit(min(limit, 200)).all()
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "predictions": [
+                {
+                    "id": str(r.id),
+                    "sport_code": r.sport_code,
+                    "source_code": r.source_code,
+                    "source_url": r.source_url,
+                    "tournament_name": r.tournament_name,
+                    "author_name": r.author_name,
+                    "author_roi": float(r.author_roi) if r.author_roi is not None else None,
+                    "author_winrate": float(r.author_winrate) if r.author_winrate is not None else None,
+                    "raw_participant_a": r.raw_participant_a,
+                    "raw_participant_b": r.raw_participant_b,
+                    "canonical_participant_a": r.canonical_participant_a,
+                    "canonical_participant_b": r.canonical_participant_b,
+                    "market_type": r.market_type,
+                    "predicted_outcome": r.predicted_outcome,
+                    "raw_prediction_text": r.raw_prediction_text,
+                    "recommended_odds": float(r.recommended_odds) if r.recommended_odds is not None else None,
+                    "reasoning_snippet": r.reasoning_snippet,
+                    "estimated_start_at": r.estimated_start_at.isoformat() if r.estimated_start_at else None,
+                    "matched_event_id": str(r.matched_event_id) if r.matched_event_id else None,
+                    "matched_at": r.matched_at.isoformat() if r.matched_at else None,
+                    "status": r.status,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                }
+                for r in rows
+            ],
+        }
+
+
+@app.get("/api/predictions/consensus/{event_id}")
+def get_prediction_consensus(event_id: str) -> Dict[str, Any]:
+    """Returns consensus summary across all external predictions for an event."""
+    if not SessionLocal or not ExternalPrediction:
+        return {"event_id": event_id, "total_predictions": 0, "consensus_pick": "neutral"}
+
+    try:
+        ev_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid event_id UUID")
+
+    with SessionLocal() as session:
+        preds = session.query(ExternalPrediction).filter(
+            ExternalPrediction.matched_event_id == ev_uuid
+        ).all()
+
+        if not preds:
+            return {
+                "event_id": event_id,
+                "sport_code": "tennis",
+                "total_predictions": 0,
+                "p1_count": 0,
+                "p2_count": 0,
+                "p1_share": 0.0,
+                "p2_share": 0.0,
+                "consensus_pick": "neutral",
+                "consensus_confidence": 0.0,
+                "sources": [],
+                "expert_snippets": [],
+            }
+
+        total = len(preds)
+        p1_count = sum(1 for p in preds if (p.predicted_outcome or "").lower() in ("p1", "player_a", "1"))
+        p2_count = sum(1 for p in preds if (p.predicted_outcome or "").lower() in ("p2", "player_b", "2"))
+        other_count = total - (p1_count + p2_count)
+
+        p1_share = p1_count / total if total > 0 else 0.0
+        p2_share = p2_count / total if total > 0 else 0.0
+
+        p1_odds = [float(p.recommended_odds) for p in preds if (p.predicted_outcome or "").lower() in ("p1", "player_a", "1") and p.recommended_odds]
+        p2_odds = [float(p.recommended_odds) for p in preds if (p.predicted_outcome or "").lower() in ("p2", "player_b", "2") and p.recommended_odds]
+
+        consensus_pick = "neutral"
+        if p1_share >= 0.60:
+            consensus_pick = "p1"
+        elif p2_share >= 0.60:
+            consensus_pick = "p2"
+
+        volume_factor = min(1.0, total / 5.0)
+        unanimity = max(p1_share, p2_share)
+        confidence = round(volume_factor * unanimity, 4)
+
+        sources = sorted(list({p.source_code for p in preds}))
+        snippets = [f"[{p.source_code}] {p.reasoning_snippet}" for p in preds if p.reasoning_snippet][:5]
+
+        return {
+            "event_id": event_id,
+            "sport_code": "tennis",
+            "total_predictions": total,
+            "p1_count": p1_count,
+            "p2_count": p2_count,
+            "other_count": other_count,
+            "p1_share": round(p1_share, 4),
+            "p2_share": round(p2_share, 4),
+            "avg_p1_odds": round(sum(p1_odds) / len(p1_odds), 4) if p1_odds else None,
+            "avg_p2_odds": round(sum(p2_odds) / len(p2_odds), 4) if p2_odds else None,
+            "consensus_pick": consensus_pick,
+            "consensus_confidence": confidence,
+            "sources": sources,
+            "expert_snippets": snippets,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
 @app.post("/api/research/run")
 def trigger_research_run(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Triggers or records on-demand web research run for an event."""
@@ -847,6 +983,23 @@ def get_bets(
         if status:
             q = q.filter(Bet.status == status.upper())
         bets = q.order_by(Bet.placed_at.desc()).offset(offset).limit(limit).all()
+        event_ids = {b.event_id for b in bets}
+        names = {}
+        placed_models = {}
+        if event_ids and Event is not None:
+            for event in session.query(Event).filter(Event.id.in_(event_ids)).all():
+                names[event.id] = (event.participant_a_name, event.participant_b_name)
+        for bet in bets:
+            if bet.proposal_id and BetProposal is not None:
+                proposal = session.get(BetProposal, bet.proposal_id)
+                if proposal is not None and proposal.ml_prediction_id and MLPrediction is not None:
+                    prediction = session.get(MLPrediction, proposal.ml_prediction_id)
+                    if prediction is not None:
+                        detail = prediction.outcomes_detail or {}
+                        placed_models[bet.id] = (
+                            detail.get("model_name"),
+                            prediction.model_version,
+                        )
         return [
             {
                 "id": str(b.id),
@@ -855,14 +1008,33 @@ def get_bets(
                 "sport_code": b.sport_code,
                 "market": b.market,
                 "outcome": b.outcome,
+                "participant_a_name": (names.get(b.event_id) or (None, None))[0],
+                "participant_b_name": (names.get(b.event_id) or (None, None))[1],
+                "model_name": (placed_models.get(b.id) or (None, None))[0],
+                "model_version": (placed_models.get(b.id) or (None, None))[1],
                 "odds": float(b.odds),
                 "stake": float(b.stake),
                 "potential_payout": float(b.potential_payout),
+                "potential_win": round(float(b.potential_payout) - float(b.stake), 2),
+                "max_loss": float(b.stake),
                 "status": b.status,
                 "placed_at": b.placed_at.isoformat(),
             }
             for b in bets
         ]
+
+
+@app.post("/api/execution/sync")
+def sync_confirmed_bets(limit: int = 10) -> Dict[str, Any]:
+    """Send confirmed ACTIVE tennis predictions to bet-manager. The ledger is not written here."""
+    if not SessionLocal:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    from bankroll.execution_bridge import execute_confirmed
+
+    with SessionLocal() as session:
+        report = execute_confirmed(session, limit=limit)
+        session.commit()
+        return {"status": "success", **report}
 
 
 @app.get("/api/bets/{bet_id}")
@@ -892,6 +1064,24 @@ def get_bet_detail(bet_id: str) -> Dict[str, Any]:
                 "settled_at": b.settlement.settled_at.isoformat(),
             }
 
+        validation = None
+        if b.proposal_id and BetValidationResult:
+            row = (
+                session.query(BetValidationResult)
+                .filter(BetValidationResult.proposal_id == b.proposal_id)
+                .order_by(BetValidationResult.created_at.desc())
+                .first()
+            )
+            if row is not None:
+                validation = {
+                    "is_accepted": row.is_accepted,
+                    "rejection_code": row.rejection_code,
+                    "checks_passed": row.checks_passed,
+                    "checks_failed": row.checks_failed,
+                    "details": getattr(row, "details", None) or {},
+                }
+        stake = float(b.stake)
+        payout = float(b.potential_payout)
         return {
             "id": str(b.id),
             "account_id": str(b.account_id),
@@ -901,11 +1091,14 @@ def get_bet_detail(bet_id: str) -> Dict[str, Any]:
             "market": b.market,
             "outcome": b.outcome,
             "odds": float(b.odds),
-            "stake": float(b.stake),
-            "potential_payout": float(b.potential_payout),
+            "stake": stake,
+            "potential_payout": payout,
+            "potential_win": round(payout - stake, 2),
+            "max_loss": stake,
             "status": b.status,
             "placed_at": b.placed_at.isoformat(),
             "settlement": settlement_dict,
+            "validation": validation,
         }
 
 
@@ -1618,10 +1811,14 @@ def promote_shadow_model(req: ShadowPromoteRequest) -> Dict[str, Any]:
                 },
             )
 
-        # Transition old active models to RETIRED
+        # Retire the previous combat version of this line. The other line of the sport stays.
         active_models = (
             session.query(ModelVersion)
-            .filter(ModelVersion.sport_code == req.sport_code, ModelVersion.status == "ACTIVE")
+            .filter(
+                ModelVersion.sport_code == req.sport_code,
+                ModelVersion.model_name == candidate.model_name,
+                ModelVersion.status == "ACTIVE",
+            )
             .all()
         )
         for act in active_models:
@@ -1648,8 +1845,8 @@ def trigger_model_training(payload: Optional[Dict[str, Any]] = None) -> Dict[str
     body = payload or {}
     sport_code = str(body.get("sport_code") or "tennis").lower()
     model_type = str(body.get("model_type") or "gb").lower()
-    if model_type not in ("lr", "gb", "gbdt", "all"):
-        raise HTTPException(status_code=400, detail="model_type must be lr, gb, gbdt, or all")
+    if model_type not in ("lr", "gb", "gbdt", "all", "epoch_lr", "epoch_gb", "epoch_mlp", "epoch_all"):
+        raise HTTPException(status_code=400, detail="model_type must be lr, gb, gbdt, all, or an epoch line")
     bump = str(body.get("bump") or "patch")
     if bump not in ("patch", "minor", "major", "test"):
         raise HTTPException(status_code=400, detail="bump must be patch, minor, major, or test")
@@ -1858,6 +2055,23 @@ def trigger_backtest_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, 
                 raise HTTPException(status_code=400, detail="A test tag cannot be replayed")
             if model.sport_code != sport:
                 raise HTTPException(status_code=400, detail="Model sport does not match sport_code")
+        if request.config.event_ids:
+            if Event is None:
+                raise HTTPException(status_code=503, detail="Database unavailable")
+            import uuid as uuid_lib
+
+            parsed = [uuid_lib.UUID(item) for item in request.config.event_ids]
+            found = (
+                session.query(Event)
+                .filter(
+                    Event.id.in_(parsed),
+                    Event.sport_code == sport,
+                    Event.status.in_(["finished", "completed"]),
+                )
+                .count()
+            )
+            if found != len(parsed):
+                raise HTTPException(status_code=400, detail="event_ids must be finished matches of the selected sport")
         existing = (
             session.query(BacktestRun)
             .filter(BacktestRun.config_hash == digest, BacktestRun.status.in_(["queued", "running"]))
@@ -1903,6 +2117,54 @@ def trigger_backtest_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "message_id": envelope.message_id,
         "deduplicated": False,
     }
+
+
+@app.post("/api/backtests/strategy-search")
+def trigger_strategy_search(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Queue a tennis gate search. It replays one SHADOW checkpoint on a fixed window."""
+    import redis
+    from contracts import StrategySearchRequest
+    from streams import STREAM_BACKTEST_JOBS, StreamPublisher
+
+    if not SessionLocal or not BacktestRun or not ModelVersion:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        request = StrategySearchRequest.model_validate(payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if request.sport_code.strip().lower() != "tennis":
+        raise HTTPException(status_code=400, detail="Strategy search is available for tennis only")
+    body = request.model_dump(mode="json")
+    body["kind"] = "strategy_search"
+    digest = _backtest_hash(body)
+    with SessionLocal() as session:
+        model = session.get(ModelVersion, uuid.UUID(request.model_version_id))
+        if model is None or model.status not in ("ACTIVE", "SHADOW") or str(model.version_tag or "").startswith("test_"):
+            raise HTTPException(status_code=400, detail="Select an ACTIVE or SHADOW model")
+        run = BacktestRun(
+            status="queued",
+            sport_code="tennis",
+            scope="model",
+            model_version_id=model.id,
+            request_json=body,
+            config_hash=digest,
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        run_id = str(run.id)
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    try:
+        client = redis.Redis.from_url(redis_url, socket_timeout=2)
+        client.ping()
+        envelope = StreamPublisher(client, producer="backend").publish(
+            STREAM_BACKTEST_JOBS,
+            {"run_id": run_id},
+            idempotency_key=f"strategy:{digest}:{run_id}",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Backtest queue is unavailable: {exc}") from exc
+    return {"id": run_id, "status": "queued", "message_id": envelope.message_id}
 
 
 @app.get("/api/backtests/runs")

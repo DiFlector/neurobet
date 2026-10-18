@@ -376,6 +376,23 @@ class BetSettlementEngine:
     Enforces that no bet is settled twice and ambiguous matches are flagged for review.
     """
 
+    @staticmethod
+    def _official_set_winners(result: CanonicalMatchResult) -> Dict[str, str]:
+        """Derive tennis set winners only from the official results score."""
+        if result.sport_code != "tennis":
+            return {}
+        score = str(result.final_score or "")
+        match = re.search(r"\(([^)]*)\)", score)
+        if not match:
+            return {}
+        winners: Dict[str, str] = {}
+        for number, pair in enumerate(re.findall(r"(\d+)\s*[-:]\s*(\d+)", match.group(1)), start=1):
+            games_a, games_b = (int(pair[0]), int(pair[1]))
+            if games_a == games_b:
+                continue
+            winners[str(number)] = "player_a" if games_a > games_b else "player_b"
+        return winners
+
     @classmethod
     def settle_event_bets(
         cls,
@@ -407,6 +424,16 @@ class BetSettlementEngine:
             event.metadata_json = meta
             session.flush()
             return settlements
+
+        # Official results are authoritative for every set. Live snapshots may
+        # be incomplete, especially while the final set is still being closed.
+        official_set_winners = cls._official_set_winners(result)
+        if official_set_winners:
+            meta = dict(event.metadata_json or {})
+            stored = dict(meta.get("set_winners") or {})
+            stored.update(official_set_winners)
+            meta["set_winners"] = stored
+            event.metadata_json = meta
 
         for bet in bets:
             if str(bet.market or "").startswith("set_winner:"):

@@ -78,6 +78,17 @@ def run_training_job(job: Dict[str, Any]) -> None:
     with SessionLocal() as session:
         if model_type == "all":
             trainer.train_all(session=session, sport_code=sport_code, bump=bump)
+        elif model_type == "epoch_all":
+            for epoch_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
+                trainer.train_model(
+                    session=session,
+                    model_type=epoch_type,
+                    sport_code=sport_code,
+                    market="match_winner",
+                    bump=bump,
+                    version_tag="tennis_v3.0.0",
+                    hyperparameters=hyperparameters,
+                )
         else:
             trainer.train_model(
                 session=session,

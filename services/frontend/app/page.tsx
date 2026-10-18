@@ -17,6 +17,7 @@ import {
   fetchSports,
   fetchEvents,
   fetchPredictions,
+  fetchEventPredictions,
   fetchBets,
   fetchLedger,
   fetchModels,
@@ -24,8 +25,10 @@ import {
   fetchSchedulerQueue,
   fetchSchedulerStats,
   fetchEventDetails,
+  fetchTennisPolicy,
   resetSimulationApi,
 } from "@/lib/api";
+import { applyStakePolicy } from "@/lib/decision-status";
 import {
   BankrollData,
   PerformanceData,
@@ -68,11 +71,13 @@ export default function DashboardPage() {
   // Load initial bankroll & sports
   const loadInitialData = React.useCallback(async () => {
     try {
-      const [acc, perf, spList] = await Promise.all([
+      const [acc, perf, spList, policy] = await Promise.all([
         fetchAccount(),
         fetchPerformance(),
         fetchSports(),
+        fetchTennisPolicy(),
       ]);
+      applyStakePolicy(policy);
       if (acc) setBankroll(acc);
       if (perf) setPerformance(perf);
       if (spList && spList.length > 0) {
@@ -94,11 +99,16 @@ export default function DashboardPage() {
           fetchPredictions(),
           fetchBets(500),
         ]);
+        const placedEventIds = [...new Set(bList.map((bet) => bet.event_id).filter(Boolean))] as string[];
+        const placedPredictions = (
+          await Promise.all(placedEventIds.map((eventId) => fetchEventPredictions(eventId)))
+        ).flat();
+        const allPredictions = [...(preds || []), ...placedPredictions];
         if (evs) setEvents(evs);
         if (bList.length > 0) setBets(bList);
-        if (preds && preds.length > 0) {
+        if (allPredictions.length > 0) {
           const pMap: Record<string, PredictionItem[]> = {};
-          preds.forEach((p) => {
+          allPredictions.forEach((p) => {
             if (!pMap[p.event_id]) pMap[p.event_id] = [];
             pMap[p.event_id].push(p);
           });
@@ -178,10 +188,15 @@ export default function DashboardPage() {
           fetchPredictions(),
           fetchBets(500),
         ]);
+        const placedEventIds = [...new Set(bList.map((bet) => bet.event_id).filter(Boolean))] as string[];
+        const placedPredictions = (
+          await Promise.all(placedEventIds.map((eventId) => fetchEventPredictions(eventId)))
+        ).flat();
+        const allPredictions = [...(preds || []), ...placedPredictions];
         // Keep previous board on empty/failed polls so the live list does not flicker away.
         if (evs && evs.length > 0) setEvents(evs);
         if (bList.length > 0) setBets(bList);
-        if (preds && preds.length > 0) applyPredictions(preds);
+        if (allPredictions.length > 0) applyPredictions(allPredictions);
         if (view.modalOpen && view.eventId) {
           const details = await fetchEventDetails(view.eventId);
           if (details) setSelectedEventData(details);

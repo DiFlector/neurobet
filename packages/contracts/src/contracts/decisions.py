@@ -245,6 +245,18 @@ class CandidateItem(BaseContract):
     confidence: float = Field(..., ge=0.0, le=1.0, description="Statistical model confidence")
     model_version: str = Field(..., description="Statistical model version")
     is_shortlisted: bool = Field(default=False, description="Meets minimum edge and confidence hurdles")
+    selection_id: Optional[str] = Field(default=None, description="Market selection UUID")
+    ml_prediction_id: Optional[str] = Field(default=None, description="Linked ML prediction UUID")
+    model_name: Optional[str] = Field(default=None, description="Registry model name")
+    expected_value: Optional[float] = Field(default=None, description="p * odds - 1")
+    probability_edge: Optional[float] = Field(default=None, description="model probability minus implied probability")
+    data_quality_score: Optional[float] = Field(default=None, description="Event data quality, 0-100")
+    research_quality: Optional[float] = Field(default=None, description="Research/LLM quality, 0-1")
+    config_version: Optional[str] = Field(default=None, description="Sport policy identity used for the quote")
+    set_number: Optional[int] = Field(default=None, description="Set index when the market is a set")
+    prediction_at: Optional[str] = Field(default=None, description="ML prediction timestamp")
+    odds_observed_at: Optional[str] = Field(default=None, description="Odds snapshot timestamp")
+    is_shadow: bool = Field(default=False, description="True when the source model is not ACTIVE")
 
 
 class DecisionResult(BaseContract):

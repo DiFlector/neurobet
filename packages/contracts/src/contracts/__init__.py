@@ -3,6 +3,7 @@ from .events import Event, EventState, TennisGameScore, TennisSetScore, Basketba
 from .odds import Selection, Market, OddsSnapshot
 from .predictions import FeatureVector, OutcomePrediction, MLPrediction
 from .research import ResearchEvidence, ResearchPacket, ResearchRequest
+from .external_predictions import ExternalPredictionDTO, PredictionConsensusSummary
 from .decisions import (
     LLMDecision,
     LLMAnalysisInput,
@@ -32,6 +33,7 @@ from .backtests import (
     BacktestBetRecord,
     BacktestModelResult,
     BacktestRunStatus,
+    StrategySearchRequest,
 )
 from .experiments import (
     CalibrationPoint,
@@ -106,6 +108,7 @@ __all__ = [
     "BacktestBetRecord",
     "BacktestModelResult",
     "BacktestRunStatus",
+    "StrategySearchRequest",
     "ShadowConfig",
     "ShadowPredictionPair",
     "DriftAnalysisReport",
@@ -114,5 +117,7 @@ __all__ = [
     "ShadowEngine",
     "CompositeComponentVote",
     "CompositeModelState",
+    "ExternalPredictionDTO",
+    "PredictionConsensusSummary",
 ]
 

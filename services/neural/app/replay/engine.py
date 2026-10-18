@@ -14,7 +14,7 @@ from ..backtest.execution import ExecutionSimulator, SimulatedOddsSnapshot
 from ..confirmation import next_watch_action
 from ..context_gate import NEUTRAL_CONTEXT, apply_context_features, context_side_from_event
 from ..dataset import _context_as_of
-from ..set_match import is_v2, match_verdict, set_is_committable, set_is_observation_only
+from ..set_match import match_verdict, set_is_committable, set_is_observation_only
 from tennis_adapter.policy import model_commits_market, policy_from_mapping, windows_allow
 from .bankroll import ReplayBankroll
 
@@ -234,6 +234,26 @@ def _execution_quotes(rows: Sequence[Any], market_type: str, line_value: Optiona
     return quotes
 
 
+def _fill_preview(cutoff: datetime, quotes: Sequence[Any], latency_sec: float) -> Dict[str, Any]:
+    """Quote that would be available after latency, before staleness and slippage gates."""
+    moment = _as_utc(cutoff)
+    execution_time = moment + timedelta(seconds=float(latency_sec))
+    available = [item for item in quotes if _as_utc(item.observed_at) <= execution_time]
+    empty = {"code": "NO_ODDS_SNAPSHOT", "odds_a": 0.0, "odds_b": 0.0, "staleness_sec": None}
+    if not available:
+        return empty
+    latest = max(available, key=lambda item: _as_utc(item.observed_at))
+    if latest.is_suspended:
+        return {"code": "MARKET_SUSPENDED", "odds_a": 0.0, "odds_b": 0.0, "staleness_sec": None}
+    staleness = (execution_time - _as_utc(latest.observed_at)).total_seconds()
+    return {
+        "code": "",
+        "odds_a": float(latest.p1_odds),
+        "odds_b": float(latest.p2_odds),
+        "staleness_sec": staleness,
+    }
+
+
 def _side_token(outcome: str) -> str:
     return "p1" if str(outcome).endswith("_a") or str(outcome) in _SIDE_A else "p2"
 
@@ -297,6 +317,7 @@ class ReplayRunner:
         self._watches: Dict[tuple, Dict[str, Any]] = {}
         self._confirmed: set[tuple] = set()
         self._observed: Dict[tuple, str] = {}
+        self.candidates: List[Dict[str, Any]] = []
 
     def run(self, matches: Sequence[Any], feature_builder, on_match=None) -> Dict[str, Any]:
         ordered = sorted(matches, key=lambda item: _as_utc(item.started_at))
@@ -342,13 +363,24 @@ class ReplayRunner:
             "bet_records": self.bets,
         }
 
+    def _stakes_set(self, number: int) -> bool:
+        from tennis_adapter.policy import stake_set_numbers
+
+        raw = self.config.get("stake_sets")
+        if raw:
+            return int(number) in {int(item) for item in raw}
+        allowed = stake_set_numbers()
+        if not allowed:
+            return True
+        return int(number) in allowed
+
     def _enabled_markets(self) -> set[str]:
         raw = self.config.get("markets")
         if isinstance(raw, list) and raw:
             return {str(item) for item in raw if str(item) in ("match_winner", "set_winner")}
-        version = str((self.predictor.checkpoint_data or {}).get("version_tag") or "")
-        composite = str((self.predictor.checkpoint_data or {}).get("kind") or "") == "composite"
-        if self.sport_code == "tennis" and (is_v2(version) or composite):
+        from ..set_match import checkpoint_scores_sets
+
+        if self.sport_code == "tennis" and checkpoint_scores_sets(self.predictor.checkpoint_data):
             return {"match_winner", "set_winner"}
         return {"match_winner"}
 
@@ -454,6 +486,8 @@ class ReplayRunner:
             observe = False
             if market.startswith("set_winner:"):
                 line_value = int(market.split(":", 1)[1])
+                if not self._stakes_set(line_value):
+                    continue
                 observe = set_is_observation_only(line_value, self.sport_code, self.config.get("observe_set")) or not model_commits_market(
                     line, version, market
                 )
@@ -463,9 +497,9 @@ class ReplayRunner:
         version = str((self.predictor.checkpoint_data or {}).get("version_tag") or "")
         line = str((self.predictor.checkpoint_data or {}).get("model_name") or "")
         enabled = self._enabled_markets()
-        scores_sets = "set_winner" in enabled and self.sport_code == "tennis" and (
-            is_v2(version) or str((self.predictor.checkpoint_data or {}).get("kind") or "") == "composite"
-        )
+        from ..set_match import checkpoint_scores_sets
+
+        scores_sets = "set_winner" in enabled and self.sport_code == "tennis" and checkpoint_scores_sets(self.predictor.checkpoint_data)
         wants_match = "match_winner" in enabled
         if not scores_sets:
             if not wants_match:
@@ -487,6 +521,8 @@ class ReplayRunner:
         builder = feature_registry.get("tennis")
         for number, (set_a, set_b) in prices.items():
             if number in finished or not set_is_committable(number, current_set, finished, best_of):
+                continue
+            if not self._stakes_set(number):
                 continue
             market = f"set_winner:{number}"
             observe = set_is_observation_only(number, self.sport_code, self.config.get("observe_set")) or not model_commits_market(
@@ -585,6 +621,8 @@ class ReplayRunner:
             self._consider_composite(match, vector, market, odds_a, odds_b, cutoff, odds_rows, line_value, snapshot_at, observe)
             return
         result = self.predictor.predict(vector, odds_a=odds_a, odds_b=odds_b, is_shadow=False, min_edge_threshold=float(self.config["min_edge"]))
+        if self.config.get("record_candidates"):
+            self._record_candidate(match, market, cutoff, odds_rows, line_value, result)
         side = result.best_outcome if result.has_positive_edge else None
         chosen = next((item for item in (result.outcomes or []) if item.outcome == side), None)
         eligible, reason = (False, "NO_SIDE")
@@ -658,6 +696,41 @@ class ReplayRunner:
             self._observed[(str(match.event_id), market)] = str(side)
             return
         self._place(match, market, chosen, cutoff, odds_rows, "match_winner" if market == "match_winner" else "set_winner", line_value)
+
+    def _record_candidate(self, match, market: str, cutoff: datetime, odds_rows, line_value, result) -> None:
+        """Store the side and the later quote. Gate search replays this tape without the model."""
+        outcomes = list(result.outcomes or [])
+        chosen = max(outcomes, key=lambda item: float(item.edge)) if outcomes else None
+        side = ""
+        probability = 0.0
+        odds = 0.0
+        edge = 0.0
+        if chosen is not None and float(chosen.edge) >= 0.0:
+            side = str(chosen.outcome)
+            probability = float(chosen.model_probability)
+            odds = float(chosen.bookmaker_odds)
+            edge = float(chosen.edge)
+        market_type = "match_winner" if market == "match_winner" else "set_winner"
+        preview = _fill_preview(cutoff, _execution_quotes(odds_rows, market_type, line_value), float(self.config.get("execution_latency_sec") or 0.0))
+        fill_odds = 0.0
+        if side:
+            fill_odds = float(preview["odds_a"] if _side_token(side) == "p1" else preview["odds_b"])
+        winner = _winner_token(match.event, market) or ""
+        self.candidates.append(
+            {
+                "event_id": str(match.event_id),
+                "market": market,
+                "snapshot_at": _as_utc(cutoff).isoformat(),
+                "side": side,
+                "probability": probability,
+                "odds": odds,
+                "edge": edge,
+                "winner": "" if winner is None else str(winner),
+                "fill_code": preview["code"],
+                "fill_odds": fill_odds,
+                "staleness_sec": preview["staleness_sec"],
+            }
+        )
 
     def _place(self, match, market: str, chosen, cutoff: datetime, odds_rows, market_type: str, line_value) -> None:
         quotes = _execution_quotes(odds_rows, market_type, line_value)

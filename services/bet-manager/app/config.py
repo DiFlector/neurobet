@@ -21,6 +21,8 @@ class BetManagerConfig:
     initial_bankroll: float = float(os.getenv("INITIAL_BANKROLL", "1000.00"))
     currency: str = os.getenv("CURRENCY", "RUB")
     live_only: bool = os.getenv("BET_LIVE_ONLY", "true").lower() in ("true", "1", "yes")
+    max_prediction_age_sec: float = float(os.getenv("MAX_PREDICTION_AGE_SEC", "180.0"))
+    max_llm_age_sec: float = float(os.getenv("MAX_LLM_AGE_SEC", "300.0"))
 
 
 config = BetManagerConfig()

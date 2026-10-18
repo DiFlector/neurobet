@@ -21,6 +21,17 @@ interface BetsTabProps {
   loading?: boolean;
 }
 
+function selectionName(bet: BetItem): string {
+  const code = (bet.outcome || "").trim().toLowerCase();
+  if (["player_a", "team_a", "1", "w1", "п1", "home", "p1"].includes(code)) {
+    return getLocalizedParticipantName(bet.participant_a_name, bet.sport_code);
+  }
+  if (["player_b", "team_b", "2", "w2", "п2", "away", "p2"].includes(code)) {
+    return getLocalizedParticipantName(bet.participant_b_name, bet.sport_code);
+  }
+  return getLocalizedParticipantName(bet.outcome, bet.sport_code);
+}
+
 export function BetsTab({ bets, loading = false }: BetsTabProps) {
   if (!loading && bets.length === 0) {
     return (
@@ -75,7 +86,7 @@ export function BetsTab({ bets, loading = false }: BetsTabProps) {
                       <div className="text-[11px] text-muted-foreground">{b.market}</div>
                     </TableCell>
                     <TableCell className="font-semibold text-foreground">
-                      {getLocalizedParticipantName(b.outcome, b.sport_code)}
+                      {selectionName(b)}
                     </TableCell>
                     <TableCell className="font-mono font-medium text-right">
                       {Number(b.odds).toFixed(2)}

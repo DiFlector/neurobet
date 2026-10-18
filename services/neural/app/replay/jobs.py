@@ -120,6 +120,9 @@ def _execute(session, run) -> list:
     from .engine import ReplayRunner
 
     request = run.request_json or {}
+    if request.get("kind") == "strategy_search":
+        _execute_strategy_search(session, run, request)
+        return []
     selector = request.get("selector") or {}
     config = request.get("config") or {}
     sport = str(selector.get("sport_code") or run.sport_code or "tennis").lower()
@@ -136,17 +139,37 @@ def _execute(session, run) -> list:
     builder = feature_registry.get(sport)
     if builder is None:
         raise RuntimeError(f"No feature builder for {sport}")
-    limit = int(config.get("match_limit") or 100)
-    events = list(
-        session.execute(
-            select(Event)
-            .where(Event.sport_code == sport)
-            .where(Event.status.in_(["finished", "completed"]))
-            .where(Event.source_event_id.op("~")(r"^[0-9]+$"))
-            .order_by(Event.scheduled_start_at.desc().nullslast(), Event.id.desc())
-            .limit(limit)
-        ).scalars()
-    )
+    requested_ids = [str(item) for item in (config.get("event_ids") or [])]
+    if requested_ids:
+        try:
+            parsed_ids = [uuid.UUID(item) for item in requested_ids]
+        except ValueError as exc:
+            raise RuntimeError("event_ids must contain UUIDs") from exc
+        found = list(
+            session.execute(
+                select(Event)
+                .where(Event.id.in_(parsed_ids))
+                .where(Event.sport_code == sport)
+                .where(Event.status.in_(["finished", "completed"]))
+            ).scalars()
+        )
+        by_id = {str(event.id): event for event in found}
+        missing = [item for item in requested_ids if item not in by_id]
+        if missing:
+            raise RuntimeError(f"Replay events are missing or unfinished: {missing[:5]}")
+        events = [by_id[item] for item in requested_ids]
+    else:
+        limit = int(config.get("match_limit") or 100)
+        events = list(
+            session.execute(
+                select(Event)
+                .where(Event.sport_code == sport)
+                .where(Event.status.in_(["finished", "completed"]))
+                .where(Event.source_event_id.op("~")(r"^[0-9]+$"))
+                .order_by(Event.scheduled_start_at.desc().nullslast(), Event.id.desc())
+                .limit(limit)
+            ).scalars()
+        )
     cached = _cached_by_event(sport, builder, [str(event.id) for event in events])
     missing = [event for event in events if cached is None or str(event.id) not in cached]
     history = None
@@ -169,7 +192,14 @@ def _execute(session, run) -> list:
         _write_progress(run.id, row, 0, len(matches), "queued", None)
     reports = []
     for row in rows:
-        predictor = load_predictor(row.artifact_path)
+        try:
+            predictor = load_predictor(row.artifact_path)
+        except Exception as exc:
+            logger.exception("Checkpoint %s could not be loaded", row.artifact_path)
+            summary = _empty_report(row, config, "ARTIFACT_INVALID")
+            _write_summary(run.id, row.id, summary)
+            reports.append(summary)
+            continue
         if not predictor.checkpoint_data:
             summary = _empty_report(row, config, "ARTIFACT_MISSING")
             _write_summary(run.id, row.id, summary)
@@ -189,6 +219,16 @@ def _execute(session, run) -> list:
         _write_summary(run.id, row.id, summary)
         reports.append(summary)
     return reports
+
+
+def _execute_strategy_search(session, run, request: Dict[str, Any]) -> None:
+    """Rank stake gates. The run stores the report and does not write production bets."""
+    from .strategy_job import prepare_windows, search_gates
+
+    windows = prepare_windows(session)
+    payload = search_gates(session, str(request["model_version_id"]), windows)
+    model_id = uuid.UUID(str(request["model_version_id"]))
+    _write_summary(run.id, model_id, {"kind": "strategy_search", "winner": payload.get("winner"), "baseline": payload.get("baseline")})
 
 
 def _load_match(session, event, history, state_model, odds_model, decision_model):

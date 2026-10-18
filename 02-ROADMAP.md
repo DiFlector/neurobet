@@ -426,6 +426,12 @@
 
 - [x] Research produces compact structured evidence packet.
 - [x] Повторный запрос с тем же cache key не делает новый network fetch до истечения TTL.
+- [x] Реализован агрегатор внешних прогнозов с 9 аналитических сайтов (`services/research/app/predictions`).
+- [x] Спроектированы DTO-контракты (`ExternalPredictionDTO`, `PredictionConsensusSummary`) и таблица PostgreSQL `external_predictions`.
+- [x] Созданы парсеры для 9 порталов (VseProSport, StavkaTV, LiveSport, KushVsporte, Betzona, Legalbet, NB-Bet, Overbetting, MetaRatings).
+- [x] Реализовано автоматическое сопоставление прогнозов с матчами Fonbet (прематч и лайв).
+- [x] Реализовано удаление прогнозов спустя 24 часа после начала матча, если событие так и не появилось в линии.
+- [x] Экспертный консенсус интегрирован в `ResearchPacket` для локальной LLM.
 
 ---
 
@@ -952,4 +958,13 @@ ML + LLM experiment
 - [x] Прогон не создаёт `bets`, `ledger_entries` и `ml_predictions`.
 - [x] Признаки среза ограничены `observed_at <= decision_timestamp`.
 - [x] Падение баланса ниже порога увеличивает банкротства, возвращает начальный баланс и продолжает прогон.
+
+---
+
+# PHASE 37 — Automatic tennis paper staking
+
+- [x] Подтверждённая `ACTIVE` линия тенниса проходит research/LLM и единственный `POST /api/proposals/evaluate`.
+- [x] Сумма считается из доли Келли, качества данных, баланса и лимитов `sports/tennis/tennis.cfg`.
+- [x] Теневая модель и отрицательная ожидаемая ценность не создают проводку.
+- [x] Live по умолчанию показывает только ставки с суммой; «Показывать все» открывает вердикты без ставки.
 

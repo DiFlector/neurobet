@@ -104,6 +104,22 @@ def test_future_match_is_outside_the_base_fit():
     assert future not in model.base_event_ids_
 
 
+def test_epoch_base_uses_early_stopping_and_keeps_market_calibration():
+    from app.epoch_fit import EpochTunedEstimator
+
+    model = EpochTunedEstimator(
+        estimator=build_logistic_regression_pipeline().estimator,
+        method="sigmoid",
+        family="lr",
+        params={"C": 1.0},
+    )
+    model.fit_matches(_series(count=24), NAMES)
+    assert model.epoch_report_["reason"] in ("validation_plateau", "max_epochs")
+    assert set(model.base_event_ids_).isdisjoint(model.calibration_event_ids_)
+    assert model.calibration_report_["match"]["rows"] > 0
+    assert model.calibration_report_["set"]["rows"] > 0
+
+
 def test_family_metrics_keep_match_and_set_apart():
     records = [
         {"market": "match_winner", "market_family": "match", "label": 1, "probability": 0.7},
@@ -124,5 +140,6 @@ if __name__ == "__main__":
     test_inference_uses_the_row_market()
     test_checkpoint_roundtrip_keeps_market_choice()
     test_future_match_is_outside_the_base_fit()
+    test_epoch_base_uses_early_stopping_and_keeps_market_calibration()
     test_family_metrics_keep_match_and_set_apart()
     print("OK")

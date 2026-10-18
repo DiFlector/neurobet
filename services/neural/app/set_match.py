@@ -13,6 +13,24 @@ def is_v2(version_tag: Optional[str]) -> bool:
     return str(version_tag or "").startswith("tennis_v2")
 
 
+def checkpoint_scores_sets(checkpoint: Optional[dict]) -> bool:
+    """A set line scores sets from its features. The assigned match line stays on the match."""
+    data = checkpoint or {}
+    names = {str(item) for item in (data.get("feature_names") or [])}
+    capable = str(data.get("kind") or "") == "composite" or {"market_is_set", "set_index"} <= names or is_v2(data.get("version_tag"))
+    from tennis_adapter.policy import _assigned, load_tennis_policy
+
+    policy = load_tennis_policy()
+    model_name = str(data.get("model_name") or "")
+    match_name = _assigned(policy.match_model)[0]
+    set_name = _assigned(policy.set_model)[0]
+    if model_name and model_name == set_name:
+        return True
+    if model_name and model_name == match_name:
+        return False
+    return capable
+
+
 def sets_to_win(best_of: int) -> int:
     size = 5 if int(best_of) >= 5 else 3
     return size // 2 + 1

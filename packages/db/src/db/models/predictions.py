@@ -121,3 +121,47 @@ class LLMDecision(Base, UUIDPrimaryKeyMixin):
     __table_args__ = (
         Index("idx_llm_decisions_event", "event_id", "created_at"),
     )
+
+
+class ExternalPrediction(Base, UUIDPrimaryKeyMixin):
+    """
+    Pre-match predictions collected from external betting and analysis portals.
+    Matched to Fonbet events when live odds appear. Expired after 24 hours if match never starts.
+    """
+    __tablename__ = "external_predictions"
+
+    source_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    sport_code: Mapped[str] = mapped_column(String(32), default="tennis", nullable=False)
+    tournament_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+
+    raw_participant_a: Mapped[str] = mapped_column(String(255), nullable=False)
+    raw_participant_b: Mapped[str] = mapped_column(String(255), nullable=False)
+    canonical_participant_a: Mapped[str] = mapped_column(String(255), nullable=False)
+    canonical_participant_b: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    estimated_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    market_type: Mapped[str] = mapped_column(String(64), default="match_winner", nullable=False)
+    predicted_outcome: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_prediction_text: Mapped[str] = mapped_column(String(255), nullable=False)
+    recommended_odds: Mapped[Optional[float]] = mapped_column(Numeric(10, 4), nullable=True)
+
+    author_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    author_roi: Mapped[Optional[float]] = mapped_column(Numeric(8, 2), nullable=True)
+    author_winrate: Mapped[Optional[float]] = mapped_column(Numeric(6, 2), nullable=True)
+    reasoning_snippet: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    matched_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+    matched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("idx_ext_pred_canonical", "canonical_participant_a", "canonical_participant_b", "estimated_start_at"),
+        Index("idx_ext_pred_matched_event", "matched_event_id"),
+        Index("idx_ext_pred_status_expires", "status", "expires_at"),
+    )
+

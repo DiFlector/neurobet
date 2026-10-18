@@ -13,6 +13,7 @@ from .service import BankrollService
 from .reconciliation import ReconciliationEngine, ReconciliationReport, LedgerDiscrepancy
 from .settlement import EventResultMatcher, BetSettlementEngine
 from .decision_pipeline import CandidateSelector, CombinedDecisionPipeline, LLMStrategyComparator
+from .execution_bridge import execute_confirmed
 from .candidate_scheduler import (
     CandidateScorer,
     CooldownManager,
@@ -40,6 +41,7 @@ __all__ = [
     "BetSettlementEngine",
     "CandidateSelector",
     "CombinedDecisionPipeline",
+    "execute_confirmed",
     "LLMStrategyComparator",
     "CandidateScorer",
     "CooldownManager",

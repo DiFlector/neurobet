@@ -764,6 +764,27 @@ Research не должен использовать сторонний сайт 
 
 Не давать LLM без ограничений выполнять arbitrary HTTP requests.
 
+## 18.1. Внешние прематч-прогнозы экспертов (External Prediction Aggregator)
+
+Для обогащения контекста матча за несколько часов или дней до старта подсистема `services/research/app/predictions/` осуществляет регулярный парсинг прогнозов с профильных сайтов:
+1. `vseprosport.ru` (VseProSport)
+2. `stavka.tv` (Stavka.tv)
+3. `livesport.ru` (LiveSport)
+4. `kushvsporte.ru` (KushVsporte)
+5. `betzona.ru` (Betzona)
+6. `legalbet.ru` (Legalbet)
+7. `nb-bet.com` (NB-Bet)
+8. `overbetting.ru` (Overbetting)
+9. `metaratings.ru` (MetaRatings)
+
+### Жизненный цикл и правила:
+- **Периодический сбор**: раз в 60 минут фоновый воркер опрашивает открытые ленты прогнозов.
+- **Хранение в PostgreSQL**: модель `external_predictions` (миграция `010_external_predictions.py`) с уникальностью по `source_url`.
+- **Нормализация имен игроков**: утилита `normalize_tennis_player()` с каноническим словарем фамилий (английские и русские варианты) и очисткой инициалов.
+- **Сопоставление с линией Fonbet**: при появлении события в прематче или лайве (`events`) происходит привязка прогноза по участникам и окну времени `abs(scheduled_start_at - estimated_start_at) <= 24h`.
+- **Автоочистка фантомных матчей (24h TTL)**: если прогноз был опубликован, но матч так и не появился в линии Fonbet, спустя 24 часа после предполагаемого времени начала (`expires_at < now() AND matched_event_id IS NULL`) запись безвозвратно удаляется из БД (`cleanup_expired_unmatched_predictions()`).
+- **Инъекция в Research Packet**: при формировании пакета для локальной LLM функция `execute_research()` запрашивает консенсус `get_consensus_for_event()` и добавляет структурированное свидетельство `ResearchEvidence` с доменом `"expert_consensus"` (доля голосов за П1/П2, средний кэф, сниппеты обоснований аналитиков).
+
 ---
 
 # 19. LLM input contract
@@ -1036,6 +1057,8 @@ risk_fraction = min(
 ```
 
 Можно реализовать fractional Kelly как эксперимент, но не делать Kelly единственным способом sizing.
+
+Теннисная боевая линия считает долю Келли из `sports/tennis/tennis.cfg`, затем ограничивает её долей банка, свободным балансом и остатком экспозиции. `bet-manager` пересчитывает ожидаемую ценность по свежему коэффициенту. В журнал попадает только ставка со статусом `ACTIVE`; тень остаётся в `model_bet_journal`. На карточках Live по умолчанию видны только зарегистрированные ставки с суммой.
 
 Например:
 

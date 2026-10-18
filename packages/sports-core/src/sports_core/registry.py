@@ -86,5 +86,15 @@ class SportRegistry:
 
         return True, None
 
+    def assess_execution(self, proposal: Dict[str, Any]) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+        """Sport-specific stake gates. Sports without the method stay unchanged."""
+        sport_code = str(proposal.get("sport_code") or "").lower()
+        adapter = self._adapters.get(sport_code)
+        assess = getattr(adapter, "assess_execution", None)
+        if assess is None:
+            return True, None, {}
+        ok, code, detail = assess(proposal)
+        return bool(ok), code, detail or {}
+
 
 registry = SportRegistry()

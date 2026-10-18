@@ -192,6 +192,32 @@ class ModelTrainer:
             }
 
         try:
+            prepared_matches = None
+            prepared_names = None
+            if model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
+                existing = (
+                    session.query(ModelVersion)
+                    .filter(
+                        ModelVersion.sport_code == sport_code,
+                        ModelVersion.model_name == model_name,
+                        ModelVersion.market == market,
+                        ModelVersion.version_tag == "tennis_v3.0.0",
+                    )
+                    .first()
+                )
+                if existing is not None:
+                    return {
+                        "skipped": True,
+                        "reason": "already_registered",
+                        "model_name": model_name,
+                        "version_tag": "tennis_v3.0.0",
+                        "model_version_id": str(existing.id),
+                        "artifact_path": existing.artifact_path,
+                    }
+                prepared_matches, prepared_names, estimator, hyperparameters = self._prepare_epoch_line(
+                    session, estimator, hyperparameters, sport_code
+                )
+                version_tag = "tennis_v3.0.0"
             return self._train_locked(
                 session=session,
                 estimator=estimator,
@@ -203,6 +229,8 @@ class ModelTrainer:
                 version_tag=version_tag,
                 hyperparameters=hyperparameters,
                 started_at=started_at,
+                prepared_matches=prepared_matches,
+                prepared_names=prepared_names,
             )
         finally:
             try:
@@ -249,8 +277,32 @@ class ModelTrainer:
                 random_state=self.random_seed,
                 calibration_method=hyperparameters["calibration"],
             )
+        elif model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
+            from .epoch_fit import EpochTunedEstimator, ResidualEpochEstimator, initial_params
+
+            family = {"epoch_lr": "lr", "epoch_gb": "gb", "epoch_mlp": "mlp"}[model_type]
+            model_name = {
+                "epoch_lr": f"{sport_code}_logistic_regression_epoch",
+                "epoch_gb": f"{sport_code}_gradient_boosting_epoch",
+                "epoch_mlp": f"{sport_code}_residual_mlp_epoch",
+            }[model_type]
+            params = dict(initial_params(family))
+            params.update(overrides.get("params") or {})
+            hyperparameters = {
+                "family": family,
+                "params": params,
+                "calibration": "sigmoid",
+                "calibration_scheme": CALIBRATION_SCHEME,
+                "random_state": self.random_seed,
+                "version_tag": "tennis_v3.0.0",
+            }
+            if family == "mlp":
+                estimator = ResidualEpochEstimator(params=params)
+            else:
+                base = build_logistic_regression_pipeline().estimator if family == "lr" else build_gradient_boosting_pipeline().estimator
+                estimator = EpochTunedEstimator(estimator=base, method="sigmoid", family=family, params=params)
         else:
-            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', or 'gbdt'")
+            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', 'gbdt', 'epoch_lr', 'epoch_gb', or 'epoch_mlp'")
         return model_name, estimator, hyperparameters
 
     def _train_locked(
@@ -265,6 +317,8 @@ class ModelTrainer:
         version_tag: Optional[str],
         hyperparameters: Dict[str, Any],
         started_at: datetime,
+        prepared_matches: Optional[List[Any]] = None,
+        prepared_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         from sklearn.base import clone
 
@@ -272,7 +326,10 @@ class ModelTrainer:
         builder_version = getattr(dataset_builder.feature_builder, "feature_version", None)
         if builder_version:
             self.feature_version = str(builder_version)
-        matches, feature_names = dataset_builder.load_matches(session)
+        if prepared_matches is None:
+            matches, feature_names = dataset_builder.load_matches(session)
+        else:
+            matches, feature_names = prepared_matches, list(prepared_names or [])
         mode, folds = chronological_folds(len(matches))
 
         if hyperparameters.get("calibration") == "isotonic" and len(matches) < 1000:
@@ -305,6 +362,9 @@ class ModelTrainer:
                 f"(строк {len(X_all)})."
             )
         estimator.fit_matches(saved_matches, feature_names)
+        epoch_report = getattr(estimator, "epoch_report_", None)
+        if epoch_report:
+            hyperparameters["final_epochs"] = epoch_report
         base_cut = _holdout_cut(len(saved_matches), estimator.calibration_fraction)
         X_train, y_train, _base_weights = stack_matches(saved_matches[:base_cut] or saved_matches)
 
@@ -379,7 +439,10 @@ class ModelTrainer:
         }
 
         # 5. Serialize model checkpoint. The tag is only the version of this line.
-        m_tag = "lr" if model_type == "lr" else "gb"
+        if model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
+            m_tag = model_type
+        else:
+            m_tag = "lr" if model_type == "lr" else "gb"
         if version_tag is None:
             existing_tags = [
                 row[0]
@@ -484,6 +547,45 @@ class ModelTrainer:
             "git_commit": get_git_commit_hash(),
             "feature_version": self.feature_version,
         }
+
+    def _prepare_epoch_line(self, session: Session, estimator: Any, hyperparameters: Dict[str, Any], sport_code: str):
+        """Search hyperparameters on all but the latest 100 matches."""
+        from .dataset import thin_match
+        from .epoch_fit import evaluate_family, search_until_plateau
+        from .models import _holdout_cut
+        from .epoch_fit import split_holdout
+
+        matches, names = get_dataset_builder(sport_code).load_matches(session)
+        trainable, holdout = split_holdout(matches)
+        family = str(hyperparameters["family"])
+        hyperparameters["holdout_event_ids"] = [str(match.event_id) for match in holdout]
+        hyperparameters["holdout_count"] = len(holdout)
+        cut = _holdout_cut(len(trainable), 0.2)
+        search_train = [thin_match(match) for match in trainable[:cut]]
+        search_val = [thin_match(match) for match in trainable[cut:]]
+        logger.info(
+            "Epoch search %s uses %d matches and holds out %d. Validation matches: %d.",
+            family,
+            len(search_train),
+            len(holdout),
+            len(search_val),
+        )
+
+        def evaluate(params: Dict[str, Any], state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+            return evaluate_family(family, params, search_train, search_val, names, state)
+
+        found = search_until_plateau(family, evaluate)
+        params = dict(found["params"])
+        hyperparameters["params"] = params
+        hyperparameters["search"] = {
+            "log_loss": found["log_loss"],
+            "brier": found["brier"],
+            "best_epoch": found.get("best_epoch"),
+            "reason": found.get("reason"),
+            "visited": found.get("visited"),
+        }
+        estimator.params = params
+        return [thin_match(match) for match in trainable], names, estimator, hyperparameters
 
     def train_all(self, session: Session, sport_code: str = "tennis", bump: str = "patch") -> List[Dict[str, Any]]:
         """Trains and registers both baseline models: Logistic Regression & Gradient Boosting for a sport."""

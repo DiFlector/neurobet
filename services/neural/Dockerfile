@@ -41,7 +41,9 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
         "redis>=5.0.4" \
         "sqlalchemy>=2.0.30" \
         "psycopg2-binary>=2.9.9" \
-        "catboost>=1.2.0"
+        "catboost>=1.2.0" \
+        "lightgbm>=4.0.0" \
+        "xgboost>=2.0.0"
 
 RUN mkdir -p /app/models/checkpoints
 

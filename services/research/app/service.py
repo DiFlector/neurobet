@@ -217,6 +217,41 @@ class WebResearchService:
         scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
         evidence_list = [row[2] for row in scored[: request.max_pages]]
 
+        # Check if external predictions exist for this event
+        try:
+            from .predictions.manager import PredictionManager
+            consensus = PredictionManager().get_consensus_for_event(request.event_id)
+            if consensus and consensus.total_predictions > 0:
+                pred_snippet = (
+                    f"Консенсус внешних прогнозистов ({len(consensus.sources)} источников: {', '.join(consensus.sources[:4])}): "
+                    f"Всего прогнозов: {consensus.total_predictions}. "
+                    f"За {request.participant_a}: {consensus.p1_count} ({consensus.p1_share*100:.0f}%), "
+                    f"За {request.participant_b}: {consensus.p2_count} ({consensus.p2_share*100:.0f}%). "
+                    f"Консенсус: {consensus.consensus_pick.upper()} (уверенность {consensus.consensus_confidence:.2f})."
+                )
+                if consensus.expert_snippets:
+                    pred_snippet += " Выдержки экспертов: " + " | ".join(consensus.expert_snippets[:2])
+
+                consensus_evidence = ResearchEvidence(
+                    evidence_id=f"ev_pred_{uuid.uuid4().hex[:8]}",
+                    url="internal://predictions/consensus",
+                    normalized_url="internal://predictions/consensus",
+                    domain="expert_consensus",
+                    title=f"Консенсус прогнозов на матч ({consensus.total_predictions} источников)",
+                    published_at=datetime.now(timezone.utc),
+                    retrieved_at=datetime.now(timezone.utc),
+                    age_seconds=0,
+                    snippet=pred_snippet[:1000],
+                    content_hash=f"hash_consensus_{request.event_id}",
+                    relevance_score=1.0,
+                    freshness_score=1.0,
+                    is_live_score_authority=False,
+                )
+                evidence_list.insert(0, consensus_evidence)
+        except Exception as e:
+            logger.debug(f"Could not load prediction consensus for research: {e}")
+
+
         # 4. Formulate summary
         if evidence_list:
             avg_rel = sum(float(e.relevance_score) for e in evidence_list) / len(evidence_list)

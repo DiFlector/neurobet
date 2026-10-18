@@ -329,7 +329,9 @@ class TennisPipeline:
             return
         meta["set_winners"] = known
         db_event.metadata_json = meta
-        self._settle_closed_sets(db_event)
+        # Set winners observed in the live feed are informational only.
+        # Settlement is delayed until the official Fonbet results feed confirms
+        # the completed match, including its final set.
 
     def _settle_closed_sets(self, db_event) -> None:
         try:

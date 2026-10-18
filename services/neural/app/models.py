@@ -214,21 +214,31 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
             and _both_classes(base_labels)
             and _both_classes(cal_labels)
         )
-        base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
+        supplied = getattr(self, "_supplied_base", None)
         if not use_calibration:
-            all_rows = base_rows if len(cal_rows) == 0 else np.vstack([base_rows, cal_rows])
-            all_labels = base_labels if len(cal_labels) == 0 else np.concatenate([base_labels, cal_labels])
-            if base_weights is None or cal_weights is None or len(cal_rows) == 0:
-                all_weights = base_weights
+            if supplied is not None:
+                self._supplied_base = None
+                self.model_ = supplied
             else:
-                all_weights = np.concatenate([base_weights, cal_weights])
-            self.model_ = fit_estimator(base, all_rows, all_labels, all_weights)
+                base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
+                all_rows = base_rows if len(cal_rows) == 0 else np.vstack([base_rows, cal_rows])
+                all_labels = base_labels if len(cal_labels) == 0 else np.concatenate([base_labels, cal_labels])
+                if base_weights is None or cal_weights is None or len(cal_rows) == 0:
+                    all_weights = base_weights
+                else:
+                    all_weights = np.concatenate([base_weights, cal_weights])
+                self.model_ = fit_estimator(base, all_rows, all_labels, all_weights)
             self.calibration_report_ = {
                 "match": {"method": None, "rows": int(len(cal_rows)), "reason": "calibration_skipped"},
                 "set": {"method": None, "rows": 0, "reason": "no_market_split"},
             }
             return
-        fitted = fit_estimator(base, base_rows, base_labels, base_weights)
+        if supplied is None:
+            base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
+            fitted = fit_estimator(base, base_rows, base_labels, base_weights)
+        else:
+            fitted = supplied
+            self._supplied_base = None
         self.model_ = _HoldoutCalibrator(fitted, method)
         self.applied_calibration_ = method
         self.model_.fit_holdout(cal_rows, cal_labels, cal_weights)
@@ -240,8 +250,13 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
 
     def _fit_market_calibrators(self, base_rows, base_labels, base_weights, later, loss_gamma: float = 0.0) -> None:
         """One base model. Each market family is calibrated only on its own later rows."""
-        base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
-        fitted = fit_estimator(clone(self.estimator), base_rows, base_labels, base_weights)
+        supplied = getattr(self, "_supplied_base", None)
+        if supplied is None:
+            base_weights = weighted_for_gamma(self.estimator, base_rows, base_labels, base_weights, loss_gamma)
+            fitted = fit_estimator(clone(self.estimator), base_rows, base_labels, base_weights)
+        else:
+            fitted = supplied
+            self._supplied_base = None
         match_rows, match_labels, match_weights = stack_matches(
             [match for match in (project_market(item, "match") for item in later) if match.rows]
         )

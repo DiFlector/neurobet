@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from db.models.events import Event
 from db.models.odds import Market, MarketSelection, OddsSnapshot
 from db.models.betting import VirtualAccount, Bet, LedgerEntry
+from db.models.ml_registry import ModelVersion
+from db.models.predictions import LLMDecision, MLPrediction
 from sports_core import registry
 # Ensure tennis adapter is loaded
 try:
@@ -137,6 +139,119 @@ class BetValidationPipeline:
             )
         passed.append("SPORT_RULES")
 
+        policy_min_edge = self.config.min_edge
+        if proposal.get("policy_min_edge") is not None:
+            policy_min_edge = float(proposal["policy_min_edge"])
+        if proposal.get("enforce_sport_policy"):
+            sport_ok, sport_code_reason, sport_detail = registry.assess_execution(proposal)
+            if not sport_ok:
+                failed.append("SPORT_EXECUTION")
+                return ValidationReport(
+                    is_accepted=False,
+                    rejection_code=sport_code_reason or reject_codes.SPORT_RULE_VIOLATION,
+                    checks_passed=passed,
+                    checks_failed=failed,
+                    details=sport_detail,
+                )
+            if sport_detail.get("policy_min_edge") is not None:
+                policy_min_edge = float(sport_detail["policy_min_edge"])
+            passed.append("SPORT_EXECUTION")
+
+        linked_prediction = None
+        if proposal.get("ml_prediction_id"):
+            try:
+                linked_prediction = session.get(MLPrediction, uuid.UUID(str(proposal["ml_prediction_id"])))
+            except (ValueError, TypeError):
+                linked_prediction = None
+        if linked_prediction is not None:
+            if bool(linked_prediction.is_shadow):
+                failed.append("MODEL_STATUS")
+                return ValidationReport(
+                    is_accepted=False,
+                    rejection_code=reject_codes.SHADOW_MODEL,
+                    checks_passed=passed,
+                    checks_failed=failed,
+                    details={"ml_prediction_id": str(linked_prediction.id)},
+                )
+            predicted_at = linked_prediction.created_at
+            line_observed = proposal.get("line_observed_at")
+            if line_observed:
+                try:
+                    predicted_at = datetime.fromisoformat(str(line_observed).replace("Z", "+00:00"))
+                except ValueError:
+                    predicted_at = linked_prediction.created_at
+            if predicted_at.tzinfo is None:
+                predicted_at = predicted_at.replace(tzinfo=timezone.utc)
+            prediction_age = (now - predicted_at).total_seconds()
+            if prediction_age > self.config.max_prediction_age_sec:
+                failed.append("PREDICTION_FRESHNESS")
+                return ValidationReport(
+                    is_accepted=False,
+                    rejection_code=reject_codes.STALE_PREDICTION,
+                    checks_passed=passed,
+                    checks_failed=failed,
+                    details={"age_seconds": round(prediction_age, 2)},
+                )
+            detail = linked_prediction.outcomes_detail or {}
+            model_name = str(proposal.get("model_name") or detail.get("model_name") or "")
+            active_model = session.execute(
+                select(ModelVersion).where(
+                    ModelVersion.sport_code == sport_code,
+                    ModelVersion.version_tag == linked_prediction.model_version,
+                    ModelVersion.status == "ACTIVE",
+                )
+            ).scalars().first()
+            if model_name:
+                named = session.execute(
+                    select(ModelVersion).where(
+                        ModelVersion.sport_code == sport_code,
+                        ModelVersion.model_name == model_name,
+                        ModelVersion.version_tag == linked_prediction.model_version,
+                        ModelVersion.status == "ACTIVE",
+                    )
+                ).scalars().first()
+                active_model = named
+            if active_model is None:
+                failed.append("MODEL_STATUS")
+                return ValidationReport(
+                    is_accepted=False,
+                    rejection_code=reject_codes.MODEL_NOT_ACTIVE,
+                    checks_passed=passed,
+                    checks_failed=failed,
+                    details={"model_version": linked_prediction.model_version, "model_name": model_name},
+                )
+            passed.append("MODEL_STATUS")
+
+        if proposal.get("llm_decision_id"):
+            try:
+                linked_llm = session.get(LLMDecision, uuid.UUID(str(proposal["llm_decision_id"])))
+            except (ValueError, TypeError):
+                linked_llm = None
+            if linked_llm is not None:
+                llm_at = linked_llm.created_at
+                if llm_at.tzinfo is None:
+                    llm_at = llm_at.replace(tzinfo=timezone.utc)
+                llm_age = (now - llm_at).total_seconds()
+                if llm_age > self.config.max_llm_age_sec:
+                    failed.append("LLM_FRESHNESS")
+                    return ValidationReport(
+                        is_accepted=False,
+                        rejection_code=reject_codes.STALE_LLM,
+                        checks_passed=passed,
+                        checks_failed=failed,
+                        details={"age_seconds": round(llm_age, 2)},
+                    )
+                if str(linked_llm.verdict or "").upper() == "NO_BET":
+                    failed.append("LLM_VERDICT")
+                    return ValidationReport(
+                        is_accepted=False,
+                        rejection_code=reject_codes.LLM_DATA_INSUFFICIENT,
+                        checks_passed=passed,
+                        checks_failed=failed,
+                        details={"verdict": linked_llm.verdict},
+                    )
+                passed.append("LLM_FRESHNESS")
+
         # ---------------------------------------------------------------------
         # 3. Event Existence, Active State, and Freshness
         # ---------------------------------------------------------------------
@@ -198,10 +313,16 @@ class BetValidationPipeline:
         # ---------------------------------------------------------------------
         # 4. Market & Selection Existence & Status
         # ---------------------------------------------------------------------
+        base_name, _, line_text = str(market_name or "").partition(":")
         market_stmt = select(Market).where(
             Market.event_id == event.id,
-            (Market.market_type == market_name) | (Market.name == market_name),
+            (Market.market_type == market_name) | (Market.name == market_name) | (Market.market_type == base_name),
         )
+        if line_text:
+            try:
+                market_stmt = market_stmt.where(Market.line_value == float(line_text))
+            except ValueError:
+                market_stmt = market_stmt.where(Market.market_type == market_name)
         market = session.execute(market_stmt).scalars().first()
         if not market:
             failed.append("MARKET_EXISTS")
@@ -309,14 +430,14 @@ class BetValidationPipeline:
             )
         passed.append("CONFIDENCE_THRESHOLD")
 
-        if edge < self.config.min_edge:
+        if edge < policy_min_edge:
             failed.append("EDGE_THRESHOLD")
             return ValidationReport(
                 is_accepted=False,
                 rejection_code=reject_codes.EDGE_TOO_LOW,
                 checks_passed=passed,
                 checks_failed=failed,
-                details={"edge": edge, "min": self.config.min_edge},
+                details={"edge": edge, "min": policy_min_edge},
             )
         passed.append("EDGE_THRESHOLD")
 
@@ -340,7 +461,7 @@ class BetValidationPipeline:
         effective_edge = (model_probability * current_odds) - 1.0
         # Also check relative drop from proposed bookmaker_odds
         min_acceptable_odds = bookmaker_odds * (1.0 - self.config.allowed_slippage_pct)
-        if effective_edge < self.config.min_edge or current_odds < min_acceptable_odds:
+        if effective_edge < policy_min_edge or current_odds < min_acceptable_odds:
             failed.append("SLIPPAGE_EDGE")
             return ValidationReport(
                 is_accepted=False,
@@ -353,7 +474,7 @@ class BetValidationPipeline:
                     "bookmaker_odds": bookmaker_odds,
                     "current_odds": current_odds,
                     "effective_edge": round(effective_edge, 4),
-                    "min_edge": self.config.min_edge,
+                    "min_edge": policy_min_edge,
                 },
             )
         passed.append("SLIPPAGE_EDGE")

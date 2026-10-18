@@ -7,7 +7,7 @@ matches and keeps its bankroll outside the production ledger.
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .base import BaseContract, utc_now
 
@@ -21,6 +21,10 @@ class BacktestReplayConfig(BaseContract):
         description="Markets to score. Tennis v2 and the composite model can score sets; other checkpoints ignore set_winner.",
     )
     match_limit: int = Field(default=100, ge=1, le=2000, description="How many latest finished matches to replay")
+    event_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Replay these event UUIDs. When set, match_limit is not used to choose matches.",
+    )
     min_edge: float = Field(default=0.02, ge=0.0, description="Minimum model edge required to commit a side")
     min_probability: float = Field(default=0.40, ge=0.0, le=1.0, description="Minimum model probability")
     odds_gate_mode: Literal["live", "range"] = Field(
@@ -35,6 +39,10 @@ class BacktestReplayConfig(BaseContract):
     mid_odds_hi: float = Field(default=1.80, gt=1.0, description="Tennis middle-price window end, exclusive")
     match_odds_hi: float = Field(default=2.40, gt=1.0, description="Tennis match window end, exclusive")
     observe_set: int = Field(default=1, ge=1, le=5, description="Tennis set number that is watched and not staked")
+    stake_sets: Optional[List[int]] = Field(
+        default=None,
+        description="When set, only these tennis set numbers are staked. Other sets are skipped.",
+    )
     confirmations: int = Field(default=2, ge=2, le=5, description="Agreeing snapshots required before a bet")
     max_odds_staleness_sec: float = Field(default=15.0, gt=0.0, description="Reject a fill when the line is older than this")
     execution_latency_sec: float = Field(default=2.0, ge=0.0, description="Delay between the decision and the fill")
@@ -46,6 +54,37 @@ class BacktestReplayConfig(BaseContract):
         gt=0.0,
         description="When available balance falls below this value, count a bankruptcy and restore the initial balance",
     )
+
+    @field_validator("stake_sets")
+    @classmethod
+    def stake_sets_are_set_numbers(cls, value: Optional[List[int]]) -> Optional[List[int]]:
+        if not value:
+            return None
+        cleaned = []
+        for item in value:
+            number = int(item)
+            if number < 1 or number > 5:
+                raise ValueError("stake_sets must be set numbers from 1 to 5")
+            if number not in cleaned:
+                cleaned.append(number)
+        return cleaned
+
+    @field_validator("event_ids")
+    @classmethod
+    def event_ids_are_unique_uuids(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if not value:
+            return value
+        import uuid
+
+        cleaned = []
+        for item in value:
+            try:
+                cleaned.append(str(uuid.UUID(str(item))))
+            except ValueError as exc:
+                raise ValueError("event_ids must contain UUIDs") from exc
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("event_ids must be unique")
+        return cleaned
 
     @model_validator(mode="after")
     def bounds(self) -> "BacktestReplayConfig":
@@ -77,6 +116,49 @@ class BacktestRunRequest(BaseContract):
 
     selector: BacktestModelSelector
     config: BacktestReplayConfig = Field(default_factory=BacktestReplayConfig)
+
+
+class StrategySearchRequest(BaseContract):
+    """Search tennis stake gates on one fixed window. The final window is not used."""
+
+    model_version_id: str
+    sport_code: str = "tennis"
+    search_event_ids: List[str] = Field(default_factory=list)
+    final_event_ids: List[str] = Field(default_factory=list)
+    model_final_event_ids: List[str] = Field(default_factory=list)
+
+    @field_validator("model_version_id")
+    @classmethod
+    def model_uuid(cls, value: str) -> str:
+        import uuid
+
+        try:
+            return str(uuid.UUID(str(value)))
+        except ValueError as exc:
+            raise ValueError("model_version_id must be a UUID") from exc
+
+    @field_validator("search_event_ids", "final_event_ids", "model_final_event_ids")
+    @classmethod
+    def unique_uuids(cls, value: List[str]) -> List[str]:
+        import uuid
+
+        cleaned = []
+        for item in value:
+            try:
+                cleaned.append(str(uuid.UUID(str(item))))
+            except ValueError as exc:
+                raise ValueError("event ids must be UUIDs") from exc
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("event ids must be unique")
+        return cleaned
+
+    @model_validator(mode="after")
+    def windows_do_not_overlap(self) -> "StrategySearchRequest":
+        groups = [set(self.search_event_ids), set(self.final_event_ids), set(self.model_final_event_ids)]
+        for left, right in ((0, 1), (0, 2), (1, 2)):
+            if groups[left] & groups[right]:
+                raise ValueError("strategy windows must not overlap")
+        return self
 
 
 class BacktestBetRecord(BaseContract):

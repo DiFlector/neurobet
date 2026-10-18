@@ -2,7 +2,7 @@ from .quality import DataQualityIssue
 from .sports import Sport, League, Participant, ParticipantAlias
 from .events import Event, EventStateSnapshot, RawSnapshot
 from .odds import Market, MarketSelection, OddsSnapshot, OddsChangeEvent
-from .predictions import FeatureSnapshot, MLPrediction, LLMDecision, ModelBetJournal
+from .predictions import FeatureSnapshot, MLPrediction, LLMDecision, ModelBetJournal, ExternalPrediction
 from .research import WebResearchRun, WebDocument, WebEvidence
 from .betting import (
     VirtualAccount,
@@ -47,6 +47,7 @@ __all__ = [
     "MLPrediction",
     "LLMDecision",
     "ModelBetJournal",
+    "ExternalPrediction",
     "WebResearchRun",
     "WebDocument",
     "WebEvidence",

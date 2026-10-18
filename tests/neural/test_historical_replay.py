@@ -262,18 +262,17 @@ def test_replay_watches_the_first_set_and_stakes_the_second():
 
 class _MatchModel(_V2Predictor):
     checkpoint_data = {
-        "version_tag": "tennis_v2.3.0",
-        "model_name": "tennis_logistic_regression",
-        "feature_names": [],
+        "version_tag": "tennis_v3.1.0",
+        "model_name": "tennis_hist_gradient_roi",
+        "feature_names": ["market_is_set", "set_index"],
     }
 
 
 class _SetModel(_Predictor):
     checkpoint_data = {
-        "version_tag": "tennis_v1.0.0",
-        "model_name": "tennis_composite",
-        "kind": "composite",
-        "feature_names": [],
+        "version_tag": "tennis_v3.0.0",
+        "model_name": "tennis_gradient_boosting_epoch",
+        "feature_names": ["market_is_set", "set_index"],
     }
 
 

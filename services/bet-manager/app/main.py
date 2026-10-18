@@ -118,6 +118,17 @@ class ProposalRequest(BaseModel):
     suggested_stake: float
     ml_prediction_id: Optional[str] = None
     llm_decision_id: Optional[str] = None
+    model_name: Optional[str] = None
+    model_version: Optional[str] = None
+    enforce_sport_policy: bool = False
+    policy_min_edge: Optional[float] = None
+    data_quality_score: Optional[float] = None
+    research_quality: Optional[float] = None
+    llm_verdict: Optional[str] = None
+    contradictions: int = 0
+    expected_value: Optional[float] = None
+    config_version: Optional[str] = None
+    line_observed_at: Optional[str] = None
 
 
 @app.get("/health")

@@ -28,8 +28,8 @@ def main():
     parser.add_argument(
         "--model",
         default="all",
-        choices=["lr", "gb", "all"],
-        help="Model type: lr, gb, or all",
+        choices=["lr", "gb", "all", "epoch_lr", "epoch_gb", "epoch_mlp"],
+        help="Model type: lr, gb, all, or one tennis_v3.0.0 epoch line",
     )
     parser.add_argument(
         "--checkpoint-dir",

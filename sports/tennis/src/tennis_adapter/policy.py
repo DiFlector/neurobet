@@ -19,8 +19,27 @@ class TennisPolicy:
     min_edge: float = 0.02
     confirmations: int = 2
     observe_set: int = 1
-    match_model: str = "tennis_logistic_regression tennis_v2.3.0"
-    set_model: str = "tennis_composite tennis_v1.0.0"
+    stake_sets: str = "2"
+    match_model: str = "tennis_hist_gradient_roi tennis_v3.1.0"
+    set_model: str = "tennis_gradient_boosting_epoch tennis_v3.0.0"
+    match_gate_mode: str = "live"
+    set_gate_mode: str = "live"
+    match_min_odds: float = 1.30
+    match_max_odds: float = 2.40
+    set_min_odds: float = 1.30
+    set_max_odds: float = 2.40
+    match_min_probability: float = 0.40
+    set_min_probability: float = 0.40
+    match_min_edge: float = 0.02
+    set_min_edge: float = 0.02
+    match_confirmations: int = 2
+    set_confirmations: int = 2
+    kelly_fraction: float = 0.25
+    max_stake_fraction: float = 0.05
+    min_stake: float = 50.0
+    min_data_quality: float = 50.0
+    min_research_quality: float = 0.0
+    max_context_age_seconds: int = 180
 
     def as_dict(self) -> dict:
         return {
@@ -33,8 +52,27 @@ class TennisPolicy:
             "min_edge": self.min_edge,
             "confirmations": self.confirmations,
             "observe_set": self.observe_set,
+            "stake_sets": self.stake_sets,
             "match_model": self.match_model,
             "set_model": self.set_model,
+            "match_gate_mode": self.match_gate_mode,
+            "set_gate_mode": self.set_gate_mode,
+            "match_min_odds": self.match_min_odds,
+            "match_max_odds": self.match_max_odds,
+            "set_min_odds": self.set_min_odds,
+            "set_max_odds": self.set_max_odds,
+            "match_min_probability": self.match_min_probability,
+            "set_min_probability": self.set_min_probability,
+            "match_min_edge": self.match_min_edge,
+            "set_min_edge": self.set_min_edge,
+            "match_confirmations": self.match_confirmations,
+            "set_confirmations": self.set_confirmations,
+            "kelly_fraction": self.kelly_fraction,
+            "max_stake_fraction": self.max_stake_fraction,
+            "min_stake": self.min_stake,
+            "min_data_quality": self.min_data_quality,
+            "min_research_quality": self.min_research_quality,
+            "max_context_age_seconds": self.max_context_age_seconds,
         }
 
 
@@ -84,15 +122,49 @@ def policy_from_mapping(data: Optional[Mapping]) -> TennisPolicy:
     return TennisPolicy(**base)
 
 
+def _is_set_market(market: str) -> bool:
+    text = str(market or "")
+    return text == "set_winner" or text.startswith("set_winner:")
+
+
+def market_limits(market: str, policy: Optional[TennisPolicy] = None) -> dict:
+    """Numbers for one market. A zero confirmation count keeps the shared value."""
+    limits = policy or load_tennis_policy()
+    if _is_set_market(market):
+        return {
+            "mode": str(limits.set_gate_mode or "live"),
+            "min_odds": float(limits.set_min_odds),
+            "max_odds": float(limits.set_max_odds),
+            "min_probability": float(limits.set_min_probability),
+            "min_edge": float(limits.set_min_edge),
+            "confirmations": int(limits.set_confirmations or limits.confirmations),
+        }
+    return {
+        "mode": str(limits.match_gate_mode or "live"),
+        "min_odds": float(limits.match_min_odds),
+        "max_odds": float(limits.match_max_odds),
+        "min_probability": float(limits.match_min_probability),
+        "min_edge": float(limits.match_min_edge),
+        "confirmations": int(limits.match_confirmations or limits.confirmations),
+    }
+
+
 def windows_allow(probability: float, odds: float, market: str, policy: Optional[TennisPolicy] = None) -> tuple:
     """Tennis price windows. Upper bounds are excluded."""
     limits = policy or load_tennis_policy()
-    if float(probability) < limits.min_probability:
+    chosen = market_limits(market, limits)
+    if float(probability) < chosen["min_probability"]:
         return False, "LOW_PROBABILITY"
     price = float(odds)
+    if chosen["mode"] == "range":
+        if price < chosen["min_odds"]:
+            return False, "ODDS_TOO_SHORT"
+        if price >= chosen["max_odds"]:
+            return False, "ODDS_TOO_LONG"
+        return True, ""
     if limits.short_odds_lo <= price < limits.short_odds_hi or limits.mid_odds_lo <= price < limits.mid_odds_hi:
         return True, ""
-    if market == "match_winner" and limits.mid_odds_hi <= price < limits.match_odds_hi:
+    if not _is_set_market(market) and limits.mid_odds_hi <= price < limits.match_odds_hi:
         return True, ""
     if price < limits.short_odds_lo:
         return False, "ODDS_TOO_SHORT"
@@ -111,18 +183,18 @@ def _assigned(text: str) -> tuple:
 def model_commits_market(model_name: str, version_tag: str, market: str) -> bool:
     """The named match line registers only the match. The named set line registers only sets."""
     policy = load_tennis_policy()
-    identity = (str(model_name or ""), str(version_tag or ""))
+    name = str(model_name or "")
     text = str(market or "")
+    match_name = _assigned(policy.match_model)[0]
+    set_name = _assigned(policy.set_model)[0]
     if text == "match_winner":
-        own, other = _assigned(policy.match_model), _assigned(policy.set_model)
-    elif text == "set_winner" or text.startswith("set_winner:"):
-        own, other = _assigned(policy.set_model), _assigned(policy.match_model)
-    else:
+        if name and name == set_name:
+            return False
         return True
-    if identity == own:
+    if text == "set_winner" or text.startswith("set_winner:"):
+        if name and name == match_name:
+            return False
         return True
-    if identity == other:
-        return False
     return True
 
 
@@ -147,3 +219,30 @@ def set_is_observation_only(market: Union[str, int], sport_code: str, observe_se
         return False
     target = load_tennis_policy().observe_set if observe_set is None else int(observe_set)
     return number == target
+
+
+def stake_set_numbers(policy: Optional[TennisPolicy] = None) -> Optional[set]:
+    """Configured stake sets. An empty value leaves every non-observed set open."""
+    text = str((policy or load_tennis_policy()).stake_sets or "").strip().lower()
+    if not text or text == "all":
+        return None
+    numbers = set()
+    for part in text.replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        numbers.add(int(float(part)))
+    return numbers or None
+
+
+def set_is_stake_allowed(market: Union[str, int], sport_code: str, policy: Optional[TennisPolicy] = None) -> bool:
+    """True when this tennis set may be journaled. Other sports are unchanged."""
+    if str(sport_code or "").strip().lower() != "tennis":
+        return True
+    number = set_number(market)
+    if number is None:
+        return True
+    allowed = stake_set_numbers(policy)
+    if allowed is None:
+        return True
+    return number in allowed

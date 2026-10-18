@@ -41,6 +41,8 @@ def update_healthy_file():
         pass
 
 
+from .predictions import PredictionCoordinator, PredictionManager
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Web Research Service started.")
@@ -53,6 +55,21 @@ async def startup_event():
             await asyncio.sleep(5)
 
     asyncio.create_task(heartbeat())
+
+    # Background task for external predictions (every 60 minutes)
+    async def periodic_predictions():
+        coordinator = PredictionCoordinator()
+        # initial delay 30s after startup
+        await asyncio.sleep(30)
+        while True:
+            try:
+                logger.info("Running periodic external predictions collection (60m interval)...")
+                coordinator.run_cycle()
+            except Exception as e:
+                logger.error(f"Error in periodic predictions loop: {e}", exc_info=True)
+            await asyncio.sleep(3600)
+
+    asyncio.create_task(periodic_predictions())
 
 
 @app.get("/health")
@@ -103,6 +120,30 @@ def get_cache_info() -> Dict[str, Any]:
 def get_research_history() -> List[Dict[str, Any]]:
     """Returns recent research executions."""
     return research_service.cache.get_history()
+
+
+@app.post("/api/predictions/scrape")
+def trigger_predictions_scrape() -> Dict[str, Any]:
+    """Manually trigger scraping of pre-match predictions across all 9 portals."""
+    coordinator = PredictionCoordinator()
+    return coordinator.run_cycle()
+
+
+@app.get("/api/predictions/consensus/{event_id}")
+def get_prediction_consensus(event_id: str) -> Dict[str, Any]:
+    """Returns consensus summary across all external predictions for an event."""
+    manager = PredictionManager()
+    summary = manager.get_consensus_for_event(event_id)
+    return summary.model_dump()
+
+
+@app.post("/api/predictions/cleanup")
+def cleanup_expired_predictions() -> Dict[str, Any]:
+    """Manually cleans up unmatched predictions past 24h TTL."""
+    manager = PredictionManager()
+    deleted = manager.cleanup_expired_unmatched_predictions()
+    return {"status": "ok", "deleted_expired_count": deleted}
+
 
 
 if __name__ == "__main__":

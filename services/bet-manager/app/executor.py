@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.events import Event
@@ -19,6 +20,7 @@ from bankroll.service import BankrollService
 
 from .config import BetManagerConfig, config as default_config
 from .pipeline import BetValidationPipeline, ValidationReport
+from . import reject_codes
 
 logger = logging.getLogger("bet-manager.executor")
 
@@ -73,6 +75,27 @@ class SimulationExecutor:
             as_of=as_of,
         )
 
+        if report.rejection_code == reject_codes.DUPLICATE_PROPOSAL:
+            existing = session.execute(
+                select(Bet).where(
+                    Bet.event_id == uuid.UUID(str(proposal_dict["event_id"])),
+                    Bet.market == str(proposal_dict.get("market") or ""),
+                    Bet.outcome == str(proposal_dict.get("outcome") or ""),
+                    Bet.status == "PENDING",
+                )
+            ).scalars().first()
+            if existing is not None and str(existing.proposal_id) == str(proposal_dict.get("proposal_id") or ""):
+                session.rollback()
+                return ExecutionResult(
+                    proposal_id=str(proposal_dict.get("proposal_id") or existing.proposal_id),
+                    is_accepted=True,
+                    bet_id=str(existing.id),
+                    checks_passed=report.checks_passed,
+                    effective_odds=float(existing.odds),
+                    stake=float(existing.stake),
+                    details={"idempotent": True},
+                )
+
         proposal_id_str = str(proposal_dict.get("proposal_id") or uuid.uuid4())
         try:
             prop_uuid = uuid.UUID(proposal_id_str)
@@ -89,18 +112,7 @@ class SimulationExecutor:
                     cand_ml = uuid.UUID(str(proposal_dict["ml_prediction_id"]))
                     from db.models.predictions import MLPrediction
                     ml_pred_record = session.get(MLPrediction, cand_ml)
-                    if ml_pred_record:
-                        if getattr(ml_pred_record, "is_shadow", False):
-                            return (
-                                BetValidationResult(
-                                    is_valid=False,
-                                    status="REJECTED",
-                                    rejection_reason="SHADOW_MODEL_CANNOT_BET",
-                                    risk_score=1.0,
-                                    details={"is_shadow": True, "message": "Linked MLPrediction is from a shadow model"},
-                                ),
-                                None,
-                            )
+                    if ml_pred_record and not bool(ml_pred_record.is_shadow):
                         ml_pred_id = cand_ml
                 except Exception:
                     ml_pred_id = None
@@ -141,16 +153,28 @@ class SimulationExecutor:
                     llm_decision_id=llm_dec_id,
                 )
                 session.add(db_prop)
-                session.flush()
+                try:
+                    session.flush()
+                except Exception:
+                    session.rollback()
+                    db_prop = session.get(DBBetProposal, prop_uuid)
+                    if db_prop is None:
+                        raise
 
         # 3. Persist audit validation result
         if db_prop:
+            audit = dict(report.details or {})
+            audit.setdefault("expected_value", report.effective_edge)
+            audit.setdefault("max_loss", float(proposal_dict.get("suggested_stake") or 0.0))
+            if report.effective_odds and audit["max_loss"]:
+                audit.setdefault("potential_win", round(audit["max_loss"] * (report.effective_odds - 1.0), 2))
             db_val = DBBetValidationResult(
                 proposal_id=db_prop.id,
                 is_accepted=report.is_accepted,
                 rejection_code=report.rejection_code,
                 checks_passed=report.checks_passed,
                 checks_failed=report.checks_failed,
+                details=audit,
             )
             session.add(db_val)
             session.flush()
@@ -158,6 +182,20 @@ class SimulationExecutor:
         # 4. If accepted, atomically place virtual bet via BankrollService
         placed_bet_id: Optional[str] = None
         if report.is_accepted and db_prop:
+            existing = session.execute(
+                select(Bet).where(Bet.proposal_id == db_prop.id)
+            ).scalars().first()
+            if existing is not None:
+                session.commit()
+                return ExecutionResult(
+                    proposal_id=proposal_id_str,
+                    is_accepted=True,
+                    bet_id=str(existing.id),
+                    checks_passed=report.checks_passed,
+                    effective_odds=float(existing.odds),
+                    stake=float(existing.stake),
+                    details=report.details,
+                )
             bet = BankrollService.place_bet(
                 session=session,
                 account_id=account.id,

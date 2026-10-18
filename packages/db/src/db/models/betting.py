@@ -74,6 +74,7 @@ class BetValidationResult(Base, UUIDPrimaryKeyMixin):
     rejection_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     checks_passed: Mapped[List[str]] = mapped_column(JSONB, default=list, nullable=False)
     checks_failed: Mapped[List[str]] = mapped_column(JSONB, default=list, nullable=False)
+    details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (

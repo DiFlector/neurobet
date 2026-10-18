@@ -440,14 +440,54 @@ class TennisSportAdapter:
 
     def validate_sport_rules(self, proposal: Dict[str, Any]) -> bool:
         """Validate tennis bet proposal rules."""
-        market = proposal.get("market")
-        if market not in self.supported_markets():
+        market = str(proposal.get("market") or "")
+        base = market.split(":", 1)[0]
+        if market not in self.supported_markets() and base not in self.supported_markets():
             return False
 
-        # Additional tennis specific checks (e.g. valid outcome in match_winner)
-        if market == "match_winner":
-            selection = proposal.get("selection")
-            if selection not in ("player_a", "player_b"):
-                return False
+        selection = proposal.get("selection") or proposal.get("outcome")
+        if base in ("match_winner", "set_winner") and selection not in ("player_a", "player_b"):
+            return False
 
         return True
+
+    def assess_execution(self, proposal: Dict[str, Any]) -> tuple:
+        """Apply tennis windows, assigned lines and quote gates. Core stays sport-agnostic."""
+        from .policy import (
+            load_tennis_policy,
+            market_limits,
+            model_commits_market,
+            set_is_observation_only,
+            set_is_stake_allowed,
+            windows_allow,
+        )
+        from .stake import expected_value
+
+        market = str(proposal.get("market") or "")
+        sport = str(proposal.get("sport_code") or "tennis")
+        if set_is_observation_only(market, sport) or not set_is_stake_allowed(market, sport):
+            return False, "SPORT_RULE_VIOLATION", {"reason": "SET_NOT_STAKED"}
+        model_name = proposal.get("model_name")
+        model_version = proposal.get("model_version")
+        if model_name and model_version and not model_commits_market(str(model_name), str(model_version), market):
+            return False, "SPORT_RULE_VIOLATION", {"reason": "MODEL_MARKET_MISMATCH"}
+        probability = float(proposal.get("model_probability") or 0.0)
+        odds = float(proposal.get("bookmaker_odds") or 0.0)
+        allowed, window_reason = windows_allow(probability, odds, market)
+        if not allowed:
+            return False, "SPORT_RULE_VIOLATION", {"reason": window_reason}
+        if expected_value(probability, odds) <= 0.0:
+            return False, "EDGE_TOO_LOW", {"reason": "NEGATIVE_EV"}
+        quality = proposal.get("data_quality_score")
+        limits = load_tennis_policy()
+        if quality is not None and float(quality) < float(limits.min_data_quality):
+            return False, "QUALITY_TOO_LOW", {"quality": quality}
+        research_quality = proposal.get("research_quality")
+        if research_quality is not None and float(research_quality) < float(limits.min_research_quality):
+            return False, "LLM_DATA_INSUFFICIENT", {"research_quality": research_quality}
+        verdict = str(proposal.get("llm_verdict") or "").upper()
+        if verdict == "NO_BET":
+            return False, "LLM_DATA_INSUFFICIENT", {"reason": "LLM_NO_BET"}
+        if int(proposal.get("contradictions") or 0) > 0:
+            return False, "LLM_DATA_INSUFFICIENT", {"reason": "LLM_CONTRADICTION"}
+        return True, None, {"policy_min_edge": market_limits(market)["min_edge"]}

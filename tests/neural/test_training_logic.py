@@ -196,6 +196,18 @@ def test_extreme_prices_and_repeated_states_drop():
     assert kept[-1].score == "1:1 (6-4 4-6)"
 
 
+def test_epoch_holdout_split_keeps_matches_whole():
+    from app.epoch_fit import split_holdout
+
+    matches = [
+        MatchSnapshots(f"m{index}", datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=index), index % 2, [[1.0]], [datetime(2026, 1, 1, tzinfo=timezone.utc)])
+        for index in range(12)
+    ]
+    trainable, holdout = split_holdout(matches, 5)
+    assert [match.event_id for match in holdout] == ["m7", "m8", "m9", "m10", "m11"]
+    assert set(match.event_id for match in trainable).isdisjoint(match.event_id for match in holdout)
+
+
 def test_decision_row_is_chosen_by_the_given_model():
     names = ["current_odds_player_a", "current_odds_player_b", "is_missing_odds"]
     match = MatchSnapshots(
@@ -227,5 +239,6 @@ if __name__ == "__main__":
     test_duplicate_source_keeps_the_richer_line()
     test_conflicting_labels_and_retirements_stay_out()
     test_extreme_prices_and_repeated_states_drop()
+    test_epoch_holdout_split_keeps_matches_whole()
     test_decision_row_is_chosen_by_the_given_model()
     print("test_training_logic: OK")

@@ -480,6 +480,9 @@ class CombinedDecisionPipeline:
 
         fair_odds = round(1.0 / candidate.model_probability, 4) if candidate.model_probability > 0 else candidate.odds
         suggested_stake = self._suggested_stake(session, candidate, verdict)
+        stored_edge = candidate.expected_value if candidate.expected_value is not None else candidate.edge
+        selection_uuid = self._selection_uuid(session, evt_uuid, candidate)
+        ml_prediction_id = self._existing_prediction_id(session, candidate.ml_prediction_id)
 
         proposal = BetProposal(
             id=uuid.uuid4(),
@@ -487,18 +490,63 @@ class CombinedDecisionPipeline:
             sport_code=candidate.sport_code,
             market=candidate.market,
             outcome=candidate.selection,
-            selection_id=uuid.uuid4(),
+            selection_id=selection_uuid,
             bookmaker_odds=candidate.odds,
             fair_odds=fair_odds,
             model_probability=candidate.model_probability,
-            edge=candidate.edge,
+            edge=stored_edge,
             suggested_stake=suggested_stake,
+            ml_prediction_id=ml_prediction_id,
             llm_decision_id=llm_decision_id,
             created_at=utc_now(),
         )
         session.add(proposal)
         session.flush()
         return proposal
+
+    @staticmethod
+    def _existing_prediction_id(session: Session, raw_id: Optional[str]) -> Optional[uuid.UUID]:
+        if not raw_id:
+            return None
+        try:
+            prediction_id = uuid.UUID(str(raw_id))
+        except (TypeError, ValueError):
+            return None
+        from db.models.predictions import MLPrediction
+
+        row = session.get(MLPrediction, prediction_id)
+        if row is None or bool(row.is_shadow):
+            return None
+        return prediction_id
+
+    @staticmethod
+    def _selection_uuid(session: Session, event_id: uuid.UUID, candidate: CandidateItem) -> uuid.UUID:
+        if candidate.selection_id:
+            try:
+                return uuid.UUID(str(candidate.selection_id))
+            except (TypeError, ValueError):
+                pass
+        from sqlalchemy import or_, select
+        from db.models.odds import Market, MarketSelection
+
+        market_name = candidate.market
+        base_name = market_name.split(":", 1)[0]
+        market = session.execute(
+            select(Market).where(
+                Market.event_id == event_id,
+                or_(Market.market_type == market_name, Market.name == market_name, Market.market_type == base_name),
+            )
+        ).scalars().first()
+        if market is not None:
+            selection = session.execute(
+                select(MarketSelection).where(
+                    MarketSelection.market_id == market.id,
+                    MarketSelection.outcome == candidate.selection,
+                )
+            ).scalars().first()
+            if selection is not None:
+                return selection.id
+        return uuid.uuid4()
 
     def _suggested_stake(self, session: Session, candidate: CandidateItem, verdict: Optional[LLMStructuredVerdict]) -> float:
         """Fraction of the current paper balance, scaled by how far LLM context agrees with the side."""

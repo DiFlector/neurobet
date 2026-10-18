@@ -9,6 +9,7 @@ interface MatchTimerProps {
   event: EventItem;
   className?: string;
   betKind?: StakeKind;
+  market?: string;
 }
 
 function asText(value: unknown): string | undefined {
@@ -69,7 +70,8 @@ function setLineText(score: Record<string, any> | undefined): string | undefined
 /** Счёт под подпись ставки: в рамке — то, на что ставится, снизу — остальные сеты. */
 export function getStakeScore(
   evt: EventItem,
-  kind: StakeKind
+  kind: StakeKind,
+  market?: string,
 ): { stake: string; main: string; below?: string } {
   const cs = evt.current_score;
   const rows = completedSets(cs);
@@ -84,10 +86,11 @@ export function getStakeScore(
     : rows.map((row) => `${row.games_a}:${row.games_b}`).join("\n");
 
   if (kind === "set") {
+    const setNumber = /^set_winner:(\d+)$/.exec(market || "")?.[1];
     const current = live ? `${live.games_a}:${live.games_b}` : "0:0";
     const points = live?.detail ? wrapDetail(String(live.detail)) : undefined;
     return {
-      stake: "Победа в сете",
+      stake: setNumber ? `Победа в сете ${setNumber}` : "Победа в сете",
       main: current,
       below: [finished, points].filter(Boolean).join("\n") || undefined,
     };
@@ -171,7 +174,7 @@ export function getDetailedScore(evt: EventItem): { main: string; sub?: string; 
   return { main: "vs" };
 }
 
-export function MatchTimer({ event, className = "", betKind = "match" }: MatchTimerProps) {
+export function MatchTimer({ event, className = "", betKind = "match", market }: MatchTimerProps) {
   const [now, setNow] = React.useState<Date>(new Date());
 
   // Обновление локального времени каждые 15 секунд для актуального обратного отсчета / задержки
@@ -244,7 +247,7 @@ export function MatchTimer({ event, className = "", betKind = "match" }: MatchTi
     timeElement = <span className="text-[10px] text-muted-foreground">Матч завершен</span>;
   }
 
-  const score = getStakeScore(event, betKind);
+  const score = getStakeScore(event, betKind, market);
 
   return (
     <div className={`flex w-full min-w-0 max-w-[7.5rem] flex-col items-center justify-center overflow-hidden text-center ${className}`}>

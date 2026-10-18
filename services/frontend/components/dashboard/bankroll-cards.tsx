@@ -32,9 +32,10 @@ export function BankrollCards({
   const exposure = bankroll?.locked_exposure ?? 0;
 
   const netPnl = performance?.net_pnl ?? 0;
+  // Backend returns ROI in percentage points (e.g. 5.82 means 5.82%).
   const roi = performance?.roi ?? 0;
   const winRate = performance?.win_rate ?? 0;
-  const turnover = performance?.turnover ?? 0;
+  const turnover = performance?.total_turnover ?? 0;
   const drawdown = performance?.max_drawdown_pct ?? 0;
 
   const isPnlPositive = netPnl >= 0;
@@ -122,7 +123,7 @@ export function BankrollCards({
                 : "text-red-600 dark:text-red-400"
             }`}
           >
-            {formatPercent(roi)}
+            {formatPercent(roi / 100)}
           </div>
           <p className="text-[10px] text-muted-foreground truncate">К объему оборота</p>
         </CardContent>
@@ -136,7 +137,7 @@ export function BankrollCards({
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
           </div>
           <div className="font-mono text-sm sm:text-base font-bold tracking-tight text-foreground truncate">
-            {winRate.toFixed(1)}%
+            {(winRate * 100).toFixed(1)}%
           </div>
           <p className="text-[10px] text-muted-foreground truncate">Успешных ставок</p>
         </CardContent>

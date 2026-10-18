@@ -17,6 +17,8 @@ import { Switch } from "@/components/ui/switch";
 import { BetItem, EventItem, PredictionItem, SportItem } from "@/lib/types";
 import { BetOutcomeTone } from "./match-card";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
+import { isPlacedBet, placedEventIds } from "@/lib/placed-bets";
+import { decisionStatus } from "@/lib/decision-status";
 import { MatchCard } from "./match-card";
 
 interface MatchesTabProps {
@@ -67,8 +69,8 @@ export function MatchesTab({
   onInspectEvent,
   loading = false,
 }: MatchesTabProps) {
-  // Режим отображения: по умолчанию (false) показываются только ставки с прогнозом.
-  // При включении тумблера «Показывать все» (true) — выводятся все матчи.
+  // По умолчанию видны только матчи с зарегистрированной ставкой и суммой.
+  // «Показывать все» открывает вердикты без суммы.
   const [showAllMatches, setShowAllMatches] = React.useState(false);
 
   // Available fallback sports if none loaded from API yet
@@ -129,8 +131,16 @@ export function MatchesTab({
     return tones;
   }, [bets]);
 
-  const betEventIds = React.useMemo(() => {
-    return new Set(bets.map((bet) => bet.event_id).filter(Boolean));
+  const betEventIds = React.useMemo(() => placedEventIds(bets), [bets]);
+  const betsByEvent = React.useMemo(() => {
+    const grouped = new Map<string, BetItem[]>();
+    for (const bet of bets) {
+      if (!bet.event_id) continue;
+      const list = grouped.get(bet.event_id) || [];
+      list.push(bet);
+      grouped.set(bet.event_id, list);
+    }
+    return grouped;
   }, [bets]);
 
   const filteredEvents = React.useMemo(() => {
@@ -145,17 +155,12 @@ export function MatchesTab({
       list = list.filter((e) => e.status === "finished");
     }
 
-    // Завершённый матч виден только если Neurobet принял на него ставку.
+    // Завершённый матч виден только если на него есть сумма ставки.
     list = list.filter((e) => e.status !== "finished" || betEventIds.has(e.id));
 
-    // По умолчанию (showAllMatches === false): показывать ТОЛЬКО ставки с прогнозом ML
-    // Если включено (showAllMatches === true): показывать абсолютно все матчи
+    // По умолчанию — только зарегистрированные ставки. «Показывать все» оставляет вердикты.
     if (!showAllMatches) {
-      list = list.filter(
-        (e) =>
-          (e.status === "finished" && betEventIds.has(e.id)) ||
-          (predictions[e.id] && predictions[e.id].length > 0)
-      );
+      list = list.filter((e) => betEventIds.has(e.id));
     }
 
     if (searchQuery.trim()) {
@@ -184,7 +189,6 @@ export function MatchesTab({
     return list;
   }, [
     deduplicatedEvents,
-    predictions,
     betEventIds,
     showAllMatches,
     searchQuery,
@@ -237,7 +241,7 @@ export function MatchesTab({
             <label
               htmlFor="show-all-switch"
               className="cursor-pointer select-none whitespace-nowrap text-xs font-medium text-muted-foreground hover:text-foreground"
-              title="Выключено (по умолчанию): только ставки с прогнозом ML. Включено: показывать абсолютно все матчи (включая ожидающие анализа)."
+              title="Выключено: только матчи со ставкой и суммой. Включено: также вердикты без ставки."
             >
               Показывать все
             </label>
@@ -329,21 +333,45 @@ export function MatchesTab({
             {activeStatus === "finished"
               ? "Neurobet ещё не поставил на завершённые матчи этого вида спорта."
               : !showAllMatches
-              ? "Нет событий с рассчитанными прогнозами ML. Включите тумблер «Показывать все», чтобы увидеть события в очереди анализа."
+              ? "Нет поставленных ставок. Включите «Показывать все», чтобы увидеть матчи с вердиктом без суммы."
               : "По текущим фильтрам нет доступных матчей. Ожидаем обновления данных Fonbet..."}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredEvents.map((evt) => (
-            <MatchCard
-              key={evt.id}
-              event={evt}
-              predictions={predictions[evt.id] || []}
-              betOutcome={betOutcomeByEvent.get(evt.id) || null}
-              onInspect={onInspectEvent}
-            />
-          ))}
+          {filteredEvents.flatMap((evt) => {
+            const eventPredictions = predictions[evt.id] || [];
+            const eventBets = betsByEvent.get(evt.id) || [];
+            const markets = new Set<string>();
+            for (const bet of eventBets) {
+              if (isPlacedBet(bet) && bet.market) markets.add(bet.market);
+            }
+            if (showAllMatches) {
+              for (const prediction of eventPredictions) {
+                if (decisionStatus(prediction, evt.sport_code).chosen) {
+                  markets.add(prediction.market || "match_winner");
+                }
+              }
+            }
+            const orderedMarkets = [...markets].sort((a, b) => {
+              const order = (market: string) => {
+                const set = /^set_winner:(\d+)$/.exec(market);
+                return set ? Number(set[1]) : 0;
+              };
+              return order(a) - order(b);
+            });
+            return orderedMarkets.map((market) => (
+              <MatchCard
+                key={`${evt.id}:${market}`}
+                event={evt}
+                predictions={eventPredictions}
+                bets={eventBets}
+                marketFilter={market}
+                betOutcome={betOutcomeByEvent.get(evt.id) || null}
+                onInspect={onInspectEvent}
+              />
+            ));
+          })}
         </div>
       )}
     </div>

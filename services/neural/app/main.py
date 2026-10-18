@@ -70,6 +70,7 @@ def load_registry_predictors() -> tuple[Dict[str, MLPredictor], Dict[str, List[M
 
     from .versioning import is_test_tag
 
+    loaded = []
     for row in rows:
         sport = (row.sport_code or "").strip().lower()
         if not sport:
@@ -77,13 +78,6 @@ def load_registry_predictors() -> tuple[Dict[str, MLPredictor], Dict[str, List[M
             continue
         if is_test_tag(row.version_tag):
             logger.warning("Skip test registry row %s: a test tag is not loaded", row.version_tag)
-            continue
-        if row.status == "ACTIVE" and sport in active:
-            logger.warning(
-                "Extra ACTIVE model for %s ignored: %s",
-                sport,
-                row.version_tag,
-            )
             continue
         predictor = load_predictor(row.artifact_path)
         if not predictor.checkpoint_data:
@@ -94,11 +88,46 @@ def load_registry_predictors() -> tuple[Dict[str, MLPredictor], Dict[str, List[M
                 row.artifact_path,
             )
             continue
-        version_tag = predictor.checkpoint_data.get("version_tag")
-        if row.status == "ACTIVE":
-            active[sport] = predictor
-            logger.info("Loaded active %s predictor (%s)", sport, version_tag)
-        else:
+        predictor.registry_status = row.status
+        predictor.checkpoint_data.setdefault("model_name", row.model_name)
+        predictor.checkpoint_data.setdefault("version_tag", row.version_tag)
+        loaded.append((sport, row, predictor))
+
+    from tennis_adapter.policy import _assigned, load_tennis_policy
+
+    policy = load_tennis_policy()
+    match_identity = _assigned(policy.match_model)
+    set_identity = _assigned(policy.set_model)
+    by_sport: Dict[str, list] = {}
+    for sport, row, predictor in loaded:
+        by_sport.setdefault(sport, []).append((row, predictor))
+
+    for sport, items in by_sport.items():
+        chosen_match = None
+        chosen_set = None
+        for row, predictor in items:
+            identity = (str(row.model_name or ""), str(row.version_tag or ""))
+            if row.status == "ACTIVE" and identity == match_identity:
+                chosen_match = predictor
+            elif row.status == "ACTIVE" and identity == set_identity:
+                chosen_set = predictor
+        for row, predictor in items:
+            version_tag = predictor.checkpoint_data.get("version_tag")
+            if predictor is chosen_match:
+                active[sport] = predictor
+                logger.info("Loaded active %s predictor (%s)", sport, version_tag)
+                continue
+            if predictor is chosen_set:
+                shadow.setdefault(sport, []).append(predictor)
+                logger.info("Loaded active set predictor for %s (%s)", sport, version_tag)
+                continue
+            if row.status == "ACTIVE":
+                if sport not in active and chosen_match is None:
+                    active[sport] = predictor
+                    logger.info("Loaded active %s predictor (%s)", sport, version_tag)
+                else:
+                    logger.warning("Extra ACTIVE model for %s ignored: %s", sport, row.version_tag)
+                continue
             shadow.setdefault(sport, []).append(predictor)
             logger.info("Loaded shadow %s predictor (%s)", sport, version_tag)
     return active, shadow
@@ -174,7 +203,14 @@ def _side_gate(res, side: Optional[str], market: str = "match_winner", sport_cod
     best = next((item for item in (res.outcomes or []) if item.outcome == side), None)
     if best is None:
         return False, "LOW_PROBABILITY"
-    return stake_gate(best.model_probability, best.bookmaker_odds, market, sport_code)
+    allowed, reason = stake_gate(best.model_probability, best.bookmaker_odds, market, sport_code)
+    if not allowed:
+        return allowed, reason
+    from tennis_adapter.policy import market_limits
+
+    if float(best.edge) < float(market_limits(market)["min_edge"]):
+        return False, "LOW_EDGE"
+    return True, ""
 
 
 def _apply_watch_score(
@@ -185,6 +221,7 @@ def _apply_watch_score(
     line: str,
     eligible: bool = True,
     reason: str = "",
+    agree_count: Optional[int] = None,
 ) -> None:
     chosen = side or getattr(res, "best_outcome", None)
     best = next((item for item in (res.outcomes or []) if item.outcome == chosen), None)
@@ -207,6 +244,7 @@ def _apply_watch_score(
         "model_name": line,
         "decision_eligible": bool(eligible),
         "decision_reason": reason,
+        "agree_count": int(agree_count or 0),
         "outcomes": [
             {
                 "outcome": item.outcome,
@@ -230,6 +268,7 @@ def _remember_watch(
     market: str = "",
     eligible: bool = True,
     reason: str = "",
+    agree_count: Optional[int] = None,
 ) -> None:
     from db.models.predictions import MLPrediction as DBMLPrediction
 
@@ -252,7 +291,7 @@ def _remember_watch(
             outcomes_detail={},
         )
         session.add(watch)
-    _apply_watch_score(watch, res, side, snapshot_at, line, eligible, reason)
+    _apply_watch_score(watch, res, side, snapshot_at, line, eligible, reason, agree_count)
 
 
 def _consider_composite(
@@ -323,10 +362,10 @@ def _consider_composite(
     if len(members) < 3:
         return False
     from .set_match import set_is_observation_only
-    from tennis_adapter.policy import model_commits_market
+    from tennis_adapter.policy import model_commits_market, set_is_stake_allowed
 
     version = predictor.checkpoint_data.get("version_tag")
-    if set_is_observation_only(stored_market, sport_code) or not model_commits_market(line, version, stored_market):
+    if set_is_observation_only(stored_market, sport_code) or not set_is_stake_allowed(stored_market, sport_code) or not model_commits_market(line, version, stored_market):
         _mark_observed(session, evt, version, is_shadow, line, stored_market, side)
         return False
     probability = round(sum(float(item["probability"]) for item in members) / len(members), 4)
@@ -439,7 +478,10 @@ def _consider_snapshot(
     detail = (watch.outcomes_detail or {}) if watch else {}
     from .confirmation import next_watch_action
 
-    action, _updated = next_watch_action(detail, snapshot_at, side, eligible, reason, required=2)
+    from tennis_adapter.policy import load_tennis_policy, market_limits
+
+    required = market_limits(stored_market).get("confirmations", load_tennis_policy().confirmations) if str(sport_code or "").strip().lower() == "tennis" else 2
+    action, updated = next_watch_action(detail, snapshot_at, side, eligible, reason, required=required)
     if action == "unchanged":
         return False
     if action != "commit":
@@ -455,6 +497,7 @@ def _consider_snapshot(
             stored_market,
             eligible,
             reason,
+            updated.get("agree_count"),
         )
         return False
     previous = detail.get("side")
@@ -465,7 +508,9 @@ def _consider_snapshot(
         from .set_match import set_is_observation_only
         from tennis_adapter.policy import model_commits_market
 
-        if set_is_observation_only(stored_market, sport_code) or not model_commits_market(line, res.model_version, stored_market):
+        from tennis_adapter.policy import set_is_stake_allowed
+
+        if set_is_observation_only(stored_market, sport_code) or not set_is_stake_allowed(stored_market, sport_code) or not model_commits_market(line, res.model_version, stored_market):
             _remember_watch(
                 session, evt, sport_code, res, side, snapshot_at, is_shadow, line, stored_market, True, "SET_OBSERVED"
             )
@@ -563,10 +608,12 @@ def _predictor_is_v2(predictor) -> bool:
 
 
 def _scores_sets(predictor) -> bool:
-    """Tennis v2 lines and the composite line both score the open set and the match."""
+    """The assigned set line and older set-capable checkpoints score the open set."""
+    from .set_match import checkpoint_scores_sets
+
     if predictor is None or not predictor.checkpoint_data:
         return False
-    return _predictor_is_v2(predictor) or is_composite_checkpoint(predictor.checkpoint_data)
+    return checkpoint_scores_sets(predictor.checkpoint_data)
 
 
 def _event_has_v2(predictor, shadows) -> bool:
@@ -663,7 +710,7 @@ def _score_tennis_v2(session, evt, f_vec, predictor, shadows, odds_rows, llm_bud
         predictors.append((predictor, False))
     for shadow in shadows:
         if _scores_sets(shadow):
-            predictors.append((shadow, True))
+            predictors.append((shadow, getattr(shadow, "registry_status", "SHADOW") != "ACTIVE"))
     finished = {}
     for key, winner in ((evt.metadata_json or {}).get("set_winners") or {}).items():
         if winner in ("player_a", "player_b"):
@@ -685,6 +732,10 @@ def _score_tennis_v2(session, evt, f_vec, predictor, shadows, odds_rows, llm_bud
             market = f"set_winner:{number}"
             from .set_match import set_is_observation_only
 
+            from tennis_adapter.policy import set_is_stake_allowed
+
+            if not set_is_stake_allowed(number, "tennis") and not set_is_observation_only(number, "tennis"):
+                continue
             if set_is_observation_only(number, "tennis"):
                 observed = _observed_side(session, evt.id, version, is_shadow, line, market)
                 if observed:
@@ -908,12 +959,14 @@ def evaluate_pending_events(
                         evaluated_count += _score_tennis_v2(
                             session, evt, f_vec, predictor, shadows_for_sport, odds_rows, llm_budget
                         )
+                    combat_version = str((predictor.checkpoint_data or {}).get("version_tag") or "") if predictor else ""
                     combat_done = (
                         session.query(DBMLPrediction.id)
                         .filter(
                             DBMLPrediction.event_id == evt.id,
                             DBMLPrediction.is_shadow.is_(False),
                             DBMLPrediction.has_positive_edge.is_(True),
+                            DBMLPrediction.model_version == combat_version,
                         )
                         .first()
                     )

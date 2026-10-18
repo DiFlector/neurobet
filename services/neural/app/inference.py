@@ -12,6 +12,21 @@ from .commit import MIN_COMMIT_EDGE, best_edge, side_odds
 from .strategy import certainty
 
 
+class ProbabilityBlend:
+    """Stacked probabilities. The class lives here so a saved checkpoint can load."""
+
+    def __init__(self, bases, blender):
+        self.bases = bases
+        self.blender = blender
+
+    def predict_proba(self, rows):
+        stacked = np.column_stack([base.predict_proba(rows)[:, 1] for base in self.bases])
+        return self.blender.predict_proba(stacked)
+
+
+ProbabilityBlend.__module__ = "app.inference"
+
+
 class MLPredictor:
     """
     Inference engine that loads calibrated model checkpoints and generates

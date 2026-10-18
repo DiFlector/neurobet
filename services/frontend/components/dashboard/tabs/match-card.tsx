@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   Search,
   Calendar,
@@ -12,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { decisionStatus, stakeReason } from "@/lib/decision-status";
+import { formatCurrency } from "@/lib/formatters";
+import { isPlacedBet } from "@/lib/placed-bets";
 import { BetItem, EventItem, PredictionItem } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
@@ -26,6 +29,8 @@ export type BetOutcomeTone = "won" | "lost" | "void";
 interface MatchCardProps {
   event: EventItem;
   predictions: PredictionItem[];
+  bets?: BetItem[];
+  marketFilter?: string;
   onInspect: (eventId: string) => void;
   betOutcome?: BetOutcomeTone | null;
 }
@@ -111,6 +116,7 @@ function sideChoiceHint(
   playerA: string,
   playerB: string,
   sportCode?: string,
+  placedModels: string[] = [],
 ) {
   const picks = lines.filter((line) => {
     const outcome = line.predicted_outcome || line.outcome || line.selection || "";
@@ -122,9 +128,15 @@ function sideChoiceHint(
   return (
     <span className="block space-y-1">
       <span className="block font-medium">{playerName}</span>
+      {placedModels.length > 0 && (
+        <span className="block font-medium text-emerald-600 dark:text-emerald-400">
+          Поставили: {placedModels.join(", ")}
+        </span>
+      )}
       {picks.map((line) => (
         <span key={line.id || lineKey(line)} className="block">
-          {lineLabel(line)} — {decisionStatus(line, sportCode).label}
+          Модель: {line.model_version || line.model_name || "неизвестна"} —{" "}
+          {decisionStatus(line, sportCode).label}
           {isCompositePrediction(line) ? compositeVerdict(line, playerA, playerB) : null}
         </span>
       ))}
@@ -159,23 +171,79 @@ function scoredLines(predictions: PredictionItem[], shadow: boolean): Prediction
   return [...byLine.values()].sort((a, b) => lineKey(a).localeCompare(lineKey(b)));
 }
 
-export function MatchCard({ event, predictions, onInspect, betOutcome = null }: MatchCardProps) {
-  const combatPred =
-    [...predictions]
+function marketStakeLabel(market: string): string {
+  const set = /^set_winner:(\d+)$/.exec(market || "");
+  return set ? `Победа в сете ${set[1]}` : "Победа в матче";
+}
+
+function betOutcomeLabel(
+  outcome: string,
+  playerA: string,
+  playerB: string,
+): string {
+  const code = (outcome || "").trim().toLowerCase();
+  if (["player_a", "team_a", "1", "w1", "п1", "home", "p1"].includes(code)) return playerA;
+  if (["player_b", "team_b", "2", "w2", "п2", "away", "p2"].includes(code)) return playerB;
+  return outcome || "Исход";
+}
+
+export function MatchCard({
+  event,
+  predictions,
+  bets = [],
+  marketFilter,
+  onInspect,
+  betOutcome = null,
+}: MatchCardProps) {
+  const [copiedParticipant, setCopiedParticipant] = React.useState<string | null>(null);
+  const scopedPredictions = marketFilter
+    ? predictions.filter((prediction) => (prediction.market || "match_winner") === marketFilter)
+    : predictions;
+  const scopedBets = marketFilter
+    ? bets.filter((bet) => bet.market === marketFilter)
+    : bets;
+  const combatPredictions =
+    [...scopedPredictions]
       .filter((p) => !p.is_shadow && p.has_positive_edge)
-      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""))[0] || null;
-  const analysisLines = combatPred ? [combatPred] : scoredLines(predictions, true);
-  const chosenLines = analysisLines.filter(
+      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  const placedBets = scopedBets.filter((bet) => isPlacedBet(bet));
+  const placedMarkets = new Set(placedBets.map((bet) => bet.market));
+  const placedCombatPredictions = [...scopedPredictions]
+    .filter((p) => !p.is_shadow && p.has_positive_edge && placedMarkets.has(p.market || "match_winner"))
+    .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  const combatPred = placedCombatPredictions[0] || combatPredictions[0] || null;
+  const analysisLines = [
+    ...scoredLines(scopedPredictions, false),
+    ...scoredLines(scopedPredictions, true),
+  ];
+  const isPlacedModelLine = (line: PredictionItem) =>
+    placedBets.some(
+      (bet) =>
+        bet.market === (line.market || "match_winner") &&
+        bet.outcome === (line.predicted_outcome || line.outcome || line.selection || "") &&
+        (!bet.model_version || bet.model_version === line.model_version),
+    );
+  const visibleLines = analysisLines.filter(
     (line) =>
-      line.has_positive_edge &&
-      !stakeReason(line.model_probability, line.bookmaker_odds, line.market, event.sport_code),
+      isPlacedModelLine(line) ||
+      decisionStatus(line, event.sport_code).chosen,
   );
-  const primaryPred = chosenLines[0] || null;
-  const stakeMarket = primaryPred?.market;
-  const visibleLines = stakeMarket
-    ? analysisLines.filter((line) => (line.market || "match_winner") === stakeMarket)
-    : analysisLines;
-  const shadowOnly = !combatPred && visibleLines.length > 0;
+  const chosenLines = visibleLines.filter(
+    (line) =>
+      !line.is_shadow &&
+      decisionStatus(line, event.sport_code).chosen,
+  );
+  const primaryPred = chosenLines[0] || combatPred || null;
+  const groupedVisibleLines = [...new Map(
+    visibleLines.reduce((groups, line) => {
+      const market = line.market || "match_winner";
+      const current = groups.get(market) || [];
+      current.push(line);
+      groups.set(market, current);
+      return groups;
+    }, new Map<string, PredictionItem[]>()).entries(),
+  )];
+  const shadowOnly = placedBets.length === 0 && visibleLines.length > 0 && !combatPred;
 
   const isLive = event.status === "live";
   const isPrematch = event.status === "prematch";
@@ -199,9 +267,58 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
     const outcome = line.predicted_outcome || line.outcome || line.selection || "";
     return matchesParticipant(outcome, rawName, playerName, side);
   };
-  const isPredictedA = chosenLines.some((line) => linePicks(line, rawNameA, playerA, "a"));
-  const isPredictedB = chosenLines.some((line) => linePicks(line, rawNameB, playerB, "b"));
+  const selectedLines = placedBets.length
+    ? analysisLines.filter((line) =>
+        placedBets.some(
+          (bet) =>
+            bet.market === (line.market || "match_winner") &&
+            bet.outcome === (line.predicted_outcome || line.outcome || line.selection || ""),
+        ),
+      )
+    : combatPred
+      ? [combatPred]
+      : chosenLines;
+  const isPredictedA = selectedLines.some((line) => linePicks(line, rawNameA, playerA, "a"));
+  const isPredictedB = selectedLines.some((line) => linePicks(line, rawNameB, playerB, "b"));
 
+  const placedSideA = placedBets.some((bet) => matchesParticipant(bet.outcome, rawNameA, playerA, "a"));
+  const placedSideB = placedBets.some((bet) => matchesParticipant(bet.outcome, rawNameB, playerB, "b"));
+  const placedModelsForSide = (side: "a" | "b") => [
+    ...new Set(
+      placedBets
+        .filter((bet) => matchesParticipant(
+          bet.outcome,
+          side === "a" ? rawNameA : rawNameB,
+          side === "a" ? playerA : playerB,
+          side,
+        ))
+        .map((bet) => bet.model_version)
+        .filter((version): version is string => Boolean(version)),
+    ),
+  ];
+  const copyParticipant = React.useCallback(async (name: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(name);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = name;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setCopiedParticipant(name);
+      window.setTimeout(
+        () => setCopiedParticipant((current) => (current === name ? null : current)),
+        1400,
+      );
+    } catch {
+      setCopiedParticipant(null);
+    }
+  }, []);
   const hasEdge = isLive && Boolean(combatPred && combatPred.has_positive_edge);
   const outcomeTone = isFinished ? betOutcome : null;
 
@@ -296,33 +413,46 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
         <div className="grid grid-cols-[minmax(0,1fr)_7.5rem_minmax(0,1fr)] items-start gap-2 py-1">
           {/* Participant A */}
           <div
-            className={`min-w-0 p-2 rounded-lg transition-all ${
-              isPredictedA
+            className={`min-w-0 cursor-pointer p-2 rounded-lg transition-all ${
+              isPredictedA || placedSideA
                 ? "bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/40 shadow-xs ring-1 ring-emerald-500/30"
                 : ""
             }`}
+            role="button"
+            tabIndex={0}
+            title={`Скопировать: ${playerA}`}
+            onClick={() => void copyParticipant(playerA)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void copyParticipant(playerA);
+              }
+            }}
           >
             <HintTooltip
               className="w-full max-w-full flex-col items-start"
               side="bottom"
-              content={sideChoiceHint(visibleLines, rawNameA, playerA, "a", playerA, playerB, event.sport_code)}
+              content={sideChoiceHint(
+                visibleLines, rawNameA, playerA, "a", playerA, playerB, event.sport_code,
+                placedModelsForSide("a"),
+              )}
             >
               <span className="flex w-full flex-col items-start gap-1">
                 <span
                   className={`line-clamp-2 text-[13px] font-semibold leading-4 ${
-                    isPredictedA
+                    isPredictedA || placedSideA
                       ? "text-emerald-600 dark:text-emerald-400 font-bold"
                       : "text-foreground"
                   }`}
                 >
                   {playerA}
                 </span>
-                {isPredictedA && (
+                {(isPredictedA || placedSideA || copiedParticipant === playerA) && (
                   <Badge
                     variant="outline"
                     className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
                   >
-                    Выбрала
+                    {copiedParticipant === playerA ? "Скопировано" : "Выбрала"}
                   </Badge>
                 )}
                 <span className="mt-0.5 text-[11px] font-normal text-muted-foreground">{roleA}</span>
@@ -331,37 +461,55 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
           </div>
 
           {/* Match Score & Live Timer */}
-          <MatchTimer event={event} betKind={stakeKindFromMarket(primaryPred?.market)} className="px-1" />
+          <MatchTimer
+            event={event}
+            betKind={stakeKindFromMarket(placedBets[0]?.market || primaryPred?.market)}
+            market={placedBets[0]?.market || primaryPred?.market}
+            className="px-1"
+          />
 
           {/* Participant B */}
           <div
-            className={`min-w-0 p-2 rounded-lg transition-all text-right ${
-              isPredictedB
+            className={`min-w-0 cursor-pointer p-2 rounded-lg transition-all text-right ${
+              isPredictedB || placedSideB
                 ? "bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/40 shadow-xs ring-1 ring-emerald-500/30"
                 : ""
             }`}
+            role="button"
+            tabIndex={0}
+            title={`Скопировать: ${playerB}`}
+            onClick={() => void copyParticipant(playerB)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void copyParticipant(playerB);
+              }
+            }}
           >
             <HintTooltip
               className="w-full max-w-full flex-col items-end"
               side="bottom"
-              content={sideChoiceHint(visibleLines, rawNameB, playerB, "b", playerA, playerB, event.sport_code)}
+              content={sideChoiceHint(
+                visibleLines, rawNameB, playerB, "b", playerA, playerB, event.sport_code,
+                placedModelsForSide("b"),
+              )}
             >
               <span className="flex w-full flex-col items-end gap-1">
                 <span
                   className={`line-clamp-2 w-full text-right text-[13px] font-semibold leading-4 ${
-                    isPredictedB
+                    isPredictedB || placedSideB
                       ? "text-emerald-600 dark:text-emerald-400 font-bold"
                       : "text-foreground"
                   }`}
                 >
                   {playerB}
                 </span>
-                {isPredictedB && (
+                {(isPredictedB || placedSideB || copiedParticipant === playerB) && (
                   <Badge
                     variant="outline"
                     className="h-4 max-w-full bg-emerald-500/20 px-1.5 py-0 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 border-emerald-500/50"
                   >
-                    Выбрала
+                    {copiedParticipant === playerB ? "Скопировано" : "Выбрала"}
                   </Badge>
                 )}
                 <span className="mt-0.5 text-[11px] font-normal text-muted-foreground">{roleB}</span>
@@ -370,19 +518,47 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
           </div>
         </div>
 
+        {placedBets.length > 0 && (
+          <div className="space-y-1.5">
+            {placedBets.map((bet) => (
+              <div key={bet.id} className="flex items-center justify-between gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-xs">
+                <div>
+                  <div className="font-semibold text-foreground">Ставка: {marketStakeLabel(bet.market)}</div>
+                  <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                    {betOutcomeLabel(bet.outcome, playerA, playerB)}
+                  </div>
+                </div>
+                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">
+                  {formatCurrency(bet.stake)} · {Number(bet.odds).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Odds & Value Matrix */}
         <div className="rounded-md border border-border/50 bg-muted/30 p-2.5">
           {visibleLines.length > 0 ? (
             <div className="space-y-2">
-              {visibleLines.map((line) => {
+              {groupedVisibleLines.map(([market, lines]) => (
+                <div key={market} className="space-y-2">
+                  <div className="border-b border-border/50 pb-1 text-[11px] font-semibold text-foreground">
+                    {marketStakeLabel(market)}
+                  </div>
+                  {lines.map((line) => {
                 const lineSide = line.predicted_outcome || line.outcome || line.selection || "";
-                const linePlayer = matchesParticipant(lineSide, rawNameA, playerA, "a")
+                const placedForLine = placedBets.find(
+                  (bet) => bet.market === (line.market || "match_winner"),
+                );
+                const displayedSide = placedForLine?.outcome || lineSide;
+                const linePlayer = matchesParticipant(displayedSide, rawNameA, playerA, "a")
                   ? playerA
-                  : matchesParticipant(lineSide, rawNameB, playerB, "b")
+                  : matchesParticipant(displayedSide, rawNameB, playerB, "b")
                     ? playerB
                     : "—";
-                return (
-                  <div key={line.id || line.model_name || line.model_version} className="grid grid-cols-4 gap-1.5 text-center text-xs">
+                const shownOdds = placedForLine ? Number(placedForLine.odds) : Number(line.bookmaker_odds);
+                  return (
+                    <div key={`${market}:${line.id || line.model_name || line.model_version}`} className="grid grid-cols-4 gap-1.5 text-center text-xs">
                     <div>
                       <HintTooltip
                         content={
@@ -393,7 +569,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                         side="bottom"
                       >
                         <div className="text-[10px] text-muted-foreground">
-                          {shadowOnly ? lineLabel(line) : "Ставка"}
+                          {line.model_version || line.model_name || "Модель"}
                         </div>
                       </HintTooltip>
                       <div className="mt-0.5 truncate font-medium text-foreground" title={linePlayer}>
@@ -427,7 +603,7 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                     <div>
                       <div className="text-[10px] text-muted-foreground">Коэф.</div>
                       <div className="font-mono font-semibold text-foreground mt-0.5">
-                        {Number(line.bookmaker_odds).toFixed(2)}
+                        {shownOdds.toFixed(2)}
                       </div>
                     </div>
                     <div>
@@ -442,9 +618,11 @@ export function MatchCard({ event, predictions, onInspect, betOutcome = null }: 
                         {(line.edge * 100).toFixed(1)}%
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })}
+                </div>
+              ))}
             </div>
           ) : (
             <div className="flex items-center justify-between px-2.5 py-1.5 rounded bg-muted/40 text-[11px]">
