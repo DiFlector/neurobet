@@ -140,8 +140,11 @@ class BetValidationPipeline:
         passed.append("SPORT_RULES")
 
         policy_min_edge = self.config.min_edge
+        policy_max_edge = getattr(self.config, "max_edge", None)
         if proposal.get("policy_min_edge") is not None:
             policy_min_edge = float(proposal["policy_min_edge"])
+        if proposal.get("policy_max_edge") is not None:
+            policy_max_edge = float(proposal["policy_max_edge"])
         if proposal.get("enforce_sport_policy"):
             sport_ok, sport_code_reason, sport_detail = registry.assess_execution(proposal)
             if not sport_ok:
@@ -155,6 +158,8 @@ class BetValidationPipeline:
                 )
             if sport_detail.get("policy_min_edge") is not None:
                 policy_min_edge = float(sport_detail["policy_min_edge"])
+            if sport_detail.get("policy_max_edge") is not None:
+                policy_max_edge = float(sport_detail["policy_max_edge"])
             passed.append("SPORT_EXECUTION")
 
         linked_prediction = None
@@ -439,6 +444,15 @@ class BetValidationPipeline:
                 checks_failed=failed,
                 details={"edge": edge, "min": policy_min_edge},
             )
+        if policy_max_edge is not None and edge > policy_max_edge:
+            failed.append("EDGE_THRESHOLD")
+            return ValidationReport(
+                is_accepted=False,
+                rejection_code=reject_codes.EDGE_TOO_HIGH,
+                checks_passed=passed,
+                checks_failed=failed,
+                details={"edge": edge, "max": policy_max_edge},
+            )
         passed.append("EDGE_THRESHOLD")
 
         # ---------------------------------------------------------------------
@@ -461,7 +475,11 @@ class BetValidationPipeline:
         effective_edge = (model_probability * current_odds) - 1.0
         # Also check relative drop from proposed bookmaker_odds
         min_acceptable_odds = bookmaker_odds * (1.0 - self.config.allowed_slippage_pct)
-        if effective_edge < policy_min_edge or current_odds < min_acceptable_odds:
+        if (
+            effective_edge < policy_min_edge
+            or (policy_max_edge is not None and effective_edge > policy_max_edge)
+            or current_odds < min_acceptable_odds
+        ):
             failed.append("SLIPPAGE_EDGE")
             return ValidationReport(
                 is_accepted=False,
@@ -475,6 +493,7 @@ class BetValidationPipeline:
                     "current_odds": current_odds,
                     "effective_edge": round(effective_edge, 4),
                     "min_edge": policy_min_edge,
+                    "max_edge": policy_max_edge,
                 },
             )
         passed.append("SLIPPAGE_EDGE")

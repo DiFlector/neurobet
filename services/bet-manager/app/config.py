@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -9,6 +10,7 @@ class BetManagerConfig:
     max_odds_staleness_sec: float = float(os.getenv("MAX_ODDS_STALENESS_SEC", "15.0"))
     max_state_staleness_sec: float = float(os.getenv("MAX_STATE_STALENESS_SEC", "30.0"))
     min_edge: float = float(os.getenv("MIN_EDGE", "0.03"))
+    max_edge: Optional[float] = float(os.getenv("MAX_EDGE")) if os.getenv("MAX_EDGE") else None
     min_confidence: float = float(os.getenv("MIN_CONFIDENCE", "0.50"))
     min_odds: float = float(os.getenv("MIN_ODDS", "1.05"))
     max_odds: float = float(os.getenv("MAX_ODDS", "50.0"))

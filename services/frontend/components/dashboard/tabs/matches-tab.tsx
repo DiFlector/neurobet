@@ -318,62 +318,81 @@ export function MatchesTab({
       </div>
 
       {/* Matches Grid */}
-      {loading && filteredEvents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 text-center rounded-lg border border-border/40 bg-card/40">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-3" />
-          <p className="text-sm text-muted-foreground">
-            Загрузка спортивных событий и расчетных вероятностей...
-          </p>
-        </div>
-      ) : filteredEvents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 text-center rounded-lg border border-dashed border-border/60 bg-card/30">
-          <Trophy className="h-10 w-10 text-muted-foreground/40 mb-3" />
-          <h3 className="font-semibold text-base">Событий не найдено</h3>
-          <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-            {activeStatus === "finished"
-              ? "Neurobet ещё не поставил на завершённые матчи этого вида спорта."
-              : !showAllMatches
-              ? "Нет поставленных ставок. Включите «Показывать все», чтобы увидеть матчи с вердиктом без суммы."
-              : "По текущим фильтрам нет доступных матчей. Ожидаем обновления данных Fonbet..."}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredEvents.flatMap((evt) => {
-            const eventPredictions = predictions[evt.id] || [];
-            const eventBets = betsByEvent.get(evt.id) || [];
-            const markets = new Set<string>();
-            for (const bet of eventBets) {
-              if (isPlacedBet(bet) && bet.market) markets.add(bet.market);
-            }
-            if (showAllMatches) {
-              for (const prediction of eventPredictions) {
-                if (decisionStatus(prediction, evt.sport_code).chosen) {
-                  markets.add(prediction.market || "match_winner");
-                }
+      {(() => {
+        const renderedCards = filteredEvents.flatMap((evt) => {
+          const eventPredictions = predictions[evt.id] || [];
+          const eventBets = betsByEvent.get(evt.id) || [];
+          const markets = new Set<string>();
+          for (const bet of eventBets) {
+            if (isPlacedBet(bet) && bet.market) markets.add(bet.market);
+          }
+          if (showAllMatches) {
+            for (const prediction of eventPredictions) {
+              if (decisionStatus(prediction, evt.sport_code).chosen) {
+                markets.add(prediction.market || "match_winner");
               }
             }
-            const orderedMarkets = [...markets].sort((a, b) => {
-              const order = (market: string) => {
-                const set = /^set_winner:(\d+)$/.exec(market);
-                return set ? Number(set[1]) : 0;
-              };
-              return order(a) - order(b);
-            });
-            return orderedMarkets.map((market) => (
-              <MatchCard
-                key={`${evt.id}:${market}`}
-                event={evt}
-                predictions={eventPredictions}
-                bets={eventBets}
-                marketFilter={market}
-                betOutcome={betOutcomeByEvent.get(evt.id) || null}
-                onInspect={onInspectEvent}
-              />
-            ));
-          })}
-        </div>
-      )}
+          }
+          if (markets.size === 0) {
+            if (eventPredictions.length > 0 && eventPredictions[0].market) {
+              markets.add(eventPredictions[0].market);
+            } else {
+              markets.add("match_winner");
+            }
+          }
+          const orderedMarkets = [...markets].sort((a, b) => {
+            const order = (market: string) => {
+              const set = /^set_winner:(\d+)$/.exec(market);
+              return set ? Number(set[1]) : 0;
+            };
+            return order(a) - order(b);
+          });
+          return orderedMarkets.map((market) => (
+            <MatchCard
+              key={`${evt.id}:${market}`}
+              event={evt}
+              predictions={eventPredictions}
+              bets={eventBets}
+              marketFilter={market}
+              betOutcome={betOutcomeByEvent.get(evt.id) || null}
+              onInspect={onInspectEvent}
+            />
+          ));
+        });
+
+        if (loading && renderedCards.length === 0) {
+          return (
+            <div className="flex flex-col items-center justify-center p-12 text-center rounded-lg border border-border/40 bg-card/40">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-3" />
+              <p className="text-sm text-muted-foreground">
+                Загрузка спортивных событий и расчетных вероятностей...
+              </p>
+            </div>
+          );
+        }
+
+        if (renderedCards.length === 0) {
+          return (
+            <div className="flex flex-col items-center justify-center p-12 text-center rounded-lg border border-dashed border-border/60 bg-card/30">
+              <Trophy className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <h3 className="font-semibold text-base">Событий не найдено</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                {activeStatus === "finished"
+                  ? "Neurobet ещё не поставил на завершённые матчи этого вида спорта."
+                  : !showAllMatches
+                  ? "Нет поставленных ставок. Включите «Показывать все», чтобы увидеть матчи с вердиктом без суммы."
+                  : "По текущим фильтрам нет доступных матчей. Ожидаем обновления данных Fonbet..."}
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {renderedCards}
+          </div>
+        );
+      })()}
     </div>
   );
 }

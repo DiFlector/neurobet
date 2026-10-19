@@ -9,7 +9,7 @@ from typing import Any, Optional, Sequence
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin, clone
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -44,15 +44,16 @@ def build_logistic_regression_estimator(
 
 
 def build_gradient_boosting_estimator(
-    learning_rate: float = 0.05,
+    learning_rate: float = 0.02,
     max_iter: int = 100,
-    max_depth: int = 4,
+    max_depth: int = 3,
     random_state: int = 42,
-    max_leaf_nodes: Optional[int] = None,
-    min_samples_leaf: int = 5,
-    l2_regularization: float = 0.0,
+    max_leaf_nodes: Optional[int] = 8,
+    min_samples_leaf: int = 50,
+    l2_regularization: float = 5.0,
+    early_stopping: bool = True,
 ) -> HistGradientBoostingClassifier:
-    """Uncalibrated histogram gradient boosting for numeric features."""
+    """Uncalibrated regularized histogram gradient boosting for numeric features."""
     return HistGradientBoostingClassifier(
         learning_rate=learning_rate,
         max_iter=max_iter,
@@ -60,8 +61,127 @@ def build_gradient_boosting_estimator(
         max_leaf_nodes=max_leaf_nodes,
         min_samples_leaf=min_samples_leaf,
         l2_regularization=l2_regularization,
+        early_stopping=early_stopping,
         random_state=random_state,
     )
+
+
+def build_gradient_boosting_regressor(
+    learning_rate: float = 0.02,
+    max_iter: int = 100,
+    max_depth: int = 3,
+    random_state: int = 42,
+    max_leaf_nodes: Optional[int] = 8,
+    min_samples_leaf: int = 50,
+    l2_regularization: float = 5.0,
+    early_stopping: bool = True,
+) -> HistGradientBoostingRegressor:
+    """Uncalibrated regularized histogram gradient boosting regressor for residual target."""
+    return HistGradientBoostingRegressor(
+        loss="squared_error",
+        learning_rate=learning_rate,
+        max_iter=max_iter,
+        max_depth=max_depth,
+        max_leaf_nodes=max_leaf_nodes,
+        min_samples_leaf=min_samples_leaf,
+        l2_regularization=l2_regularization,
+        early_stopping=early_stopping,
+        random_state=random_state,
+    )
+
+
+def logit_np(prob: np.ndarray) -> np.ndarray:
+    clipped = np.clip(np.asarray(prob, dtype=float), 1e-4, 1.0 - 1e-4)
+    return np.log(clipped / (1.0 - clipped))
+
+
+def sigmoid_np(logits: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-np.asarray(logits, dtype=float)))
+
+
+class ResidualMarketEstimator(ClassifierMixin, BaseEstimator):
+    """Residual model that predicts a bounded logit adjustment over market implied probability.
+
+    When base_estimator is a regressor, it trains directly on the smoothed logit residual:
+        r = clip(logit(y*) - logit(P_market), -max_offset, max_offset), where y* = 0.05 + 0.90 * y
+    When base_estimator is a classifier, it fits on y and shifts logits:
+        delta = logit(P_base) - logit(P_market)
+    In both cases:
+        P = sigmoid(logit(P_market) + clip(delta_logit, -max_offset, max_offset))
+    """
+
+    def __init__(
+        self,
+        base_estimator: Any = None,
+        max_offset: float = 0.25,
+        market_feature_index: Optional[int] = None,
+    ):
+        self.base_estimator = base_estimator
+        self.max_offset = max_offset
+        self.market_feature_index = market_feature_index
+
+    def _is_regressor_base(self) -> bool:
+        est = getattr(self, "base_estimator_", self.base_estimator)
+        if est is None:
+            return False
+        if isinstance(est, Pipeline):
+            est = est.steps[-1][1]
+        return not hasattr(est, "predict_proba")
+
+    def fit(self, X: Any, y: Any, sample_weight: Optional[Any] = None) -> "ResidualMarketEstimator":
+        self.base_estimator_ = clone(self.base_estimator)
+        rows = np.asarray(X, dtype=float)
+        labels = np.asarray(y, dtype=int)
+        if self.market_feature_index is not None and self.market_feature_index < rows.shape[1] and rows.shape[1] > 1:
+            raw_mkt = rows[:, self.market_feature_index]
+            market_probs = np.where((raw_mkt >= 0.01) & (raw_mkt <= 0.99), raw_mkt, 0.5)
+            base_X = np.delete(rows, self.market_feature_index, axis=1)
+        else:
+            market_probs = np.full(len(rows), 0.5)
+            base_X = rows
+
+        if self._is_regressor_base():
+            y_smooth = 0.05 + 0.90 * labels.astype(float)
+            target_resid = logit_np(y_smooth) - logit_np(market_probs)
+            target_resid = np.clip(target_resid, -self.max_offset, self.max_offset)
+            fit_estimator(self.base_estimator_, base_X, target_resid, sample_weight)
+        else:
+            fit_estimator(self.base_estimator_, base_X, labels, sample_weight)
+
+        self.classes_ = np.asarray([0, 1])
+        return self
+
+    def predict_proba(self, X: Any) -> np.ndarray:
+        matrix = np.asarray(X, dtype=float)
+        if matrix.ndim == 1:
+            matrix = matrix.reshape(1, -1)
+
+        if self.market_feature_index is not None and self.market_feature_index < matrix.shape[1]:
+            raw_mkt = matrix[:, self.market_feature_index]
+            market_probs = np.where((raw_mkt >= 0.01) & (raw_mkt <= 0.99), raw_mkt, 0.5)
+            if matrix.shape[1] > 1:
+                base_X = np.delete(matrix, self.market_feature_index, axis=1)
+            else:
+                base_X = matrix
+        else:
+            market_probs = np.full(len(matrix), 0.5)
+            base_X = matrix
+
+        market_logits = logit_np(market_probs)
+        if self._is_regressor_base():
+            pred_resid = np.asarray(self.base_estimator_.predict(base_X), dtype=float)
+            shift = np.clip(pred_resid, -self.max_offset, self.max_offset)
+        else:
+            base_probs = positive_probabilities(self.base_estimator_, base_X)
+            base_logits = logit_np(base_probs)
+            shift = np.clip(base_logits - market_logits, -self.max_offset, self.max_offset)
+
+        final_probs = sigmoid_np(market_logits + shift)
+        final_probs = np.clip(final_probs, 1e-4, 1.0 - 1e-4)
+        return np.column_stack([1.0 - final_probs, final_probs])
+
+    def predict(self, X: Any) -> np.ndarray:
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
 
 
 def build_logistic_regression_pipeline(
@@ -79,17 +199,18 @@ def build_logistic_regression_pipeline(
 
 
 def build_gradient_boosting_pipeline(
-    learning_rate: float = 0.05,
+    learning_rate: float = 0.02,
     max_iter: int = 100,
-    max_depth: int = 4,
+    max_depth: int = 3,
     random_state: int = 42,
     calibration_method: str = "isotonic",
     calibration_fraction: float = DEFAULT_CALIBRATION_FRACTION,
-    max_leaf_nodes: Optional[int] = None,
-    min_samples_leaf: int = 5,
-    l2_regularization: float = 0.0,
+    max_leaf_nodes: Optional[int] = 8,
+    min_samples_leaf: int = 50,
+    l2_regularization: float = 5.0,
+    early_stopping: bool = True,
 ) -> "TemporalCalibratedEstimator":
-    """Gradient boosting whose calibrator sees only the later matches."""
+    """Regularized gradient boosting whose calibrator sees only the later matches."""
     return TemporalCalibratedEstimator(
         estimator=build_gradient_boosting_estimator(
             learning_rate=learning_rate,
@@ -99,7 +220,41 @@ def build_gradient_boosting_pipeline(
             max_leaf_nodes=max_leaf_nodes,
             min_samples_leaf=min_samples_leaf,
             l2_regularization=l2_regularization,
+            early_stopping=early_stopping,
         ),
+        method=calibration_method,
+        calibration_fraction=calibration_fraction,
+    )
+
+
+def build_residual_boosting_pipeline(
+    learning_rate: float = 0.02,
+    max_iter: int = 100,
+    max_depth: int = 3,
+    random_state: int = 42,
+    calibration_method: str = "sigmoid",
+    calibration_fraction: float = DEFAULT_CALIBRATION_FRACTION,
+    max_offset: float = 0.25,
+    market_feature_index: Optional[int] = None,
+) -> "TemporalCalibratedEstimator":
+    """Residual gradient boosting bounded against market probability via true residual target."""
+    base = build_gradient_boosting_regressor(
+        learning_rate=learning_rate,
+        max_iter=max_iter,
+        max_depth=max_depth,
+        random_state=random_state,
+        max_leaf_nodes=8,
+        min_samples_leaf=50,
+        l2_regularization=5.0,
+        early_stopping=True,
+    )
+    residual = ResidualMarketEstimator(
+        base_estimator=base,
+        max_offset=max_offset,
+        market_feature_index=market_feature_index,
+    )
+    return TemporalCalibratedEstimator(
+        estimator=residual,
         method=calibration_method,
         calibration_fraction=calibration_fraction,
     )
@@ -169,6 +324,9 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
         gamma = float(loss_gamma or 0.0)
         names = list(feature_names or [])
         self.market_feature_index_ = names.index("market_is_set") if "market_is_set" in names else None
+        if hasattr(self.estimator, "market_feature_index") and getattr(self.estimator, "market_feature_index", None) is None:
+            if "no_vig_prob_player_a" in names:
+                self.estimator.market_feature_index = names.index("no_vig_prob_player_a")
         self.base_event_ids_ = []
         self.calibration_event_ids_ = []
         if len(ordered) < 2:

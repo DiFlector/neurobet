@@ -17,6 +17,12 @@ from .hockey import HockeyFeatureBuilder
 from .football import FootballFeatureBuilder
 from .registry import FeatureBuilderRegistry, registry
 from .leakage import DataLeakageDetectedError, DataLeakageDetector
+from .selection import (
+    SELECTED_TENNIS_FEATURES_V2,
+    get_market_probability,
+    prune_matrix,
+    prune_tennis_features,
+)
 
 __all__ = [
     "FeatureBuilder",
@@ -36,5 +42,9 @@ __all__ = [
     "registry",
     "DataLeakageDetectedError",
     "DataLeakageDetector",
+    "SELECTED_TENNIS_FEATURES_V2",
+    "prune_tennis_features",
+    "prune_matrix",
+    "get_market_probability",
 ]
 

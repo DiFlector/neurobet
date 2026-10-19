@@ -57,18 +57,27 @@ def print_ascii_report(summary, config: BacktestConfig, model_type: str) -> None
 def main() -> None:
     parser = argparse.ArgumentParser(description="Neurobet Walk-Forward Backtester CLI")
     parser.add_argument("--sport", default="tennis", help="Sport code (default: tennis)")
-    parser.add_argument("--model", choices=["gradient_boosting", "logistic_regression"], default="gradient_boosting")
+    parser.add_argument(
+        "--model",
+        choices=["gradient_boosting", "logistic_regression", "residual_gb", "residual_gradient_boosting"],
+        default="gradient_boosting",
+    )
     parser.add_argument("--strategy", choices=["FIXED", "PERCENT", "KELLY"], default="KELLY")
     parser.add_argument("--kelly-fraction", type=float, default=0.25, help="Kelly multiplier (default: 0.25)")
     parser.add_argument("--bankroll", type=float, default=100000.0, help="Initial bankroll (default: 100000.0)")
     parser.add_argument("--splits", type=int, default=4, help="Number of walk-forward splits (default: 4)")
     parser.add_argument("--latency", type=float, default=2.0, help="Execution latency in seconds (default: 2.0)")
     parser.add_argument("--events", type=int, default=150, help="Number of test events to simulate (default: 150)")
+    parser.add_argument("--min-edge", type=float, default=0.02, help="Minimum required edge (default: 0.02)")
+    parser.add_argument("--max-edge", type=float, default=None, help="Maximum allowed edge (default: None)")
+    parser.add_argument("--min-odds", type=float, default=1.50, help="Minimum odds to bet (default: 1.50)")
+    parser.add_argument("--max-odds", type=float, default=2.50, help="Maximum odds to bet (default: 2.50)")
+    parser.add_argument("--confirmations", type=int, default=2, help="Required confirmations (default: 2)")
     parser.add_argument("--output-json", default=None, help="Optional path to save JSON report")
 
     args = parser.parse_args()
 
-    samples, n_events = _load_real_samples(args.sport.lower())
+    samples, n_events = _load_real_samples(args.sport.lower(), args.model)
     splits = _feasible_splits(n_events, args.splits)
     if splits != args.splits:
         logger.info("Walk-forward folds reduced from %d to %d because only %d matches are available.", args.splits, splits, n_events)
@@ -80,8 +89,12 @@ def main() -> None:
         kelly_fraction=args.kelly_fraction,
         n_splits=splits,
         execution_latency_sec=args.latency,
-        min_edge=0.02,
+        min_edge=args.min_edge,
+        max_edge=args.max_edge,
+        min_odds=args.min_odds,
+        max_odds=args.max_odds,
         confirm_side=True,
+        confirmations=args.confirmations,
         group_by_event=True,
     )
 
@@ -123,7 +136,7 @@ def _feasible_splits(n_matches: int, requested: int) -> int:
     return splits
 
 
-def _load_real_samples(sport_code: str):
+def _load_real_samples(sport_code: str, model_type: str = "gradient_boosting"):
     from db.connection import SessionLocal
 
     from app.commit import side_odds_from_row
@@ -136,6 +149,13 @@ def _load_real_samples(sport_code: str):
             matches, feature_names = get_dataset_builder(sport_code).load_matches(session)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+
+    is_residual = sport_code == "tennis" and model_type in ("residual_gb", "residual_gradient_boosting")
+    target_indices = None
+    if is_residual:
+        from features.selection import SELECTED_TENNIS_FEATURES_V2
+        target_indices = [i for i, name in enumerate(feature_names) if name in SELECTED_TENNIS_FEATURES_V2]
+        logger.info("Backtest pruning features to %d columns (SELECTED_TENNIS_FEATURES_V2).", len(target_indices))
 
     samples = []
     for match in matches:
@@ -159,11 +179,12 @@ def _load_real_samples(sport_code: str):
         ]
         finished_at = priced[-1][1] if priced else None
         for row, moment, odds_a, odds_b in priced:
+            f_vec = [row[i] for i in target_indices] if target_indices is not None else row
             samples.append(
                 BacktestSample(
                     event_id=match.event_id,
                     decision_timestamp=moment,
-                    feature_vector=np.asarray(row, dtype=np.float32),
+                    feature_vector=np.asarray(f_vec, dtype=np.float32),
                     p1_odds=odds_a,
                     p2_odds=odds_b,
                     odds_snapshots=tape,

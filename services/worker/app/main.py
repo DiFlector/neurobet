@@ -116,13 +116,19 @@ async def main():
                     )
                     if bet_data.get("submitted"):
                         logger.info("Confirmed bets submitted: %s", len(bet_data.get("submitted") or []))
+                except Exception as ex:
+                    logger.warning("Execution sync request failed: %s", ex)
 
+                try:
                     settle_data = await asyncio.to_thread(
                         _post_json, f"{backend_url}/api/settlement/sync", 30.0
                     )
                     if settle_data.get("bets_settled", 0) > 0 or settle_data.get("events_matched", 0) > 0:
                         logger.info("Settlement sync via Fonbet Results completed: %s", settle_data)
+                except Exception as ex:
+                    logger.warning("Settlement sync request failed: %s", ex)
 
+                try:
                     llm_data = await asyncio.to_thread(
                         _post_json,
                         f"{backend_url}/api/scheduler/sync-ml-predictions?limit=10&dispatch=true",
@@ -137,7 +143,10 @@ async def main():
                             (llm_data.get("dispatch") or {}).get("dispatched_count"),
                             llm_data.get("queue_size"),
                         )
+                except Exception as ex:
+                    logger.warning("LLM sync request failed: %s", ex)
 
+                try:
                     search_data = await asyncio.to_thread(
                         _post_json,
                         f"{backend_url}/api/research/queue/sync?limit=3",
@@ -150,7 +159,7 @@ async def main():
                         search_data.get("running"),
                     )
                 except Exception as ex:
-                    logger.warning("Settlement/LLM sync request failed: %s", ex)
+                    logger.warning("Research queue sync request failed: %s", ex)
 
             # Update heartbeat
             with open("/tmp/healthy", "w") as f:

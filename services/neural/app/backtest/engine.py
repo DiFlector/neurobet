@@ -101,18 +101,16 @@ def confirming_bet_indices(
     for idx in test_idx:
         groups.setdefault(samples[int(idx)].event_id, []).append(int(idx))
     allowed = set()
+    classes = [int(item) for item in getattr(model, "classes_", [0, 1])]
+    p_col = classes.index(1) if 1 in classes else -1
     for indices in groups.values():
         if len(indices) < 2:
             continue
-        probabilities = []
-        odds = []
-        for idx in indices:
-            sample = samples[idx]
-            raw = model.predict_proba(np.asarray(sample.feature_vector, dtype=float).reshape(1, -1))[0]
-            classes = [int(item) for item in getattr(model, "classes_", [0, 1])]
-            prob_a = float(raw[classes.index(1)]) if 1 in classes else float(raw[-1])
-            probabilities.append((prob_a, 1.0 - prob_a))
-            odds.append((float(sample.p1_odds), float(sample.p2_odds)))
+        matrix = np.asarray([samples[idx].feature_vector for idx in indices], dtype=float)
+        raw = model.predict_proba(matrix)
+        prob_a_arr = raw[:, p_col]
+        probabilities = [(float(p), float(1.0 - p)) for p in prob_a_arr]
+        odds = [(float(samples[idx].p1_odds), float(samples[idx].p2_odds)) for idx in indices]
         times = [samples[idx].decision_timestamp for idx in indices]
         chosen = confirming_index(
             probabilities,
@@ -225,6 +223,13 @@ class WalkForwardBacktester:
             # 2. Train baseline model on train fold
             if model_type == "logistic_regression":
                 model = build_logistic_regression_pipeline(random_state=self.config.random_seed)
+            elif model_type in ("residual_gb", "residual_gradient_boosting"):
+                from ..models import build_residual_boosting_pipeline
+                m_idx = 9 if X_train.shape[1] == 21 else (37 if X_train.shape[1] > 37 else 0)
+                model = build_residual_boosting_pipeline(
+                    random_state=self.config.random_seed,
+                    market_feature_index=m_idx,
+                )
             else:
                 model = build_gradient_boosting_pipeline(random_state=self.config.random_seed)
 
@@ -244,20 +249,26 @@ class WalkForwardBacktester:
             )
 
             # 3. Step sequentially through out-of-sample test fold
+            if bet_indices:
+                bet_list = sorted(list(bet_indices))
+                matrix_bets = np.asarray([samples[idx].feature_vector for idx in bet_list], dtype=float)
+                raw_bets = model.predict_proba(matrix_bets)
+                classes = [int(item) for item in getattr(model, "classes_", [0, 1])]
+                p_col = classes.index(1) if 1 in classes else -1
+                prob_map = {idx: float(raw_bets[i, p_col]) for i, idx in enumerate(bet_list)}
+            else:
+                prob_map = {}
+
             for idx in test_idx:
                 sample = samples[idx]
                 self.bankroll.release_due(sample.decision_timestamp)
-                feat = sample.feature_vector.reshape(1, -1)
-
-                # Predict probabilities
-                probs = model.predict_proba(feat)[0]
-                prob_p1 = float(probs[1])
-                prob_p2 = float(probs[0])
-
-                all_test_y_true.append(sample.label)
-                all_test_y_prob.append(prob_p1)
                 if int(idx) not in bet_indices:
                     continue
+
+                prob_p1 = prob_map[int(idx)]
+                prob_p2 = round(1.0 - prob_p1, 4)
+                all_test_y_true.append(sample.label)
+                all_test_y_prob.append(prob_p1)
 
                 # Check edge for P1 and P2
                 edge_p1 = (prob_p1 * sample.p1_odds) - 1.0
@@ -269,13 +280,27 @@ class WalkForwardBacktester:
                 target_odds = 0.0
                 target_edge = 0.0
 
-                if edge_p1 >= self.config.min_edge and stake_gate(prob_p1, sample.p1_odds, sample.market, self.config.sport_code)[0]:
+                p1_allowed = (
+                    edge_p1 >= self.config.min_edge
+                    and (self.config.max_edge is None or edge_p1 <= self.config.max_edge)
+                    and sample.p1_odds >= self.config.min_odds
+                    and sample.p1_odds <= self.config.max_odds
+                    and stake_gate(prob_p1, sample.p1_odds, sample.market, self.config.sport_code)[0]
+                )
+                p2_allowed = (
+                    edge_p2 >= self.config.min_edge
+                    and (self.config.max_edge is None or edge_p2 <= self.config.max_edge)
+                    and sample.p2_odds >= self.config.min_odds
+                    and sample.p2_odds <= self.config.max_odds
+                    and stake_gate(prob_p2, sample.p2_odds, sample.market, self.config.sport_code)[0]
+                )
+
+                if p1_allowed and (not p2_allowed or edge_p1 >= edge_p2):
                     target_outcome = "p1"
                     target_prob = prob_p1
                     target_odds = sample.p1_odds
                     target_edge = edge_p1
-
-                elif edge_p2 >= self.config.min_edge and stake_gate(prob_p2, sample.p2_odds, sample.market, self.config.sport_code)[0]:
+                elif p2_allowed:
                     target_outcome = "p2"
                     target_prob = prob_p2
                     target_odds = sample.p2_odds

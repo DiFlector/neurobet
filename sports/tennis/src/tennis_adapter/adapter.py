@@ -488,6 +488,8 @@ class TennisSportAdapter:
         verdict = str(proposal.get("llm_verdict") or "").upper()
         if verdict == "NO_BET":
             return False, "LLM_DATA_INSUFFICIENT", {"reason": "LLM_NO_BET"}
-        if int(proposal.get("contradictions") or 0) > 0:
-            return False, "LLM_DATA_INSUFFICIENT", {"reason": "LLM_CONTRADICTION"}
-        return True, None, {"policy_min_edge": market_limits(market)["min_edge"]}
+        mkt_limits = market_limits(market)
+        return True, None, {
+            "policy_min_edge": mkt_limits["min_edge"],
+            "policy_max_edge": mkt_limits.get("max_edge"),
+        }

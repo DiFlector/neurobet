@@ -223,6 +223,7 @@ class DecisionPipelineConfig(BaseContract):
     llm_enabled: bool = Field(default=True, description="Enable qualitative LLM filtering")
     llm_required: bool = Field(default=False, description="Fail-closed if LLM is unavailable")
     min_edge: float = Field(default=0.03, ge=0.0, description="Minimum ML edge to shortlist")
+    max_edge: Optional[float] = Field(default=None, description="Maximum ML edge to shortlist")
     min_confidence: float = Field(default=0.50, ge=0.0, le=1.0, description="Minimum ML confidence")
     max_stake_fraction: float = Field(default=0.015, le=0.05, description="Maximum stake fraction")
     llm_url: str = Field(default="http://llm:8000/api/analyze", description="Local LLM service URL")

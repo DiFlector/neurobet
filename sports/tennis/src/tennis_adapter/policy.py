@@ -17,6 +17,7 @@ class TennisPolicy:
     mid_odds_hi: float = 1.80
     match_odds_hi: float = 2.40
     min_edge: float = 0.02
+    max_edge: Optional[float] = 0.07
     confirmations: int = 2
     observe_set: int = 1
     stake_sets: str = "2"
@@ -31,7 +32,9 @@ class TennisPolicy:
     match_min_probability: float = 0.40
     set_min_probability: float = 0.40
     match_min_edge: float = 0.02
+    match_max_edge: Optional[float] = 0.07
     set_min_edge: float = 0.02
+    set_max_edge: Optional[float] = 0.07
     match_confirmations: int = 2
     set_confirmations: int = 2
     kelly_fraction: float = 0.25
@@ -50,6 +53,7 @@ class TennisPolicy:
             "mid_odds_hi": self.mid_odds_hi,
             "match_odds_hi": self.match_odds_hi,
             "min_edge": self.min_edge,
+            "max_edge": self.max_edge,
             "confirmations": self.confirmations,
             "observe_set": self.observe_set,
             "stake_sets": self.stake_sets,
@@ -64,7 +68,9 @@ class TennisPolicy:
             "match_min_probability": self.match_min_probability,
             "set_min_probability": self.set_min_probability,
             "match_min_edge": self.match_min_edge,
+            "match_max_edge": self.match_max_edge,
             "set_min_edge": self.set_min_edge,
+            "set_max_edge": self.set_max_edge,
             "match_confirmations": self.match_confirmations,
             "set_confirmations": self.set_confirmations,
             "kelly_fraction": self.kelly_fraction,
@@ -131,20 +137,24 @@ def market_limits(market: str, policy: Optional[TennisPolicy] = None) -> dict:
     """Numbers for one market. A zero confirmation count keeps the shared value."""
     limits = policy or load_tennis_policy()
     if _is_set_market(market):
+        edge_max = limits.set_max_edge if limits.set_max_edge is not None else limits.max_edge
         return {
             "mode": str(limits.set_gate_mode or "live"),
             "min_odds": float(limits.set_min_odds),
             "max_odds": float(limits.set_max_odds),
             "min_probability": float(limits.set_min_probability),
             "min_edge": float(limits.set_min_edge),
+            "max_edge": float(edge_max) if edge_max is not None else None,
             "confirmations": int(limits.set_confirmations or limits.confirmations),
         }
+    edge_max = limits.match_max_edge if limits.match_max_edge is not None else limits.max_edge
     return {
         "mode": str(limits.match_gate_mode or "live"),
         "min_odds": float(limits.match_min_odds),
         "max_odds": float(limits.match_max_odds),
         "min_probability": float(limits.match_min_probability),
         "min_edge": float(limits.match_min_edge),
+        "max_edge": float(edge_max) if edge_max is not None else None,
         "confirmations": int(limits.match_confirmations or limits.confirmations),
     }
 

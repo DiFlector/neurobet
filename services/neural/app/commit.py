@@ -56,10 +56,15 @@ def side_odds_from_row(row: Sequence[float], feature_names: Sequence[str]) -> Tu
         except (TypeError, ValueError):
             return 0.0, 0.0
 
-    return (
-        value("current_odds_player_a", "current_odds_team_a"),
-        value("current_odds_player_b", "current_odds_team_b"),
-    )
+    odds_a = value("current_odds_player_a", "current_odds_team_a")
+    odds_b = value("current_odds_player_b", "current_odds_team_b")
+    if (odds_a <= 1.0 or odds_b <= 1.0) and "no_vig_prob_player_a" in names:
+        p_nv_a = value("no_vig_prob_player_a")
+        margin = value("bookmaker_margin") or 1.06
+        if 0.01 <= p_nv_a <= 0.99 and margin >= 1.0:
+            odds_a = round(1.0 / (p_nv_a * margin), 3)
+            odds_b = round(1.0 / ((1.0 - p_nv_a) * margin), 3)
+    return odds_a, odds_b
 
 
 def best_edge(prob_a: float, prob_b: float, odds_a: float, odds_b: float) -> float:

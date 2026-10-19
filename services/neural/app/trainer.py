@@ -16,6 +16,7 @@ logger = logging.getLogger("neural.trainer")
 
 from db.models import ModelVersion, TrainingRun, TrainingDataset
 from .dataset import (
+    MatchSnapshots,
     chronological_folds,
     decision_records,
     get_dataset_builder,
@@ -263,10 +264,10 @@ class ModelTrainer:
         elif model_type in ("gb", "gbdt"):
             model_name = f"{sport_code}_gradient_boosting"
             hyperparameters = {
-                "learning_rate": float(overrides.get("learning_rate", 0.05)),
+                "learning_rate": float(overrides.get("learning_rate", 0.02)),
                 "max_iter": int(overrides.get("max_iter", 100)),
-                "max_depth": int(overrides.get("max_depth", 4)),
-                "calibration": str(overrides.get("calibration", "isotonic")),
+                "max_depth": int(overrides.get("max_depth", 3)),
+                "calibration": str(overrides.get("calibration", "sigmoid")),
                 "calibration_scheme": CALIBRATION_SCHEME,
                 "random_state": self.random_seed,
             }
@@ -276,6 +277,27 @@ class ModelTrainer:
                 max_depth=hyperparameters["max_depth"],
                 random_state=self.random_seed,
                 calibration_method=hyperparameters["calibration"],
+            )
+        elif model_type in ("residual_gb", "residual_gbdt"):
+            from .models import build_residual_boosting_pipeline
+
+            model_name = f"{sport_code}_residual_gradient_boosting"
+            hyperparameters = {
+                "learning_rate": float(overrides.get("learning_rate", 0.02)),
+                "max_iter": int(overrides.get("max_iter", 100)),
+                "max_depth": int(overrides.get("max_depth", 3)),
+                "calibration": str(overrides.get("calibration", "sigmoid")),
+                "calibration_scheme": CALIBRATION_SCHEME,
+                "max_offset": float(overrides.get("max_offset", 0.25)),
+                "random_state": self.random_seed,
+            }
+            estimator = build_residual_boosting_pipeline(
+                learning_rate=hyperparameters["learning_rate"],
+                max_iter=hyperparameters["max_iter"],
+                max_depth=hyperparameters["max_depth"],
+                random_state=self.random_seed,
+                calibration_method=hyperparameters["calibration"],
+                max_offset=hyperparameters["max_offset"],
             )
         elif model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
             from .epoch_fit import EpochTunedEstimator, ResidualEpochEstimator, initial_params
@@ -302,7 +324,7 @@ class ModelTrainer:
                 base = build_logistic_regression_pipeline().estimator if family == "lr" else build_gradient_boosting_pipeline().estimator
                 estimator = EpochTunedEstimator(estimator=base, method="sigmoid", family=family, params=params)
         else:
-            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', 'gbdt', 'epoch_lr', 'epoch_gb', or 'epoch_mlp'")
+            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', 'gbdt', 'residual_gb', 'epoch_lr', 'epoch_gb', or 'epoch_mlp'")
         return model_name, estimator, hyperparameters
 
     def _train_locked(
@@ -330,6 +352,32 @@ class ModelTrainer:
             matches, feature_names = dataset_builder.load_matches(session)
         else:
             matches, feature_names = prepared_matches, list(prepared_names or [])
+
+        if sport_code == "tennis" and model_type in ("residual_gb", "residual_gbdt"):
+            from features.selection import SELECTED_TENNIS_FEATURES_V2
+            target_indices = [i for i, name in enumerate(feature_names) if name in SELECTED_TENNIS_FEATURES_V2]
+            pruned_names = [feature_names[i] for i in target_indices]
+            pruned_matches = []
+            for m in matches:
+                if m.rows:
+                    pruned_rows = np.asarray(m.rows, dtype=float)[:, target_indices].tolist()
+                else:
+                    pruned_rows = []
+                pruned_matches.append(
+                    MatchSnapshots(
+                        event_id=m.event_id,
+                        started_at=m.started_at,
+                        label=m.label,
+                        rows=pruned_rows,
+                        observed_at=m.observed_at,
+                        row_labels=m.row_labels,
+                        row_markets=m.row_markets,
+                    )
+                )
+            matches = pruned_matches
+            feature_names = pruned_names
+            logger.info("Pruned tennis features to %d columns (Variant B / Anti-Overfitting).", len(feature_names))
+
         mode, folds = chronological_folds(len(matches))
 
         if hyperparameters.get("calibration") == "isotonic" and len(matches) < 1000:

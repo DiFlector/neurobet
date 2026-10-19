@@ -32,6 +32,7 @@ class BacktestConfig(BaseModel):
     
     # Strategy hurdle parameters
     min_edge: float = Field(default=0.03, ge=0.0, description="Minimum required edge (3%) to consider betting")
+    max_edge: Optional[float] = Field(default=None, ge=0.0, description="Maximum allowed edge to filter out fake line-lag spikes")
     min_probability: float = Field(default=0.40, ge=0.0, le=1.0, description="Minimum model probability")
     min_odds: float = Field(default=1.60, gt=1.0, description="Minimum bookmaker odds to bet on")
     max_odds: float = Field(default=2.40, gt=1.0, description="Maximum bookmaker odds to bet on")

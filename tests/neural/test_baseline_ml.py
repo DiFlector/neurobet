@@ -137,7 +137,7 @@ def test_training_and_artifact_serialization():
         assert predictor.checkpoint_data is not None
 
         # Build dummy feature vector matching feature names
-        dummy_features = {k: 0.0 for k in res_lr["feature_version"] and trainer.dataset_builder.feature_builder.POINT_MAPPING}
+        dummy_features = {k: 0.0 for k in predictor.checkpoint_data["feature_names"]}
         for name in predictor.checkpoint_data["feature_names"]:
             dummy_features[name] = 1.85 if "odds" in name else 0.5
 

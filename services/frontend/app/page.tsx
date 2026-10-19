@@ -17,7 +17,6 @@ import {
   fetchSports,
   fetchEvents,
   fetchPredictions,
-  fetchEventPredictions,
   fetchBets,
   fetchLedger,
   fetchModels,
@@ -97,23 +96,18 @@ export default function DashboardPage() {
         const [evs, preds, bList] = await Promise.all([
           fetchEvents(activeSport, activeStatus, searchQuery),
           fetchPredictions(),
-          fetchBets(500),
+          fetchBets(200),
         ]);
-        const placedEventIds = [...new Set(bList.map((bet) => bet.event_id).filter(Boolean))] as string[];
-        const placedPredictions = (
-          await Promise.all(placedEventIds.map((eventId) => fetchEventPredictions(eventId)))
-        ).flat();
-        const allPredictions = [...(preds || []), ...placedPredictions];
         if (evs) setEvents(evs);
-        if (bList.length > 0) setBets(bList);
-        if (allPredictions.length > 0) {
-          const pMap: Record<string, PredictionItem[]> = {};
-          allPredictions.forEach((p) => {
+        if (bList && bList.length > 0) setBets(bList);
+        const pMap: Record<string, PredictionItem[]> = {};
+        if (preds && preds.length > 0) {
+          preds.forEach((p) => {
             if (!pMap[p.event_id]) pMap[p.event_id] = [];
             pMap[p.event_id].push(p);
           });
-          setPredictions(pMap);
         }
+        setPredictions(pMap);
       } else if (activeTab === "bets") {
         const bList = await fetchBets(50);
         setBets(bList);
@@ -186,17 +180,11 @@ export default function DashboardPage() {
         const [evs, preds, bList] = await Promise.all([
           fetchEvents(view.activeSport, view.activeStatus, view.searchQuery),
           fetchPredictions(),
-          fetchBets(500),
+          fetchBets(200),
         ]);
-        const placedEventIds = [...new Set(bList.map((bet) => bet.event_id).filter(Boolean))] as string[];
-        const placedPredictions = (
-          await Promise.all(placedEventIds.map((eventId) => fetchEventPredictions(eventId)))
-        ).flat();
-        const allPredictions = [...(preds || []), ...placedPredictions];
-        // Keep previous board on empty/failed polls so the live list does not flicker away.
-        if (evs && evs.length > 0) setEvents(evs);
-        if (bList.length > 0) setBets(bList);
-        if (allPredictions.length > 0) applyPredictions(allPredictions);
+        if (evs) setEvents(evs);
+        if (bList && bList.length > 0) setBets(bList);
+        if (preds && preds.length > 0) applyPredictions(preds);
         if (view.modalOpen && view.eventId) {
           const details = await fetchEventDetails(view.eventId);
           if (details) setSelectedEventData(details);

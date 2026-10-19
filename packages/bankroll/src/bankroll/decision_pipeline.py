@@ -188,6 +188,7 @@ class CandidateSelector:
         model_version: str,
         min_edge: float = 0.03,
         min_confidence: float = 0.50,
+        max_edge: Optional[float] = None,
     ) -> CandidateItem:
         """
         Calculates implied market probability, edge, and determines shortlist qualification.
@@ -200,6 +201,8 @@ class CandidateSelector:
             edge = model_probability - market_probability
 
         is_shortlisted = (edge >= min_edge) and (confidence >= min_confidence)
+        if max_edge is not None and edge > max_edge:
+            is_shortlisted = False
 
         return CandidateItem(
             event_id=event_id,
@@ -223,12 +226,13 @@ class CandidateSelector:
         candidates: List[CandidateItem],
         config: Optional[DecisionPipelineConfig] = None,
     ) -> List[CandidateItem]:
-        """Filters list of CandidateItem instances based on min_edge and min_confidence."""
+        """Filters list of CandidateItem instances based on min_edge, max_edge, and min_confidence."""
         min_edge = config.min_edge if config else 0.03
+        max_edge = getattr(config, "max_edge", None) if config else None
         min_conf = config.min_confidence if config else 0.50
         shortlisted = []
         for c in candidates:
-            if (c.edge >= min_edge) and (c.confidence >= min_conf):
+            if (c.edge >= min_edge) and (c.confidence >= min_conf) and (max_edge is None or c.edge <= max_edge):
                 shortlisted.append(c if c.is_shortlisted else c.model_copy(update={"is_shortlisted": True}))
         return shortlisted
 

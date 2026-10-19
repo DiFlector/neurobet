@@ -7,6 +7,7 @@ import joblib
 import numpy as np
 
 from contracts import FeatureVector, MLPrediction, OutcomePrediction
+from features.selection import SELECTED_TENNIS_FEATURES_V2
 
 from .commit import MIN_COMMIT_EDGE, best_edge, side_odds
 from .strategy import certainty
@@ -76,7 +77,7 @@ class MLPredictor:
             raise RuntimeError("No model checkpoint loaded into MLPredictor")
 
         model = self.checkpoint_data["model"]
-        feature_names = self.checkpoint_data["feature_names"]
+        feature_names = self.checkpoint_data.get("feature_names") or SELECTED_TENNIS_FEATURES_V2
         model_version = self.checkpoint_data.get("version_tag", "v1.0.0_baseline")
         market = self.checkpoint_data.get("market", "match_winner")
 

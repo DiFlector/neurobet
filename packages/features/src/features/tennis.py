@@ -433,6 +433,19 @@ class TennisFeatureBuilder:
             tape.extend(valid_states)
             features.update(tape.as_features())
 
+        # Mean reversion indicator: pre-match favorite trailing in games/sets
+        p_fav_a = features.get("opening_prob_player_a", features.get("no_vig_prob_player_a", 0.50))
+        games_d = float(features.get("games_diff", 0.0))
+        sets_d = float(features.get("sets_diff", 0.0))
+        fav_trailing = 0.0
+        if p_fav_a > 0.50:
+            deficit_a = max(0.0, -games_d) + 2.0 * max(0.0, -sets_d)
+            fav_trailing = (p_fav_a - 0.50) * deficit_a
+        elif p_fav_a < 0.50:
+            deficit_b = max(0.0, games_d) + 2.0 * max(0.0, sets_d)
+            fav_trailing = -((0.50 - p_fav_a) * deficit_b)
+        features["favorite_trailing"] = round(float(fav_trailing), 4)
+
         return FeatureVector(
             event_id=str(event_id),
             sport_code=self.sport_code,
@@ -491,12 +504,16 @@ class TennisFeatureBuilder:
 
         latest_a = last_quoted_odds(side_a)
         latest_b = last_quoted_odds(side_b)
+        open_a = float(side_a[0].odds) if side_a else latest_a
+        open_b = float(side_b[0].odds) if side_b else latest_b
         features["current_odds_player_a"] = round(latest_a, 4)
         features["current_odds_player_b"] = round(latest_b, 4)
         features["is_missing_odds"] = float(latest_a <= 1.0 or latest_b <= 1.0)
         no_vig_a, no_vig_b, margin = calculate_no_vig_probabilities(latest_a, latest_b)
+        open_prob_a, _, _ = calculate_no_vig_probabilities(open_a, open_b)
         features["no_vig_prob_player_a"] = no_vig_a
         features["no_vig_prob_player_b"] = no_vig_b
+        features["opening_prob_player_a"] = open_prob_a
         features["bookmaker_margin"] = margin
 
         for window in ROLLING_WINDOWS:

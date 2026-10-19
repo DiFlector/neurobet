@@ -39,21 +39,33 @@ def upgrade() -> None:
     CREATE OR REPLACE FUNCTION fn_verify_virtual_account_balance()
     RETURNS TRIGGER AS $$
     DECLARE
+        v_current_balance NUMERIC(12, 2);
+        v_initial_balance NUMERIC(12, 2);
         v_ledger_sum NUMERIC(12, 2);
         v_expected_balance NUMERIC(12, 2);
     BEGIN
+        -- Read the actual current balance in the table at commit time
+        SELECT balance, initial_balance INTO v_current_balance, v_initial_balance
+        FROM virtual_accounts
+        WHERE id = NEW.id;
+
+        -- If another update in the same transaction modified the balance after this row event, skip intermediate validation
+        IF v_current_balance IS DISTINCT FROM NEW.balance THEN
+            RETURN NEW;
+        END IF;
+
         -- Calculate sum of non-initial ledger entries
         SELECT COALESCE(SUM(amount), 0.0)
         INTO v_ledger_sum
         FROM ledger_entries
         WHERE account_id = NEW.id AND entry_type != 'INITIAL_DEPOSIT';
 
-        v_expected_balance := NEW.initial_balance + v_ledger_sum;
+        v_expected_balance := v_initial_balance + v_ledger_sum;
 
         -- Check if balance matches expected within 1 cent tolerance
-        IF ABS(NEW.balance - v_expected_balance) > 0.01 THEN
+        IF ABS(v_current_balance - v_expected_balance) > 0.01 THEN
             RAISE EXCEPTION 'DirectBalanceUpdateViolation: virtual_accounts.balance (%) must equal initial_balance (%) + sum(ledger_entries.amount) (%).',
-                NEW.balance, NEW.initial_balance, v_expected_balance;
+                v_current_balance, v_initial_balance, v_expected_balance;
         END IF;
 
         RETURN NEW;

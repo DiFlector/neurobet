@@ -445,6 +445,27 @@ def test_statistical_hurdles_rejected():
         res_edge = executor.process_proposal(session, p_low_edge, account_name=acc_name)
         assert res_edge.is_accepted is False
         assert res_edge.rejection_code == reject_codes.EDGE_TOO_LOW
+
+        # Edge too high (> policy_max_edge 0.07)
+        p_high_edge = {
+            "proposal_id": str(uuid.uuid4()),
+            "event_id": str(event.id),
+            "sport_code": "tennis",
+            "market": "match_winner",
+            "outcome": "player_a",
+            "selection_id": str(sel_a.id),
+            "bookmaker_odds": 2.20,
+            "fair_odds": 1.80,
+            "model_probability": 0.55,
+            "edge": 0.12,
+            "policy_max_edge": 0.07,
+            "suggested_stake": 1000.0,
+        }
+        res_high_edge = executor.process_proposal(session, p_high_edge, account_name=acc_name)
+        assert res_high_edge.is_accepted is False
+        assert res_high_edge.rejection_code == reject_codes.EDGE_TOO_HIGH
+        assert "EDGE_THRESHOLD" in res_high_edge.checks_failed
+
         print("✓ test_statistical_hurdles_rejected PASSED")
     finally:
         session.close()
