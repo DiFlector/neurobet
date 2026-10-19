@@ -20,30 +20,46 @@ class BacktestReplayConfig(BaseContract):
         default_factory=lambda: ["match_winner", "set_winner"],
         description="Markets to score. Tennis v2 and the composite model can score sets; other checkpoints ignore set_winner.",
     )
+    match_decision_mode: Literal["set_confirmed", "independent"] = Field(
+        default="set_confirmed",
+        description="Tennis replay only: match head waits for confirmed set sides, or selects independently from set 2.",
+    )
     match_limit: int = Field(default=100, ge=1, le=2000, description="How many latest finished matches to replay")
     event_ids: Optional[List[str]] = Field(
         default=None,
         description="Replay these event UUIDs. When set, match_limit is not used to choose matches.",
     )
-    min_edge: float = Field(default=0.02, ge=0.0, description="Minimum model edge required to commit a side")
-    min_probability: float = Field(default=0.40, ge=0.0, le=1.0, description="Minimum model probability")
-    odds_gate_mode: Literal["live", "range"] = Field(
-        default="live",
+    min_edge: Optional[float] = Field(default=None, ge=0.0, description="Common edge override; omitted values inherit tennis.cfg")
+    min_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Common probability override; omitted values inherit tennis.cfg")
+    odds_gate_mode: Optional[Literal["live", "range"]] = Field(
+        default=None,
         description="live uses the same odds windows as inference; range uses min_odds and max_odds",
     )
-    min_odds: float = Field(default=1.30, gt=1.0, description="Inclusive lower odds bound in range mode")
-    max_odds: float = Field(default=2.40, gt=1.0, description="Exclusive upper odds bound in range mode")
-    short_odds_lo: float = Field(default=1.30, gt=1.0, description="Tennis short-price window start, inclusive")
-    short_odds_hi: float = Field(default=1.40, gt=1.0, description="Tennis short-price window end, exclusive")
-    mid_odds_lo: float = Field(default=1.60, gt=1.0, description="Tennis middle-price window start, inclusive")
-    mid_odds_hi: float = Field(default=1.80, gt=1.0, description="Tennis middle-price window end, exclusive")
-    match_odds_hi: float = Field(default=2.40, gt=1.0, description="Tennis match window end, exclusive")
-    observe_set: int = Field(default=1, ge=1, le=5, description="Tennis set number that is watched and not staked")
+    min_odds: Optional[float] = Field(default=None, gt=1.0, description="Common lower odds override in range mode")
+    max_odds: Optional[float] = Field(default=None, gt=1.0, description="Common upper odds override in range mode")
+    short_odds_lo: Optional[float] = Field(default=None, gt=1.0, description="Tennis short-price window start, inclusive")
+    short_odds_hi: Optional[float] = Field(default=None, gt=1.0, description="Tennis short-price window end, exclusive")
+    mid_odds_lo: Optional[float] = Field(default=None, gt=1.0, description="Tennis middle-price window start, inclusive")
+    mid_odds_hi: Optional[float] = Field(default=None, gt=1.0, description="Tennis middle-price window end, exclusive")
+    match_odds_hi: Optional[float] = Field(default=None, gt=1.0, description="Tennis match window end, exclusive")
+    observe_set: Optional[int] = Field(default=None, ge=1, le=5, description="Tennis set number that is watched and not staked")
     stake_sets: Optional[List[int]] = Field(
         default=None,
         description="When set, only these tennis set numbers are staked. Other sets are skipped.",
     )
-    confirmations: int = Field(default=2, ge=2, le=5, description="Agreeing snapshots required before a bet")
+    confirmations: Optional[int] = Field(default=None, ge=2, le=5, description="Common confirmation override; omitted inherits tennis.cfg")
+    match_min_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    set_min_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    match_min_edge: Optional[float] = Field(default=None, ge=0.0)
+    set_min_edge: Optional[float] = Field(default=None, ge=0.0)
+    match_confirmations: Optional[int] = Field(default=None, ge=2, le=5)
+    set_confirmations: Optional[int] = Field(default=None, ge=2, le=5)
+    match_gate_mode: Optional[Literal["live", "range"]] = None
+    set_gate_mode: Optional[Literal["live", "range"]] = None
+    match_min_odds: Optional[float] = Field(default=None, gt=1.0)
+    match_max_odds: Optional[float] = Field(default=None, gt=1.0)
+    set_min_odds: Optional[float] = Field(default=None, gt=1.0)
+    set_max_odds: Optional[float] = Field(default=None, gt=1.0)
     max_odds_staleness_sec: float = Field(default=15.0, gt=0.0, description="Reject a fill when the line is older than this")
     execution_latency_sec: float = Field(default=2.0, ge=0.0, description="Delay between the decision and the fill")
     allow_slippage: bool = Field(default=True, description="Reject the fill when latency removes the required edge")
@@ -88,7 +104,7 @@ class BacktestReplayConfig(BaseContract):
 
     @model_validator(mode="after")
     def bounds(self) -> "BacktestReplayConfig":
-        if self.max_odds <= self.min_odds:
+        if self.min_odds is not None and self.max_odds is not None and self.max_odds <= self.min_odds:
             raise ValueError("max_odds must be greater than min_odds")
         if self.fixed_stake > self.initial_bankroll:
             raise ValueError("fixed_stake must fit into the initial bankroll")

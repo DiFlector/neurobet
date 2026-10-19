@@ -1508,7 +1508,7 @@ FAILED
 
 Только `bet-manager` может создавать virtual bets и ledger entries.
 
-Теннисная составная линия — это одна запись `SHADOW` с именем `tennis_composite`. Внутри неё независимо считаются логистическая регрессия, градиентный бустинг и Residual MLP 64→32. Наружу кандидат выходит только при согласии всех трёх. Устройство, сборка и отображение описаны в [`03-COMPOSITE-MODEL.md`](03-COMPOSITE-MODEL.md).
+`tennis_composite` остаётся поддерживаемым legacy checkpoint форматом; описание находится в [`03-COMPOSITE-MODEL.md`](03-COMPOSITE-MODEL.md). Новый `tennis_market_offset_boosting` checkpoint хранит независимые match/set heads одной записью реестра. Он использует строгий упорядоченный список из 23 tennis-v4 признаков, включая `market_is_set`; старые checkpoint читают сохранённый при обучении список. Формула и метрики выпуска фиксируются в [`NewModels.md`](NewModels.md).
 
 ---
 

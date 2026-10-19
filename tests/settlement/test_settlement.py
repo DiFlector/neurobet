@@ -819,9 +819,55 @@ def test_worker_stale_live_marks_interrupted_not_finished():
         session.close()
 
 
+def test_fonbet_results_get_by_date_parsing():
+    """Verify parsing of Fonbet date-based results feed (results/v2/getByDate)."""
+    sample_get_by_date = {
+        "competitions": [
+            {"id": "32605", "name": "World Tennis. Женщины. Сагеней", "sportId": "4"}
+        ],
+        "events": [
+            {
+                "id": "69086698",
+                "name": "Варгова Н – Мерсье К",
+                "kindId": "1",
+                "competitionId": "32605",
+                "team1": "Варгова Н",
+                "team2": "Мерсье К",
+                "status": 2,
+            }
+        ],
+        "eventMiscs": [
+            {
+                "id": "69086698",
+                "score1": 1,
+                "score2": 2,
+                "subScores": [
+                    {"score1": 6, "score2": 2, "title": "сет"},
+                    {"score1": 4, "score2": 6, "title": "сет"},
+                    {"score1": 5, "score2": 7, "title": "сет"},
+                ],
+                "winningTeam": 2,
+            }
+        ],
+    }
+
+    results = FonbetResultsParser.parse_get_by_date(sample_get_by_date)
+    assert len(results) == 1
+    r = results[0]
+    assert r.source_event_id == "69086698"
+    assert r.participant_a == "Варгова Н"
+    assert r.participant_b == "Мерсье К"
+    assert r.final_score == "1:2 (6-2 4-6 5-7)"
+    assert r.winner == "player_b"
+    assert r.status == "FINISHED"
+    assert EventResultMatcher.result_is_definitive(r) is True
+    print("test_fonbet_results_get_by_date_parsing: OK")
+
+
 if __name__ == "__main__":
     print("\n--- Running Phase 13 Settlement & Fonbet Results Tests ---")
     test_fonbet_results_feed_parsing()
+    test_fonbet_results_get_by_date_parsing()
     test_retirement_and_walkover_detection()
     test_event_result_matcher_marks_finished()
     test_settlement_win()

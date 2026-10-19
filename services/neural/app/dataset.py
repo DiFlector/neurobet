@@ -15,13 +15,20 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from db.models import Event, EventStateSnapshot, LLMDecision, OddsSnapshot
 
 from features import FeatureBuilder, TennisFeatureBuilder, registry as feature_registry
-from features.tennis import closed_set_winner, is_one_set_lead, match_is_decided, set_is_open
+from features.tennis import (
+    closed_set_winner,
+    favorite_trailing_value,
+    is_one_set_lead,
+    match_is_decided,
+    set_is_open,
+)
+from features.base import calculate_no_vig_probabilities
 
 from .commit import confirming_index, side_odds_from_row
 from .strategy import stake_gate
@@ -53,6 +60,10 @@ class MatchSnapshots:
     observed_at: List[datetime]
     row_labels: Optional[List[int]] = None
     row_markets: Optional[List[str]] = None
+    # Execution prices and outcome availability are service metadata, not model features.
+    row_odds_a: Optional[List[float]] = None
+    row_odds_b: Optional[List[float]] = None
+    result_available_at: Optional[datetime] = None
 
 
 def match_winner_label(
@@ -253,27 +264,31 @@ def _thin_indices(count: int, limit: int) -> List[int]:
 
 
 def thin_match(match: MatchSnapshots, limit: int = MAX_TRAIN_ROWS) -> MatchSnapshots:
-    """Evenly spaced snapshots, including the first and the last. Each market is thinned on its own."""
-    if not match.row_markets:
+    """Thin only the training tape, with a match-wide cap and market representation."""
+    if len(match.rows) <= limit:
+        chosen = list(range(len(match.rows)))
+    elif not match.row_markets:
         chosen = _thin_indices(len(match.rows), limit)
-        return MatchSnapshots(
-            event_id=match.event_id,
-            started_at=match.started_at,
-            label=match.label,
-            rows=[match.rows[index] for index in chosen],
-            observed_at=[match.observed_at[index] for index in chosen],
-            row_labels=None if match.row_labels is None else [match.row_labels[index] for index in chosen],
-            row_markets=None,
-        )
-    groups: Dict[str, List[int]] = {}
-    for index, market in enumerate(match.row_markets):
-        groups.setdefault(market, []).append(index)
-    chosen: List[int] = []
-    for market in groups:
-        positions = groups[market]
-        for slot in _thin_indices(len(positions), limit):
-            chosen.append(positions[slot])
-    chosen.sort()
+    else:
+        groups: Dict[str, List[int]] = {}
+        for index, market in enumerate(match.row_markets):
+            family = "set" if str(market).startswith("set_winner:") else "match"
+            groups.setdefault(family, []).append(index)
+        # Give both available market families a place, then divide the remaining
+        # budget proportionally to their row counts. Largest remainders are stable.
+        quota = {key: 1 for key in groups}
+        remaining = limit - len(quota)
+        total = sum(len(items) for items in groups.values())
+        exact = {key: remaining * len(items) / total for key, items in groups.items()}
+        for key in groups:
+            quota[key] += int(exact[key])
+        left = limit - sum(quota.values())
+        for key in sorted(groups, key=lambda item: (-(exact[item] % 1), item))[:left]:
+            quota[key] += 1
+        chosen = []
+        for key, positions in groups.items():
+            chosen.extend(positions[index] for index in _thin_indices(len(positions), min(quota[key], len(positions))))
+        chosen.sort()
     return MatchSnapshots(
         event_id=match.event_id,
         started_at=match.started_at,
@@ -281,7 +296,10 @@ def thin_match(match: MatchSnapshots, limit: int = MAX_TRAIN_ROWS) -> MatchSnaps
         rows=[match.rows[index] for index in chosen],
         observed_at=[match.observed_at[index] for index in chosen],
         row_labels=None if match.row_labels is None else [match.row_labels[index] for index in chosen],
-        row_markets=[match.row_markets[index] for index in chosen],
+        row_markets=None if match.row_markets is None else [match.row_markets[index] for index in chosen],
+        row_odds_a=None if match.row_odds_a is None else [match.row_odds_a[index] for index in chosen],
+        row_odds_b=None if match.row_odds_b is None else [match.row_odds_b[index] for index in chosen],
+        result_available_at=match.result_available_at,
     )
 
 
@@ -354,6 +372,9 @@ def project_market(match: MatchSnapshots, family: str) -> MatchSnapshots:
         observed_at=[match.observed_at[index] for index in indexes],
         row_labels=None if match.row_labels is None else [match.row_labels[index] for index in indexes],
         row_markets=[match.row_markets[index] for index in indexes],
+        row_odds_a=None if match.row_odds_a is None else [match.row_odds_a[index] for index in indexes],
+        row_odds_b=None if match.row_odds_b is None else [match.row_odds_b[index] for index in indexes],
+        result_available_at=match.result_available_at,
     )
 
 
@@ -387,7 +408,12 @@ def decision_records(
             matrix = np.asarray([match.rows[index] for index in indexes], dtype=float)
             p_side_a = positive_probabilities(model, matrix)
             pairs = [(float(prob), float(1.0 - prob)) for prob in p_side_a]
-            odds = [side_odds_from_row(match.rows[index], feature_names) for index in indexes]
+            odds = [
+                (match.row_odds_a[index], match.row_odds_b[index])
+                if match.row_odds_a is not None and match.row_odds_b is not None
+                else side_odds_from_row(match.rows[index], feature_names)
+                for index in indexes
+            ]
             picked = confirming_index(pairs, odds, market=market, sport_code=sport_code)
             if picked is None:
                 continue
@@ -448,6 +474,92 @@ class SportDatasetBuilder:
         from .dataset_cache import read_store
 
         stored = read_store(self.sport_code, version)
+        if stored is None and self.sport_code == "tennis" and version == "1.2.0":
+            # The 1.1.0 tape predates favorite_trailing. Reconstruct it exactly
+            # from the first observed match-market probability and each row's
+            # point-in-time score, using the same helper as live feature build.
+            stored = read_store(self.sport_code, "1.1.0")
+            if stored is not None:
+                matches, feature_names = stored
+                if "favorite_trailing" not in feature_names:
+                    required = ("market_is_set", "no_vig_prob_player_a", "games_diff", "sets_diff")
+                    missing = [name for name in required if name not in feature_names]
+                    if missing:
+                        raise RuntimeError(
+                            "Cannot migrate tennis 1.1.0 tape to 1.2.0; missing columns: "
+                            + ", ".join(missing)
+                        )
+                    indices = {name: feature_names.index(name) for name in required}
+                    missing_match_rows = [
+                        match
+                        for match in matches
+                        if not any(
+                            float(row[indices["market_is_set"]]) < 0.5
+                            for row in match.rows
+                        )
+                    ]
+                    opening_by_event: Dict[str, float] = {}
+                    if missing_match_rows:
+                        opening_quotes: Dict[str, List[Optional[float]]] = {
+                            match.event_id: [None, None] for match in missing_match_rows
+                        }
+                        quote_rows = session.execute(
+                            select(OddsSnapshot.event_id, OddsSnapshot.outcome, OddsSnapshot.odds)
+                            .where(OddsSnapshot.event_id.in_([match.event_id for match in missing_match_rows]))
+                            .where(or_(OddsSnapshot.market_type.is_(None), OddsSnapshot.market_type.in_(("", "match_winner"))))
+                            .order_by(OddsSnapshot.observed_at.asc())
+                        ).all()
+                        for event_id, outcome, raw_odds in quote_rows:
+                            key = str(event_id)
+                            values = opening_quotes.get(key)
+                            if values is None:
+                                continue
+                            try:
+                                price = float(raw_odds)
+                            except (TypeError, ValueError):
+                                continue
+                            if price <= 1.0:
+                                continue
+                            side_index = 0 if outcome in _QUOTE_A else 1 if outcome in _QUOTE_B else None
+                            if side_index is not None and values[side_index] is None:
+                                values[side_index] = price
+                        for event_id, prices in opening_quotes.items():
+                            if prices[0] is None or prices[1] is None:
+                                opening_by_event[event_id] = 0.5
+                            else:
+                                opening_by_event[event_id] = calculate_no_vig_probabilities(
+                                    prices[0], prices[1]
+                                )[0]
+                    for match in matches:
+                        opening_probability = next(
+                            (
+                                float(row[indices["no_vig_prob_player_a"]])
+                                for row in match.rows
+                                if float(row[indices["market_is_set"]]) < 0.5
+                            ),
+                            opening_by_event.get(match.event_id),
+                        )
+                        if opening_probability is None:
+                            raise RuntimeError(
+                                f"Cannot reconstruct favorite_trailing for tennis match {match.event_id}: "
+                                "no match-market rows"
+                            )
+                        matrix = np.asarray(match.rows, dtype=float)
+                        games = matrix[:, indices["games_diff"]]
+                        sets = matrix[:, indices["sets_diff"]]
+                        probability = float(opening_probability)
+                        trailing = np.zeros(len(matrix), dtype=float)
+                        if probability > 0.50:
+                            trailing = (probability - 0.50) * (np.maximum(0.0, -games) + 2.0 * np.maximum(0.0, -sets))
+                        elif probability < 0.50:
+                            trailing = -((0.50 - probability) * (np.maximum(0.0, games) + 2.0 * np.maximum(0.0, sets)))
+                        match.rows = np.column_stack((matrix, np.round(trailing, 4)))
+                    feature_names.append("favorite_trailing")
+                    logger.info(
+                        "Migrated tennis 1.1.0 cache in memory: reconstructed favorite_trailing for %d matches.",
+                        len(matches),
+                    )
+                self.loaded_source_feature_version = "1.1.0"
         if stored is None:
             raise RuntimeError(
                 f"Сохранённая лента '{self.sport_code}' ещё не собрана. Её пишет dataset_refresh."
@@ -571,6 +683,8 @@ class SportDatasetBuilder:
             observed: List[datetime] = []
             row_labels: List[int] = []
             row_markets: List[str] = []
+            row_odds_a: List[float] = []
+            row_odds_b: List[float] = []
             event_decisions = decisions_by_event.get(event.id, [])
             set_winners = (event.metadata_json or {}).get("set_winners") or {}
             for cutoff in cutoffs:
@@ -613,6 +727,8 @@ class SportDatasetBuilder:
                         observed.append(cutoff)
                         row_labels.append(label)
                         row_markets.append("match_winner")
+                        row_odds_a.append(float(odds_a))
+                        row_odds_b.append(float(odds_b))
                     else:
                         counts.broken_line += 1
                 if self.sport_code != "tennis":
@@ -648,6 +764,8 @@ class SportDatasetBuilder:
                     observed.append(cutoff)
                     row_labels.append(set_label)
                     row_markets.append(f"set_winner:{number}")
+                    row_odds_a.append(float(prices[0]))
+                    row_odds_b.append(float(prices[1]))
 
             if not rows:
                 continue
@@ -661,6 +779,9 @@ class SportDatasetBuilder:
                     observed_at=observed,
                     row_labels=row_labels,
                     row_markets=row_markets,
+                    row_odds_a=row_odds_a,
+                    row_odds_b=row_odds_b,
+                    result_available_at=event.finished_at,
                 )
             )
             snapshot_count += len(rows)

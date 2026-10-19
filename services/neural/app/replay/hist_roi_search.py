@@ -218,7 +218,7 @@ def walk_forward(matches: Sequence[Any], names: Sequence[str], fit_one: Callable
     from ..dataset import chronological_folds, decision_records
     from ..metrics import compute_classification_metrics, insufficient_metrics
 
-    ordered = [match for match in matches if match.rows]
+    ordered = [match for match in matches if len(match.rows) > 0]
     mode, folds = chronological_folds(len(ordered))
     records = []
     for train_index, test_index in folds:
@@ -324,7 +324,7 @@ def run(session, only: str = "all") -> Dict[str, Any]:
     reserved = set(windows["gate_final"]) | set(windows["model_final"]) | set(windows["search"]) | set(windows["blocked"])
     builder = SportDatasetBuilder("tennis")
     loaded, names = builder.load_matches(session)
-    trainable = [thin_match(match) for match in loaded if match.event_id in set(windows["train"]) and match.rows]
+    trainable = [thin_match(match) for match in loaded if match.event_id in set(windows["train"]) and len(match.rows) > 0]
     leaked = [match.event_id for match in trainable if match.event_id in reserved]
     if leaked:
         raise RuntimeError(f"training matches overlap reserved windows: {leaked[:5]}")
@@ -415,7 +415,7 @@ def run_release(session) -> Dict[str, Any]:
 
     builder = SportDatasetBuilder("tennis")
     loaded, names = builder.load_matches(session)
-    trainable = [thin_match(match) for match in loaded if match.rows]
+    trainable = [thin_match(match) for match in loaded if len(match.rows) > 0]
     base, blend, validation = split_train(trainable)
     logger.info("Release %s split base=%d blend=%d validation=%d", RELEASE_TAG, len(base), len(blend), len(validation))
 

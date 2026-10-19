@@ -2381,6 +2381,8 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
 
     if "events" in raw_data and "sections" in raw_data:
         results_list = parse_results(raw_data)
+    elif "events" in raw_data and "eventMiscs" in raw_data and hasattr(FonbetResultsParser, "parse_get_by_date"):
+        results_list = FonbetResultsParser.parse_get_by_date(raw_data)
     else:
         import subprocess
         for url in [
@@ -2400,6 +2402,93 @@ def sync_results_and_settle(payload: Optional[Dict[str, Any]] = None) -> Dict[st
                         break
             except Exception:
                 pass
+
+        # For matches that have been running or were scheduled > 6 hours ago,
+        # check if they have finished using https://fon.bet/results (date-based results feed)
+        from sqlalchemy import or_, select
+        from datetime import datetime, timezone, timedelta
+        now_dt = datetime.now(timezone.utc)
+        cutoff = now_dt - timedelta(hours=6)
+        dates_to_query = set()
+
+        try:
+            with SessionLocal() as session:
+                # 1. PENDING bets on events scheduled/started/placed > 6h ago
+                pending_query = (
+                    select(Event.scheduled_start_at, Event.started_at, Bet.placed_at)
+                    .join(Bet, Bet.event_id == Event.id)
+                    .where(
+                        Bet.status == "PENDING",
+                        Event.source == "fonbet",
+                        or_(
+                            Event.scheduled_start_at <= cutoff,
+                            Event.started_at <= cutoff,
+                            Bet.placed_at <= cutoff,
+                        ),
+                    )
+                )
+                for sched, started, placed in session.execute(pending_query).all():
+                    for dt in (sched, started, placed):
+                        if dt:
+                            dates_to_query.add(dt.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+                            # Also add Moscow date (UTC+3)
+                            dates_to_query.add((dt + timedelta(hours=3)).strftime("%Y-%m-%d"))
+
+                # 2. Events marked live/interrupted running > 6h ago
+                running_query = (
+                    select(Event.scheduled_start_at, Event.started_at)
+                    .where(
+                        Event.source == "fonbet",
+                        Event.status.in_(["live", "interrupted"]),
+                        or_(
+                            Event.scheduled_start_at <= cutoff,
+                            Event.started_at <= cutoff,
+                        ),
+                    )
+                )
+                for sched, started in session.execute(running_query).all():
+                    for dt in (sched, started):
+                        if dt:
+                            dates_to_query.add(dt.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+                            dates_to_query.add((dt + timedelta(hours=3)).strftime("%Y-%m-%d"))
+
+        except Exception as ex:
+            logger.warning("Error querying overdue events for results check: %s", ex)
+
+        # If there are overdue events or bets, also ensure yesterday and today are checked
+        if dates_to_query:
+            dates_to_query.add(now_dt.strftime("%Y-%m-%d"))
+            dates_to_query.add((now_dt - timedelta(days=1)).strftime("%Y-%m-%d"))
+
+            fetch_by_date = getattr(FonbetResultsParser, "fetch_results_by_date", None)
+            parse_by_date = getattr(FonbetResultsParser, "parse_get_by_date", None)
+            if fetch_by_date and parse_by_date:
+                for date_str in sorted(dates_to_query, reverse=True):
+                    try:
+                        date_payload = fetch_by_date(date_str)
+                        if date_payload and "events" in date_payload:
+                            date_results = parse_by_date(date_payload)
+                            logger.info(
+                                "Retrieved %d results from Fonbet results for date %s",
+                                len(date_results),
+                                date_str,
+                            )
+                            results_list.extend(date_results)
+                    except Exception as ex:
+                        logger.warning("Failed to fetch/parse results for date %s: %s", date_str, ex)
+
+    # Deduplicate results keeping strongest definitive result
+    dedup: Dict[str, CanonicalMatchResult] = {}
+    for res in results_list:
+        eid = str(res.source_event_id)
+        if eid not in dedup:
+            dedup[eid] = res
+        else:
+            existing = dedup[eid]
+            if not EventResultMatcher.result_is_definitive(existing) and EventResultMatcher.result_is_definitive(res):
+                dedup[eid] = res
+    results_list = list(dedup.values())
+
 
     events_matched = 0
     events_finished = 0

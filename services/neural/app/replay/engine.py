@@ -15,7 +15,7 @@ from ..confirmation import next_watch_action
 from ..context_gate import NEUTRAL_CONTEXT, apply_context_features, context_side_from_event
 from ..dataset import _context_as_of
 from ..set_match import match_verdict, set_is_committable, set_is_observation_only
-from tennis_adapter.policy import model_commits_market, policy_from_mapping, windows_allow
+from tennis_adapter.policy import TennisPolicy, market_limits_from_mapping, model_commits_market, resolve_replay_policy, windows_allow
 from .bankroll import ReplayBankroll
 
 logger = logging.getLogger("neural.replay")
@@ -84,15 +84,19 @@ def odds_allowed(
     if str(sport_code or "").strip().lower() != "tennis":
         return True, ""
     price = float(odds)
-    if config.get("odds_gate_mode", "live") == "range":
-        if float(probability) < float(config["min_probability"]):
+    limits = market_limits_from_mapping(market, config)
+    if limits["mode"] == "range":
+        if float(probability) < float(limits["min_probability"]):
             return False, "LOW_PROBABILITY"
-        if price < float(config["min_odds"]):
+        if price < float(limits["min_odds"]):
             return False, "ODDS_TOO_SHORT"
-        if price >= float(config["max_odds"]):
+        if price >= float(limits["max_odds"]):
             return False, "ODDS_TOO_LONG"
         return True, ""
-    return windows_allow(probability, price, market, policy_from_mapping(config))
+    resolved = resolve_replay_policy(config)
+    policy_keys = TennisPolicy().as_dict().keys()
+    policy = TennisPolicy(**{key: resolved[key] for key in policy_keys if key in resolved})
+    return windows_allow(probability, price, market, policy)
 
 
 def _prices(rows: Sequence[Any], cutoff: datetime, market_type: str, line_value: Optional[float] = None) -> Optional[tuple[float, float]]:
@@ -291,7 +295,9 @@ class ReplayRunner:
 
     def __init__(self, predictor, config: Dict[str, Any], sport_code: str):
         self.predictor = predictor
-        self.config = config
+        self.config = dict(config)
+        if sport_code == "tennis":
+            self.config.update(resolve_replay_policy(config))
         self.sport_code = sport_code
         self.counts: Counter = Counter()
         self.bets: List[Dict[str, Any]] = []
@@ -318,11 +324,16 @@ class ReplayRunner:
         self._confirmed: set[tuple] = set()
         self._observed: Dict[tuple, str] = {}
         self.candidates: List[Dict[str, Any]] = []
+        self._funnel: Dict[str, Dict[str, set]] = {
+            stage: {"match": set(), "set": set()} for stage in ("data", "candidate", "confirmation", "execution")
+        }
 
     def run(self, matches: Sequence[Any], feature_builder, on_match=None) -> Dict[str, Any]:
         ordered = sorted(matches, key=lambda item: _as_utc(item.started_at))
         total = len(ordered)
         for index, match in enumerate(ordered, start=1):
+            if getattr(match, "odds", None) or getattr(match, "cached_rows", None):
+                self._funnel["data"]["match"].add(str(match.event_id))
             self._replay_match(match, feature_builder)
             self._settle_match(match, _as_utc(match.started_at) + timedelta(days=2))
             if on_match is not None:
@@ -345,6 +356,30 @@ class ReplayRunner:
                 by_market["set_winner"] = _bet_stats([])
             for key in set_keys:
                 by_market[key] = _bet_stats([bet for bet in set_bets if bet["market"] == key])
+        import hashlib
+        import json
+        from tennis_adapter.policy import TennisPolicy
+
+        policy_fields = list(TennisPolicy().as_dict().keys())
+        applied_policy = {key: self.config.get(key) for key in policy_fields}
+        applied_policy["match_decision_mode"] = self.config.get("match_decision_mode", "set_confirmed")
+        policy_hash = hashlib.sha256(json.dumps(applied_policy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        funnel = {
+            "available_matches": matches_seen,
+            "eligible_matches": len(self._funnel["data"]["match"]),
+            "by_market": {
+                market: {
+                    "eligible_matches": len(self._funnel["data"][market]),
+                    "candidate_matches": len(self._funnel["candidate"][market]),
+                    "confirmed_matches": len(self._funnel["confirmation"][market]),
+                    "executed_matches": len(self._funnel["execution"][market]),
+                }
+                for market in ("match", "set")
+            },
+            "candidate_slices": int(self.counts.get("CANDIDATE_SLICES", 0)),
+            "confirmed_slices": int(self.counts.get("CONFIRMED_SLICES", 0)),
+            "executed_slices": len(self.bets),
+        }
         return {
             "model_name": name,
             "version_tag": version,
@@ -358,6 +393,9 @@ class ReplayRunner:
             "max_drawdown": round(float(self.bankroll.max_drawdown), 2),
             "bankruptcies": int(self.bankroll.bankruptcies),
             "rejection_counts": dict(self.counts),
+            "applied_policy": applied_policy,
+            "policy_sha256": policy_hash,
+            "decision_funnel": funnel,
             "gates_applied": list(GATES_APPLIED),
             "by_market": by_market,
             "bet_records": self.bets,
@@ -368,7 +406,8 @@ class ReplayRunner:
 
         raw = self.config.get("stake_sets")
         if raw:
-            return int(number) in {int(item) for item in raw}
+            values = raw if isinstance(raw, (list, tuple, set)) else str(raw).replace(",", " ").split()
+            return int(number) in {int(item) for item in values}
         allowed = stake_set_numbers()
         if not allowed:
             return True
@@ -453,8 +492,6 @@ class ReplayRunner:
 
     def _replay_cached(self, match) -> None:
         """Score the saved training rows. Quotes for execution still come from the odds table."""
-        from ..commit import side_odds_from_row
-
         names = list(match.feature_names)
         odds = list(match.odds)
         odds_at = 0
@@ -474,6 +511,23 @@ class ReplayRunner:
             if family not in enabled:
                 continue
             features = {name: float(row[position]) for position, name in enumerate(names)}
+            # Cached training tapes predate the v4 market discriminator. The row's
+            # market key is authoritative for this replay, and must be restored
+            # before inference so v4 can select the correct market head.
+            is_set_market = market.startswith("set_winner:")
+            features["market_is_set"] = 1.0 if is_set_market else 0.0
+            line_value = int(market.split(":", 1)[1]) if is_set_market else None
+
+            # Execution prices always come from the odds visible at this cutoff,
+            # never from the other market's cached feature row.
+            prices = (
+                self._book.set_prices().get(line_value)
+                if line_value is not None
+                else self._book.match_prices()
+            )
+            odds_a, odds_b = prices if prices is not None else (0.0, 0.0)
+            features["market_odds_a"] = float(odds_a)
+            features["market_odds_b"] = float(odds_b)
             vector = FeatureVector(
                 event_id=str(match.event_id),
                 sport_code=self.sport_code,
@@ -481,11 +535,8 @@ class ReplayRunner:
                 feature_cutoff_timestamp=moment,
                 features=features,
             )
-            odds_a, odds_b = side_odds_from_row(row, names)
-            line_value = None
             observe = False
-            if market.startswith("set_winner:"):
-                line_value = int(market.split(":", 1)[1])
+            if is_set_market:
                 if not self._stakes_set(line_value):
                     continue
                 observe = set_is_observation_only(line_value, self.sport_code, self.config.get("observe_set")) or not model_commits_market(
@@ -508,12 +559,17 @@ class ReplayRunner:
             if prices is None:
                 _bump(self.counts, "NO_ODDS")
                 return
+            vector.features["market_is_set"] = 0.0
+            vector.features["market_odds_a"] = float(prices[0])
+            vector.features["market_odds_b"] = float(prices[1])
             self._consider(match, vector, "match_winner", prices[0], prices[1], cutoff, odds_rows, None)
             return
         from features import registry as feature_registry
 
         original = dict(vector.features)
         prices = self._book.set_prices()
+        if prices:
+            self._funnel["data"]["set"].add(str(match.event_id))
         finished = _finished_sets(state)
         current_set = int(float(original.get("current_set") or 1))
         best_of = 5 if max([current_set, *finished.keys(), *prices.keys()], default=1) >= 4 else 3
@@ -578,14 +634,17 @@ class ReplayRunner:
                 if edge_side:
                     chosen = next((item for item in probe.outcomes if item.outcome == edge_side), None)
                     edge_value = float(chosen.edge) if chosen else 0.0
-                allowed = match_verdict(
-                    finished,
-                    open_sides,
-                    bool(original.get("tape_points_even")),
-                    edge_side,
-                    edge_value,
-                    best_of,
-                )
+                if self.config.get("match_decision_mode", "set_confirmed") == "independent":
+                    allowed = edge_side if current_set >= 2 else None
+                else:
+                    allowed = match_verdict(
+                        finished,
+                        open_sides,
+                        bool(original.get("tape_points_even")),
+                        edge_side,
+                        edge_value,
+                        best_of,
+                    )
                 vector.features["match_wait"] = 0.0 if allowed else 1.0
                 self._consider(
                     match,
@@ -608,6 +667,8 @@ class ReplayRunner:
         return None
 
     def _consider(self, match, vector, market: str, odds_a: float, odds_b: float, cutoff: datetime, odds_rows, line_value, observe: bool = False) -> None:
+        family = "set" if str(market).startswith("set_winner") else "match"
+        _bump(self.counts, "SNAPSHOTS_SEEN")
         key = (str(match.event_id), market)
         if key in self._confirmed:
             _bump(self.counts, "DUPLICATE_MARKET")
@@ -620,7 +681,9 @@ class ReplayRunner:
         if composite and hasattr(self.predictor, "component_votes"):
             self._consider_composite(match, vector, market, odds_a, odds_b, cutoff, odds_rows, line_value, snapshot_at, observe)
             return
-        result = self.predictor.predict(vector, odds_a=odds_a, odds_b=odds_b, is_shadow=False, min_edge_threshold=float(self.config["min_edge"]))
+        limits = market_limits_from_mapping(market if market == "match_winner" else "set_winner", self.config) if self.sport_code == "tennis" else {"min_edge": float(self.config["min_edge"]), "confirmations": int(self.config["confirmations"])}
+        min_edge = float(limits["min_edge"])
+        result = self.predictor.predict(vector, odds_a=odds_a, odds_b=odds_b, is_shadow=False, min_edge_threshold=min_edge)
         if self.config.get("record_candidates"):
             self._record_candidate(match, market, cutoff, odds_rows, line_value, result)
         side = result.best_outcome if result.has_positive_edge else None
@@ -634,8 +697,11 @@ class ReplayRunner:
                 self.config,
                 self.sport_code,
             )
-            if eligible and float(chosen.edge) < float(self.config["min_edge"]):
+            if eligible and float(chosen.edge) < min_edge:
                 eligible, reason = False, "LOW_EDGE"
+            if eligible:
+                self._funnel["candidate"][family].add(str(match.event_id))
+                _bump(self.counts, "CANDIDATE_SLICES")
         watch_key = key
         action, detail = next_watch_action(
             self._watches.get(watch_key),
@@ -643,13 +709,15 @@ class ReplayRunner:
             side,
             eligible,
             reason,
-            required=int(self.config["confirmations"]),
+            required=int(limits["confirmations"]),
         )
         self._watches[watch_key] = detail
         if action != "commit" or chosen is None:
             if side and not eligible and reason:
                 _bump(self.counts, reason)
             return
+        self._funnel["confirmation"][family].add(str(match.event_id))
+        _bump(self.counts, "CONFIRMED_SLICES")
         if observe:
             self._observed[(str(match.event_id), market)] = str(chosen.outcome)
             return
@@ -733,6 +801,9 @@ class ReplayRunner:
         )
 
     def _place(self, match, market: str, chosen, cutoff: datetime, odds_rows, market_type: str, line_value) -> None:
+        if self.sport_code == "tennis":
+            limits = market_limits_from_mapping(market_type, self.config)
+            self.execution.config.min_edge = float(limits["min_edge"])
         quotes = _execution_quotes(odds_rows, market_type, line_value)
         fill = self.execution.execute_order(
             cutoff,
@@ -759,6 +830,8 @@ class ReplayRunner:
         if placed is None:
             _bump(self.counts, "INSUFFICIENT_FUNDS")
             return
+        family = "set" if str(market).startswith("set_winner") else "match"
+        self._funnel["execution"][family].add(str(match.event_id))
         self._confirmed.add((str(match.event_id), market))
         self.bets.append(
             {

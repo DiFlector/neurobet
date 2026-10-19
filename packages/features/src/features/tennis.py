@@ -17,6 +17,20 @@ from .base import (
 )
 
 
+def favorite_trailing_value(opening_prob_player_a: float, games_diff: float, sets_diff: float) -> float:
+    """Return the opening match favorite's signed score deficit at this snapshot."""
+    probability = float(opening_prob_player_a)
+    games = float(games_diff)
+    sets = float(sets_diff)
+    if probability > 0.50:
+        value = (probability - 0.50) * (max(0.0, -games) + 2.0 * max(0.0, -sets))
+    elif probability < 0.50:
+        value = -((0.50 - probability) * (max(0.0, games) + 2.0 * max(0.0, sets)))
+    else:
+        value = 0.0
+    return round(float(value), 4)
+
+
 def _empty_tape() -> Dict[str, float]:
     tape = {
         "tape_points_a": 0.0,
@@ -307,7 +321,8 @@ class TennisFeatureBuilder:
     """
 
     sport_code: str = "tennis"
-    feature_version: str = "1.1.0"
+    # 1.2.0 adds favorite_trailing to the point-in-time tennis tape.
+    feature_version: str = "1.2.0"
 
     POINT_MAPPING = {
         "0": 0.0,
@@ -437,14 +452,7 @@ class TennisFeatureBuilder:
         p_fav_a = features.get("opening_prob_player_a", features.get("no_vig_prob_player_a", 0.50))
         games_d = float(features.get("games_diff", 0.0))
         sets_d = float(features.get("sets_diff", 0.0))
-        fav_trailing = 0.0
-        if p_fav_a > 0.50:
-            deficit_a = max(0.0, -games_d) + 2.0 * max(0.0, -sets_d)
-            fav_trailing = (p_fav_a - 0.50) * deficit_a
-        elif p_fav_a < 0.50:
-            deficit_b = max(0.0, games_d) + 2.0 * max(0.0, sets_d)
-            fav_trailing = -((0.50 - p_fav_a) * deficit_b)
-        features["favorite_trailing"] = round(float(fav_trailing), 4)
+        features["favorite_trailing"] = favorite_trailing_value(p_fav_a, games_d, sets_d)
 
         return FeatureVector(
             event_id=str(event_id),

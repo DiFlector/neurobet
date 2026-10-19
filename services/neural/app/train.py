@@ -28,8 +28,8 @@ def main():
     parser.add_argument(
         "--model",
         default="all",
-        choices=["lr", "gb", "all", "residual_gb", "epoch_lr", "epoch_gb", "epoch_mlp"],
-        help="Model type: lr, gb, residual_gb, all, or one tennis_v3.0.0 epoch line",
+        choices=["lr", "gb", "all", "residual_gb", "market_offset_gb", "epoch_lr", "epoch_gb", "epoch_mlp"],
+        help="Model type: lr, gb, residual_gb, market_offset_gb, all, or one tennis_v3.0.0 epoch line",
     )
     parser.add_argument(
         "--checkpoint-dir",
@@ -48,9 +48,10 @@ def main():
         choices=["patch", "minor", "major"],
         help="Version step: patch tennis_v1.0.0->tennis_v1.0.1, minor tennis_v1.0.0->tennis_v1.1.0, major tennis_v1.0.0->tennis_v2.0.0",
     )
+    parser.add_argument("--version-tag", default=None, help="Explicit unique release tag (v4 uses tennis_v4.0.0)")
     args = parser.parse_args()
 
-    logger.info("Starting ML training run for sport='%s', model='%s', seed=%d", args.sport, args.model, args.seed)
+    logger.info("Starting ML training run for sport='%s', model='%s', seed=%d, version_tag=%s", args.sport, args.model, args.seed, args.version_tag or "auto")
 
     trainer = ModelTrainer(
         checkpoint_dir=args.checkpoint_dir,
@@ -65,7 +66,7 @@ def main():
                 if args.model == "all":
                     res = trainer.train_all(session=session, sport_code=sport, bump=args.bump)
                 else:
-                    res = [trainer.train_model(session=session, model_type=args.model, sport_code=sport, bump=args.bump)]
+                    res = [trainer.train_model(session=session, model_type=args.model, sport_code=sport, bump=args.bump, version_tag=args.version_tag)]
                 results.extend(res)
         else:
             if args.model == "all":
@@ -77,6 +78,7 @@ def main():
                         model_type=args.model,
                         sport_code=args.sport.lower(),
                         bump=args.bump,
+                        version_tag=args.version_tag,
                     )
                 ]
 

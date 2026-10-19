@@ -378,3 +378,177 @@ class FonbetResultsParser:
                 cls.parse_feed(data, target_sport_id=sport_id, sport_code=sport_code)
             )
         return results
+
+    FONBET_GET_BY_DATE_URLS: Tuple[str, ...] = (
+        "https://clientsapi-vk-w.bk6bba-resources.ru/results/v2/getByDate?lang=ru&packetVersion=0&lineDate={date_str}&scopeMarket=1600",
+        "https://clientsapi-lb61-w.bk6bba-resources.com/results/v2/getByDate?lang=ru&packetVersion=0&lineDate={date_str}&scopeMarket=1600",
+        "https://clientsapi-lb51.bk6bba-resources.com/results/v2/getByDate?lang=ru&packetVersion=0&lineDate={date_str}&scopeMarket=1600",
+    )
+
+    @classmethod
+    def parse_get_by_date(cls, data: Dict[str, Any]) -> List[CanonicalMatchResult]:
+        """
+        Parse official results payload from Fonbet results/v2/getByDate?lineDate=YYYY-MM-DD endpoint.
+        Matches exact source_event_id, scores, and winners from official bookmaker records.
+        """
+        events = data.get("events", [])
+        miscs = {str(m.get("id")): m for m in data.get("eventMiscs", []) if "id" in m}
+        comps = {str(c.get("id")): c for c in data.get("competitions", []) if "id" in c}
+        sports_map = {
+            FONBET_FOOTBALL_SPORT_ID: "football",
+            FONBET_HOCKEY_SPORT_ID: "hockey",
+            FONBET_BASKETBALL_SPORT_ID: "basketball",
+            FONBET_TENNIS_SPORT_ID: "tennis",
+            FONBET_VOLLEYBALL_SPORT_ID: "volleyball",
+        }
+
+        results: List[CanonicalMatchResult] = []
+        for ev in events:
+            # Skip sub-events (e.g. statistics, sets, quarters)
+            if ev.get("parentId"):
+                continue
+
+            comp = comps.get(str(ev.get("competitionId")), {})
+            try:
+                sport_id = int(comp.get("sportId", 0)) if comp.get("sportId") else 0
+            except (ValueError, TypeError):
+                sport_id = 0
+
+            sport_code = sports_map.get(sport_id)
+            if not sport_code:
+                continue
+
+            eid = str(ev.get("id"))
+            p_a = str(ev.get("team1") or "").strip()
+            p_b = str(ev.get("team2") or "").strip()
+
+            if not p_a or not p_b:
+                parsed = cls.parse_participants(ev.get("name", ""))
+                if parsed:
+                    p_a, p_b = parsed
+                else:
+                    continue
+
+            misc = miscs.get(eid, {})
+            s1 = misc.get("score1")
+            s2 = misc.get("score2")
+            win_team = misc.get("winningTeam")
+            sub_scores = misc.get("subScores", [])
+            status_code = ev.get("status")
+
+            is_retired = False
+            is_walkover = False
+            comments = str(misc.get("comment") or ev.get("comment") or "").strip()
+
+            if status_code == 4:
+                status = "CANCELLED"
+                is_walkover = True
+                winner = None
+            elif status_code == 2:
+                status = "FINISHED"
+                if win_team == 1:
+                    winner = "player_a" if sport_code == "tennis" else "team_a"
+                elif win_team == 2:
+                    winner = "player_b" if sport_code == "tennis" else "team_b"
+                elif s1 is not None and s2 is not None:
+                    if s1 > s2:
+                        winner = "player_a" if sport_code == "tennis" else "team_a"
+                    elif s2 > s1:
+                        winner = "player_b" if sport_code == "tennis" else "team_b"
+                    elif sport_code == "football":
+                        winner = "draw"
+                    else:
+                        winner = None
+                else:
+                    winner = None
+
+                # In tennis: if match ended with max sets < 2, it indicates retirement
+                if sport_code == "tennis" and s1 is not None and s2 is not None:
+                    if max(s1, s2) < 2 and win_team in (1, 2):
+                        is_retired = True
+                        status = "RETIRED"
+            else:
+                status = "SETTLEMENT_REVIEW_REQUIRED"
+                winner = None
+
+            if comments:
+                comm_lower = comments.lower()
+                if any(k in comm_lower for k in ("отказ", "травм", "снял", "rt")):
+                    is_retired = True
+                    if status == "FINISHED":
+                        status = "RETIRED"
+                if any(k in comm_lower for k in ("не сост", "отмен", "дисквал", "walkover", "wo", "w.o.")):
+                    is_walkover = True
+                    status = "CANCELLED"
+                    winner = None
+
+            sub_pairs = [
+                f"{s.get('score1', 0)}-{s.get('score2', 0)}"
+                for s in sub_scores
+                if s.get("score1") is not None and s.get("score2") is not None
+            ]
+            sub_str = " ".join(sub_pairs)
+            if sub_str:
+                final_score = f"{s1}:{s2} ({sub_str})"
+            elif s1 is not None and s2 is not None:
+                final_score = f"{s1}:{s2}"
+            else:
+                final_score = ""
+
+            results.append(
+                CanonicalMatchResult(
+                    source_event_id=eid,
+                    sport_code=sport_code,
+                    tournament=comp.get("name", f"{sport_code.capitalize()} Tournament"),
+                    participant_a=p_a,
+                    participant_b=p_b,
+                    final_score=final_score,
+                    winner=winner,
+                    status=status,
+                    is_retired=is_retired,
+                    is_walkover=is_walkover,
+                    comments=comments,
+                )
+            )
+
+        logger.info("Parsed %d canonical match results from getByDate payload.", len(results))
+        return results
+
+    @classmethod
+    def fetch_results_by_date(cls, date_str: str, timeout: float = 10.0) -> Optional[Dict[str, Any]]:
+        """
+        Fetch results for a specific date (YYYY-MM-DD) from Fonbet official mirrors.
+        Returns parsed JSON dict or None if all mirrors failed.
+        """
+        import gzip
+        import json
+        import urllib.request
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Encoding": "gzip",
+            "Accept": "application/json",
+        }
+
+        for tmpl in cls.FONBET_GET_BY_DATE_URLS:
+            url = tmpl.format(date_str=date_str)
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    raw = resp.read()
+                    if raw[:2] == b"\x1f\x8b":
+                        raw = gzip.decompress(raw)
+                    payload = json.loads(raw.decode("utf-8", errors="replace"))
+                    if "events" in payload:
+                        logger.info(
+                            "Fetched %d events from Fonbet results for date %s via %s",
+                            len(payload.get("events", [])),
+                            date_str,
+                            url.split("/")[2],
+                        )
+                        return payload
+            except Exception as ex:
+                logger.debug("Failed fetching Fonbet results from %s: %s", url, ex)
+
+        logger.warning("Could not fetch Fonbet results for date %s from any mirror.", date_str)
+        return None

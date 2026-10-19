@@ -19,6 +19,7 @@ from .registry import FeatureBuilderRegistry, registry
 from .leakage import DataLeakageDetectedError, DataLeakageDetector
 from .selection import (
     SELECTED_TENNIS_FEATURES_V2,
+    SELECTED_TENNIS_FEATURES_V4,
     get_market_probability,
     prune_matrix,
     prune_tennis_features,
@@ -43,6 +44,7 @@ __all__ = [
     "DataLeakageDetectedError",
     "DataLeakageDetector",
     "SELECTED_TENNIS_FEATURES_V2",
+    "SELECTED_TENNIS_FEATURES_V4",
     "prune_tennis_features",
     "prune_matrix",
     "get_market_probability",

@@ -465,7 +465,7 @@ class ResidualEpochEstimator(ClassifierMixin, BaseEstimator):
             from .dataset import project_market
 
             cal_rows, cal_labels, cal_weights = stack_matches(
-                [match for match in (project_market(item, "match") for item in later) if match.rows] or later
+                [match for match in (project_market(item, "match") for item in later) if len(match.rows) > 0] or later
             )
             if len(cal_rows) >= 8 and len(set(cal_labels.tolist())) > 1:
                 calibrator = _HoldoutCalibrator(self.model_, "sigmoid")

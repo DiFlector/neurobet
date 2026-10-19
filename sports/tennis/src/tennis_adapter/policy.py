@@ -123,9 +123,70 @@ def policy_from_mapping(data: Optional[Mapping]) -> TennisPolicy:
             if key in data and data[key] is not None:
                 current = base[key]
                 if isinstance(current, str):
-                    continue
-                base[key] = int(float(data[key])) if isinstance(current, int) else float(data[key])
+                    base[key] = str(data[key])
+                else:
+                    base[key] = int(float(data[key])) if isinstance(current, int) else float(data[key])
     return TennisPolicy(**base)
+
+
+def resolve_replay_policy(config: Optional[Mapping] = None) -> dict:
+    """Resolve omitted replay gates from tennis.cfg and apply common then market overrides."""
+    supplied = dict(config or {})
+    resolved = load_tennis_policy().as_dict()
+    common = {
+        "min_probability": "min_probability",
+        "min_edge": "min_edge",
+        "confirmations": "confirmations",
+        "odds_gate_mode": None,
+        "min_odds": None,
+        "max_odds": None,
+    }
+    for source, target in common.items():
+        if source not in supplied or supplied[source] is None:
+            continue
+        value = supplied[source]
+        if source == "min_probability":
+            resolved["match_min_probability"] = resolved["set_min_probability"] = float(value)
+        elif source == "min_edge":
+            resolved["match_min_edge"] = resolved["set_min_edge"] = float(value)
+        elif source == "confirmations":
+            resolved["match_confirmations"] = resolved["set_confirmations"] = int(value)
+        elif source == "odds_gate_mode":
+            resolved["match_gate_mode"] = resolved["set_gate_mode"] = str(value)
+        elif source == "min_odds":
+            resolved["match_min_odds"] = resolved["set_min_odds"] = float(value)
+        elif source == "max_odds":
+            resolved["match_max_odds"] = resolved["set_max_odds"] = float(value)
+    direct = (
+        "match_min_probability", "set_min_probability", "match_min_edge", "set_min_edge",
+        "match_confirmations", "set_confirmations", "match_gate_mode", "set_gate_mode",
+        "match_min_odds", "match_max_odds", "set_min_odds", "set_max_odds",
+        "short_odds_lo", "short_odds_hi", "mid_odds_lo", "mid_odds_hi", "match_odds_hi",
+        "max_edge", "match_max_edge", "set_max_edge", "observe_set", "stake_sets",
+    )
+    for key in direct:
+        if key in supplied and supplied[key] is not None:
+            value = supplied[key]
+            if key == "stake_sets" and isinstance(value, list):
+                value = ",".join(str(int(item)) for item in value)
+            resolved[key] = value
+    # Keep legacy summary/replay fields in sync with the resolved match policy.
+    resolved["min_probability"] = resolved["match_min_probability"]
+    resolved["min_edge"] = resolved["match_min_edge"]
+    resolved["confirmations"] = resolved["match_confirmations"]
+    resolved["odds_gate_mode"] = resolved["match_gate_mode"]
+    resolved["min_odds"] = resolved["match_min_odds"]
+    resolved["max_odds"] = resolved["match_max_odds"]
+    resolved.update({key: value for key, value in supplied.items() if key not in direct and value is not None})
+    return resolved
+
+
+def market_limits_from_mapping(market: str, config: Optional[Mapping] = None) -> dict:
+    """Market gate values after applying common overrides and the market-specific override."""
+    resolved = resolve_replay_policy(config)
+    keys = TennisPolicy().as_dict().keys()
+    policy = TennisPolicy(**{key: resolved[key] for key in keys if key in resolved})
+    return market_limits(market, policy)
 
 
 def _is_set_market(market: str) -> bool:
@@ -197,6 +258,8 @@ def model_commits_market(model_name: str, version_tag: str, market: str) -> bool
     text = str(market or "")
     match_name = _assigned(policy.match_model)[0]
     set_name = _assigned(policy.set_model)[0]
+    if name == "tennis_market_offset_boosting" and str(version_tag) == "tennis_v4.0.0":
+        return text == "match_winner" or text == "set_winner" or text.startswith("set_winner:")
     if text == "match_winner":
         if name and name == set_name:
             return False

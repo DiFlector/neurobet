@@ -146,7 +146,7 @@ class NeurobetClient:
         return self._request(
             f"{self.base_url}/api/models/shadow/register",
             method="POST",
-            data={"sport_code": sport_code, "candidate_version_tag": candidate_tag},
+            data={"sport_code": sport_code, "version_tag": candidate_tag},
         )
 
     def promote_shadow_model(self, shadow_tag: str, sport_code: str = "tennis", force: bool = False) -> Dict[str, Any]:

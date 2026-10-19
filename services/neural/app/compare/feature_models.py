@@ -22,7 +22,7 @@ SEED = 42
 
 
 def prepare(matches: Sequence[MatchSnapshots]) -> list:
-    return [thin_match(match) for match in matches if match.rows]
+    return [thin_match(match) for match in matches if len(match.rows) > 0]
 
 
 def stack(matches: Sequence[MatchSnapshots], names: Sequence[str]):

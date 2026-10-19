@@ -81,6 +81,11 @@ class MLPredictor:
         model_version = self.checkpoint_data.get("version_tag", "v1.0.0_baseline")
         market = self.checkpoint_data.get("market", "match_winner")
 
+        if self.checkpoint_data.get("feature_schema_version") == "tennis_market_v4":
+            missing = [name for name in feature_names if name not in feature_vector.features]
+            if missing:
+                raise ValueError(f"Tennis v4 inference is missing required features: {', '.join(missing)}")
+
         # Prepare 1xD feature row matching model training columns
         x_row = [float(feature_vector.features.get(k, 0.0)) for k in feature_names]
         X = np.asarray([x_row], dtype=float)
@@ -102,7 +107,8 @@ class MLPredictor:
         bm_odds_b = float(odds_b) if odds_b else feat_odds_b
 
         # Market-anchored calibration & shrinkage for volatile live markets
-        if bm_odds_a > 1.0 and bm_odds_b > 1.0:
+        is_market_offset_v4 = self.checkpoint_data.get("feature_schema_version") == "tennis_market_v4"
+        if not is_market_offset_v4 and bm_odds_a > 1.0 and bm_odds_b > 1.0:
             mkt_a = 1.0 / bm_odds_a
             mkt_b = 1.0 / bm_odds_b
             mkt_sum = mkt_a + mkt_b
@@ -115,7 +121,7 @@ class MLPredictor:
                     prob_b = round(1.0 - prob_a, 4)
 
         # In-play tennis probability ceiling to avoid uncalibrated extremes (e.g. 0.82 on live games)
-        if feature_vector.sport_code == "tennis":
+        if feature_vector.sport_code == "tennis" and not is_market_offset_v4:
             MAX_INPLAY_PROB = 0.74
             MIN_INPLAY_PROB = 1.0 - MAX_INPLAY_PROB
             prob_a = round(min(MAX_INPLAY_PROB, max(MIN_INPLAY_PROB, prob_a)), 4)

@@ -174,6 +174,11 @@ class ModelTrainer:
         sport_code = sport_code.lower()
         model_name, estimator, hyperparameters = self._build_estimator(model_type, sport_code, hyperparameters)
 
+        if model_type == "market_offset_gb" and sport_code != "tennis":
+            raise ValueError("market_offset_gb is currently a tennis-only model.")
+        if model_type == "market_offset_gb" and version_tag != "tennis_v4.0.0":
+            raise ValueError("The first tennis market-offset release must use --version-tag tennis_v4.0.0.")
+
         lock_key = training_lock_key(sport_code, model_name, market)
         acquired = session.execute(
             text("SELECT pg_try_advisory_lock(:key)"),
@@ -193,6 +198,21 @@ class ModelTrainer:
             }
 
         try:
+            if version_tag:
+                existing = (
+                    session.query(ModelVersion)
+                    .filter(ModelVersion.sport_code == sport_code, ModelVersion.version_tag == version_tag)
+                    .first()
+                )
+                if existing is not None:
+                    return {
+                        "skipped": True,
+                        "reason": "version_tag_already_registered",
+                        "model_name": existing.model_name,
+                        "version_tag": existing.version_tag,
+                        "model_version_id": str(existing.id),
+                        "artifact_path": existing.artifact_path,
+                    }
             prepared_matches = None
             prepared_names = None
             if model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
@@ -299,6 +319,35 @@ class ModelTrainer:
                 calibration_method=hyperparameters["calibration"],
                 max_offset=hyperparameters["max_offset"],
             )
+        elif model_type == "market_offset_gb":
+            from .models import TennisMarketOffsetEstimator
+
+            model_name = "tennis_market_offset_boosting"
+            hyperparameters = {
+                "objective": "binary:logistic",
+                "base_margin": "logit(no_vig_prob_player_a)",
+                "max_depth": int(overrides.get("max_depth", 3)),
+                "learning_rate": float(overrides.get("learning_rate", 0.03)),
+                "n_estimators": int(overrides.get("n_estimators", 300)),
+                "reg_lambda": float(overrides.get("reg_lambda", 10.0)),
+                "random_state": int(overrides.get("random_state", self.random_seed)),
+                "n_jobs": int(overrides.get("n_jobs", 2)),
+                "early_stopping_rounds": int(overrides.get("early_stopping_rounds", 30)),
+                "market_offset_clip": 0.35,
+                "alpha_grid": [0.0, 0.25, 0.5, 0.75, 1.0],
+                "split": [0.6, 0.2, 0.2],
+                "calibration": "temporal_alpha_grid_log_loss",
+                "calibration_scheme": "market_offset_v1_temporal_60_20_20",
+            }
+            estimator = TennisMarketOffsetEstimator(
+                max_depth=hyperparameters["max_depth"],
+                learning_rate=hyperparameters["learning_rate"],
+                n_estimators=hyperparameters["n_estimators"],
+                reg_lambda=hyperparameters["reg_lambda"],
+                random_state=hyperparameters["random_state"],
+                n_jobs=hyperparameters["n_jobs"],
+                early_stopping_rounds=hyperparameters["early_stopping_rounds"],
+            )
         elif model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
             from .epoch_fit import EpochTunedEstimator, ResidualEpochEstimator, initial_params
 
@@ -324,7 +373,7 @@ class ModelTrainer:
                 base = build_logistic_regression_pipeline().estimator if family == "lr" else build_gradient_boosting_pipeline().estimator
                 estimator = EpochTunedEstimator(estimator=base, method="sigmoid", family=family, params=params)
         else:
-            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', 'gbdt', 'residual_gb', 'epoch_lr', 'epoch_gb', or 'epoch_mlp'")
+            raise ValueError(f"Unknown model_type: {model_type}. Must be 'lr', 'gb', 'gbdt', 'residual_gb', 'market_offset_gb', 'epoch_lr', 'epoch_gb', or 'epoch_mlp'")
         return model_name, estimator, hyperparameters
 
     def _train_locked(
@@ -352,14 +401,45 @@ class ModelTrainer:
             matches, feature_names = dataset_builder.load_matches(session)
         else:
             matches, feature_names = prepared_matches, list(prepared_names or [])
+        source_feature_version = str(
+            getattr(dataset_builder, "loaded_source_feature_version", builder_version or self.feature_version)
+        )
+        if sport_code == "tennis" and model_type == "market_offset_gb":
+            hyperparameters["dataset_source_feature_version"] = source_feature_version
+            if source_feature_version != str(builder_version or self.feature_version):
+                hyperparameters["dataset_feature_migrations"] = ["favorite_trailing:reconstructed_from_opening_match_market"]
 
-        if sport_code == "tennis" and model_type in ("residual_gb", "residual_gbdt"):
+        if sport_code == "tennis" and model_type == "market_offset_gb":
+            from features.selection import SELECTED_TENNIS_FEATURES_V4
+
+            missing = [name for name in SELECTED_TENNIS_FEATURES_V4 if name not in feature_names]
+            if missing:
+                raise ValueError(f"Dataset cannot train tennis v4; missing feature columns: {', '.join(missing)}")
+            target_indices = [feature_names.index(name) for name in SELECTED_TENNIS_FEATURES_V4]
+            feature_names = list(SELECTED_TENNIS_FEATURES_V4)
+            matches = [
+                MatchSnapshots(
+                    event_id=m.event_id,
+                    started_at=m.started_at,
+                    label=m.label,
+                    rows=np.asarray(m.rows, dtype=float)[:, target_indices].tolist() if len(m.rows) else [],
+                    observed_at=m.observed_at,
+                    row_labels=m.row_labels,
+                    row_markets=m.row_markets,
+                    row_odds_a=m.row_odds_a,
+                    row_odds_b=m.row_odds_b,
+                    result_available_at=m.result_available_at,
+                )
+                for m in matches
+            ]
+            logger.info("Tennis v4 uses the canonical %d-feature contract.", len(feature_names))
+        elif sport_code == "tennis" and model_type in ("residual_gb", "residual_gbdt"):
             from features.selection import SELECTED_TENNIS_FEATURES_V2
             target_indices = [i for i, name in enumerate(feature_names) if name in SELECTED_TENNIS_FEATURES_V2]
             pruned_names = [feature_names[i] for i in target_indices]
             pruned_matches = []
             for m in matches:
-                if m.rows:
+                if len(m.rows):
                     pruned_rows = np.asarray(m.rows, dtype=float)[:, target_indices].tolist()
                 else:
                     pruned_rows = []
@@ -372,30 +452,57 @@ class ModelTrainer:
                         observed_at=m.observed_at,
                         row_labels=m.row_labels,
                         row_markets=m.row_markets,
+                        row_odds_a=m.row_odds_a,
+                        row_odds_b=m.row_odds_b,
+                        result_available_at=m.result_available_at,
                     )
                 )
             matches = pruned_matches
             feature_names = pruned_names
             logger.info("Pruned tennis features to %d columns (Variant B / Anti-Overfitting).", len(feature_names))
 
-        mode, folds = chronological_folds(len(matches))
+        mode, folds = chronological_folds(len(matches), embargo_matches=1 if model_type == "market_offset_gb" else 0)
+        if model_type == "market_offset_gb":
+            # Scheduled starts are not sufficient when two real matches overlap.
+            # Keep only training matches whose last observed row predates the test tape.
+            safe_folds = []
+            for train_index, test_index in folds:
+                first_test = min(matches[index].observed_at[0] for index in test_index if matches[index].observed_at)
+                safe_train = [
+                    index for index in train_index
+                    if matches[index].observed_at and matches[index].observed_at[-1] < first_test
+                ]
+                if safe_train:
+                    safe_folds.append((safe_train, test_index))
+            folds = safe_folds
+            if not folds:
+                raise ValueError("Tennis v4 has no walk-forward folds after purging overlapping match timelines.")
 
         if hyperparameters.get("calibration") == "isotonic" and len(matches) < 1000:
             hyperparameters["calibration"] = "sigmoid"
             hyperparameters["calibration_note"] = "sigmoid_until_1000_matches"
             estimator.method = "sigmoid"
         # Each test match is scored by a model fit only on earlier matches.
-        # Validation uses the same 12-point tape as training, one decision per market.
+        # The 12-point cap is a training-only budget. Decisions must be replayed
+        # over the complete chronological tape with the service-side quotes intact.
         decision_log: List[Dict[str, Any]] = []
+        skipped_v4_folds: List[Dict[str, Any]] = []
         for train_index, test_index in folds:
             train_matches = [thin_match(matches[index]) for index in train_index]
-            test_matches = [thin_match(matches[index]) for index in test_index]
+            test_matches = [matches[index] for index in test_index]
             X_fold, y_fold, _weights = stack_matches(train_matches)
             if len(X_fold) < 8 or len(set(y_fold.tolist())) < 2:
                 logger.info("Skip a validation fold for %s: the earlier matches do not contain both classes.", sport_code)
                 continue
             fold_model = clone(estimator)
-            fold_model.fit_matches(train_matches, feature_names)
+            try:
+                fold_model.fit_matches(train_matches, feature_names)
+            except ValueError as exc:
+                if model_type != "market_offset_gb":
+                    raise
+                skipped_v4_folds.append({"train_matches": len(train_matches), "reason": str(exc)})
+                logger.info("Skip an unusable tennis v4 walk-forward fold: %s", exc)
+                continue
             fold_records = decision_records(fold_model, test_matches, feature_names, sport_code)
             for record in fold_records:
                 record["feature_version"] = self.feature_version
@@ -410,10 +517,16 @@ class ModelTrainer:
                 f"(строк {len(X_all)})."
             )
         estimator.fit_matches(saved_matches, feature_names)
+        if model_type == "market_offset_gb":
+            hyperparameters["market_heads"] = estimator.head_report_
+            hyperparameters["walk_forward_skipped_folds"] = skipped_v4_folds
         epoch_report = getattr(estimator, "epoch_report_", None)
         if epoch_report:
             hyperparameters["final_epochs"] = epoch_report
-        base_cut = _holdout_cut(len(saved_matches), estimator.calibration_fraction)
+        base_cut = _holdout_cut(
+            len(saved_matches),
+            float(getattr(estimator, "calibration_fraction", 0.2)),
+        )
         X_train, y_train, _base_weights = stack_matches(saved_matches[:base_cut] or saved_matches)
 
         train_prob = positive_probabilities(estimator, X_train)
@@ -485,10 +598,16 @@ class ModelTrainer:
             "is_real_data": True,
             "context_from_history": True,
         }
+        if model_type == "market_offset_gb":
+            ds_meta["feature_contract"] = "tennis_market_v4"
+            ds_meta["feature_count"] = len(feature_names)
+            ds_meta["source_feature_version"] = source_feature_version
 
         # 5. Serialize model checkpoint. The tag is only the version of this line.
         if model_type in ("epoch_lr", "epoch_gb", "epoch_mlp"):
             m_tag = model_type
+        elif model_type == "market_offset_gb":
+            m_tag = "market_offset_gb"
         else:
             m_tag = "lr" if model_type == "lr" else "gb"
         if version_tag is None:
@@ -532,6 +651,12 @@ class ModelTrainer:
             "git_commit": get_git_commit_hash(),
             "trained_at": datetime.now(timezone.utc).isoformat(),
         }
+        if model_type == "market_offset_gb":
+            checkpoint_data.update({
+                "feature_schema_version": "tennis_market_v4",
+                "supported_markets": ["match_winner", "set_winner"],
+                "market_heads": ["match", "set"],
+            })
         joblib.dump(checkpoint_data, artifact_path)
 
         # Also save latest pointer

@@ -304,6 +304,57 @@ def test_assigned_models_stake_only_their_market():
     assert "match_winner" not in composite_markets
 
 
+def test_cached_v4_replay_restores_market_marker_and_uses_market_quotes():
+    start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    # Deliberately omit market_is_set, as in legacy cached tapes. The match
+    # prices differ from the set prices so cross-market quote leakage is clear.
+    names = ["current_odds_player_a", "current_odds_player_b", "no_vig_prob_player_a"]
+    row = [1.80, 2.00, 0.55]
+    match = SimpleNamespace(
+        event_id="cached-v4",
+        feature_names=names,
+        feature_version="tennis_v1",
+        cached_rows=[row],
+        cached_times=[start],
+        cached_markets=["set_winner:2"],
+        odds=_quotes(start, 1.80, 2.00) + _set_quotes(start, 2, 1.65, 2.30),
+    )
+    predictor = SimpleNamespace(checkpoint_data={"version_tag": "tennis_v4.0.0", "model_name": "tennis_market_offset_boosting"})
+    runner = ReplayRunner(predictor, _config(markets=["set_winner"], stake_sets=[2]), "tennis")
+    captured = []
+    runner._consider = lambda *args, **kwargs: captured.append((args[1], args[2], args[3], args[4]))
+
+    runner._replay_cached(match)
+
+    assert len(captured) == 1
+    vector, market, odds_a, odds_b = captured[0]
+    assert market == "set_winner:2"
+    assert vector.features["market_is_set"] == 1.0
+    assert vector.features["market_odds_a"] == odds_a == 1.65
+    assert vector.features["market_odds_b"] == odds_b == 2.30
+
+
+def test_raw_v4_replay_adds_match_marker_before_considering():
+    from app.replay.engine import PriceBook
+
+    start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    predictor = SimpleNamespace(checkpoint_data={"version_tag": "tennis_v4.0.0", "model_name": "tennis_market_offset_boosting"})
+    runner = ReplayRunner(predictor, _config(markets=["match_winner"]), "tennis")
+    runner._book = PriceBook()
+    runner._book.extend(_quotes(start, 1.75, 2.15), start)
+    vector = FeatureVector(event_id="raw-v4", sport_code="tennis", features={"no_vig_prob_player_a": 0.55})
+    captured = []
+    runner._consider = lambda *args, **kwargs: captured.append((args[1], args[2], args[3], args[4]))
+
+    runner._score_cutoff(SimpleNamespace(event_id="raw-v4"), vector, [], start)
+
+    assert len(captured) == 1
+    scored, market, odds_a, odds_b = captured[0]
+    assert market == "match_winner"
+    assert scored.features["market_is_set"] == 0.0
+    assert (odds_a, odds_b) == (1.75, 2.15)
+
+
 def test_three_losses_count_one_bankruptcy_and_continue():
     start = datetime(2026, 10, 1, tzinfo=timezone.utc)
     matches = [_match(f"m{index}", start + timedelta(days=index), "player_b") for index in range(3)]
@@ -326,5 +377,7 @@ if __name__ == "__main__":
     test_replay_uses_sets_closed_on_the_snapshot()
     test_replay_watches_the_first_set_and_stakes_the_second()
     test_assigned_models_stake_only_their_market()
+    test_cached_v4_replay_restores_market_marker_and_uses_market_quotes()
+    test_raw_v4_replay_adds_match_marker_before_considering()
     test_three_losses_count_one_bankruptcy_and_continue()
     print("historical replay tests passed")

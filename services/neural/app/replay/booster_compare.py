@@ -300,7 +300,7 @@ def main() -> None:
         reserved = set(windows["gate_final"]) | set(windows["model_final"]) | set(windows["search"]) | set(windows["blocked"])
         builder = SportDatasetBuilder("tennis")
         loaded, names = builder.load_matches(session)
-        trainable = [thin_match(match) for match in loaded if match.event_id in set(windows["train"]) and match.rows]
+        trainable = [thin_match(match) for match in loaded if match.event_id in set(windows["train"]) and len(match.rows) > 0]
         leaked = [match.event_id for match in trainable if match.event_id in reserved]
         if leaked:
             raise RuntimeError(f"training matches overlap reserved windows: {leaked[:5]}")

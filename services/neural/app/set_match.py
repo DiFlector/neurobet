@@ -17,7 +17,13 @@ def checkpoint_scores_sets(checkpoint: Optional[dict]) -> bool:
     """A set line scores sets from its features. The assigned match line stays on the match."""
     data = checkpoint or {}
     names = {str(item) for item in (data.get("feature_names") or [])}
-    capable = str(data.get("kind") or "") == "composite" or {"market_is_set", "set_index"} <= names or is_v2(data.get("version_tag"))
+    supported_markets = {str(item) for item in data.get("supported_markets") or []}
+    capable = (
+        "set_winner" in supported_markets
+        or str(data.get("kind") or "") == "composite"
+        or {"market_is_set", "set_index"} <= names
+        or is_v2(data.get("version_tag"))
+    )
     from tennis_adapter.policy import _assigned, load_tennis_policy
 
     policy = load_tennis_policy()

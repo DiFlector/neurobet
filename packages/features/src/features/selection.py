@@ -1,4 +1,4 @@
-"""Tennis feature selection and dimensionality reduction (Variant B: 20 features).
+"""Tennis feature selection contracts: legacy Variant B and market-offset v4.
 
 Eliminates 50+ noise features from micro-windows while preserving pure match state,
 service performance, line macro-drift (60s), and pre-match quality metrics.
@@ -38,6 +38,22 @@ SELECTED_TENNIS_FEATURES_V2: List[str] = [
     # 5. External research & LLM context
     "context_side_a",
 ]
+
+# Canonical input contract for the tennis market-offset v4 release. The first
+# 22 columns retain their established order; the final column identifies the
+# market family so the checkpoint can dispatch to its match/set head.
+SELECTED_TENNIS_FEATURES_V4: List[str] = [
+    *SELECTED_TENNIS_FEATURES_V2,
+    "market_is_set",
+]
+
+
+def select_tennis_v4_features(features: Dict[str, float]) -> Dict[str, float]:
+    """Return the strict 23-column tennis v4 contract or reject incomplete input."""
+    missing = [name for name in SELECTED_TENNIS_FEATURES_V4 if name not in features]
+    if missing:
+        raise ValueError(f"Tennis v4 feature contract is missing: {', '.join(missing)}")
+    return {name: float(features[name]) for name in SELECTED_TENNIS_FEATURES_V4}
 
 
 def prune_tennis_features(

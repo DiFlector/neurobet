@@ -260,6 +260,188 @@ def build_residual_boosting_pipeline(
     )
 
 
+class TennisMarketOffsetEstimator(ClassifierMixin, BaseEstimator):
+    """Market-logit XGBoost heads for match and set outcomes (tennis v4)."""
+
+    def __init__(
+        self,
+        max_depth: int = 3,
+        learning_rate: float = 0.03,
+        n_estimators: int = 300,
+        reg_lambda: float = 10.0,
+        random_state: int = 42,
+        n_jobs: int = 2,
+        early_stopping_rounds: int = 30,
+    ):
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.n_estimators = n_estimators
+        self.reg_lambda = reg_lambda
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+        self.early_stopping_rounds = early_stopping_rounds
+
+    def _market_logit(self, rows: np.ndarray) -> np.ndarray:
+        from features.selection import SELECTED_TENNIS_FEATURES_V4
+
+        index = SELECTED_TENNIS_FEATURES_V4.index("no_vig_prob_player_a")
+        return logit_np(np.asarray(rows, dtype=float)[:, index])
+
+    def _market_mask(self, rows: np.ndarray, family: str) -> np.ndarray:
+        from features.selection import SELECTED_TENNIS_FEATURES_V4
+
+        index = SELECTED_TENNIS_FEATURES_V4.index("market_is_set")
+        values = np.asarray(rows, dtype=float)[:, index]
+        return values >= 0.5 if family == "set" else values < 0.5
+
+    def _new_model(self, n_estimators: Optional[int] = None):
+        from xgboost import XGBClassifier
+
+        return XGBClassifier(
+            objective="binary:logistic",
+            eval_metric="logloss",
+            max_depth=int(self.max_depth),
+            learning_rate=float(self.learning_rate),
+            n_estimators=int(n_estimators or self.n_estimators),
+            reg_lambda=float(self.reg_lambda),
+            random_state=int(self.random_state),
+            n_jobs=int(self.n_jobs),
+            tree_method="hist",
+        )
+
+    @staticmethod
+    def _split_matches(matches: Sequence[Any]) -> tuple[list, list, list]:
+        """Chronological 60/20/20 split. Prefer outcome availability over overlapping live tapes."""
+        ordered = [match for match in matches if len(match.rows) > 0]
+        available = [getattr(match, "result_available_at", None) for match in ordered]
+        if ordered and all(moment is not None for moment in available):
+            ordered = [item for _moment, item in sorted(zip(available, ordered), key=lambda pair: (pair[0], pair[1].event_id))]
+            first = max(1, int(len(ordered) * 0.60))
+            second = max(first + 1, int(len(ordered) * 0.80))
+            if second >= len(ordered):
+                raise ValueError(f"Tennis v4 requires at least 5 priced matches per market, got {len(ordered)}.")
+            train, early, calibration = ordered[:first], ordered[first:second], ordered[second:]
+            if len({item.event_id for part in (train, early, calibration) for item in part}) != len(ordered):
+                raise RuntimeError("Tennis v4 result-time split duplicated a match.")
+            return train, early, calibration
+        count = len(ordered)
+        first = max(1, int(count * 0.60))
+        second = max(first + 1, int(count * 0.80))
+        if second >= count:
+            raise ValueError(f"Tennis v4 requires at least 5 priced matches per market, got {count}.")
+        train = ordered[:first]
+        early = ordered[first:second]
+        calibration = ordered[second:]
+
+        def last_seen(group):
+            return max(moment for item in group for moment in item.observed_at)
+
+        def first_seen(group):
+            return min(moment for item in group for moment in item.observed_at)
+
+        while train and early and last_seen(train) >= first_seen(early):
+            train.pop()
+        while early and calibration and last_seen(early) >= first_seen(calibration):
+            early.pop()
+        if not train or not early or not calibration:
+            raise ValueError("Tennis v4 temporal split is empty after purging overlapping matches.")
+        return train, early, calibration
+
+    def fit_matches(self, matches: Sequence[Any], feature_names: Sequence[str], loss_gamma: float = 0.0):
+        """Fit each market head on earlier matches and calibrate offset on later matches."""
+        del loss_gamma
+        from .dataset import project_market, stack_matches
+
+        names = list(feature_names)
+        from features.selection import SELECTED_TENNIS_FEATURES_V4
+
+        if names != SELECTED_TENNIS_FEATURES_V4:
+            raise ValueError("Tennis v4 checkpoint must use the canonical ordered 23-feature contract.")
+        self.feature_names_ = names
+        self.models_ = {}
+        self.alpha_ = {}
+        self.head_report_ = {}
+        self.classes_ = np.asarray([0, 1])
+
+        for family in ("match", "set"):
+            market_matches = [
+                projected
+                for item in matches
+                if (projected := project_market(item, family)).rows
+            ]
+            train, early, calibration = self._split_matches(market_matches)
+            X_train, y_train, weights = stack_matches(train)
+            X_early, y_early, early_weights = stack_matches(early)
+            X_cal, y_cal, calibration_weights = stack_matches(calibration)
+            if len(set(y_train.tolist())) < 2:
+                raise ValueError(f"Tennis v4 {family} head needs both classes in its training window.")
+            model = self._new_model()
+            model.set_params(early_stopping_rounds=int(self.early_stopping_rounds))
+            base_train = self._market_logit(X_train)
+            base_early = self._market_logit(X_early)
+            model.fit(
+                X_train,
+                y_train,
+                sample_weight=weights,
+                base_margin=base_train,
+                eval_set=[(X_early, y_early)],
+                sample_weight_eval_set=[early_weights],
+                base_margin_eval_set=[base_early],
+                verbose=False,
+            )
+            self.models_[family] = model
+
+            raw_cal = model.predict(X_cal, base_margin=self._market_logit(X_cal), output_margin=True)
+            delta = np.asarray(raw_cal, dtype=float) - self._market_logit(X_cal)
+            chosen_alpha = 0.0
+            chosen_loss = float("inf")
+            for alpha in (0.0, 0.25, 0.5, 0.75, 1.0):
+                probability = sigmoid_np(self._market_logit(X_cal) + alpha * np.clip(delta, -0.35, 0.35))
+                loss = _binary_log_loss(y_cal, probability, calibration_weights)
+                if loss < chosen_loss - 1e-12:
+                    chosen_alpha, chosen_loss = alpha, loss
+            self.alpha_[family] = chosen_alpha
+            self.head_report_[family] = {
+                "train_matches": len(train),
+                "early_stop_matches": len(early),
+                "calibration_matches": len(calibration),
+                "best_iteration": int(getattr(model, "best_iteration", model.n_estimators - 1)),
+                "alpha": chosen_alpha,
+                "calibration_log_loss": round(chosen_loss, 6),
+            }
+        return self
+
+    def predict_proba(self, X: Any) -> np.ndarray:
+        matrix = np.asarray(X, dtype=float)
+        if matrix.ndim == 1:
+            matrix = matrix.reshape(1, -1)
+        if matrix.shape[1] != len(self.feature_names_):
+            raise ValueError(f"Tennis v4 expected {len(self.feature_names_)} features, received {matrix.shape[1]}.")
+        result = np.empty(len(matrix), dtype=float)
+        for family in ("match", "set"):
+            mask = self._market_mask(matrix, family)
+            if not np.any(mask):
+                continue
+            rows = matrix[mask]
+            baseline = self._market_logit(rows)
+            raw = self.models_[family].predict(rows, base_margin=baseline, output_margin=True)
+            delta = np.asarray(raw, dtype=float) - baseline
+            result[mask] = sigmoid_np(baseline + self.alpha_[family] * np.clip(delta, -0.35, 0.35))
+        result = np.clip(result, 1e-4, 1.0 - 1e-4)
+        return np.column_stack((1.0 - result, result))
+
+
+def _binary_log_loss(labels: np.ndarray, probabilities: np.ndarray, sample_weight: Optional[np.ndarray] = None) -> float:
+    """Binary log loss with match-equal weights for v4 alpha selection."""
+    y = np.asarray(labels, dtype=float)
+    p = np.clip(np.asarray(probabilities, dtype=float), 1e-12, 1.0 - 1e-12)
+    loss = -(y * np.log(p) + (1.0 - y) * np.log(1.0 - p))
+    if sample_weight is None:
+        return float(np.mean(loss))
+    weight = np.asarray(sample_weight, dtype=float)
+    return float(np.average(loss, weights=weight))
+
+
 def weighted_for_gamma(estimator: Any, rows: np.ndarray, labels: np.ndarray, weights: Optional[np.ndarray], gamma: float) -> Optional[np.ndarray]:
     """Second pass. gamma 0 keeps the weights the caller already built."""
     if float(gamma) <= 0.0 or weights is None or len(rows) < 8 or not _both_classes(np.asarray(labels)):
@@ -341,7 +523,7 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
         has_markets = self.market_feature_index_ is not None and any(match.row_markets for match in ordered)
         if not has_markets:
             calibration_matches = [project_market(match, "match") for match in later]
-            calibration_matches = [match for match in calibration_matches if match.rows] or list(later)
+            calibration_matches = [match for match in calibration_matches if len(match.rows) > 0] or list(later)
             cal_rows, cal_labels, cal_weights = stack_matches(calibration_matches)
             self._fit_split(base_rows, base_labels, base_weights, cal_rows, cal_labels, cal_weights, gamma)
             return self
@@ -416,10 +598,10 @@ class TemporalCalibratedEstimator(ClassifierMixin, BaseEstimator):
             fitted = supplied
             self._supplied_base = None
         match_rows, match_labels, match_weights = stack_matches(
-            [match for match in (project_market(item, "match") for item in later) if match.rows]
+            [match for match in (project_market(item, "match") for item in later) if len(match.rows) > 0]
         )
         set_rows, set_labels, set_weights = stack_matches(
-            [match for match in (project_market(item, "set") for item in later) if match.rows]
+            [match for match in (project_market(item, "set") for item in later) if len(match.rows) > 0]
         )
         match_report, match_calibrator = self._fit_family(fitted, match_rows, match_labels, match_weights)
         set_report, set_calibrator = self._fit_family(fitted, set_rows, set_labels, set_weights)

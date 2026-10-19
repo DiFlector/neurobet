@@ -93,6 +93,7 @@ def read_event_matches(
         cursor += stop - start
         match_offsets[position + 1] = cursor
     with zipfile.ZipFile(path) as archive:
+        available = set(archive.namelist())
         sliced = {
             "feature_names": feature_names,
             "event_id": event_id[keep],
@@ -104,6 +105,12 @@ def read_event_matches(
             "row_labels": _read_row_ranges(archive, "row_labels.npy", ranges),
             "row_markets": _read_row_ranges(archive, "row_markets.npy", ranges),
         }
+        for key in ("row_odds_a", "row_odds_b"):
+            if f"{key}.npy" in available:
+                sliced[key] = _read_row_ranges(archive, f"{key}.npy", ranges)
+        if "result_available_at.npy" in available:
+            with archive.open("result_available_at.npy") as handle:
+                sliced["result_available_at"] = np.lib.format.read_array(handle, allow_pickle=False)[keep]
     return _matches_from(sliced), names
 
 
@@ -172,6 +179,7 @@ def append_store(
         return
     with np.load(current, allow_pickle=False) as payload:
         old = {key: payload[key] for key in payload.files}
+    old = _with_service_columns(old)
     added = _arrays_from_matches(matches, feature_names)
     merged = _merge_arrays(old, added)
     saved_ids = _merge_ids(old, added, list(manifest.get("saved_ids") or []))
@@ -229,10 +237,13 @@ def _merge_arrays(old: dict, added: dict) -> Dict[str, np.ndarray]:
     observed = np.empty(total, dtype=np.float64)
     row_labels = np.empty(total, dtype=np.int8)
     markets = np.empty(total, dtype="U64")
+    odds_a = np.empty(total, dtype=np.float32)
+    odds_b = np.empty(total, dtype=np.float32)
     offsets = np.empty(len(order) + 1, dtype=np.int64)
     event_id = []
     started_at = np.empty(len(order), dtype=np.float64)
     label = np.empty(len(order), dtype=np.int8)
+    result_available_at = np.empty(len(order), dtype=np.float64)
     cursor = 0
     offsets[0] = 0
     for position, (source, start, stop, index) in enumerate(blocks):
@@ -242,11 +253,14 @@ def _merge_arrays(old: dict, added: dict) -> Dict[str, np.ndarray]:
             observed[cursor : cursor + count] = source["observed_at"][start:stop]
             row_labels[cursor : cursor + count] = source["row_labels"][start:stop]
             markets[cursor : cursor + count] = source["row_markets"][start:stop]
+            odds_a[cursor : cursor + count] = source["row_odds_a"][start:stop]
+            odds_b[cursor : cursor + count] = source["row_odds_b"][start:stop]
         cursor += count
         offsets[position + 1] = cursor
         event_id.append(str(source["event_id"][index]))
         started_at[position] = source["started_at"][index]
         label[position] = source["label"][index]
+        result_available_at[position] = source["result_available_at"][index]
     return {
         "feature_names": np.array(old["feature_names"]),
         "event_id": np.array(event_id),
@@ -257,6 +271,9 @@ def _merge_arrays(old: dict, added: dict) -> Dict[str, np.ndarray]:
         "observed_at": observed,
         "row_labels": row_labels,
         "row_markets": markets,
+        "row_odds_a": odds_a,
+        "row_odds_b": odds_b,
+        "result_available_at": result_available_at,
     }
 
 
@@ -275,7 +292,10 @@ def _arrays_from_matches(matches: Sequence[MatchSnapshots], feature_names: Seque
     observed = np.empty(total, dtype=np.float64)
     row_labels = np.empty(total, dtype=np.int8)
     markets = np.empty(total, dtype="U64")
+    odds_a = np.full(total, np.nan, dtype=np.float32)
+    odds_b = np.full(total, np.nan, dtype=np.float32)
     offsets = np.empty(len(matches) + 1, dtype=np.int64)
+    result_available_at = np.full(len(matches), np.nan, dtype=np.float64)
     cursor = 0
     offsets[0] = 0
     for index, match in enumerate(matches):
@@ -287,6 +307,20 @@ def _arrays_from_matches(matches: Sequence[MatchSnapshots], feature_names: Seque
             row_labels[cursor : cursor + count] = labels
             stored = match.row_markets if match.row_markets is not None else ["match_winner"] * count
             markets[cursor : cursor + count] = stored
+            if match.row_odds_a is not None:
+                odds_a[cursor : cursor + count] = match.row_odds_a
+            if match.row_odds_b is not None:
+                odds_b[cursor : cursor + count] = match.row_odds_b
+            if match.row_odds_a is None or match.row_odds_b is None:
+                from .commit import side_odds_from_row
+                for local, row in enumerate(match.rows):
+                    price_a, price_b = side_odds_from_row(row, feature_names)
+                    if match.row_odds_a is None:
+                        odds_a[cursor + local] = price_a
+                    if match.row_odds_b is None:
+                        odds_b[cursor + local] = price_b
+            if match.result_available_at is not None:
+                result_available_at[index] = match.result_available_at.timestamp()
         cursor += count
         offsets[index + 1] = cursor
     return {
@@ -299,6 +333,9 @@ def _arrays_from_matches(matches: Sequence[MatchSnapshots], feature_names: Seque
         "observed_at": observed,
         "row_labels": row_labels,
         "row_markets": markets,
+        "row_odds_a": odds_a,
+        "row_odds_b": odds_b,
+        "result_available_at": result_available_at,
     }
 
 
@@ -340,6 +377,14 @@ def _matches_from(payload) -> List[MatchSnapshots]:
     observed = np.asarray(payload["observed_at"], dtype=np.float64)
     row_labels = np.asarray(payload["row_labels"], dtype=np.int8)
     markets = payload["row_markets"]
+    odds_a = np.asarray(payload["row_odds_a"], dtype=float) if "row_odds_a" in payload else np.full(len(matrix), np.nan)
+    odds_b = np.asarray(payload["row_odds_b"], dtype=float) if "row_odds_b" in payload else np.full(len(matrix), np.nan)
+    available = np.asarray(payload["result_available_at"], dtype=float) if "result_available_at" in payload else None
+    missing_quotes = ~np.isfinite(odds_a) | ~np.isfinite(odds_b)
+    if np.any(missing_quotes):
+        from .commit import side_odds_from_row
+        for row_index in np.flatnonzero(missing_quotes):
+            odds_a[row_index], odds_b[row_index] = side_odds_from_row(matrix[row_index], payload["feature_names"].tolist())
     offsets = np.asarray(payload["offsets"], dtype=np.int64)
     matches = []
     for index, event_id in enumerate(payload["event_id"].tolist()):
@@ -350,13 +395,31 @@ def _matches_from(payload) -> List[MatchSnapshots]:
                 event_id=str(event_id),
                 started_at=datetime.fromtimestamp(float(payload["started_at"][index]), tz=timezone.utc),
                 label=int(payload["label"][index]),
-                rows=[matrix[row] for row in range(start, stop)],
+                rows=matrix[start:stop],
                 observed_at=[datetime.fromtimestamp(float(observed[row]), tz=timezone.utc) for row in range(start, stop)],
                 row_labels=[int(row_labels[row]) for row in range(start, stop)],
                 row_markets=[str(markets[row]) for row in range(start, stop)],
+                row_odds_a=[float(odds_a[row]) for row in range(start, stop)],
+                row_odds_b=[float(odds_b[row]) for row in range(start, stop)],
+                result_available_at=(
+                    datetime.fromtimestamp(float(available[index]), tz=timezone.utc)
+                    if available is not None and np.isfinite(available[index]) else None
+                ),
             )
         )
     return matches
+
+
+def _with_service_columns(payload: dict) -> dict:
+    """Upgrade older cached arrays in memory before an append."""
+    count = len(payload["rows"])
+    if "row_odds_a" not in payload or "row_odds_b" not in payload:
+        from .commit import side_odds_from_row
+        derived = [side_odds_from_row(row, payload["feature_names"].tolist()) for row in payload["rows"]]
+        payload.setdefault("row_odds_a", np.asarray([item[0] for item in derived], dtype=np.float32))
+        payload.setdefault("row_odds_b", np.asarray([item[1] for item in derived], dtype=np.float32))
+    payload.setdefault("result_available_at", np.full(len(payload["event_id"]), np.nan, dtype=np.float64))
+    return payload
 
 
 def _sport_dir(sport_code: str, feature_version: str) -> Path:
