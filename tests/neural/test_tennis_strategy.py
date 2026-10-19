@@ -110,17 +110,17 @@ def test_longer_latency_rejects_a_stale_quote():
 
 
 def test_stake_gate_blocks_journal_and_matches_backtest():
-    assert stake_gate(0.599, 1.70) == (False, "LOW_PROBABILITY")
-    assert stake_gate(0.60, 1.39) == (False, "ODDS_TOO_SHORT")
-    assert stake_gate(0.60, 1.40) == (True, "")
-    assert stake_gate(0.60, 2.099) == (True, "")
-    assert stake_gate(0.60, 2.10) == (False, "ODDS_TOO_LONG")
-    assert stake_gate(0.60, 1.70, "set_winner:2") == (True, "")
-    assert stake_gate(0.60, 2.10, "set_winner:2") == (False, "ODDS_TOO_LONG")
+    assert stake_gate(0.619, 1.70) == (False, "LOW_PROBABILITY")
+    assert stake_gate(0.62, 1.64) == (False, "ODDS_TOO_SHORT")
+    assert stake_gate(0.62, 1.65) == (True, "")
+    assert stake_gate(0.62, 2.199) == (True, "")
+    assert stake_gate(0.62, 2.20) == (False, "ODDS_TOO_LONG")
+    assert stake_gate(0.62, 1.70, "set_winner:2") == (True, "")
+    assert stake_gate(0.62, 2.20, "set_winner:2") == (False, "ODDS_TOO_LONG")
     assert stake_gate(0.55, 1.50, "match_winner", "football") == (True, "")
     assert favored_side(0.185, 0.815, 5.60, 1.15, 0.02, sport_code="tennis") is None
     assert favored_side(0.185, 0.815, 5.60, 1.15, 0.02, sport_code="football") == "a"
-    assert favored_side(0.60, 0.40, 1.80, 2.20, 0.02, sport_code="tennis") == "a"
+    assert favored_side(0.62, 0.38, 1.80, 2.20, 0.02, sport_code="tennis") == "a"
     assert favored_side(0.55, 0.45, 2.00, 1.90, 0.02, "set_winner:2", "tennis") is None
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     blocked = confirming_index(
@@ -130,7 +130,7 @@ def test_stake_gate_blocks_journal_and_matches_backtest():
         [start, start + timedelta(seconds=30)],
     )
     assert blocked is None
-    assert MIN_STAKE_PROBABILITY == 0.60
+    assert MIN_STAKE_PROBABILITY == 0.62
     assert BacktestConfig().execution_latency_sec == 2.0
 
 

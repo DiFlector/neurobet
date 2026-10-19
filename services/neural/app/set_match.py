@@ -61,6 +61,7 @@ def match_verdict(
     match_edge_side: Optional[str],
     match_edge: float,
     best_of: int = 3,
+    min_edge: Optional[float] = None,
 ) -> Optional[str]:
     """
     Side of the match, or None while the set picture is contested.
@@ -91,6 +92,7 @@ def match_verdict(
         side = "player_b"
     else:
         return None
-    if match_edge_side != side or match_edge < MIN_EDGE:
+    threshold = float(min_edge) if min_edge is not None else float(load_tennis_policy().min_edge)
+    if match_edge_side != side or match_edge < min(0.03, threshold):
         return None
     return side

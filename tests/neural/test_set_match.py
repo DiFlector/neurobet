@@ -20,10 +20,9 @@ from app.set_match import match_verdict, set_is_committable
 from features.tennis import TennisFeatureBuilder
 from tennis_adapter.adapter import closed_set_winners, final_set_winners, set_winner_from_games, winners_from_score_text
 
-_spec = importlib.util.spec_from_file_location(
-    "fonbet_parser",
-    "/srv/neurobet/services/collector/app/parser.py",
-)
+import os
+_parser_path = "/srv/neurobet/services/collector/app/parser.py" if os.path.exists("/srv/neurobet/services/collector/app/parser.py") else "/app/collector_parser.py"
+_spec = importlib.util.spec_from_file_location("fonbet_parser", _parser_path)
 _parser = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_parser)
 FonbetLiveTennisParser = _parser.FonbetLiveTennisParser

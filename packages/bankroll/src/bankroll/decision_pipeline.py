@@ -421,6 +421,18 @@ class CombinedDecisionPipeline:
         home = llm_input.event.home
         away = llm_input.event.away
         edge_pct = llm_input.ml.edge * 100.0
+        min_required_edge = 0.04 if not llm_input.research else 0.02
+        if llm_input.ml.edge < min_required_edge:
+            return LLMStructuredVerdict(
+                verdict="NO_BET",
+                market_type=llm_input.market.type,
+                selection_id=llm_input.market.selection,
+                confidence=0.50,
+                stake_recommendation_fraction=0.0,
+                reason_codes=["MARGINAL_EDGE_NO_RESEARCH" if not llm_input.research else "MARGINAL_EDGE"],
+                summary=f"{home} — {away}: перевес {edge_pct:.2f}% недостаточен при отсутствии внешних источников.",
+                model_identifier="mock-llm-engine",
+            )
         return LLMStructuredVerdict(
             verdict="BET",
             market_type=llm_input.market.type,

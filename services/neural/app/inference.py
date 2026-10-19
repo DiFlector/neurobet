@@ -100,6 +100,26 @@ class MLPredictor:
         bm_odds_a = float(odds_a) if odds_a else feat_odds_a
         bm_odds_b = float(odds_b) if odds_b else feat_odds_b
 
+        # Market-anchored calibration & shrinkage for volatile live markets
+        if bm_odds_a > 1.0 and bm_odds_b > 1.0:
+            mkt_a = 1.0 / bm_odds_a
+            mkt_b = 1.0 / bm_odds_b
+            mkt_sum = mkt_a + mkt_b
+            if mkt_sum > 0:
+                p_mkt_a = mkt_a / mkt_sum
+                diff_a = prob_a - p_mkt_a
+                if abs(diff_a) > 0.10:
+                    shrinkage_factor = 0.65
+                    prob_a = round(p_mkt_a + diff_a * shrinkage_factor, 4)
+                    prob_b = round(1.0 - prob_a, 4)
+
+        # In-play tennis probability ceiling to avoid uncalibrated extremes (e.g. 0.82 on live games)
+        if feature_vector.sport_code == "tennis":
+            MAX_INPLAY_PROB = 0.74
+            MIN_INPLAY_PROB = 1.0 - MAX_INPLAY_PROB
+            prob_a = round(min(MAX_INPLAY_PROB, max(MIN_INPLAY_PROB, prob_a)), 4)
+            prob_b = round(1.0 - prob_a, 4)
+
         # Fair odds (strictly > 1.0)
         fair_a = max(1.01, round(1.0 / max(0.001, prob_a), 2))
         fair_b = max(1.01, round(1.0 / max(0.001, prob_b), 2))

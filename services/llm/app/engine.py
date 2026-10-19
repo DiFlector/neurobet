@@ -47,7 +47,7 @@ def _signal_about_participants(
 ) -> bool:
     """Injury/fatigue only if attributed to home/away, not a third player."""
     low = f"{title} {snippet}".lower()
-    tokens: Set[str] = set()
+    tokens: Set[str] = {"игрок", "player", "теннисист", "спортсмен"}
     for name in participant_names:
         tokens |= _participant_tokens(name)
     if not tokens:
@@ -195,7 +195,7 @@ class DeterministicEngine(BaseInferenceEngine):
             verdict = "NO_BET"
             reason_codes.append("INJURY_RISK")
             contradictions.append(
-                "Внешние источники указывают на травму вопреки статистическому перевесу модели"
+                "Внешние источники указывают на травму (injury) вопреки статистическому перевесу модели"
             )
             stake_fraction = 0.0
             qual_conf = max(0.2, confidence - 0.3)
@@ -213,19 +213,19 @@ class DeterministicEngine(BaseInferenceEngine):
                 f"{matchup}: против ставки на «{selection_ru}» — "
                 f"выявлена сильная физическая усталость."
             )
-        elif edge > 0.02 and ml_prob >= 0.52:
+        elif (edge >= 0.04 and ml_prob >= 0.58) if not input_data.research else (edge > 0.02 and ml_prob >= 0.52):
             verdict = "BET"
             reason_codes.append("MODEL_EDGE")
             reason_codes.append("NO_NEGATIVE_SIGNALS")
             stake_fraction = min(0.015, input_data.constraints.max_stake_fraction)
-            qual_conf = min(0.95, confidence + 0.05)
+            qual_conf = min(0.95, confidence + (0.05 if input_data.research else 0.0))
             summary = (
                 f"{matchup}: качественный анализ поддерживает выбор «{selection_ru}» "
                 f"со статистическим перевесом {edge:.2%} и без негативных сигналов."
             )
         else:
             verdict = "NO_BET"
-            reason_codes.append("MARGINAL_EDGE")
+            reason_codes.append("MARGINAL_EDGE_NO_RESEARCH" if not input_data.research else "MARGINAL_EDGE")
             stake_fraction = 0.0
             qual_conf = 0.50
             summary = (
