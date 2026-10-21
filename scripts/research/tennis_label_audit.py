@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import hashlib
 import json
@@ -11,7 +11,44 @@ import uuid
 from sqlalchemy import text
 
 from db.connection import SessionLocal
-from db.models import Event, EventStateSnapshot, ExtTennisMatch, League, TennisPointDocument, TennisPointHistoryVersion, TennisPointMatchLink
+from db.models import (Event, EventStateSnapshot, ExtTennisMatch, League,
+    TennisPlayerIdentityLink, TennisPlayerMetricSnapshot, TennisPlayerProfile, TennisPointDocument,
+    TennisPointHistoryVersion, TennisPointMatchLink)
+from db.models.external_tennis import ExtTennisServeLog
+from tennis_adapter.point_history import is_authoritative_point_history_version
+from tennis_adapter.normalizer import normalize_russian_player_name
+from tennis_result_observation import score_signature
+
+
+PIT_FEATURE_SOURCE_GROUPS = (
+    "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_surface",
+)
+
+
+def _validate_feature_availability(as_of: datetime, source_available_at: dict,
+                                  contract_defaults: set[str] | None = None) -> dict:
+    """Fail closed unless a source is causal or a documented contract prior is used."""
+    cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
+    contract_defaults = contract_defaults or set()
+    missing, future = [], []
+    for name in PIT_FEATURE_SOURCE_GROUPS:
+        raw = source_available_at.get(name)
+        if isinstance(raw, str):
+            try:
+                raw = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                raw = None
+        if not isinstance(raw, datetime):
+            if name not in contract_defaults:
+                missing.append(name)
+            continue
+        available = raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw.astimezone(timezone.utc)
+        if available > cutoff:
+            future.append(name)
+    return {"certified": not missing and not future,
+            "missing_sources": missing, "future_sources": future,
+            "contract_defaulted_sources": sorted(contract_defaults),
+            "as_of": cutoff.isoformat()}
 
 
 def _is_finished_set(a: int, b: int) -> bool:
@@ -19,12 +56,12 @@ def _is_finished_set(a: int, b: int) -> bool:
     return (high >= 6 and high - low >= 2) or (high == 7 and low == 6)
 
 
-def _tour(text: str, metadata: dict | None = None) -> str:
+def _tour(text: str, metadata: dict | None = None, external_tour: str | None = None) -> str:
     metadata = metadata if isinstance(metadata, dict) else {}
     official = metadata.get("fonbet_official_result") if isinstance(metadata.get("fonbet_official_result"), dict) else {}
     explicit = " ".join(str(official.get(key) or metadata.get(key) or "") for key in
                          ("tour", "category", "circuit", "age_group", "tournament_type"))
-    value = f"{text} {explicit}".casefold()
+    value = f"{text} {explicit} {external_tour or ''}".casefold()
     if any(token in value for token in ("junior", "juniors", "юниор", "юнош", "u18", "u16")):
         return "junior"
     if "challenger" in value or "челленджер" in value:
@@ -36,6 +73,32 @@ def _tour(text: str, metadata: dict | None = None) -> str:
     if "atp" in value:
         return "atp"
     return "unknown"
+
+
+def _tour_source(text: str, metadata: dict | None = None, external_tour: str | None = None) -> str:
+    """Describe which source supplied the retrospective competition category."""
+    metadata = metadata if isinstance(metadata, dict) else {}
+    official = metadata.get("fonbet_official_result") if isinstance(metadata.get("fonbet_official_result"), dict) else {}
+    explicit = " ".join(str(official.get(key) or metadata.get(key) or "") for key in
+                         ("tour", "category", "circuit", "age_group", "tournament_type"))
+    if _tour(explicit) != "unknown":
+        return "fonbet_metadata"
+    if external_tour and _tour("", external_tour=external_tour) != "unknown":
+        return "flashscore_match_archive"
+    if _tour(text) != "unknown":
+        return "fonbet_competition_name"
+    return "unknown"
+
+
+def _external_tour_level(tour_level: str | None, gender: str | None) -> str:
+    level = str(tour_level or "").strip().casefold()
+    sex = str(gender or "").strip().casefold()
+    if level == "atp_wta":
+        return {"male": "atp", "female": "wta"}.get(sex, "unknown")
+    # Flashscore's female Challenger rows represent the WTA 125 circuit.
+    if level == "challenger" and sex == "female":
+        return "wta"
+    return level if level in {"atp", "wta", "challenger", "itf", "junior"} else "unknown"
 
 
 def _discipline(event: Event, competition: str) -> str:
@@ -143,10 +206,26 @@ def _source_point_key(item: dict, external_home_is_a: bool):
     if point is None or games is None or None in point:
         return None
     server = item.get("server")
-    if server not in (0, 1):
+    if server not in (0, 1, None):
         return None
-    server = server if external_home_is_a else 1 - server
+    if server is not None:
+        server = server if external_home_is_a else 1 - server
     return item.get("set"), tuple(games), tuple(point), server, is_tiebreak
+
+
+def _snapshot_matches_source_point(snapshot_state, signature):
+    """Match the observed score exactly; unknown source fields remain wildcards.
+
+    The source PBP can confirm the score transition while omitting its server
+    marker. In that case the confirmed outcome remains a valid label. A known
+    server must still agree with Fonbet's saved state.
+    """
+    if snapshot_state is None or signature is None or len(snapshot_state) != len(signature):
+        return False
+    return all(
+        expected is None or observed == expected
+        for observed, expected in zip(snapshot_state, signature)
+    )
 
 
 def _count_bucket():
@@ -170,17 +249,145 @@ def _utc_result_time(event: Event):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
-def _has_result_availability(event: Event) -> bool:
-    metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
-    official = metadata.get("fonbet_official_result") or {}
-    raw = official.get("available_at") or official.get("observed_at")
-    if not isinstance(raw, str):
-        return False
-    try:
-        datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return True
-    except ValueError:
-        return False
+def _score_token_pattern(signature: tuple[int, ...]) -> str:
+    """PostgreSQL regex for exact ordered score tokens with flexible punctuation."""
+    return r"^[^0-9]*" + r"[^0-9]+".join(map(str, signature)) + r"[^0-9]*$"
+
+
+def _snapshot_search_lower_bound(event: Event) -> datetime | None:
+    """Return the first time this Fonbet event could have produced a saved snapshot."""
+    value = getattr(event, "first_seen_at", None)
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _result_score_snapshot_evidence(session, events: dict) -> tuple[dict, int]:
+    """Find a persisted Fonbet state that exactly shows each final score.
+
+    A result backfilled today must not erase an earlier system observation.
+    The latest exact score observation is used as a conservative availability
+    time: it is guaranteed that the result was known by then, while finding the
+    first occurrence would require scanning a match's entire snapshot history.
+    Scheduled time and mutable Event.finished_at are never consulted.
+    """
+    expected = {}
+    for event_id, event in events.items():
+        metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+        official = metadata.get("fonbet_official_result") or {}
+        signature = score_signature(official.get("final_score"))
+        if signature:
+            expected[event_id] = signature
+
+    evidence = {}
+    # first_seen_at is a safe per-event lower bound: the event must have been
+    # ingested before a snapshot referencing its ID could be saved. Search each
+    # event through the event/time B-tree, newest first, and stop at its latest
+    # exact score. This is a conservative availability timestamp and avoids
+    # scanning/transferring the entire snapshot history for each event.
+    requested = [
+        (event_id, _score_token_pattern(signature), _snapshot_search_lower_bound(events[event_id]))
+        for event_id, signature in expected.items()
+    ]
+    bounded = [item for item in requested if item[2] is not None]
+    if bounded:
+        requested_params = {
+            "event_ids": [item[0] for item in bounded],
+            "lower_bounds": [item[2] for item in bounded],
+        }
+        latest_rows = session.execute(text("""
+            WITH requested AS (
+                SELECT * FROM unnest(
+                    CAST(:event_ids AS uuid[]),
+                    CAST(:lower_bounds AS timestamptz[])
+                ) AS r(event_id, lower_bound)
+            )
+            SELECT requested.event_id, snapshot.id, snapshot.observed_at,
+                   snapshot.status, snapshot.score
+            FROM requested
+            JOIN LATERAL (
+                SELECT id, observed_at, status, score
+                FROM event_state_snapshots
+                WHERE event_id = requested.event_id
+                  AND observed_at >= requested.lower_bound
+                ORDER BY observed_at DESC, id DESC
+                LIMIT 1
+            ) AS snapshot ON TRUE
+        """), requested_params).yield_per(10000)
+        patterns = {event_id: pattern for event_id, pattern, _ in bounded}
+        for row in latest_rows:
+            if row.score is None or re.fullmatch(patterns[row.event_id], str(row.score)) is None:
+                continue
+            evidence[row.event_id] = {
+                "snapshot_id": str(row.id), "observed_at": row.observed_at,
+                "status": row.status, "score": row.score,
+            }
+
+        # Most finished matches have the exact official score in their latest
+        # persisted snapshot. Only mismatches need the slower historical search;
+        # this retains corrections/older matching evidence without scanning every
+        # event's full tape in the common case.
+        unresolved = [item for item in bounded if item[0] not in evidence]
+        if unresolved:
+            historical_rows = session.execute(text("""
+                WITH requested AS (
+                    SELECT * FROM unnest(
+                        CAST(:event_ids AS uuid[]),
+                        CAST(:patterns AS text[]),
+                        CAST(:lower_bounds AS timestamptz[])
+                    ) AS r(event_id, score_pattern, lower_bound)
+                )
+                SELECT requested.event_id, snapshot.id, snapshot.observed_at,
+                       snapshot.status, snapshot.score
+                FROM requested
+                JOIN LATERAL (
+                    SELECT id, observed_at, status, score
+                    FROM event_state_snapshots
+                    WHERE event_id = requested.event_id
+                      AND observed_at >= requested.lower_bound
+                      AND score ~ requested.score_pattern
+                    ORDER BY observed_at DESC, id DESC
+                    LIMIT 1
+                ) AS snapshot ON TRUE
+            """), {
+                "event_ids": [item[0] for item in unresolved],
+                "patterns": [item[1] for item in unresolved],
+                "lower_bounds": [item[2] for item in unresolved],
+            }).yield_per(10000)
+            for row in historical_rows:
+                evidence[row.event_id] = {
+                    "snapshot_id": str(row.id), "observed_at": row.observed_at,
+                    "status": row.status, "score": row.score,
+                }
+
+    # first_seen_at is non-null for normally ingested events. Retain a correct
+    # no-bound fallback for legacy rows that predate this field's guarantee.
+    for event_id, pattern, lower_bound in requested:
+        if lower_bound is not None or event_id in evidence:
+            continue
+        row = session.query(
+            EventStateSnapshot.id, EventStateSnapshot.event_id, EventStateSnapshot.observed_at,
+            EventStateSnapshot.status, EventStateSnapshot.score,
+        ).filter(
+            EventStateSnapshot.event_id == event_id,
+            EventStateSnapshot.score.op("~")(pattern),
+        ).order_by(EventStateSnapshot.observed_at, EventStateSnapshot.id).limit(1).first()
+        if row is not None:
+            evidence[event_id] = {
+                "snapshot_id": str(row.id), "observed_at": row.observed_at,
+                "status": row.status, "score": row.score,
+            }
+    return evidence, len(evidence)
+
+
+def _resolve_result_availability(metadata_time, snapshot_evidence):
+    """Use the earliest actual result observation, never a scheduled/finished time."""
+    observed_at = snapshot_evidence.get("observed_at") if snapshot_evidence else None
+    if observed_at is not None and (metadata_time is None or observed_at < metadata_time):
+        return observed_at, "fonbet_exact_final_score_snapshot"
+    if metadata_time is not None:
+        return metadata_time, "fonbet_official_result_metadata"
+    return None, None
 
 
 def _window_summary(event_ids, event_times, labels_by_event, required):
@@ -195,7 +402,26 @@ def _window_summary(event_ids, event_times, labels_by_event, required):
             "meets_match_minimum": len(labelled_ids) >= required}
 
 
-def _walk_forward_admission(target_rows, event_times):
+def _temporal_precedence(train_ids, validation_ids, target_temporal):
+    """Require every selected train outcome to predate validation forecasts."""
+    train_labels = [target_temporal.get(event_id, {}).get("label_available_at") for event_id in train_ids]
+    validation_forecasts = [target_temporal.get(event_id, {}).get("forecast_at") for event_id in validation_ids]
+    missing_train = sum(value is None for value in train_labels)
+    missing_validation = sum(value is None for value in validation_forecasts)
+    valid_train = [value for value in train_labels if value is not None]
+    valid_validation = [value for value in validation_forecasts if value is not None]
+    latest_train_label = max(valid_train) if valid_train else None
+    earliest_validation_forecast = min(valid_validation) if valid_validation else None
+    passed = (missing_train == 0 and missing_validation == 0 and latest_train_label is not None
+              and earliest_validation_forecast is not None
+              and latest_train_label <= earliest_validation_forecast)
+    return {"passed": bool(passed), "missing_train_label_times": missing_train,
+            "missing_validation_forecast_times": missing_validation,
+            "latest_train_label_available_at": latest_train_label.isoformat() if latest_train_label else None,
+            "earliest_validation_forecast_at": earliest_validation_forecast.isoformat() if earliest_validation_forecast else None}
+
+
+def _walk_forward_admission(target_rows, event_times, target_temporal=None):
     """Build one immutable whole-match split shared by all target masks."""
     # event_times contains only results whose source availability timestamp is
     # known. The split is shared by all targets; missing target labels are masks.
@@ -233,6 +459,7 @@ def _walk_forward_admission(target_rows, event_times):
         return [uuid.UUID(value) for value in values if uuid.UUID(value) in event_times]
 
     results = {}
+    target_temporal = target_temporal or {}
     for target, rows in target_rows.items():
         labels = defaultdict(set)
         for row in rows:
@@ -241,9 +468,14 @@ def _walk_forward_admission(target_rows, event_times):
         folds = []
         for fold in manifest["folds"]:
             train_ids, validation_ids = ids(fold["train_event_ids"]), ids(fold["validation_event_ids"])
+            temporal_train_ids = [event_id for event_id in train_ids if event_id in labels]
+            temporal_validation_ids = [event_id for event_id in validation_ids if event_id in labels]
+            temporal = _temporal_precedence(temporal_train_ids, temporal_validation_ids,
+                                            target_temporal.get(target, {}))
             folds.append({"fold": fold["fold"],
                 "train": _window_summary(train_ids, event_times, labels, 500),
-                "validation": _window_summary(validation_ids, event_times, labels, 100)})
+                "validation": _window_summary(validation_ids, event_times, labels, 100),
+                "temporal_precedence": temporal})
         holdout_summary = _window_summary(ids(manifest["holdout_event_ids"]), event_times, labels, 200)
         results[target] = {"matches_with_labels_on_manifest_timeline": len(labels),
             "manifest_matches": len(manifest["ordered_event_ids"]),
@@ -251,11 +483,30 @@ def _walk_forward_admission(target_rows, event_times):
             "holdout": holdout_summary, "folds": folds,
             "folds_meet_minimums": bool(folds) and all(
                 f["train"]["meets_match_minimum"] and f["validation"]["meets_match_minimum"]
-                and f["train"]["both_classes"] and f["validation"]["both_classes"] for f in folds),
+                and f["train"]["both_classes"] and f["validation"]["both_classes"]
+                and f["temporal_precedence"]["passed"] for f in folds),
             "holdout_meets_minimums": holdout_summary["meets_match_minimum"] and holdout_summary["both_classes"]}
     return results, {"path": manifest_path, "dataset_digest": digest,
         "matches": len(manifest["ordered_event_ids"]), "development_matches": len(manifest["development_event_ids"]),
         "holdout_matches": len(manifest["holdout_event_ids"]), "holdout_quality_metrics_opened": False}
+
+
+def _training_gate_status(*, base_coverage_ok: bool, windows_ok: bool,
+                          temporal_ok: bool, point_in_time_ok: bool,
+                          manifest_result_times_certified: bool) -> tuple[str, list[str]]:
+    """Fail closed unless every independent training admission check passes."""
+    reasons = []
+    if not base_coverage_ok:
+        reasons.append("base_target_coverage_or_both_classes_missing")
+    if not windows_ok:
+        reasons.append("walk_forward_or_holdout_minimums_not_met")
+    if not temporal_ok:
+        reasons.append("training_labels_not_available_before_validation_forecasts")
+    if not point_in_time_ok:
+        reasons.append("odds_free_feature_availability_not_certified")
+    if not manifest_result_times_certified:
+        reasons.append("manifest_result_availability_not_certified")
+    return ("eligible_for_training_review" if not reasons else "blocked", reasons)
 
 
 def build_report() -> dict:
@@ -268,23 +519,66 @@ def build_report() -> dict:
             "observed_examples": 0, "retrospective_examples": 0}
             for name in ("point", "game", "set", "match")},
         "by_tour": {}, "by_discipline": {}, "by_competition": {},
+        "tour_classification_sources": {},
+        "result_time_evidence": {"snapshot_rows_returned": 0, "exact_terminal_score_snapshots": 0,
+            "snapshots_preceding_metadata_time": 0, "sources": {}, "unknown_valid_results": 0},
         "point_history": {"documents_total": 0, "documents_linked": 0, "source_matches_total": 0,
             "current_links": 0, "linked_fonbet_events": 0, "parsed_versions_total": 0,
             "parsed_versions_linked": 0, "confirmed_outcomes_total": 0,
             "availability_unknown_documents": 0, "availability_unknown_versions": 0},
+        "feature_availability": {"contract_version": "tennis_odds_free_v1",
+            "checked_examples": 0, "certified_examples": 0, "uncertified_examples": 0,
+            "source_groups": {}, "resolution_counts": {}, "exclusions": {}},
         "exclusions": {},
         "training_gate": {"status": "blocked", "required_per_target": {
             "initial_train_matches": 500, "each_validation_window_matches": 100, "holdout_matches": 200,
             "both_classes": True, "point_in_time_clean": True}, "windows_evaluated": False,
             "point_in_time_certified": False, "reasons": [],
-            "chronology_policy": "official_result.available_at_or_observed_at_only"},
+            "chronology_policy": "official_result_source_time_or_exact_previously_observed_final_score_snapshot"},
     }
     exclusions = Counter()
     with SessionLocal() as session:
+        # This classification is retrospective reporting metadata only; it is
+        # never added to the model's point-in-time feature vector.
+        link_rows = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.fonbet_event_id.is_not(None),
+            TennisPointMatchLink.available_at <= now,
+        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+        latest_links = {}
+        for link in link_rows:
+            latest_links[(link.fonbet_event_id, link.source_match_id)] = link
+        source_ids_by_event = defaultdict(set)
+        for (event_id, source_id), link in latest_links.items():
+            if link.status in ("matched", "manual"):
+                source_ids_by_event[event_id].add(source_id)
+        category_source_ids = {source_id for source_ids in source_ids_by_event.values()
+                               for source_id in source_ids}
+        external_by_source_id = {}
+        if category_source_ids:
+            for match in session.query(ExtTennisMatch).filter(
+                ExtTennisMatch.source == "flashscore",
+                ExtTennisMatch.source_match_id.in_(category_source_ids),
+            ).all():
+                external_by_source_id[match.source_match_id] = match
+        external_tour_by_event = {}
+        for event_id, source_ids in source_ids_by_event.items():
+            # More than one confirmed source match is not an identity-safe
+            # basis for classification, even if their circuit labels happen
+            # to agree.
+            if len(source_ids) != 1:
+                continue
+            source_id = next(iter(source_ids))
+            match = external_by_source_id.get(source_id)
+            level = _external_tour_level(match.tour_level, match.gender) if match else "unknown"
+            if level != "unknown":
+                external_tour_by_event[event_id] = level
+
         events = session.query(Event).filter(Event.sport_code == "tennis", Event.source == "fonbet").all()
         eligible = {}
         result_labels = {}
         result_times = {}
+        result_time_sources = {}
+        result_snapshot_evidence = {}
         groups = {}
         for event in events:
             if not str(event.source_event_id).isdigit():
@@ -295,13 +589,19 @@ def build_report() -> dict:
             league = session.get(League, event.league_id) if event.league_id else None
             competition = str(official.get("tournament") or metadata.get("raw_tournament") or (league.name if league else "unknown"))
             discipline = _discipline(event, competition)
-            tour = _tour(competition, metadata)
+            external_tour = external_tour_by_event.get(event.id)
+            tour = _tour(competition, metadata, external_tour)
+            tour_source = _tour_source(competition, metadata, external_tour)
             if discipline != "singles":
                 exclusions["doubles"] += 1
                 continue
             eligible[event.id] = event
             result_times[event.id] = _utc_result_time(event)
+            result_time_sources[event.id] = "fonbet_official_result_metadata" if result_times[event.id] else None
             groups[event.id] = (tour, discipline, competition)
+            report["tour_classification_sources"][tour_source] = (
+                report["tour_classification_sources"].get(tour_source, 0) + 1
+            )
             for key, name in (("by_tour", tour), ("by_discipline", discipline), ("by_competition", competition)):
                 bucket = report[key].setdefault(name, _count_bucket())
                 bucket["events"] += 1
@@ -316,6 +616,173 @@ def build_report() -> dict:
             report["targets"]["match"]["class_a" if winner == 0 else "class_b"] += 1
             for key, name in (("by_tour", tour), ("by_discipline", discipline), ("by_competition", competition)):
                 report[key][name]["valid_match_labels"] += 1
+
+        snapshot_evidence, snapshot_rows_returned = _result_score_snapshot_evidence(
+            session, {event_id: event for event_id, event in eligible.items() if result_labels[event_id] is not None},
+        )
+        report["result_time_evidence"]["snapshot_rows_returned"] = snapshot_rows_returned
+        for event_id, evidence in snapshot_evidence.items():
+            report["result_time_evidence"]["exact_terminal_score_snapshots"] += 1
+            result_snapshot_evidence[event_id] = evidence
+            metadata_time = result_times.get(event_id)
+            result_times[event_id], result_time_sources[event_id] = _resolve_result_availability(
+                metadata_time, evidence,
+            )
+            if metadata_time is not None and result_time_sources[event_id] == "fonbet_exact_final_score_snapshot":
+                report["result_time_evidence"]["snapshots_preceding_metadata_time"] += 1
+        report["result_time_evidence"]["unknown_valid_results"] = sum(
+            result_labels[event_id] is not None and result_times.get(event_id) is None
+            for event_id in eligible
+        )
+        report["result_time_evidence"]["sources"] = dict(Counter(
+            result_time_sources[event_id] or "unavailable"
+            for event_id in eligible if result_labels[event_id] is not None
+        ))
+
+        # Historical serving statistics and surface context are not yet
+        # backed by point-in-time identity/source records. Record that gap
+        # against each real snapshot rather than treating today's player
+        # profile or the retrospective Flashscore match as historical input.
+        participant_ids = {pid for event in eligible.values()
+                           for pid in (event.participant_a_id, event.participant_b_id) if pid}
+        profile_rows = session.query(TennisPlayerProfile).all()
+        profiles_by_participant = {row.participant_id: row for row in profile_rows}
+        identity_rows = session.query(TennisPlayerIdentityLink).filter(
+            TennisPlayerIdentityLink.source == "flashscore",
+            TennisPlayerIdentityLink.available_at <= now,
+        ).order_by(TennisPlayerIdentityLink.available_at.desc(), TennisPlayerIdentityLink.id.desc()).all()
+        identity_versions_by_participant = defaultdict(list)
+        for row in identity_rows:
+            identity_versions_by_participant[row.participant_id].append(row)
+        metric_rows = session.query(TennisPlayerMetricSnapshot).order_by(
+            TennisPlayerMetricSnapshot.available_at
+        ).all()
+        metrics_by_participant = defaultdict(list)
+        for metric in metric_rows:
+            metrics_by_participant[metric.participant_id].append(metric)
+        # Match inference's name-based external serve-log lookup. These records
+        # have no canonical player ID, so only the same normalized full name is
+        # usable; surname-only matches would create identity leakage.
+        serve_log_rows = session.query(ExtTennisServeLog.player_name, ExtTennisServeLog.available_at).filter(
+            ExtTennisServeLog.available_at <= now
+        ).all()
+        serve_logs_by_name = defaultdict(list)
+        for player_name, available_at in serve_log_rows:
+            serve_logs_by_name[normalize_russian_player_name(player_name)].append(available_at)
+        feature_availability_by_event_snapshot = {}
+
+        def feature_availability(event_id, snapshot_id, snapshot_at):
+            key = (event_id, snapshot_id)
+            if key in feature_availability_by_event_snapshot:
+                return feature_availability_by_event_snapshot[key]
+            event = eligible[event_id]
+            player_times = []
+            serve_times = {"a": [], "b": []}
+            player_resolution = {}
+            serve_resolution = {}
+            event = eligible[event_id]
+            for side, participant_id in (("a", event.participant_a_id), ("b", event.participant_b_id)):
+                profile = profiles_by_participant.get(participant_id)
+                latest_link = next((row for row in identity_versions_by_participant.get(participant_id, [])
+                                    if row.available_at <= snapshot_at), None)
+                current_identities = (profile.source_identities or {}) if profile else {}
+                confirmed_id = latest_link.source_player_id if latest_link and latest_link.status == "confirmed" else None
+                identity_valid = bool(profile)
+                if confirmed_id and current_identities.get("flashscore") not in (None, confirmed_id):
+                    identity_valid = False
+                if not confirmed_id and (current_identities.get("flashscore")
+                        or current_identities.get("flashscore_candidates") or profile.profile_url if profile else False):
+                    identity_valid = False
+                metric_ids = {participant_id} if participant_id else set()
+                if identity_valid and confirmed_id:
+                    metric_ids = set()
+                    for candidate_id, versions in identity_versions_by_participant.items():
+                        candidate_link = next((row for row in versions if row.available_at <= snapshot_at), None)
+                        if candidate_link and candidate_link.status == "confirmed" and candidate_link.source_player_id == confirmed_id:
+                            metric_ids.add(candidate_id)
+                available = [row for metric_id in metric_ids
+                             for row in metrics_by_participant.get(metric_id, [])
+                             if row.available_at <= snapshot_at] if identity_valid else []
+                metric_available_at = max((row.available_at for row in available), default=None)
+                metric_values = max(available, key=lambda row: (row.available_at, row.metrics_version)).metrics_json if available else None
+                if metric_available_at is None and identity_valid:
+                    # load_player_metric has a compatibility fallback to the
+                    # materialized current profile when no immutable snapshot
+                    # was yet available. Its own metrics_available_at remains
+                    # the causal bound and must be represented by the audit.
+                    eligible_profiles = [profiles_by_participant[metric_id]
+                        for metric_id in metric_ids
+                        if metric_id in profiles_by_participant
+                        and profiles_by_participant[metric_id].metrics_available_at is not None
+                        and profiles_by_participant[metric_id].metrics_available_at <= snapshot_at
+                        and profiles_by_participant[metric_id].metrics_json is not None]
+                    if eligible_profiles:
+                        owner = max(eligible_profiles, key=lambda row: row.metrics_available_at)
+                        metric_available_at, metric_values = owner.metrics_available_at, owner.metrics_json
+                if metric_available_at is not None:
+                    player_times.append(metric_available_at)
+                    player_resolution[side] = "observed_snapshot" if available else "observed_profile_cache"
+                else:
+                    # Missing metrics are encoded by the model as the fixed Elo /
+                    # form prior and a missingness flag. The prior is knowable at
+                    # this as_of, so retain it as a contract default explicitly.
+                    player_resolution[side] = "contract_default"
+                metric_serve = ((metric_values or {}).get("serve") or {})
+                if float(metric_serve.get("points") or 0) > 0 and metric_available_at is not None:
+                    serve_times[side].append(metric_available_at)
+                    serve_resolution[side] = "metric_snapshot"
+                else:
+                    name = normalize_russian_player_name(
+                        event.participant_a_name if side == "a" else event.participant_b_name
+                    )
+                    since = snapshot_at - timedelta(days=365)
+                    historical_logs = [value for value in serve_logs_by_name.get(name, [])
+                                       if since <= value <= snapshot_at]
+                    if historical_logs:
+                        serve_times[side].append(max(historical_logs))
+                        serve_resolution[side] = "observed_serve_log"
+                    else:
+                        # The serving prior and zero sample weight are explicit
+                        # features; no future source value is substituted.
+                        serve_resolution[side] = "contract_default"
+            # Surface is only consumed by inference with its own explicit
+            # availability timestamp. Historical rows without one use unknown.
+            metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+            raw_surface_at = metadata.get("surface_available_at")
+            try:
+                surface_at = datetime.fromisoformat(str(raw_surface_at).replace("Z", "+00:00")) if raw_surface_at else None
+            except ValueError:
+                surface_at = None
+            if surface_at is not None and surface_at.tzinfo is None:
+                surface_at = surface_at.replace(tzinfo=timezone.utc)
+            surface_known = bool(surface_at and surface_at <= snapshot_at and
+                                 str(metadata.get("surface") or "").casefold() in {"hard", "clay", "grass", "carpet"})
+            sources = {
+                "player_metrics": max(player_times).isoformat() if player_times else None,
+                "serve_metrics_a": max(serve_times["a"]).isoformat() if serve_times["a"] else None,
+                "serve_metrics_b": max(serve_times["b"]).isoformat() if serve_times["b"] else None,
+                "event_state": snapshot_at.isoformat(),
+                "event_surface": surface_at.isoformat() if surface_known else None,
+            }
+            contract_defaults = set()
+            if "contract_default" in player_resolution.values():
+                contract_defaults.add("player_metrics")
+            if serve_resolution.get("a") == "contract_default":
+                contract_defaults.add("serve_metrics_a")
+            if serve_resolution.get("b") == "contract_default":
+                contract_defaults.add("serve_metrics_b")
+            if not surface_known:
+                contract_defaults.add("event_surface")
+            validation = _validate_feature_availability(snapshot_at, sources, contract_defaults)
+            details = {**validation, "source_available_at": sources,
+                       "source_resolution": {
+                           "player_metrics": player_resolution,
+                           "serve_metrics": serve_resolution,
+                           "event_surface": "observed" if surface_known else "contract_default_unknown",
+                           "event_state": "observed_snapshot",
+                       }}
+            feature_availability_by_event_snapshot[key] = details
+            return details
 
         event_link_rows = session.query(TennisPointMatchLink).filter(
             TennisPointMatchLink.fonbet_event_id.in_(list(eligible)),
@@ -345,16 +812,22 @@ def build_report() -> dict:
             link_ids_by_event_source[(link.fonbet_event_id, link.source_match_id)] = str(link.id)
             link_available_at_by_event_source[(link.fonbet_event_id, link.source_match_id)] = link.available_at.isoformat()
         source_ids = list({source_id for values in source_ids_by_event.values() for source_id in values})
-        archived_versions = session.query(TennisPointHistoryVersion).filter(
+        archived_versions = session.query(
+            TennisPointHistoryVersion.source_match_id,
+            TennisPointHistoryVersion.available_at,
+        ).filter(
             TennisPointHistoryVersion.retrieved_at <= now,
-        ).order_by(TennisPointHistoryVersion.retrieved_at, TennisPointHistoryVersion.id).all()
-        report["point_history"]["parsed_versions_total"] = len(archived_versions)
-        report["point_history"]["availability_unknown_versions"] = sum(row.available_at is None for row in archived_versions)
-        report["point_history"]["source_matches_total"] = len({row.source_match_id for row in archived_versions})
+        ).yield_per(1000)
+        source_matches_seen = set()
+        for source_match_id, available_at in archived_versions:
+            source_matches_seen.add(source_match_id)
+            report["point_history"]["parsed_versions_total"] += 1
+            report["point_history"]["availability_unknown_versions"] += int(available_at is None)
+        report["point_history"]["source_matches_total"] = len(source_matches_seen)
         versions_all = session.query(TennisPointHistoryVersion).filter(
             TennisPointHistoryVersion.available_at.is_not(None),
             TennisPointHistoryVersion.available_at <= now,
-        ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).all()
+        ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).yield_per(250)
         report["point_history"]["documents_total"] = session.query(TennisPointDocument).filter(
             TennisPointDocument.retrieved_at <= now,
         ).count()
@@ -363,6 +836,8 @@ def build_report() -> dict:
         ).count()
         all_latest_by_source_set = {}
         for version in versions_all:
+            if not is_authoritative_point_history_version(version.events_json, version.quality_json):
+                continue
             set_numbers = {version.quality_json.get("set_number")} if isinstance(version.quality_json, dict) and version.quality_json.get("set_number") else set()
             set_numbers.update(item.get("set") for item in (version.events_json or []) if item.get("set") is not None)
             for set_no in set_numbers or {None}:
@@ -380,14 +855,16 @@ def build_report() -> dict:
             TennisPointHistoryVersion.source_match_id.in_(source_ids),
             TennisPointHistoryVersion.available_at.is_not(None),
             TennisPointHistoryVersion.available_at <= now,
-        ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).all() if source_ids else []
-        report["point_history"]["parsed_versions_linked"] = len(versions)
+        ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).yield_per(250) if source_ids else []
         report["point_history"]["documents_linked"] = session.query(TennisPointDocument).filter(
             TennisPointDocument.source_match_id.in_(source_ids) if source_ids else False,
             TennisPointDocument.retrieved_at <= now,
         ).count()
         latest = {}
         for version in versions:
+            report["point_history"]["parsed_versions_linked"] += 1
+            if not is_authoritative_point_history_version(version.events_json, version.quality_json):
+                continue
             matching_events = [event_id for event_id, ids in source_ids_by_event.items() if version.source_match_id in ids]
             for event_id in matching_events:
                 set_numbers = {version.quality_json.get("set_number")} if isinstance(version.quality_json, dict) and version.quality_json.get("set_number") else set()
@@ -447,6 +924,17 @@ def build_report() -> dict:
             key = (target, identity)
             if key in example_provenance:
                 return
+            source_label_times = [result_times.get(event_id)]
+            if version is not None:
+                source_label_times.append(version.available_at)
+                linked_at = link_available_at_by_event_source.get((event_id, source_id))
+                if linked_at:
+                    try:
+                        source_label_times.append(datetime.fromisoformat(linked_at.replace("Z", "+00:00")))
+                    except ValueError:
+                        pass
+            known_label_times = [value for value in source_label_times if value is not None]
+            label_available_at = max(known_label_times) if known_label_times else None
             example_provenance[key] = {
                 "target": target, "fonbet_event_id": str(event_id),
                 "fonbet_source_event_id": str(eligible[event_id].source_event_id),
@@ -459,10 +947,16 @@ def build_report() -> dict:
                 "set_number": item.get("set") if item else None,
                 "game_score": item.get("game_score") if item else None,
                 "point_index": item.get("point_index") if item else None,
+                "source_point_server_known": item.get("server") in (0, 1) if item else None,
                 "label": int(label),
-                "label_available_at": _utc_result_time(eligible[event_id]).isoformat()
-                    if _utc_result_time(eligible[event_id]) else None,
+                "label_available_at": label_available_at.isoformat() if label_available_at else None,
+                "result_time_source": result_time_sources.get(event_id),
+                "result_time_snapshot_evidence": ({
+                    **result_snapshot_evidence[event_id],
+                    "observed_at": result_snapshot_evidence[event_id]["observed_at"].isoformat(),
+                } if event_id in result_snapshot_evidence else None),
                 "retrospective": bool(version.retrospective) if version else False,
+                "feature_availability": feature_availability(event_id, snapshot_id, snapshot_at),
             }
         for (event_id, source_id, set_no), version in latest.items():
             event = eligible.get(event_id)
@@ -472,8 +966,15 @@ def build_report() -> dict:
             category = groups[event_id]
             selected = {"by_tour": category[0], "by_discipline": category[1], "by_competition": category[2]}
             source_events = version.events_json or []
-            confirmed = [item for item in source_events if item.get("confirmed") and item.get("winner") in (0, 1)]
-            terminal_games = [item for item in confirmed if item.get("quality") == "terminal_from_game_result"]
+            terminal_qualities = {"terminal_from_game_result", "terminal_from_tiebreak_result"}
+            confirmed = [item for item in source_events if item.get("confirmed") and item.get("winner") in (0, 1)
+                         and item.get("quality") not in terminal_qualities]
+            terminal_games = [item for item in source_events
+                              if item.get("confirmed") and item.get("winner") in (0, 1)
+                              and item.get("quality") == "terminal_from_game_result"]
+            terminal_tiebreaks = [item for item in source_events
+                                   if item.get("confirmed") and item.get("winner") in (0, 1)
+                                   and item.get("quality") == "terminal_from_tiebreak_result"]
             for item in confirmed:
                 identity = (event_id, source_id, item.get("set"), tuple(item.get("game_score") or []),
                     item.get("point_index"), tuple(item.get("state_before") or []), item.get("tie_break", False))
@@ -483,6 +984,12 @@ def build_report() -> dict:
                 game_identity = (event_id, source_id, item.get("set"), tuple(item.get("game_score") or []))
                 parsed_label_keys["game"].add(game_identity)
                 provenance["game"]["retrospective" if version.retrospective else "observed"] += 1
+            for item in terminal_tiebreaks:
+                game_identity = (event_id, source_id, item.get("set"), tuple(item.get("game_score") or []))
+                parsed_label_keys["game"].add(game_identity)
+                provenance["game"]["retrospective" if version.retrospective else "observed"] += 1
+            terminal_sets = terminal_games + terminal_tiebreaks
+            for item in terminal_sets:
                 score = item.get("game_score")
                 if isinstance(score, list) and len(score) == 2 and _is_finished_set(int(score[0]), int(score[1])):
                     parsed_label_keys["set"].add((event_id, source_id, item.get("set")))
@@ -490,7 +997,7 @@ def build_report() -> dict:
             if side_order is None:
                 exclusions["point_side_order_unknown"] += len(confirmed)
                 continue
-            source_point_events = [item for item in confirmed if item.get("quality") != "terminal_from_game_result"]
+            source_point_events = confirmed
             signatures = Counter(_source_point_key(item, side_order) for item in source_point_events)
             for item in source_point_events:
                 signature = _source_point_key(item, side_order)
@@ -498,14 +1005,14 @@ def build_report() -> dict:
                     continue
                 next_winner = item.get("winner") if side_order else 1 - item.get("winner")
                 for snapshot_state, snapshot_id, snapshot_at in snapshots_by_event.get(event_id, []):
-                    if snapshot_state == signature:
+                    if _snapshot_matches_source_point(snapshot_state, signature):
                         identity = (event_id, source_id, set_no, signature, next_winner)
                         aligned_label_keys["point"].add(identity)
                         record_example("point", identity, event_id, next_winner, snapshot_id,
                                        snapshot_at, version, source_id, item)
 
             # Set and match labels are attached only to real Fonbet snapshots in the event.
-            for item in terminal_games:
+            for item in terminal_sets:
                 score = item.get("game_score")
                 if not isinstance(score, list) or len(score) != 2:
                     continue
@@ -551,9 +1058,15 @@ def build_report() -> dict:
                     "match_link_available_at": link_available_at_by_event_source.get((event_id, source_id)) if source_id else None,
                     "set_number": None, "game_score": None, "point_index": None,
                     "label": int(result_labels[event_id]),
-                    "label_available_at": _utc_result_time(eligible[event_id]).isoformat()
-                        if _utc_result_time(eligible[event_id]) else None,
+                    "label_available_at": result_times[event_id].isoformat()
+                        if result_times.get(event_id) else None,
+                    "result_time_source": result_time_sources.get(event_id),
+                    "result_time_snapshot_evidence": ({
+                        **result_snapshot_evidence[event_id],
+                        "observed_at": result_snapshot_evidence[event_id]["observed_at"].isoformat(),
+                    } if event_id in result_snapshot_evidence else None),
                     "retrospective": False,
+                    "feature_availability": feature_availability(event_id, snapshot.id, snapshot.observed_at),
                 }
         report["targets"]["match"]["training_examples"] = len(aligned_label_keys["match"])
         report["targets"]["match"]["labelled_matches"] = len({row[0] for row in aligned_label_keys["match"]})
@@ -576,12 +1089,60 @@ def build_report() -> dict:
                 for key, name in (("by_tour", tour_name), ("by_discipline", discipline_name), ("by_competition", competition_name)):
                     report[key][name][field] += 1
         target_rows = {name: aligned_label_keys[name] for name in ("point", "game", "set", "match")}
+        target_temporal = defaultdict(dict)
+        for row in example_provenance.values():
+            target = row["target"]
+            event_id = uuid.UUID(row["fonbet_event_id"])
+            temporal = target_temporal[target].setdefault(event_id, {"label_available_at": None, "forecast_at": None})
+            label_at = row.get("label_available_at")
+            forecast_at = row.get("snapshot_observed_at")
+            if label_at:
+                value = datetime.fromisoformat(label_at.replace("Z", "+00:00"))
+                current = temporal["label_available_at"]
+                if current is None or value > current:
+                    temporal["label_available_at"] = value
+            if forecast_at:
+                value = datetime.fromisoformat(forecast_at.replace("Z", "+00:00"))
+                current = temporal["forecast_at"]
+                if current is None or value < current:
+                    temporal["forecast_at"] = value
+        manifest_event_times = {
+            key: value for key, value in result_times.items()
+            if value is not None and result_labels.get(key) is not None
+        }
         window_report, manifest_metadata = _walk_forward_admission(
-            target_rows, {key: value for key, value in result_times.items()
-                          if value is not None and result_labels.get(key) is not None})
+            target_rows, manifest_event_times, target_temporal)
         report["training_gate"]["walk_forward"] = window_report
         report["training_gate"]["manifest"] = manifest_metadata
         example_rows = [example_provenance[key] for key in sorted(example_provenance, key=lambda item: (item[0], repr(item[1])))]
+        feature_report = report["feature_availability"]
+        feature_checks = [row.get("feature_availability", {}) for row in example_rows]
+        feature_report["checked_examples"] = len(feature_checks)
+        feature_report["certified_examples"] = sum(bool(item.get("certified")) for item in feature_checks)
+        feature_report["uncertified_examples"] = feature_report["checked_examples"] - feature_report["certified_examples"]
+        for check in feature_checks:
+            source_times = check.get("source_available_at", {})
+            resolution = check.get("source_resolution", {})
+            defaulted_sources = set(check.get("contract_defaulted_sources", []))
+            for group_name, resolution_value in resolution.items():
+                if isinstance(resolution_value, dict):
+                    for side, side_resolution in resolution_value.items():
+                        key = f"{group_name}.{side}:{side_resolution}"
+                        feature_report["resolution_counts"][key] = feature_report["resolution_counts"].get(key, 0) + 1
+                else:
+                    key = f"{group_name}:{resolution_value}"
+                    feature_report["resolution_counts"][key] = feature_report["resolution_counts"].get(key, 0) + 1
+            for name in PIT_FEATURE_SOURCE_GROUPS:
+                group = feature_report["source_groups"].setdefault(
+                    name, {"available": 0, "contract_defaulted": 0, "missing_or_unverifiable": 0})
+                if name in defaulted_sources:
+                    group["contract_defaulted"] += 1
+                elif source_times.get(name) is None:
+                    group["missing_or_unverifiable"] += 1
+                else:
+                    group["available"] += 1
+            for name in check.get("missing_sources", []) + check.get("future_sources", []):
+                feature_report["exclusions"][name] = feature_report["exclusions"].get(name, 0) + 1
         examples_digest = hashlib.sha256("\n".join(json.dumps(row, sort_keys=True, separators=(",", ":"))
             for row in example_rows).encode("utf-8")).hexdigest()
         examples_path = f"docs/research/tennis_training_examples_{examples_digest[:12]}.jsonl"
@@ -597,33 +1158,51 @@ def build_report() -> dict:
         undated = sum(value is None for value in result_times.values())
         report["training_gate"]["chronology_timestamp_missing_matches"] = undated
         report["training_gate"]["result_availability_unknown_matches"] = sum(
-            not _has_result_availability(event) for event in eligible.values())
+            result_labels.get(event_id) in (0, 1) and result_times.get(event_id) is None
+            for event_id in eligible)
+        report["training_gate"]["unknown_result_time_policy"] = (
+            "exclude_from_manifest; use exact previously observed final-score snapshot when available")
+        # Only labelled matches with source-observed result times enter the
+        # split. Missing-time matches remain visible as exclusions, not a
+        # blanket blocker for otherwise clean candidate windows.
+        report["training_gate"]["manifest_result_availability_certified"] = all(
+            result_times.get(event_id) is not None
+            and result_time_sources.get(event_id) in {
+                "fonbet_official_result_metadata", "fonbet_exact_final_score_snapshot"
+            }
+            for event_id in manifest_event_times
+        )
+        report["training_gate"]["unknown_result_time_excluded_matches"] = sum(
+            result_labels.get(event_id) in (0, 1) and result_times.get(event_id) is None
+            for event_id in eligible
+        )
         report["training_gate"]["scheduled_time_used_as_chronology"] = sum(
-            value is not None and not _has_result_availability(eligible[event_id])
-            for event_id, value in result_times.items())
+            source == "scheduled_start_at" for source in result_time_sources.values())
+        report["training_gate"]["result_time_sources"] = report["result_time_evidence"]["sources"]
         report["training_gate"]["windows_evaluated"] = True
         windows_ok = all(item["folds_meet_minimums"] and item["holdout_meets_minimums"] for item in window_report.values())
+        temporal_ok = all(
+            bool(item["folds"]) and all(fold["temporal_precedence"]["passed"] for fold in item["folds"])
+            for item in window_report.values())
         base_coverage_ok = all(
             report["targets"][name]["labelled_matches"] >= 500
             and report["targets"][name]["class_a"] > 0 and report["targets"][name]["class_b"] > 0
             for name in ("point", "game", "set", "match")
         )
         report["training_gate"]["base_coverage_status"] = "sufficient_for_window_assessment" if base_coverage_ok else "insufficient"
-        reasons = report["training_gate"]["reasons"]
-        if not base_coverage_ok:
-            reasons.append("base_target_coverage_or_both_classes_missing")
-        if not windows_ok:
-            reasons.append("walk_forward_or_holdout_minimums_not_met")
-        # This audit establishes label/split chronology. Certification of the
-        # full feature vector is a separate gate and remains closed until every
-        # feature has a verified source timestamp in the dataset builder.
-        report["training_gate"]["point_in_time_certified"] = False
-        reasons.append("odds_free_feature_availability_not_certified")
-        if report["training_gate"]["result_availability_unknown_matches"]:
-            reasons.append("fonbet_result_source_availability_missing")
-        report["training_gate"]["status"] = (
-            "eligible_for_training_review"
-            if base_coverage_ok and windows_ok and report["training_gate"]["point_in_time_certified"]
-            else "blocked"
+        # This audit now checks feature source times for every emitted
+        # example. Missing historical source provenance is a blocking failure.
+        report["training_gate"]["point_in_time_certified"] = (
+            feature_report["checked_examples"] > 0
+            and feature_report["uncertified_examples"] == 0
         )
+        status, reasons = _training_gate_status(
+            base_coverage_ok=base_coverage_ok,
+            windows_ok=windows_ok,
+            temporal_ok=temporal_ok,
+            point_in_time_ok=report["training_gate"]["point_in_time_certified"],
+            manifest_result_times_certified=report["training_gate"]["manifest_result_availability_certified"],
+        )
+        report["training_gate"]["status"] = status
+        report["training_gate"]["reasons"] = reasons
     return report

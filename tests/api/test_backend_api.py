@@ -13,7 +13,7 @@ Verifies all REST and SSE endpoints specified in Architecture Section 31 and Roa
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from db.connection import SessionLocal
@@ -24,9 +24,35 @@ from db.models.predictions import MLPrediction
 from db.models.research import WebResearchRun, WebEvidence, WebDocument
 from db.models.betting import VirtualAccount, LedgerEntry, Bet, BetProposal, BetSettlement
 from db.models.ml_registry import ModelVersion, TrainingRun
-from app.main import app
+from app.main import app, _is_overdue_live_pbp
 
 client = TestClient(app)
+
+
+def test_overdue_live_pbp_counts_only_due_runnable_jobs_with_confirmed_source():
+    now = datetime.now(timezone.utc)
+    base = {"kind": "pbp", "mode": "live", "event_id": "evt", "status": "queued",
+            "next_retry_at": (now - timedelta(seconds=1)).isoformat()}
+    assert _is_overdue_live_pbp(base, {"evt"}, now)
+    assert not _is_overdue_live_pbp({**base, "status": "running"}, {"evt"}, now)
+    assert not _is_overdue_live_pbp({**base, "status": "waiting_players"}, {"evt"}, now)
+    assert not _is_overdue_live_pbp(base, set(), now)
+    assert not _is_overdue_live_pbp({**base, "next_retry_at": (now + timedelta(seconds=1)).isoformat()}, {"evt"}, now)
+
+
+def test_flashscore_queue_api_returns_bounded_operational_projection():
+    response = client.get("/api/tennis-history/flashscore/queue?limit=3&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) <= 3
+    assert payload["total"] >= len(payload["items"])
+    assert payload["eligible_matches"] >= 0
+    assert payload["prepared_players"] >= 0
+    assert payload["worker"]["network_slots"] <= payload["worker"]["network_slots_limit"]
+    for item in payload["items"]:
+        assert item["kind"] in {"pbp", "match_lookup", "player_history", "full_archive"}
+        assert "attempt_token" not in item
+        assert "lease_until" not in item
 
 
 def _ensure_sport(session):

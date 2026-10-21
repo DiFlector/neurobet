@@ -46,6 +46,58 @@ import {
 } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
 
+type FlashscoreQueueParams = {
+  limit: number;
+  offset: number;
+  include_completed: boolean;
+  kind?: string;
+  status?: string;
+  mode?: string;
+  search?: string;
+};
+
+const FLASHSCORE_QUEUE_CACHE_PREFIX = "neurobet.flashscore-queue.v1:";
+
+function flashscoreQueueCacheKey(params: FlashscoreQueueParams): string {
+  return FLASHSCORE_QUEUE_CACHE_PREFIX + JSON.stringify({
+    limit: params.limit,
+    offset: params.offset,
+    include_completed: params.include_completed,
+    kind: params.kind || "",
+    status: params.status || "",
+    mode: params.mode || "",
+    search: params.search?.trim() || "",
+  });
+}
+
+function readFlashscoreQueueCache(key: string): FlashscoreQueueData | null {
+  try {
+    const value = window.localStorage.getItem(key);
+    if (!value) return null;
+    const parsed = JSON.parse(value) as FlashscoreQueueData;
+    return Array.isArray(parsed.items)
+      && Number.isFinite(parsed.total)
+      && Number.isFinite(parsed.offset)
+      && typeof parsed.worker === "object"
+      && parsed.worker !== null
+      && typeof parsed.statuses === "object"
+      && parsed.statuses !== null
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeFlashscoreQueueCache(key: string, value: FlashscoreQueueData): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    // Queue rendering must remain available when browser storage is disabled or full.
+    console.warn("[Dashboard] Could not persist Flashscore queue cache:", err);
+  }
+}
+
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = React.useState<string>("matches");
   const [activeSport, setActiveSport] = React.useState<string>("tennis");
@@ -68,9 +120,41 @@ export default function DashboardPage() {
   const [flashscoreQueueOffset, setFlashscoreQueueOffset] = React.useState(0);
   const [flashscoreIncludeCompleted, setFlashscoreIncludeCompleted] = React.useState(false);
   const [flashscoreFilters, setFlashscoreFilters] = React.useState<{ kind?: string; status?: string; mode?: string; search?: string }>({});
+  const flashscoreQueueQueryKeyRef = React.useRef<string | null>(null);
+  const flashscoreQueueRequestRef = React.useRef(0);
+  const flashscoreQueueInFlightKeyRef = React.useRef<string | null>(null);
   const handleFlashscoreFiltersChange = React.useCallback((filters: { kind?: string; status?: string; mode?: string; search?: string }) => {
     setFlashscoreQueueOffset(0);
     setFlashscoreFilters(filters);
+  }, []);
+
+  const refreshFlashscoreQueue = React.useCallback(async (params: FlashscoreQueueParams) => {
+    const key = flashscoreQueueCacheKey(params);
+    if (flashscoreQueueQueryKeyRef.current !== key) {
+      flashscoreQueueQueryKeyRef.current = key;
+      const cached = readFlashscoreQueueCache(key);
+      setFlashscoreQueue(cached);
+      setFlashscoreQueueStale(Boolean(cached));
+    }
+    if (flashscoreQueueInFlightKeyRef.current === key) return;
+
+    const requestId = ++flashscoreQueueRequestRef.current;
+    flashscoreQueueInFlightKeyRef.current = key;
+    try {
+      const result = await fetchFlashscoreQueue(params);
+      if (requestId !== flashscoreQueueRequestRef.current || flashscoreQueueQueryKeyRef.current !== key) return;
+      if (result) {
+        writeFlashscoreQueueCache(key, result);
+        setFlashscoreQueue(result);
+        setFlashscoreQueueStale(false);
+      } else {
+        setFlashscoreQueueStale(true);
+      }
+    } finally {
+      if (requestId === flashscoreQueueRequestRef.current) {
+        flashscoreQueueInFlightKeyRef.current = null;
+      }
+    }
   }, []);
 
   const [selectedEventData, setSelectedEventData] = React.useState<EventDetailData | null>(null);
@@ -136,16 +220,14 @@ export default function DashboardPage() {
         ]);
         setQueue(qList);
         if (qSt) setQueueStats(qSt);
-        const fsQueue = await fetchFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
-        if (fsQueue) { setFlashscoreQueue(fsQueue); setFlashscoreQueueStale(false); }
-        else setFlashscoreQueueStale(true);
+        await refreshFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
       }
     } catch (err) {
       console.error("[Dashboard] loadTabContent error:", err);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, activeSport, activeStatus, searchQuery, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters]);
+  }, [activeTab, activeSport, activeStatus, searchQuery, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters, refreshFlashscoreQueue]);
 
   React.useEffect(() => {
     loadInitialData();
@@ -210,16 +292,15 @@ export default function DashboardPage() {
         const lList = await fetchLedger(50);
         if (lList.length > 0) setLedger(lList);
       } else if (view.activeTab === "scheduler") {
-        const [qList, qSt, fsQueue] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats(), fetchFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters })]);
+        const [qList, qSt] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats()]);
         setQueue(qList);
         if (qSt) setQueueStats(qSt);
-        if (fsQueue) { setFlashscoreQueue(fsQueue); setFlashscoreQueueStale(false); }
-        else setFlashscoreQueueStale(true);
+        await refreshFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
       }
     } catch (err) {
       console.error("[Dashboard] refreshLive error:", err);
     }
-  }, [applyPredictions, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters]);
+  }, [applyPredictions, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters, refreshFlashscoreQueue]);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {

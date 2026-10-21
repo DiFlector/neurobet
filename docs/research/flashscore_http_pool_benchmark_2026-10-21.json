@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-10-21T07:56:04Z",
+  "method": "paired identical search GETs; every request acquired global participant source slot; request and client setup measured, slot wait excluded",
+  "endpoint_domain": "s.livesport.services",
+  "query": "Arantxa Rus",
+  "pairs": 4,
+  "cold_seconds": [
+    0.2423,
+    0.2126,
+    0.1681,
+    0.2207
+  ],
+  "pooled_seconds": [
+    0.1898,
+    0.0713,
+    0.0681,
+    0.0692
+  ],
+  "cold_median_seconds": 0.21665,
+  "pooled_median_seconds": 0.07025,
+  "median_change_percent": -67.6,
+  "status": "all_200_json_list",
+  "limitations": "single query and four pairs; short endpoint latency benchmark, not worker throughput soak"
+}

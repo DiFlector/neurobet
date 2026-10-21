@@ -18,6 +18,9 @@ interface ConfirmationItem {
   status: ConfirmationStatus;
   version: number;
   created_at: string;
+  latest_decision?: "approve" | "reject" | "superseded" | null;
+  can_correct?: boolean;
+  correction_unavailable_reason?: string | null;
   subject: Record<string, any>;
   evidence: Record<string, any>;
 }
@@ -36,9 +39,71 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
 }
 
-function displayValue(value: unknown): string {
+function parseStructuredValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function formatScore(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
-  return typeof value === "string" ? value : JSON.stringify(value);
+  const parsed = parseStructuredValue(value) as any;
+  if (!parsed || typeof parsed !== "object") {
+    const text = String(parsed ?? "").trim();
+    // A serialized payload is not useful as a human-readable score. Avoid
+    // letting malformed/unknown score documents take over the confirmation card.
+    return text.length > 80 ? "Счёт недоступен" : text || "—";
+  }
+
+  const sets = Array.isArray(parsed.sets) ? parsed.sets : [];
+  const setScores = sets
+    .map((set: any) => {
+      const a = set?.games_a ?? set?.score_a;
+      const b = set?.games_b ?? set?.score_b;
+      return a !== undefined && b !== undefined ? `${a}–${b}` : null;
+    })
+    .filter(Boolean);
+  const currentGame = parsed.current_game;
+  const pointsA = currentGame?.points_a;
+  const pointsB = currentGame?.points_b;
+  const gameScore = pointsA !== undefined && pointsB !== undefined
+    ? `Текущий гейм ${pointsA}:${pointsB}`
+    : null;
+  const parts = [
+    setScores.length ? `Сеты ${setScores.join(", ")}` : null,
+    gameScore,
+  ].filter(Boolean);
+
+  if (parts.length) return parts.join(" · ");
+  if (typeof parsed.display === "string") return parsed.display;
+  if (typeof parsed.score === "string" || typeof parsed.score === "number") return String(parsed.score);
+  return "Счёт недоступен";
+}
+
+function matchPlayersFromFlashscoreUrl(value?: string | null): string | null {
+  if (!value) return null;
+  try {
+    const path = new URL(value).pathname;
+    const marker = "/match/tennis/";
+    const start = path.indexOf(marker);
+    if (start < 0) return null;
+    const slugs = path.slice(start + marker.length).split("/").filter(Boolean).slice(0, 2);
+    if (slugs.length !== 2) return null;
+    const names = slugs.map((slug) => slug
+      .replace(/-[A-Za-z0-9]{7,}$/, "")
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toLocaleUpperCase("en-US") + part.slice(1))
+      .join(" "));
+    return names.every(Boolean) ? `${names[0]} — ${names[1]}` : null;
+  } catch {
+    return null;
+  }
 }
 
 export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCountChange?: (count: number) => void }) {
@@ -98,9 +163,13 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
         throw new Error(body.detail || "Заявка уже изменилась. Список обновлён, проверьте актуальное предложение.");
       }
       if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
-      setMessage(decision === "approve"
-        ? "Соответствие подтверждено. Подготовка данных продолжится в фоне."
-        : "Кандидат отклонён. Запущен повторный поиск.");
+      setMessage(body.corrected
+        ? decision === "approve"
+          ? "Отказ отменён. Соответствие подтверждено, подготовка продолжится в фоне."
+          : "Подтверждение отменено. Кандидат отклонён, запущен повторный поиск."
+        : decision === "approve"
+          ? "Соответствие подтверждено. Подготовка данных продолжится в фоне."
+          : "Кандидат отклонён. Запущен повторный поиск.");
       await load(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось сохранить решение");
@@ -162,13 +231,20 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
         {(data?.items || []).map((item) => {
           const candidate = item.evidence?.candidate || item.evidence?.source_match || {};
           const isPlayer = item.kind === "player_profile";
+          const sourceUrl = candidate.profile_url || candidate.url || item.evidence?.source_url;
           const candidateName = isPlayer
             ? candidate.name || `Flashscore ID ${item.candidate_id}`
             : candidate.home_name && candidate.away_name
               ? `${candidate.home_name} — ${candidate.away_name}`
-              : `Матч Flashscore ${item.candidate_id}`;
-          const sourceUrl = candidate.profile_url || candidate.url || item.evidence?.source_url;
+              : item.evidence?.flashscore_match_label || matchPlayersFromFlashscoreUrl(sourceUrl)
+                || `Матч Flashscore ${item.candidate_id}`;
           const isPending = item.status === "pending";
+          const correctionDecision = item.status === "approved" ? "reject" : "approve";
+          const correctionLabel = item.status === "approved" ? "Отменить подтверждение" : "Отменить отказ";
+          const statusLabel: Record<ConfirmationStatus, string> = {
+            pending: "Ожидает решения", approved: "Подтверждено",
+            rejected: "Отклонено", superseded: "Снято с рассмотрения",
+          };
           return (
             <Card key={item.id} className="border-border/70">
               <CardHeader className="space-y-2 p-3 pb-1">
@@ -179,7 +255,7 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
                     </div>
                     <div className="mt-1 text-sm font-semibold">{item.subject?.name || "Событие Fonbet"}</div>
                   </div>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">{item.status}</Badge>
+                  <Badge variant="outline" className="shrink-0 text-[10px]">{statusLabel[item.status]}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2 p-3 pt-1">
@@ -187,7 +263,7 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
                   <div className="rounded-md bg-muted/40 p-2">
                     <div className="text-[10px] text-muted-foreground">Fonbet</div>
                     <div className="font-medium">{item.subject?.name || "—"}</div>
-                    {!isPlayer && item.subject?.score && <div className="mt-1 text-muted-foreground">Счёт: {displayValue(item.subject.score)}</div>}
+                    {!isPlayer && item.subject?.score && <div className="mt-1 text-muted-foreground">Счёт: {formatScore(item.subject.score)}</div>}
                   </div>
                   <div className="rounded-md bg-muted/40 p-2">
                     <div className="text-[10px] text-muted-foreground">Flashscore</div>
@@ -197,7 +273,7 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
                 </div>
                 {!isPlayer && <div className="text-[11px] text-muted-foreground">
                   {candidate.tournament || item.evidence?.tournament || item.evidence?.source_match?.tournament || "Турнир не указан"} · {formatDate(candidate.played_at || item.evidence?.source_match?.played_at || item.subject?.scheduled_start_at)}
-                  {(candidate.score || item.evidence?.source_match?.score) && ` · ${displayValue(candidate.score || item.evidence?.source_match?.score)}`}
+                  {(candidate.score || item.evidence?.source_match?.score) && ` · Счёт Flashscore: ${formatScore(candidate.score || item.evidence?.source_match?.score)}`}
                 </div>}
                 {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline">
                   Открыть Flashscore <ExternalLink className="h-3 w-3" />
@@ -211,6 +287,18 @@ export function AdminConfirmationsPanel({ onPendingCountChange }: { onPendingCou
                     onClick={() => void decide(item, "approve")}>
                     <Check className="mr-1 h-3.5 w-3.5" /> Да
                   </Button>
+                </div>}
+                {!isPending && item.can_correct && <div className="flex justify-end gap-2 pt-1">
+                  <Button size="sm" variant="outline" disabled={busyId === item.id} className="h-8 text-xs"
+                    onClick={() => void decide(item, correctionDecision)}>
+                    {item.status === "approved"
+                      ? <X className="mr-1 h-3.5 w-3.5" />
+                      : <Check className="mr-1 h-3.5 w-3.5" />}
+                    {correctionLabel}
+                  </Button>
+                </div>}
+                {!isPending && !item.can_correct && item.correction_unavailable_reason && <div className="text-[11px] text-muted-foreground">
+                  Исправление недоступно: {item.correction_unavailable_reason}
                 </div>}
               </CardContent>
             </Card>

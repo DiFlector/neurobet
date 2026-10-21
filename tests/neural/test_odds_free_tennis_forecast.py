@@ -2,6 +2,8 @@ import importlib.util
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 _SPEC = importlib.util.spec_from_file_location(
     "odds_free_tennis_forecast",
     "services/neural/app/tennis_forecast.py",
@@ -18,8 +20,10 @@ forecast = _MODULE.forecast
 parse_tennis_state = _MODULE.parse_tennis_state
 build_odds_free_feature_vector = _MODULE.build_odds_free_feature_vector
 validate_odds_free_feature_availability = _MODULE.validate_odds_free_feature_availability
+point_in_time_surface = _MODULE.point_in_time_surface
 ODDS_FREE_FEATURE_SOURCE_GROUPS = _MODULE.ODDS_FREE_FEATURE_SOURCE_GROUPS
 ODDS_FREE_FEATURE_NAMES = _MODULE.ODDS_FREE_FEATURE_NAMES
+ODDS_FREE_FEATURE_VERSION = _MODULE.ODDS_FREE_FEATURE_VERSION
 
 
 def _snapshot(points_a: str, points_b: str):
@@ -53,8 +57,13 @@ def test_odds_free_candidate_feature_contract_is_closed_and_ignores_prices():
     changed_prices = {**pair, "odds_a": 30.0, "odds_b": 1.01, "market_probability_a": 0.02}
     second = build_odds_free_feature_vector(state, changed_prices, serve_a, serve_b, "clay")
     assert len(first) == len(ODDS_FREE_FEATURE_NAMES) == 30
+    assert ODDS_FREE_FEATURE_VERSION == "tennis_odds_free_v1"
     assert first == second
+    assert "odds" not in _MODULE.forecast.__code__.co_varnames
     assert not any(token in name for name in ODDS_FREE_FEATURE_NAMES for token in ("odds", "market", "price", "line"))
+    forecast_before_price_change = forecast(state, serve_a=serve_a, serve_b=serve_b)
+    forecast_after_price_change = forecast(state, serve_a=serve_a, serve_b=serve_b)
+    assert forecast_before_price_change == forecast_after_price_change
 
 
 def test_feature_availability_certificate_fails_closed_for_missing_or_future_sources():
@@ -68,6 +77,27 @@ def test_feature_availability_certificate_fails_closed_for_missing_or_future_sou
     assert result["certified"] is False
     assert result["missing_sources"] == ["serve_metrics_b"]
     assert result["future_sources"] == ["event_surface"]
+    result = validate_odds_free_feature_availability(
+        as_of,
+        {**complete, "serve_metrics_b": None, "event_surface": as_of.isoformat()},
+        contract_defaults=["serve_metrics_b"],
+    )
+    assert result["certified"] is True
+    assert result["contract_defaulted_sources"] == ["serve_metrics_b"]
+
+
+def test_surface_requires_its_own_timestamp_and_is_unknown_when_late():
+    from datetime import datetime, timezone
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert point_in_time_surface({"surface": "clay"}, cutoff) == (
+        "unknown", None, "missing_source_timestamp"
+    )
+    assert point_in_time_surface({
+        "surface": "grass", "surface_available_at": "2026-01-02T00:00:00Z"
+    }, cutoff) == ("unknown", "2026-01-02T00:00:00+00:00", "source_after_cutoff")
+    assert point_in_time_surface({
+        "surface": "hard", "surface_available_at": "2025-12-31T23:00:00Z"
+    }, cutoff) == ("hard", "2025-12-31T23:00:00+00:00", "observed")
 
 
 def test_adapter_score_shape_uses_live_line_instead_of_last_closed_set():
@@ -86,7 +116,7 @@ def test_adapter_score_shape_uses_live_line_instead_of_last_closed_set():
             ],
         },
     }
-    state, error = parse_tennis_state(detail, sport)
+    state, error = parse_tennis_state(detail, sport, best_of=3)
     assert error is None
     assert state.sets_a == 1 and state.games_a == 2 and state.games_b == 1
     assert state.points_a == 1 and state.server == "b"
@@ -112,6 +142,13 @@ def test_server_rotates_after_set_and_tiebreak_set_closes():
     assert closed.server == "b"
 
 
+def test_server_rotates_after_an_ordinary_completed_game():
+    closed = _advance_point(TennisState(points_a=3, points_b=0, server="a"), "a")
+    assert (closed.games_a, closed.games_b) == (1, 0)
+    assert (closed.points_a, closed.points_b) == (0, 0)
+    assert closed.server == "b"
+
+
 def test_repeated_polls_and_score_gaps_do_not_become_live_point_evidence():
     rows = [_snapshot("0", "0"), _snapshot("15", "0"), _snapshot("15", "0"), _snapshot("15", "15")]
     rate_a, rate_b, samples = _live_serve_rates(rows, (0.62, 0.62, 0.0), (0.62, 0.62, 0.0))
@@ -130,13 +167,34 @@ def test_numeric_tiebreak_score_is_parsed_and_invalid_format_is_unavailable():
         "tiebreak": True,
         "stats": {"set_lines": [{"games_a": 6, "games_b": 6, "live": True}]},
     }
-    state, error = parse_tennis_state(detail, sport)
+    state, error = parse_tennis_state(detail, sport, best_of=3)
     assert error is None and state is not None
     assert (state.points_a, state.points_b, state.tiebreak) == (8, 7, True)
 
     malformed = {"stats": {"set_lines": [{"games_a": 7, "games_b": 7, "live": True}]}}
-    state, error = parse_tennis_state({}, malformed)
+    state, error = parse_tennis_state({}, malformed, best_of=3)
     assert state is None and error == "UNSUPPORTED_SCORE"
+
+
+def test_unknown_match_format_fails_closed_instead_of_assuming_best_of_three():
+    state, error = parse_tennis_state(
+        {"current_game": {"points_a": "0", "points_b": "0"}},
+        {"stats": {"set_lines": [{"games_a": 0, "games_b": 0, "live": True}]}},
+    )
+    assert state is None
+    assert error == "UNSUPPORTED_FORMAT"
+
+
+def test_best_of_five_format_uses_three_sets_to_win():
+    state, error = parse_tennis_state(
+        {"current_game": {"points_a": "0", "points_b": "0"}},
+        {"stats": {"sets_a": 2, "sets_b": 1,
+                   "set_lines": [{"games_a": 1, "games_b": 0, "live": True}]}},
+        best_of=5,
+    )
+    assert error is None
+    assert state.sets_to_win == 3
+    assert (state.sets_a, state.sets_b) == (2, 1)
 
 
 def test_forecast_scenarios_are_normalized_through_deuce_and_tiebreak():
@@ -157,3 +215,32 @@ def test_unknown_server_is_bracketed_once_and_kept_inside_each_scenario():
     scenarios = result["scenarios"]["next_3_points"]
     assert abs(sum(item["probability"] for item in scenarios) - 1) < 1e-5
     assert {item["state"]["server"] for item in scenarios} == {"a", "b"}
+
+
+def test_unknown_server_scenarios_keep_every_terminal_state_and_normalize_mass():
+    states = [
+        TennisState(points_a=3, points_b=3, server=None),
+        TennisState(games_a=6, games_b=6, points_a=6, points_b=6,
+                    server=None, tiebreak=True, tiebreak_server=None),
+    ]
+    for state in states:
+        result = forecast(state, serve_a=(0.62, 0.62, 0.5), serve_b=(0.62, 0.62, 0.5))
+        for horizon in ("next_3_points", "next_2_games"):
+            scenarios = result["scenarios"][horizon]
+            assert scenarios
+            assert abs(sum(item["probability"] for item in scenarios) - 1.0) < 1e-12
+            assert all(item["probability"] >= 0.0 for item in scenarios)
+    # Unknown service assignment at deuce creates more than eight distinct
+    # score/server endpoints; none may be silently discarded.
+    deuce = forecast(states[0], serve_a=(0.62, 0.62, 0.5), serve_b=(0.62, 0.62, 0.5))
+    assert len(deuce["scenarios"]["next_3_points"]) > 8
+
+
+def test_completed_match_is_an_absorbing_state_for_both_horizons():
+    state = TennisState(sets_a=2, games_a=4, games_b=3, points_a=2, server="a", sets_to_win=2)
+    result = forecast(state, serve_a=(0.65, 0.62, 0.5), serve_b=(0.60, 0.62, 0.5))
+    assert result["probabilities"]["match_a"] == 1.0
+    for horizon in ("next_3_points", "next_2_games"):
+        scenarios = result["scenarios"][horizon]
+        assert sum(item["probability"] for item in scenarios) == pytest.approx(1.0)
+        assert all(item["state"] == state.__dict__ for item in scenarios)

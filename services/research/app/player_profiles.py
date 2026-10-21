@@ -4,18 +4,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import and_, case, cast, literal, or_, select
+from sqlalchemy import and_, case, cast, literal, or_, select, text
 from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 
 from tennis_adapter.normalizer import normalize_russian_player_name
 from tennis_adapter.player_metrics import aggregate_results, append_result, digest_metrics, metrics_as_of
 
 from .tennis_flashscore import PARSER_VERSION, _player_name_matches, _search_tokens
+
+
+def profile_refresh_timeout_seconds(stop_before_date, environ=None) -> int:
+    """Bound recent profile refreshes more tightly than first/full imports."""
+    environ = os.environ if environ is None else environ
+    key = ("FLASHSCORE_TENNIS_INCREMENTAL_TIMEOUT_SECONDS"
+           if stop_before_date is not None else "FLASHSCORE_TENNIS_PROFILE_TIMEOUT_SECONDS")
+    default = "120" if stop_before_date is not None else "300"
+    return max(30, int(environ.get(key, default)))
 
 
 def _name_key(value: Optional[str]) -> str:
@@ -69,6 +79,27 @@ def _canonical_match_key(item) -> str:
             str(getattr(item, "gender", "unknown")),
         ], separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def lock_flashscore_source_entities(session, player_ids=(), match_ids=()) -> None:
+    """Serialize overlapping profile imports before reading/upserting shared IDs.
+
+    A profile page can contain the same match as another player's page. The
+    unique indexes are the final invariant, but a check-then-insert race used
+    to abort the whole profile transaction. Acquire deterministic transaction
+    advisory locks in one round trip before querying the source projections.
+    """
+    keys = sorted({
+        *(f"flashscore:player:{value}" for value in player_ids if value),
+        *(f"flashscore:match:{value}" for value in match_ids if value),
+    })
+    if not keys:
+        return
+    session.execute(text(
+        "SELECT pg_advisory_xact_lock(hashtextextended(lock_key, 0)) "
+        "FROM unnest(CAST(:lock_keys AS text[])) AS lock_keys(lock_key) "
+        "ORDER BY lock_key"
+    ), {"lock_keys": keys}).all()
 
 
 def _matching_canonical_match_key(item, candidates) -> Optional[str]:
@@ -271,6 +302,28 @@ def enqueue_player_refresh(session, participant_id, reason: str):
         )
     )
     return session.get(TennisPlayerRefreshJob, participant_id, with_for_update=True)
+
+
+def _post_match_profile_refresh_due(profile, refresh_job, finished_at, now) -> bool:
+    """Whether player history predates a newly completed match and is refreshable."""
+    if profile is None or not (profile.source_identities or {}).get("flashscore"):
+        needs_refresh = True
+    elif profile.last_success_at is None:
+        needs_refresh = True
+    else:
+        needs_refresh = profile.last_success_at <= now - timedelta(days=30)
+        if finished_at is not None and profile.last_success_at <= finished_at:
+            needs_refresh = True
+    if not needs_refresh:
+        return False
+    if refresh_job is None:
+        return True
+    if refresh_job.status == "retry":
+        return refresh_job.next_run_at <= now
+    if refresh_job.status in {"completed", "failed", "idle"}:
+        return (refresh_job.updated_at <= now - timedelta(days=30)
+                or (finished_at is not None and refresh_job.updated_at <= finished_at))
+    return False
 
 
 def _result_hash(item, won: bool) -> str:

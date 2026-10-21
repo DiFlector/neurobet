@@ -39,10 +39,12 @@ ODDS_FREE_FEATURE_NAMES = (
 
 
 def validate_odds_free_feature_availability(
-    as_of: datetime, source_available_at: Dict[str, Any]
+    as_of: datetime, source_available_at: Dict[str, Any],
+    contract_defaults: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
-    """Fail closed when a sports feature source is missing or arrived after a slice."""
+    """Fail closed unless a source is causal or a declared contract prior is used."""
     cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
+    defaulted = set(contract_defaults or ())
     missing, future = [], []
     for source_group in ODDS_FREE_FEATURE_SOURCE_GROUPS:
         raw = source_available_at.get(source_group)
@@ -52,7 +54,8 @@ def validate_odds_free_feature_availability(
             except ValueError:
                 raw = None
         if not isinstance(raw, datetime):
-            missing.append(source_group)
+            if source_group not in defaulted:
+                missing.append(source_group)
             continue
         available = raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw.astimezone(timezone.utc)
         if available > cutoff:
@@ -61,8 +64,30 @@ def validate_odds_free_feature_availability(
         "certified": not missing and not future,
         "missing_sources": missing,
         "future_sources": future,
+        "contract_defaulted_sources": sorted(defaulted),
         "as_of": cutoff.isoformat(),
     }
+
+
+def point_in_time_surface(metadata: Any, as_of: datetime) -> Tuple[str, Optional[str], str]:
+    """Use event surface only when its own source timestamp is explicit and causal."""
+    values = metadata if isinstance(metadata, dict) else {}
+    surface = str(values.get("surface") or "").strip().casefold()
+    raw_available = values.get("surface_available_at")
+    if isinstance(raw_available, str):
+        try:
+            raw_available = datetime.fromisoformat(raw_available.replace("Z", "+00:00"))
+        except ValueError:
+            raw_available = None
+    if not isinstance(raw_available, datetime):
+        return "unknown", None, "missing_source_timestamp"
+    available = raw_available.replace(tzinfo=timezone.utc) if raw_available.tzinfo is None else raw_available.astimezone(timezone.utc)
+    cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
+    if available > cutoff:
+        return "unknown", available.isoformat(), "source_after_cutoff"
+    if surface not in {"hard", "clay", "grass", "carpet"}:
+        return "unknown", available.isoformat(), "unsupported_or_missing_surface"
+    return surface, available.isoformat(), "observed"
 
 
 @dataclass(frozen=True)
@@ -124,10 +149,11 @@ def _int(value: Any, default: int = 0) -> int:
         return default
 
 
-def parse_tennis_state(detail: Any, sport_state: Any = None, best_of: int = 3) -> Tuple[Optional[TennisState], Optional[str]]:
+def parse_tennis_state(detail: Any, sport_state: Any = None, best_of: Optional[int] = None) -> Tuple[Optional[TennisState], Optional[str]]:
     """Parse supported Fonbet score snapshots. Unknown states fail closed."""
     from tennis_adapter.point_history import is_legal_point_state
-    best_of = best_of if best_of in (3, 5) else 3
+    if best_of not in (3, 5):
+        return None, "UNSUPPORTED_FORMAT"
     detail = detail if isinstance(detail, dict) else {}
     sport_state = sport_state if isinstance(sport_state, dict) else {}
     stats = sport_state.get("stats") if isinstance(sport_state.get("stats"), dict) else detail.get("stats", {})
@@ -378,7 +404,13 @@ def _point_scenarios(state: TennisState, p_a: float, p_b: float, depth: int = 3)
     for final, probability, path in branches:
         mass, paths = merged.get(final, (0.0, []))
         merged[final] = (mass + probability, paths + [path])
-    return [{"points": "|".join(paths), "probability": round(mass, 6), "state": asdict(final)} for final, (mass, paths) in sorted(merged.items(), key=lambda item: item[1][0], reverse=True)[:8]]
+    total = math.fsum(mass for mass, _paths in merged.values())
+    if total > 0.0:
+        merged = {state_value: (mass / total, paths) for state_value, (mass, paths) in merged.items()}
+    return [
+        {"points": "|".join(paths), "probability": mass, "state": asdict(final)}
+        for final, (mass, paths) in sorted(merged.items(), key=lambda item: item[1][0], reverse=True)
+    ]
 
 
 def _game_scenarios(state: TennisState, p_a: float, p_b: float, depth: int = 2) -> List[dict]:
@@ -409,7 +441,13 @@ def _game_scenarios(state: TennisState, p_a: float, p_b: float, depth: int = 2) 
     for final, probability, path in branches:
         mass, paths = merged.get(final, (0.0, []))
         merged[final] = (mass + probability, paths + [path])
-    return [{"games": "|".join(paths), "probability": round(mass, 6), "state": asdict(final)} for final, (mass, paths) in sorted(merged.items(), key=lambda item: item[1][0], reverse=True)]
+    total = math.fsum(mass for mass, _paths in merged.values())
+    if total > 0.0:
+        merged = {state_value: (mass / total, paths) for state_value, (mass, paths) in merged.items()}
+    return [
+        {"games": "|".join(paths), "probability": mass, "state": asdict(final)}
+        for final, (mass, paths) in sorted(merged.items(), key=lambda item: item[1][0], reverse=True)
+    ]
 
 
 def _smoothed_rate(won: float, played: float, prior: float, strength: float = 80.0) -> Tuple[float, float]:
@@ -482,7 +520,13 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     from db.models.predictions import TennisForecastSnapshot
     from contracts.predictions import TennisForecast
 
-    best_of = int((event.metadata_json or {}).get("best_of") or 3)
+    raw_best_of = (event.metadata_json or {}).get("best_of")
+    try:
+        best_of = int(raw_best_of) if raw_best_of is not None else None
+    except (TypeError, ValueError):
+        best_of = None
+    if best_of not in (3, 5):
+        best_of = None
     unavailable_reason = None
     state_value = None
     if states:
@@ -498,14 +542,18 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
         observed_at = cutoff
         if event.status == "live" or event.is_live:
             unavailable_reason = "NO_LIVE_STATE"
+        elif best_of is None:
+            unavailable_reason = "UNSUPPORTED_FORMAT"
         else:
-            # Upcoming events still receive an odds-free prior forecast.
-            state_value = TennisState(sets_to_win=(best_of if best_of in (3, 5) else 3) // 2 + 1)
-    surface = str((event.metadata_json or {}).get("surface") or "unknown")
+            # Upcoming events receive a prior only when match format is known.
+            state_value = TennisState(sets_to_win=best_of // 2 + 1)
     # Player data must have been available by the actual calculation time. The
     # forecast may intentionally wait for initial profile preparation after the
     # latest score poll, so observed_at and calculated_at can differ.
     source_cutoff = cutoff
+    surface, surface_available_at, surface_resolution = point_in_time_surface(
+        event.metadata_json, source_cutoff
+    )
     serve_a, serve_b = player_serve_rates(session, event.participant_a_name, event.participant_b_name, source_cutoff, surface)
     from .player_metrics import load_player_metric, pair_features
 
@@ -556,6 +604,8 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
             "live_point_sequence_confirmed": False,
             "live_score_state_count": len(states),
             "surface": surface,
+            "surface_available_at": surface_available_at,
+            "surface_resolution": surface_resolution,
         }
         value["model_uncertainty"] = {
             "serve_rate_a": round(1.0 - value["sample_weight"]["a"], 4),
@@ -588,6 +638,8 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     fingerprint_payload = {
         "state": value["state"], "serve": value["serve_point_probability"],
         "sample_weight": value["sample_weight"], "live_samples": live_samples,
+        "feature_vector": build_odds_free_feature_vector(state_value, pair, serve_a, serve_b, surface)
+        if state_value is not None else None,
         "player_metrics_a": metric_a["history_digest"] if metric_a else None,
         "player_metrics_b": metric_b["history_digest"] if metric_b else None,
         "unavailable_reason": unavailable_reason,
@@ -606,12 +658,12 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     sequence_no = (latest.sequence_no + 1) if latest else 1
     forecast_id = uuid.uuid4()
     packet = TennisForecast.from_forecast(
-        str(event.id), value, observed_at, "tennis_odds_free_v2", str(forecast_id)
+        str(event.id), value, observed_at, ODDS_FREE_FEATURE_VERSION, str(forecast_id)
     )
     session.add(TennisForecastSnapshot(
         id=forecast_id,
         event_id=event.id, model_name=value["model_name"], model_version=value["model_version"],
-        feature_version="tennis_odds_free_v2", sequence_no=sequence_no,
+        feature_version=ODDS_FREE_FEATURE_VERSION, sequence_no=sequence_no,
         observed_at=observed_at, state_digest=fingerprint,
         forecast_json=packet.model_dump(mode="json"),
     ))

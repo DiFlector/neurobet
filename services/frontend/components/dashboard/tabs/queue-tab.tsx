@@ -176,7 +176,7 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
               <CardTitle className="text-base font-semibold">Flashscore</CardTitle>
               <CardDescription className="text-xs mt-1">
                 {flashscore ? `${flashscore.eligible_matches} подходящих матчей · ${flashscore.prepared_players} подготовленных профилей · ${flashscore.total} заданий` : "Состояние очереди пока недоступно"}
-                {flashscoreStale && <span className="ml-2 text-amber-600">Показаны сохранённые данные, обновить не удалось</span>}
+                {flashscoreStale && <span className="ml-2 text-amber-600">{flashscore ? "Показаны сохранённые данные, обновить не удалось" : "Не удалось загрузить очередь; сохранённых данных пока нет"}</span>}
               </CardDescription>
             </div>
             <Badge variant="outline" className="font-mono text-[10px]">

@@ -6,9 +6,11 @@ browser work cannot delay API requests or the general Redis worker.
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import signal
+import threading
 from datetime import datetime, timedelta, timezone
 
 from . import main as research
@@ -17,6 +19,12 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s [%
 logger = logging.getLogger("flashscore-worker")
 STOP = False
 IMPORT_TASKS: set[str] = set()
+HEARTBEAT_STOP = threading.Event()
+
+
+def _browser_process_limit() -> int:
+    """Keep thread-local Playwright instances within the configured browser budget."""
+    return max(1, min(4, int(os.getenv("FLASHSCORE_BROWSER_PROCESSES", "2"))))
 
 
 def _write_executor_heartbeat() -> None:
@@ -25,6 +33,28 @@ def _write_executor_heartbeat() -> None:
     with SessionLocal() as session:
         session.execute(text("UPDATE flashscore_source_control SET executor_heartbeat_at=now(), updated_at=now() WHERE id=1"))
         session.commit()
+
+
+def _write_health_file() -> None:
+    with open("/tmp/healthy", "w") as health:
+        health.write(datetime.now(timezone.utc).isoformat())
+
+
+def _heartbeat_loop() -> None:
+    """Keep executor liveness independent from long async/browser dispatch work.
+
+    The main loop can spend minutes waiting for a database lock or coordinating
+    Chromium tasks. A heartbeat tied to that loop makes the queue report a
+    healthy, working executor as dead. This small thread owns only the
+    liveness write and never touches job leases or results.
+    """
+    while not HEARTBEAT_STOP.is_set():
+        try:
+            _write_executor_heartbeat()
+            _write_health_file()
+        except Exception:
+            logger.exception("Flashscore executor heartbeat failed")
+        HEARTBEAT_STOP.wait(10)
 
 
 def _stop(*_args):
@@ -96,32 +126,46 @@ def _schedule_due_imports() -> int:
 async def main() -> None:
     global STOP
     logger.info("Dedicated Flashscore executor started")
-    try:
-        with open("/tmp/healthy", "w") as health:
-            health.write(datetime.now(timezone.utc).isoformat())
-    except Exception:
-        pass
+    browser_limit = _browser_process_limit()
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(
+        max_workers=browser_limit,
+        thread_name_prefix="flashscore-browser",
+    ))
+    logger.info("Flashscore browser thread/process budget: %d", browser_limit)
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat_loop, name="flashscore-executor-heartbeat", daemon=True
+    )
+    heartbeat_thread.start()
     discovery_interval = max(5, int(os.getenv("FLASHSCORE_DISCOVERY_SECONDS", "15")))
     last_discovery = 0.0
-    last_heartbeat = 0.0
+    archive_discovery_interval = max(60, int(os.getenv("FLASHSCORE_ARCHIVE_DISCOVERY_SECONDS", "900")))
+    last_archive_discovery = 0.0
     import_interval = max(3600, int(os.getenv("FLASHSCORE_TENNIS_IMPORT_INTERVAL_SECONDS", "86400")))
     last_import_enqueued = 0.0
+    last_confirmation_reconcile = 0.0
     while not STOP:
         now_mono = asyncio.get_running_loop().time()
         try:
-            if now_mono - last_heartbeat >= 10:
-                last_heartbeat = now_mono
-                await asyncio.to_thread(_write_executor_heartbeat)
+            if now_mono - last_confirmation_reconcile >= 60:
+                last_confirmation_reconcile = now_mono
+                reconciled = await asyncio.to_thread(research.auto_resolve_exact_match_confirmations)
+                if reconciled.get("resolved"):
+                    logger.info("Auto-resolved exact confirmed match candidates: %s", reconciled)
+
             if now_mono - last_discovery >= discovery_interval:
                 last_discovery = now_mono
                 count = await _prepare_events()
                 logger.info("Prepared eligible tennis events: %d", count)
-                # PBP dispatcher enrolls all live events and uses the global
-                # durable source regulator for actual network operations.
-                archive = await research.dispatch_tennis_archive_backfill(limit=4)
-                logger.info("Historical PBP backfill: %s", archive)
+                # Live PBP enrollment stays on the fast discovery loop. The
+                # historical scan walks the whole completed archive, so run it
+                # on its own slower cadence instead of repeating it every 15s.
                 pbp = await research.dispatch_live_point_history(limit=30)
                 logger.info("Point history dispatch: %s", pbp)
+
+            if now_mono - last_archive_discovery >= archive_discovery_interval:
+                last_archive_discovery = now_mono
+                archive = await research.dispatch_tennis_archive_backfill(limit=4)
+                logger.info("Historical PBP backfill: %s", archive)
 
             if now_mono - last_import_enqueued >= import_interval and research.config.flashscore_tennis_profile_urls:
                 last_import_enqueued = now_mono
@@ -135,14 +179,11 @@ async def main() -> None:
                     players.get("claimed_count"), match_search.get("claimed_count"), imports)
         except Exception:
             logger.exception("Flashscore executor iteration failed; durable jobs remain queued")
-        try:
-            with open("/tmp/healthy", "w") as health:
-                health.write(datetime.now(timezone.utc).isoformat())
-        except Exception:
-            pass
         await asyncio.sleep(2)
     if IMPORT_TASKS:
         await asyncio.gather(*[task for task in asyncio.all_tasks() if task is not asyncio.current_task()], return_exceptions=True)
+    HEARTBEAT_STOP.set()
+    heartbeat_thread.join(timeout=2)
     logger.info("Dedicated Flashscore executor stopped")
 
 

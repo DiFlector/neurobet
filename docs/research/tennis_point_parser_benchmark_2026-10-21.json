@@ -1,0 +1,1127 @@
+{
+  "generated_at": "2026-10-21T10:11:48.643377+00:00",
+  "scope": "same archived HTML corpus; parse-only; warm-up excluded; alternating parser order",
+  "network_used": false,
+  "database_writes": 0,
+  "corpus": {
+    "documents": 30,
+    "unique_matches": 30,
+    "total_html_bytes": 32830885,
+    "iterations_per_parser": 8,
+    "stored_parser_versions": [
+      "flashscore-point-history-v2",
+      "flashscore-point-history-v3",
+      "flashscore-point-history-v4"
+    ]
+  },
+  "baseline": {
+    "parser_version": "flashscore-point-history-v2",
+    "source_file": "/tmp/neurobet-point-history-baseline.py",
+    "revision": "9ec3b4af117b16be7198afcf1df7732514f6756c",
+    "median_seconds": 1.2320245784940198,
+    "min_seconds": 1.0141349179903045,
+    "max_seconds": 1.390447427984327,
+    "documents_per_second": 24.35016356302799,
+    "megabytes_per_second": 26.64791398896541
+  },
+  "current": {
+    "parser_version": "flashscore-point-history-v4",
+    "median_seconds": 1.1942552555119619,
+    "min_seconds": 1.060889509972185,
+    "max_seconds": 1.305775549961254,
+    "documents_per_second": 25.12025788585656,
+    "megabytes_per_second": 27.490676594029996,
+    "events_per_corpus_pass": 832
+  },
+  "speedup_percent": 3.1625837782783384,
+  "semantic_comparison": {
+    "document_comparisons": 240,
+    "event_count_equal_documents": 232,
+    "exact_event_signature_equal_documents": 120,
+    "differences": [
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "E9vF4SAD",
+        "baseline_events": 29,
+        "current_events": 29,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nJQUcQ7s",
+        "baseline_events": 63,
+        "current_events": 63,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "WAlDxZFD",
+        "baseline_events": 99,
+        "current_events": 100,
+        "event_count_equal": false,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "ltboIW4e",
+        "baseline_events": 53,
+        "current_events": 53,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "nqALMPsJ",
+        "baseline_events": 40,
+        "current_events": 40,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "h4onFrXb",
+        "baseline_events": 50,
+        "current_events": 50,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "2TkVRpXO",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "UXYqpB76",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "EsW7JYiJ",
+        "baseline_events": 49,
+        "current_events": 49,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "U9AaJ05l",
+        "baseline_events": 69,
+        "current_events": 69,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "YZpn8ZOM",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "zuXb3OTi",
+        "baseline_events": 65,
+        "current_events": 65,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "Y17jCgCd",
+        "baseline_events": 45,
+        "current_events": 45,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "pvrvH42n",
+        "baseline_events": 46,
+        "current_events": 46,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      },
+      {
+        "source_match_id": "rB9FuliS",
+        "baseline_events": 80,
+        "current_events": 80,
+        "event_count_equal": true,
+        "exact_event_signature_equal": false
+      }
+    ],
+    "note": "A difference is not automatically a regression: v4 fixes known server-side and terminal-event semantics; inspect against the separate source DOM review."
+  },
+  "documents": [
+    {
+      "source_match_id": "0rANrMk1",
+      "fonbet_event_id": "70fbc6c9-1dee-4e5b-9614-6dcdbf0a88b7",
+      "document_id": "1a7690a4-be27-46ae-b86f-20d5dea7a294",
+      "content_hash": "eff21b5b0854feb08d7a41af89aa32294c556831800bb923a9305da0eb9ad8a3",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T10:06:21.497458+00:00"
+    },
+    {
+      "source_match_id": "EsWDKc0c",
+      "fonbet_event_id": "18a27f24-c9e9-41e1-9000-719b6a0bfbaa",
+      "document_id": "e5563fdb-a188-4b84-8099-f443bff4d09c",
+      "content_hash": "d015fc72d05ce48773a74a7959a83e1ca94ead50d9c6b4200ca4935a84dde13e",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T10:05:14.592636+00:00"
+    },
+    {
+      "source_match_id": "AHDzd3aT",
+      "fonbet_event_id": "d4b3b20d-9ea2-4411-a432-cd5e1b0451bc",
+      "document_id": "4b40c107-1e35-408e-9424-0dd5f2129cdd",
+      "content_hash": "81de34b03084637cfe1cf6f8a5a41527528845d31b036d223564edb2736e67f2",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T10:02:32.979739+00:00"
+    },
+    {
+      "source_match_id": "SrNEpU7j",
+      "fonbet_event_id": "03c27fa9-7e8f-4d92-a02e-fb0ec6aad1b4",
+      "document_id": "1c03ff6d-e867-494e-ac50-e8a975457dd4",
+      "content_hash": "b45bd726e5802a7a62f1c8028bf06283071a983714e6011fa9a63690e7443459",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T10:01:03.896880+00:00"
+    },
+    {
+      "source_match_id": "0ItWvhAb",
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "document_id": "4dec4d8a-d9d2-47bd-b7f8-340779d6ab7f",
+      "content_hash": "abd9efbf76fa2fa2ac921f32779a0101f71959d466e161cf3ddf40afc0ffe011",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T10:00:20.307094+00:00"
+    },
+    {
+      "source_match_id": "AoLdaDAm",
+      "fonbet_event_id": "95d4b2f5-677c-4915-be37-2fc8a1c820bd",
+      "document_id": "c02aeb3c-aabc-4aec-a7b2-6553b86089b9",
+      "content_hash": "b062d3ed43ab473ca34529158c3d701b6493258d9486beb7d054c4618270eebe",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:59:53.800092+00:00"
+    },
+    {
+      "source_match_id": "0KqNR9Dj",
+      "fonbet_event_id": "239681ef-96e4-48ac-9185-eaa9ee9df287",
+      "document_id": "bfce82cf-f3bc-4358-a273-fa8faa4a6524",
+      "content_hash": "6e4469ad3ba51a035da5ad9c51a4fd274c11929b8c61dc76c9ff493d9dacab3a",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:59:23.558275+00:00"
+    },
+    {
+      "source_match_id": "E9vF4SAD",
+      "fonbet_event_id": "d9a12b4a-2003-40a7-a2b2-52f589591de9",
+      "document_id": "3e774198-41b3-4ee0-9bc7-b9dfcb72ae4c",
+      "content_hash": "05b70902374392c4b6cd63789fe86e91bade401cd2c5d11b8ecf5b0c70e7f24d",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:49:06.994340+00:00"
+    },
+    {
+      "source_match_id": "86W5fRIj",
+      "fonbet_event_id": "50d3001f-bec1-49cf-b971-2ccbec237783",
+      "document_id": "0ff581a4-57b1-4a63-a98b-48fa326491a1",
+      "content_hash": "93e6fb15070808f7acc45fdc60d76caa9e8192f66d88c5c9330059fd36ff541c",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:48:27.928671+00:00"
+    },
+    {
+      "source_match_id": "xbdqylLi",
+      "fonbet_event_id": "079e0a99-ba92-4c47-9941-306c556550a6",
+      "document_id": "12ed4e5d-692d-4bfd-91a6-4b9c15a210ba",
+      "content_hash": "276ab10561135ea3f7dbc9f8dee6bd44093b6d22654c5cc013cb8dec1716b320",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:47:57.336907+00:00"
+    },
+    {
+      "source_match_id": "QJn14fYN",
+      "fonbet_event_id": "220e9211-b022-451c-b0b3-c167d6a4e8fe",
+      "document_id": "2c5e53e0-7484-45c4-8090-0cf4e47b8468",
+      "content_hash": "0ea358ed415dfd980fc114c18ed6f8e388ef45890c2a3ad7082c130dc0a7fa81",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:47:32.873988+00:00"
+    },
+    {
+      "source_match_id": "nNliaWlm",
+      "fonbet_event_id": "6acda045-2487-4b40-a593-bed89ba20cdb",
+      "document_id": "452f2cde-bd64-4947-838b-e763b4c944a5",
+      "content_hash": "56543f0f03918923f7bb56875ea8ac019091a39440e2f1fc9b5ccd65b09695f1",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:46:46.348167+00:00"
+    },
+    {
+      "source_match_id": "nHDiv2iT",
+      "fonbet_event_id": "41ebdf20-b4e4-4478-85e9-f2545a3474d9",
+      "document_id": "ce155c74-d0ed-4b9a-ab6f-ce011684a32a",
+      "content_hash": "8da379c1937d27f8ae55c17924d9e38d75ff807356ea5cb4e1fe955be486806c",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:44:06.176924+00:00"
+    },
+    {
+      "source_match_id": "bw8mYRzg",
+      "fonbet_event_id": "9c0effed-3cf0-457c-af72-2f28680d9e13",
+      "document_id": "3faee455-fef8-44b1-a8b3-e6d6a84d9479",
+      "content_hash": "b2f055def32cc50f3a3ce22b7fdd41ee2bdbcd5d0d952dc4fad6a590eb5c82b3",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:43:38.188965+00:00"
+    },
+    {
+      "source_match_id": "UXWDUTIt",
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "document_id": "71e0dbbf-a1fb-485a-8e7f-001044c35e1c",
+      "content_hash": "c7a0bb7755d260f14609400c234acc6cc5f66829c294bed433318836af8f0ff4",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:43:12.628327+00:00"
+    },
+    {
+      "source_match_id": "IRjLM3El",
+      "fonbet_event_id": "53171f52-13bd-4b13-890b-3d768a58a42c",
+      "document_id": "8ae6a96d-278b-414c-aee9-124d531aa315",
+      "content_hash": "c993c22626bfc1c1c5d008700ce1841bf337a3953c9725263d1ce6d87c83beb9",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:26:19.255830+00:00"
+    },
+    {
+      "source_match_id": "nJQUcQ7s",
+      "fonbet_event_id": "d4a9d283-2507-4706-9b0b-31174d007888",
+      "document_id": "387f0ab5-428c-45cd-aaba-8f75fafb4a20",
+      "content_hash": "f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:11:10.776423+00:00"
+    },
+    {
+      "source_match_id": "WAlDxZFD",
+      "fonbet_event_id": "f232c8b5-6fd2-429f-8e17-2d3e9fdee428",
+      "document_id": "6abf9dbe-3a2f-4795-89e6-9f7a5d662777",
+      "content_hash": "0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T08:51:59.230598+00:00"
+    },
+    {
+      "source_match_id": "ltboIW4e",
+      "fonbet_event_id": "5c7d53e0-0e33-4db4-829b-6d17c701942a",
+      "document_id": "c1b5daf1-1512-4f33-b4dc-a27588404815",
+      "content_hash": "94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:53:20.137146+00:00"
+    },
+    {
+      "source_match_id": "nqALMPsJ",
+      "fonbet_event_id": "2c56621c-be9f-4fbb-ab77-f4551b21a28a",
+      "document_id": "0571a565-fa0f-4a6c-b9ee-721eecf2fb58",
+      "content_hash": "b4cb5b0ba2d924e59a8d535b403a98bea18fabc0c62242d3311e33de29a83b1e",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:34:09.688010+00:00"
+    },
+    {
+      "source_match_id": "h4onFrXb",
+      "fonbet_event_id": "2abb4575-b303-41ab-a6e8-01fc9c27dccc",
+      "document_id": "fd45e994-f141-4af0-9c36-ecf180ed067e",
+      "content_hash": "ef8465b514933504cffe4bb56a998a6bab73bd768a5f97956b70703c75fb9f2b",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:25:02.448767+00:00"
+    },
+    {
+      "source_match_id": "2TkVRpXO",
+      "fonbet_event_id": "8b048749-5115-4fe1-ad36-6b92392cffea",
+      "document_id": "ffd6c536-055c-42aa-8750-2ef2868a726d",
+      "content_hash": "81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:24:39.032554+00:00"
+    },
+    {
+      "source_match_id": "UXYqpB76",
+      "fonbet_event_id": "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+      "document_id": "a870511c-1f78-4fd9-94f9-307354a7ca21",
+      "content_hash": "25b0a077a4efb1bb57adf7bdf07783ca4d38b2095d88f1d9a36daa486ba0bffe",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T07:03:48.451242+00:00"
+    },
+    {
+      "source_match_id": "EsW7JYiJ",
+      "fonbet_event_id": "1f961d14-1974-4828-b408-45c5ffc5ca8f",
+      "document_id": "aad9f689-cb5c-41d9-ab8a-1ea3ab75ba2e",
+      "content_hash": "ea5dd73a9f26ecd7e0d84d3a38e0b2b0520cffc1588aab9c16ff49d4d145367b",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T06:51:49.050023+00:00"
+    },
+    {
+      "source_match_id": "U9AaJ05l",
+      "fonbet_event_id": "8291aa39-5c3c-48d4-afb3-dad0e34ad531",
+      "document_id": "631147ea-2e36-4f97-b908-f56649713358",
+      "content_hash": "aef0421bb13c2690c68b12cf852497cb18de4afa5b5525aafe208f4ff4864ac4",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T06:51:47.611721+00:00"
+    },
+    {
+      "source_match_id": "YZpn8ZOM",
+      "fonbet_event_id": "c827c490-bbf8-4196-b4f0-1725f14c911c",
+      "document_id": "d59ee333-3e15-4c75-b0ab-4ec163d5f9a9",
+      "content_hash": "535160fd6db66265946cf4425393d914f473dccc88a959401ba167609dad7937",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T06:51:02.724379+00:00"
+    },
+    {
+      "source_match_id": "zuXb3OTi",
+      "fonbet_event_id": "c952d0db-31d0-48b1-9035-9725b540a524",
+      "document_id": "5555fb5c-da6e-4431-8fc0-86cf891a09b9",
+      "content_hash": "513dd64f6506c40dda9a67941b606bb1eee277d2b45e1598cb17f338e5f66e68",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T06:46:45.932021+00:00"
+    },
+    {
+      "source_match_id": "Y17jCgCd",
+      "fonbet_event_id": "eeb42d4b-5447-4337-9958-23d3e68d9c26",
+      "document_id": "e2de06b8-892a-4e50-9c18-962e252602b6",
+      "content_hash": "0156ebb9055a8a205c6ebd31566c23d9a599522caf0f569dafb64da75fd02628",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T06:37:16.977905+00:00"
+    },
+    {
+      "source_match_id": "pvrvH42n",
+      "fonbet_event_id": "e2576640-9c8b-447c-99ec-ed734b8a1c1a",
+      "document_id": "fde96d4b-f170-4fbd-8799-0518422a0440",
+      "content_hash": "e68e142480ab1071493f08382eee4d9bfe5cea7a8c41f2325082bbc623ce94ba",
+      "parser_version_stored": "flashscore-point-history-v2",
+      "retrieved_at": "2026-10-21T06:14:05.658230+00:00"
+    },
+    {
+      "source_match_id": "rB9FuliS",
+      "fonbet_event_id": "9408a606-7663-4b11-8897-383b46f20092",
+      "document_id": "5bd70d63-6d4a-4126-9114-09821bef0a4c",
+      "content_hash": "f83d5e5b580715c80d6a0726d9dadec9ab91752bf303c838ba395fad62dcd441",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T06:03:33.915048+00:00"
+    }
+  ]
+}

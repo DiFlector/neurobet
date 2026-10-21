@@ -9,12 +9,15 @@ parameters and archives every returned response before parsing it.
 from __future__ import annotations
 
 import hashlib
+import asyncio
+import atexit
 import html as html_lib
 import json
 import logging
 import os
 import re
 import time
+import threading
 import unicodedata
 from contextlib import nullcontext
 from difflib import SequenceMatcher
@@ -28,7 +31,82 @@ from .fetcher import SandboxedFetcher
 
 logger = logging.getLogger("research.tennis_flashscore")
 
+_profile_http_client = None
+_profile_http_client_lock = threading.Lock()
+
+
+def _run_browser_awaitable(awaitable):
+    """Run a Playwright coroutine safely from synchronous or async callers.
+
+    ``asyncio.run`` cannot nest inside an event loop. Most durable workers call
+    the synchronous importer from a thread, but compatibility/API call paths
+    may invoke it while an asyncio loop is active. In that case, give the
+    coroutine a dedicated thread and event loop instead of failing the job.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+
+    import queue
+
+    result_queue: queue.Queue = queue.Queue(maxsize=1)
+
+    def run_in_thread():
+        try:
+            result_queue.put((True, asyncio.run(awaitable)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+
+    thread = threading.Thread(target=run_in_thread, name="flashscore-browser-loop", daemon=True)
+    thread.start()
+    thread.join()
+    succeeded, result = result_queue.get()
+    if succeeded:
+        return result
+    raise result
+
+
+def _get_profile_http_client():
+    """Reuse a small thread-safe keep-alive pool for stateless player search GETs."""
+    global _profile_http_client
+    if _profile_http_client is None:
+        with _profile_http_client_lock:
+            if _profile_http_client is None:
+                import httpx
+
+                _profile_http_client = httpx.Client(
+                    timeout=10.0,
+                    follow_redirects=False,
+                    headers={
+                        "Accept": "application/json, text/plain, */*",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Referer": "https://www.flashscore.com/tennis/",
+                    },
+                    limits=httpx.Limits(
+                        max_connections=2,
+                        max_keepalive_connections=2,
+                        keepalive_expiry=30.0,
+                    ),
+                )
+    return _profile_http_client
+
+
+def _close_profile_http_client() -> None:
+    global _profile_http_client
+    with _profile_http_client_lock:
+        client, _profile_http_client = _profile_http_client, None
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            logger.debug("Could not close Flashscore search HTTP pool", exc_info=True)
+
+
+atexit.register(_close_profile_http_client)
+
 PARSER_VERSION = "flashscore-tennis-player-v8"
+FLASHSCORE_TENNIS_HOME_URL = "https://www.flashscore.com/tennis/"
 _CONFIRMED_TERMINAL_REASONS = {
     "source_terminal_empty_response_confirmed",
     "source_terminal_empty_response_count_mismatch_confirmed",
@@ -58,12 +136,101 @@ _CYRILLIC_TO_LATIN = str.maketrans({
     "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
 })
 
+# Flashscore player names are not transliterated consistently across tours and
+# locales. Keep a small set of common spellings for comparison (e.g. Чайковская
+# may appear as Chaykovskaya, Caykovskaya, or Tchaikovskaya). These variants are
+# used for identity matching only; source names and IDs remain unchanged.
+_TRANSLITERATION_ALTERNATIVES = (
+    ("shch", ("shch", "sch", "sh")),
+    ("zh", ("zh", "j")),
+    ("kh", ("kh", "h")),
+    ("ch", ("ch", "c", "tch")),
+    ("sh", ("sh", "s")),
+    ("ts", ("ts", "c")),
+    ("yu", ("yu", "iu")),
+    ("ya", ("ya", "ia")),
+    ("ye", ("ye", "e")),
+    ("yo", ("yo", "e")),
+    ("j", ("j", "y", "i")),
+)
+
 
 def _search_tokens(value: str) -> list[str]:
     from tennis_adapter.normalizer import normalize_russian_player_name
 
     normalized = normalize_russian_player_name(value).casefold().replace("ё", "е")
     return re.findall(r"[a-z0-9]+", normalized.translate(_CYRILLIC_TO_LATIN))
+
+
+def _transliteration_variants(token: str) -> set[str]:
+    """Return bounded, common Latin spellings for one normalized name token."""
+    variants = {token}
+    for source, alternatives in _TRANSLITERATION_ALTERNATIVES:
+        pending = list(variants)
+        visited: set[str] = set()
+        while pending:
+            value = pending.pop()
+            if value in visited:
+                continue
+            visited.add(value)
+            start = 0
+            while True:
+                index = value.find(source, start)
+                if index < 0:
+                    break
+                for replacement in alternatives:
+                    # Avoid recursive expansions such as ch -> tch -> ttch.
+                    if replacement != source and source not in replacement:
+                        candidate = value[:index] + replacement + value[index + len(source):]
+                        if candidate not in variants:
+                            variants.add(candidate)
+                            pending.append(candidate)
+                start = index + 1
+                if len(variants) >= 64:
+                    break
+            if len(variants) >= 64:
+                break
+        if len(variants) >= 64:
+            break
+    return variants
+
+
+def _name_word_groups(value: str) -> list[tuple[str, set[str]]]:
+    """Return (source word, spelling variants), preserving one-letter initials."""
+    from tennis_adapter.normalizer import clean_player_name
+
+    # NFKD decomposes Cyrillic й into и + COMBINING BREVE. Removing combining
+    # marks without protecting it silently turns Чайковская into Чаиковская,
+    # which then fails against common Flashscore spellings Caykovskaya and
+    # Chaykovskaya. Keep й as a placeholder through accent folding.
+    protected_yi = "\ue000"
+    source = clean_player_name(value).casefold().replace("ё", "е").replace("й", protected_yi)
+    normalized = unicodedata.normalize("NFKD", source)
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = normalized.replace(protected_yi, "й")
+    words = re.findall(r"[a-zа-я0-9]+", normalized)
+    result = []
+    for word in words:
+        token = word.translate(_CYRILLIC_TO_LATIN)
+        if token:
+            variants = _transliteration_variants(token)
+            # Flashscore uses i, y, and occasionally j for Russian й. Expand
+            # only positions that came from й, rather than every Latin i in a
+            # surname, so unrelated names do not become auto-confirmable.
+            yi_positions = [
+                (len(word[:index].translate(_CYRILLIC_TO_LATIN)),
+                 len(char.translate(_CYRILLIC_TO_LATIN)))
+                for index, char in enumerate(word) if char == "й"
+            ]
+            if yi_positions:
+                expanded = set(variants)
+                for index, width in yi_positions:
+                    for spelling in ("i", "y", "j"):
+                        alternate = token[:index] + spelling + token[index + width:]
+                        expanded.update(_transliteration_variants(alternate))
+                variants = expanded
+            result.append((word, variants))
+    return result
 
 
 def _profile_search_queries(value: str) -> list[str]:
@@ -136,41 +303,130 @@ def _profile_search_exception_reason(stage: str, exception_name: str) -> str:
     return f"SEARCH_TRANSPORT_{exception_name.upper()}"
 
 
+def _search_flashscore_player_endpoint(
+    player_name: str,
+    search_queries: list[str],
+    excluded_source_ids: set[str] | None = None,
+    source_access=None,
+) -> dict[str, Any]:
+    """Use the same read-only JSON endpoint emitted by Flashscore's search UI.
+
+    The endpoint is discovered from the normal tennis page's browser traffic.
+    A direct GET avoids launching Chromium for a tiny JSON lookup while preserving
+    the site's own player/sport filtering. The optional source-slot factory is
+    acquired separately for every HTTP request so the shared two-second spacing
+    applies to each actual operation, not just to the outer player job. Any
+    transport, HTTP or parse failure fails closed; it is never a confirmed empty
+    search.
+    """
+    from contextlib import nullcontext
+    import httpx
+    excluded_source_ids = {str(value) for value in (excluded_source_ids or set())}
+    endpoint = "https://s.livesport.services/api/v2/search/"
+    allowed, reason = DomainFilter.is_allowed(endpoint, allowlist={"livesport.services"})
+    if not allowed:
+        return {"status": "source_unavailable", "candidates": [], "reason": reason}
+
+    candidates: dict[str, dict[str, str]] = {}
+    answered: set[str] = set()
+    failed: set[str] = set()
+    parse_failed: set[str] = set()
+    try:
+        client = _get_profile_http_client()
+        for search_query in search_queries:
+            query_key = " ".join(search_query.split()).casefold()
+            try:
+                slot = source_access() if source_access is not None else nullcontext()
+                with slot:
+                    response = client.get(endpoint, params={"q": search_query})
+            except httpx.TimeoutException:
+                failed.add(query_key)
+                continue
+            except httpx.HTTPError:
+                failed.add(query_key)
+                continue
+
+            if response.status_code in (403, 429):
+                return {"status": "blocked", "candidates": [],
+                        "reason": f"HTTP_{response.status_code}_OR_429_BLOCKED"}
+            if response.status_code != 200:
+                failed.add(query_key)
+                continue
+            if len(response.content) > 5 * 1024 * 1024:
+                parse_failed.add(query_key)
+                continue
+            try:
+                payload = response.json()
+            except (ValueError, json.JSONDecodeError):
+                parse_failed.add(query_key)
+                continue
+            if not isinstance(payload, list):
+                parse_failed.add(query_key)
+                continue
+
+            answered.add(query_key)
+            for candidate in _profile_candidates_from_search_payload(payload, player_name):
+                source_id = candidate["source_player_id"]
+                if source_id not in excluded_source_ids:
+                    candidates[source_id] = candidate
+            if len(candidates) == 1:
+                found = next(iter(candidates.values()))
+                return {"status": "matched", "profile_url": found["profile_url"],
+                        "candidate": found, "candidates": [found]}
+
+    except Exception as exc:
+        logger.info("Flashscore profile endpoint unavailable for %s: %s",
+                    player_name, type(exc).__name__)
+        return {"status": "source_unavailable", "candidates": [],
+                "reason": _profile_search_exception_reason("search_response", type(exc).__name__)}
+
+    failure_reason = _profile_search_failure_reason(search_queries, answered, failed, parse_failed)
+    if failure_reason:
+        return {"status": "source_unavailable", "candidates": [], "reason": failure_reason}
+    found = list(candidates.values())
+    if len(found) == 1:
+        return {"status": "matched", "profile_url": found[0]["profile_url"],
+                "candidate": found[0], "candidates": found}
+    return {"status": "ambiguous" if found else "not_found", "candidates": found[:10],
+            "reason": "MULTIPLE_PROFILE_CANDIDATES" if found else "SEARCH_COMPLETED_NO_MATCH"}
+
+
 def _player_name_matches(query_name: str, candidate_name: str) -> bool:
     """Match localized surname/initial displays to full names in search results."""
-    query, candidate = _search_tokens(query_name), _search_tokens(candidate_name)
+    query_groups, candidate_groups = _name_word_groups(query_name), _name_word_groups(candidate_name)
+    query = [group[1] for group in query_groups]
+    candidate = [group[1] for group in candidate_groups]
     if not query or not candidate:
         return False
-    if "".join(query) == "".join(candidate):
+    if len(query) == len(candidate) and all(a & b for a, b in zip(query, candidate)):
         return True
-    initials = {token for token in query if len(token) == 1}
-    surnames = [token for token in query if len(token) > 1]
-    candidate_long = [token for token in candidate if len(token) > 1]
+    initials = [group[1] for group in query_groups if len(group[0]) == 1]
+    surnames = [group[1] for group in query_groups if len(group[0]) > 1]
+    candidate_long = [group[1] for group in candidate_groups if len(group[0]) > 1]
     if not surnames or not candidate_long:
         return False
     matched = [
         token for token in surnames
-        if token in candidate_long or any(SequenceMatcher(None, token, other).ratio() >= 0.78 for other in candidate_long)
+        if any(token & other for other in candidate_long)
+        or any(SequenceMatcher(None, left, right).ratio() >= 0.78
+               for left in token for other in candidate_long for right in other)
     ]
     if initials:
         if not matched:
             return False
-        candidate_initials = {token[0] for token in candidate_long if token not in matched}
-        candidate_initials.update(token for token in candidate if len(token) == 1)
-        return initials.issubset(candidate_initials)
+        remaining = [token for token in candidate_long if not any(token & surname for surname in matched)]
+        return all(any(any(name.startswith(initial) for name in token)
+                       for token in remaining for initial in initials_group)
+                   for initials_group in initials)
     return len(matched) == len(surnames)
 
 
 def is_exact_player_name_match(query_name: str, candidate_name: str) -> bool:
     """Return true only when both full names normalize to the same ordered tokens."""
-    def tokens(value: str) -> list[str]:
-        decomposed = unicodedata.normalize("NFKD", value.casefold())
-        without_marks = "".join(char for char in decomposed if not unicodedata.combining(char))
-        return _search_tokens(without_marks)
-
-    query = tokens(query_name)
-    candidate = tokens(candidate_name)
-    return bool(query and candidate and query == candidate)
+    query = _name_word_groups(query_name)
+    candidate = _name_word_groups(candidate_name)
+    return bool(query and candidate and len(query) == len(candidate)
+                and all(left[1] & right[1] for left, right in zip(query, candidate)))
 
 
 def is_auto_confirmable_player_match(query_name: str, candidate_name: str) -> bool:
@@ -186,28 +442,24 @@ def is_auto_confirmable_player_match(query_name: str, candidate_name: str) -> bo
     if re.search(r"[-‐‑‒–—]", query_name) or re.search(r"[-‐‑‒–—]", candidate_name):
         return False
 
-    def tokens(value: str) -> list[str]:
-        decomposed = unicodedata.normalize("NFKD", value.casefold())
-        without_marks = "".join(char for char in decomposed if not unicodedata.combining(char))
-        return _search_tokens(without_marks)
-
-    query = tokens(query_name)
-    candidate = tokens(candidate_name)
+    query = _name_word_groups(query_name)
+    candidate = _name_word_groups(candidate_name)
     if len(query) != 2 or len(candidate) != 2:
         return False
-    query_initials = [token for token in query if len(token) == 1]
-    query_surnames = [token for token in query if len(token) > 1]
+    query_initials = [group for group in query if len(group[0]) == 1]
+    query_surnames = [group for group in query if len(group[0]) > 1]
     if len(query_initials) != 1 or len(query_surnames) != 1:
         return False
-    surname = query_surnames[0]
-    initial = query_initials[0]
-    candidate_surnames = [token for token in candidate if token == surname]
-    candidate_given_names = [token for token in candidate if token != surname]
+    surname_variants = query_surnames[0][1]
+    initial_variants = query_initials[0][1]
+    candidate_surnames = [group for group in candidate if group[1] & surname_variants]
+    candidate_given_names = [group for group in candidate if group not in candidate_surnames]
     return (
         len(candidate_surnames) == 1
         and len(candidate_given_names) == 1
-        and len(candidate_given_names[0]) > 1
-        and candidate_given_names[0].startswith(initial)
+        and len(candidate_given_names[0][0]) > 1
+        and any(any(given.startswith(initial) for initial in initial_variants)
+                for given in candidate_given_names[0][1])
     )
 
 
@@ -932,205 +1184,19 @@ class FlashscoreTennisImporter:
             return []
         return [documents[index] for index in sorted(documents)]
 
-    def resolve_player_profile(self, player_name: str, excluded_source_ids: set[str] | None = None) -> dict[str, Any]:
-        """Find a unique surname/initial match through Flashscore's visible search UI."""
-        from html import unescape
-
-        excluded_source_ids = {str(value) for value in (excluded_source_ids or set())}
+    def resolve_player_profile(self, player_name: str, excluded_source_ids: set[str] | None = None,
+                              source_access=None) -> dict[str, Any]:
+        """Resolve a tennis player through Flashscore's observed read-only search endpoint."""
         search_queries = _profile_search_queries(player_name)
         if not search_queries:
             return {"status": "not_found", "candidates": []}
-        home_url = "https://www.flashscore.com/"
-        operation_stage = {"value": "browser_launch"}
-        try:
-            import asyncio
-            from playwright.async_api import async_playwright
-
-            async def find_links():
-                async with async_playwright() as playwright:
-                    browser = await playwright.chromium.launch(**_browser_launch_options())
-                    try:
-                        context = await browser.new_context(locale="en-US", timezone_id="UTC")
-                        await _install_flashscore_request_filter_async(context)
-                        page = await context.new_page()
-                        search_payloads: list[tuple[str, Any]] = []
-                        failed_queries: set[str] = set()
-                        parse_failed_queries: set[str] = set()
-
-                        async def capture_search_response(response):
-                            parsed_response = urlparse(response.url)
-                            if (parsed_response.netloc.casefold() != "s.livesport.services" or
-                                    parsed_response.path != "/api/v2/search/"):
-                                return
-                            allowed, _ = DomainFilter.is_allowed(
-                                response.url, allowlist={"livesport.services"}
-                            )
-                            if not allowed:
-                                return
-                            query = (parse_qs(parsed_response.query).get("q") or [""])[0]
-                            if response.status in (403, 429):
-                                failed_queries.add(query.strip().casefold())
-                                return
-                            if response.status != 200:
-                                failed_queries.add(query.strip().casefold())
-                                return
-                            try:
-                                payload = await response.json()
-                            except Exception:
-                                parse_failed_queries.add(query.strip().casefold())
-                                return
-                            search_payloads.append((query, payload))
-
-                        page.on("response", capture_search_response)
-                        operation_stage["value"] = "page_open"
-                        # Search only needs the initial document and hydrated search
-                        # control; waiting for every script/analytics request to reach
-                        # DOMContentLoaded causes avoidable page-open timeouts.
-                        response = await page.goto(home_url, wait_until="commit", timeout=20000)
-                        if response and response.status in (403, 429):
-                            return "blocked", [], "HTTP_403_OR_429_BLOCKED"
-                        allowed, _ = DomainFilter.is_allowed(page.url)
-                        if not allowed:
-                            return "blocked", [], "REDIRECT_BLOCKED"
-                        # `commit` returns before Flashscore's client bundles
-                        # hydrate the header. The search button is visible in that
-                        # server-rendered shell but inert: clicking it at this point
-                        # silently leaves the search dialog unmounted. Wait for the
-                        # document lifecycle, bounded independently from navigation.
-                        operation_stage["value"] = "page_hydration"
-                        try:
-                            await page.wait_for_function(
-                                "document.readyState === 'complete'", timeout=12000
-                            )
-                        except Exception:
-                            logger.info("Flashscore page did not reach complete state before search")
-                        search_button = page.locator('button[aria-label="Search"]:visible').first
-                        operation_stage["value"] = "search_button"
-                        try:
-                            await search_button.wait_for(state="visible", timeout=8000)
-                        except Exception:
-                            # Flashscore has used non-button wrappers and varying
-                            # aria labels across desktop layouts. Keep the fallback
-                            # bounded and require a visible, purpose-labelled control.
-                            search_button = page.locator(
-                                '[aria-label*="search" i]:visible, [data-testid*="search" i]:visible'
-                            ).first
-                            try:
-                                await search_button.wait_for(state="visible", timeout=4000)
-                            except Exception:
-                                title = (await page.title())[:120]
-                                body = (await page.locator("body").inner_text())[:240].replace("\n", " ")
-                                logger.info("Flashscore search control missing title=%r url=%s body=%r",
-                                            title, page.url, body)
-                                return "source_unavailable", [], "SEARCH_UI_MISSING"
-                        operation_stage["value"] = "search_click"
-                        try:
-                            await search_button.click(timeout=3000)
-                        except Exception:
-                            body_hint = (await page.locator("body").inner_text()).casefold()
-                            if any(token in body_hint for token in (
-                                "captcha", "verify you are human", "checking your browser", "attention required"
-                            )):
-                                return "blocked", [], "ANTI_BOT_CHALLENGE"
-                            # A visible enabled control can be covered by a consent
-                            # or responsive-layout layer. Retry only that known
-                            # control; never force clicks through an anti-bot page.
-                            if not await search_button.is_visible() or not await search_button.is_enabled():
-                                raise
-                            logger.info("Flashscore search control click intercepted; retrying visible control")
-                            await search_button.click(timeout=2000, force=True)
-                        operation_stage["value"] = "search_input"
-                        search_input = page.locator(
-                            'input[placeholder*="type your search here" i]:visible, '
-                            'input[type="search"]:visible, input[aria-label*="search" i]:visible, '
-                            '[role="searchbox"]:visible'
-                        ).first
-                        try:
-                            await search_input.wait_for(state="visible", timeout=4000)
-                        except Exception:
-                            visible_fields = await page.locator(
-                                'input:visible, [contenteditable="true"]:visible'
-                            ).evaluate_all("els => els.map(el => ({tag:el.tagName,type:el.type||'',role:el.getAttribute('role')||'',aria:el.getAttribute('aria-label')||'',placeholder:el.getAttribute('placeholder')||'',name:el.getAttribute('name')||''}))")
-                            logger.info("Flashscore search field missing title=%r fields=%s body=%r",
-                                (await page.title())[:120], visible_fields[:8],
-                                (await page.locator("body").inner_text())[:240].replace("\n", " "))
-                            return "source_unavailable", [], "SEARCH_INPUT_MISSING"
-                        candidates = []
-                        answered_queries: set[str] = set()
-                        for search_query in search_queries:
-                            operation_stage["value"] = "search_response"
-                            expected_query = " ".join(search_query.split()).casefold()
-                            await search_input.fill(search_query)
-                            deadline = time.monotonic() + 5
-                            while time.monotonic() < deadline:
-                                if (any(query.strip().casefold() == expected_query for query, _ in search_payloads)
-                                        or expected_query in failed_queries):
-                                    break
-                                await page.wait_for_timeout(100)
-                            for query, payload in search_payloads:
-                                if query.strip().casefold() == expected_query:
-                                    answered_queries.add(expected_query)
-                                    candidates.extend(
-                                        candidate for candidate in _profile_candidates_from_search_payload(payload, player_name)
-                                        if candidate.get("source_player_id") not in excluded_source_ids
-                                    )
-                            candidates = list({candidate["source_player_id"]: candidate for candidate in candidates}.values())
-                            if len(candidates) == 1:
-                                return "ok", candidates, None
-                        operation_stage["value"] = "search_results"
-                        body = (await page.locator("body").inner_text()).casefold()
-                        if any(token in body for token in ("captcha", "verify you are human", "checking your browser", "attention required")):
-                            return "blocked", [], "ANTI_BOT_CHALLENGE"
-                        if candidates:
-                            return "ok", candidates, None
-                        anchors = await page.locator('a[href*="/player/"]').evaluate_all(
-                            "els => els.map(a => ({href: a.href, text: (a.innerText || a.textContent || '').trim()}))"
-                        )
-                        # A timeout or failed search response is not evidence that
-                        # the player has no Flashscore profile. Only a parsed 200
-                        # response for every query variant can produce not_found.
-                        failure_reason = _profile_search_failure_reason(
-                            search_queries, answered_queries, failed_queries, parse_failed_queries
-                        )
-                        if failure_reason:
-                            return ("blocked" if failure_reason == "SEARCH_HTTP_ERROR" else "source_unavailable"), [], failure_reason
-                        return "ok", anchors, None
-                    finally:
-                        await browser.close()
-
-            status, anchors, search_reason = asyncio.run(find_links())
-        except Exception as exc:
-            logger.info("Flashscore profile search unavailable for %s: %s (%s)",
-                        player_name, type(exc).__name__, operation_stage["value"])
-            status, anchors = "source_unavailable", []
-            search_reason = _profile_search_exception_reason(operation_stage["value"], type(exc).__name__)
-        if status != "ok":
-            return {"status": status, "candidates": [], "reason": search_reason}
-        candidates: dict[str, dict[str, str]] = {}
-        for anchor in anchors:
-            if anchor.get("profile_url") and anchor.get("source_player_id"):
-                if anchor.get("source_player_id") in excluded_source_ids:
-                    continue
-                candidates[anchor["source_player_id"]] = anchor
-                continue
-            text = unescape(str(anchor.get("text") or "")).strip()
-            href = urljoin(home_url, str(anchor.get("href") or ""))
-            if not text or not _player_name_matches(player_name, text):
-                continue
-            if not _PROFILE_ID_RE.search(urlparse(href).path):
-                continue
-            profile_url = href.split("?", 1)[0].rstrip("/") + "/results/"
-            try:
-                _validate_profile_url(profile_url)
-            except ValueError:
-                continue
-            player_id = _PROFILE_ID_RE.search(urlparse(profile_url).path).group(1)
-            candidates[player_id] = {"name": text, "profile_url": profile_url, "source_player_id": player_id}
-        found = list(candidates.values())
-        if len(found) == 1:
-            return {"status": "matched", "profile_url": found[0]["profile_url"], "candidate": found[0], "candidates": found}
-        return {"status": "ambiguous" if found else "not_found", "candidates": found[:10],
-                "reason": "MULTIPLE_PROFILE_CANDIDATES" if found else "SEARCH_COMPLETED_NO_MATCH"}
+        # This is the JSON GET issued by Flashscore's normal tennis search UI.
+        # Each GET obtains its own shared source slot; using the endpoint directly
+        # avoids a Chromium startup and the intermittently inert search dialog.
+        return _search_flashscore_player_endpoint(
+            player_name, search_queries, excluded_source_ids=excluded_source_ids,
+            source_access=source_access,
+        )
 
     def _fetch_rendered_profile(self, url: str, stop_before_date: datetime | None = None, page_callback=None,
                                 resume_documents=None, source_access=None) -> tuple[Optional[str], str, list[str], Optional[str], bool, list[dict[str, Any]]]:
@@ -1257,7 +1323,7 @@ class FlashscoreTennisImporter:
                                                 feed_url,
                                                 headers={
                                                     "x-fsign": os.getenv("FLASHSCORE_X_FSIGN", "SW9D1eZo"),
-                                                    "referer": "https://www.flashscore.com/",
+                                                    "referer": FLASHSCORE_TENNIS_HOME_URL,
                                                 },
                                                 timeout=20000,
                                             )
@@ -1458,8 +1524,16 @@ class FlashscoreTennisImporter:
                         except Exception:
                             logger.warning("Timed out closing Flashscore browser for %s", url)
 
-            page_html, feeds, name, pagination_complete, page_documents = asyncio.run(
-                asyncio.wait_for(load(), timeout=300)
+            async def load_with_browser_slot() -> tuple[str, list[str], Optional[str], bool, list[dict[str, Any]]]:
+                # Profile pagination uses async Playwright rather than the sync
+                # browser pool, but must share its cross-container process cap.
+                from .browser_pool import flashscore_chromium
+
+                async with flashscore_chromium.browser_slot():
+                    return await load()
+
+            page_html, feeds, name, pagination_complete, page_documents = _run_browser_awaitable(
+                asyncio.wait_for(load_with_browser_slot(), timeout=300)
             )
             if page_html == "":
                 return None, name or "BROWSER_FETCH_FAILED", [], None, False, []
@@ -1517,7 +1591,7 @@ class FlashscoreTennisImporter:
             return 0
         from db.connection import SessionLocal
         from db.models.external_tennis import ExtTennisMatch, ExtTennisMatchObservation, ExtTennisPlayer, TennisPlayerRefreshJob, FlashscoreImportJob
-        from .player_profiles import persist_profile_facts
+        from .player_profiles import lock_flashscore_source_entities, persist_profile_facts
 
         profile = result.profile
         matches_added = 0
@@ -1540,14 +1614,51 @@ class FlashscoreTennisImporter:
                     player_ids.setdefault(item.home_player_id, item.home_name)
                 if item.away_player_id:
                     player_ids.setdefault(item.away_player_id, item.away_name)
+            source_match_ids = {
+                str(item.source_match_id) for item in profile.matches if item.source_match_id
+            } | {
+                str(item.get("source_match_id")) for item in profile.rejected_source_matches
+                if item.get("source_match_id")
+            }
+            lock_flashscore_source_entities(session, player_ids, source_match_ids)
+            # Read the whole page's current projections once. Locks are held for
+            # the transaction, so two profiles sharing a match cannot race
+            # between this batch read and their insert/update.
+            existing_players = {
+                row.source_player_id: row
+                for row in session.query(ExtTennisPlayer).filter(
+                    ExtTennisPlayer.source == "flashscore",
+                    ExtTennisPlayer.source_player_id.in_(list(player_ids)),
+                ).all()
+            } if player_ids else {}
             for external_id, name in player_ids.items():
-                existing = session.query(ExtTennisPlayer).filter_by(source="flashscore", source_player_id=external_id).first()
+                existing = existing_players.get(external_id)
                 if existing is None:
-                    session.add(ExtTennisPlayer(
+                    existing = ExtTennisPlayer(
                         source="flashscore", source_player_id=external_id,
                         full_name=(name or f"Flashscore player {external_id}")[:255],
-                    ))
+                    )
+                    session.add(existing)
+                    existing_players[external_id] = existing
             session.flush()
+            existing_matches = {
+                row.source_match_id: row
+                for row in session.query(ExtTennisMatch).filter(
+                    ExtTennisMatch.source == "flashscore",
+                    ExtTennisMatch.source_match_id.in_(source_match_ids),
+                ).all()
+            } if source_match_ids else {}
+            latest_observations = {}
+            if source_match_ids:
+                observations = session.query(ExtTennisMatchObservation).filter(
+                    ExtTennisMatchObservation.source == "flashscore",
+                    ExtTennisMatchObservation.source_match_id.in_(source_match_ids),
+                ).order_by(
+                    ExtTennisMatchObservation.source_match_id,
+                    ExtTennisMatchObservation.available_at.desc(),
+                ).distinct(ExtTennisMatchObservation.source_match_id).all()
+                for observation in observations:
+                    latest_observations.setdefault(observation.source_match_id, observation)
             for rejected in profile.rejected_source_matches:
                 rejection_payload = {
                     "parse_status": "excluded_from_result_facts",
@@ -1558,11 +1669,9 @@ class FlashscoreTennisImporter:
                     "profile_content_hash": result.content_hash,
                 }
                 rejection_hash = _observation_hash(rejection_payload)
-                previous = session.query(ExtTennisMatchObservation).filter_by(
-                    source="flashscore", source_match_id=rejected["source_match_id"],
-                ).order_by(ExtTennisMatchObservation.available_at.desc()).first()
+                previous = latest_observations.get(rejected["source_match_id"])
                 if previous is None or previous.observation_hash != rejection_hash:
-                    session.add(ExtTennisMatchObservation(
+                    previous = ExtTennisMatchObservation(
                         source="flashscore",
                         source_match_id=rejected["source_match_id"],
                         observation_hash=rejection_hash,
@@ -1571,18 +1680,18 @@ class FlashscoreTennisImporter:
                         source_content_hash=result.content_hash,
                         parser_version=PARSER_VERSION,
                         payload=rejection_payload,
-                    ))
+                    )
+                    session.add(previous)
+                    latest_observations[rejected["source_match_id"]] = previous
             observation_inserted: dict[str, bool] = {}
             for item in profile.matches:
                 payload = _observation_payload(item)
                 observation_hash = _observation_hash(payload)
-                latest_observation = session.query(ExtTennisMatchObservation).filter_by(
-                    source="flashscore", source_match_id=item.source_match_id,
-                ).order_by(ExtTennisMatchObservation.available_at.desc()).first()
+                latest_observation = latest_observations.get(item.source_match_id)
                 is_new_observation = latest_observation is None or latest_observation.observation_hash != observation_hash
                 observation_inserted[item.source_match_id] = is_new_observation
                 if is_new_observation:
-                    session.add(ExtTennisMatchObservation(
+                    latest_observation = ExtTennisMatchObservation(
                         source="flashscore",
                         source_match_id=item.source_match_id,
                         observation_hash=observation_hash,
@@ -1599,12 +1708,14 @@ class FlashscoreTennisImporter:
                             "advertised_event_count": result.profile.advertised_event_count,
                             "observed_unique_event_count": result.profile.observed_unique_event_count,
                         },
-                    ))
+                    )
+                    session.add(latest_observation)
+                    latest_observations[item.source_match_id] = latest_observation
                 projection_available_at = (
                     result.retrieved_at if is_new_observation else
                     (latest_observation.available_at if latest_observation else result.retrieved_at)
                 )
-                existing = session.query(ExtTennisMatch).filter_by(source="flashscore", source_match_id=item.source_match_id).first()
+                existing = existing_matches.get(item.source_match_id)
                 if existing is not None:
                     # ExtTennisMatch is the current materialized projection;
                     # immutable, timestamped versions live in observations.
@@ -1634,7 +1745,7 @@ class FlashscoreTennisImporter:
                         "raw_fields": item.raw_fields,
                     }
                     continue
-                session.add(ExtTennisMatch(
+                existing = ExtTennisMatch(
                     source="flashscore",
                     source_match_id=item.source_match_id,
                     played_at=item.played_at,
@@ -1659,7 +1770,9 @@ class FlashscoreTennisImporter:
                         "history_scope": result.profile.history_scope,
                         "raw_fields": item.raw_fields,
                     },
-                ))
+                )
+                session.add(existing)
+                existing_matches[item.source_match_id] = existing
                 matches_added += 1
             facts_added = persist_profile_facts(session, result, owner_participant_id)
             logger.info(

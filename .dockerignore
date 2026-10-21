@@ -1,5 +1,9 @@
 .git
 .agents
+docs/research
+OnlineData
+models
+backups
 backup_*
 node_modules
 services/frontend/node_modules

@@ -1,0 +1,4 @@
+{"error": "CalledProcessError: Command '['docker', 'stats', '--no-stream', '--format', '{{json .}}', 'neurobet_flashscore_worker']' returned non-zero exit status 1.", "observed_at": "2026-10-21T18:01:13.316385+00:00"}
+{"error": "CalledProcessError: Command '['docker', 'stats', '--no-stream', '--format', '{{json .}}', 'neurobet_flashscore_worker']' returned non-zero exit status 1.", "observed_at": "2026-10-21T18:01:44.479271+00:00"}
+{"error": "CalledProcessError: Command '['docker', 'stats', '--no-stream', '--format', '{{json .}}', 'neurobet_flashscore_worker']' returned non-zero exit status 1.", "observed_at": "2026-10-21T18:02:15.668494+00:00"}
+{"error": "CalledProcessError: Command '['docker', 'stats', '--no-stream', '--format', '{{json .}}', 'neurobet_flashscore_worker']' returned non-zero exit status 1.", "observed_at": "2026-10-21T18:02:46.864122+00:00"}

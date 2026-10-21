@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-10-21T10:24:30Z",
+  "purpose": "Pilot comparison of confirmed-match PBP navigation routes using the same Flashscore match and globally regulated read-only source access.",
+  "network_writes": false,
+  "database_writes": false,
+  "match_id": "WAlDxZFD",
+  "result": "Both paths returned complete PBP for sets 1 and 2. The direct-index path removes the summary-page navigation and one durable source-slot operation per match.",
+  "direct_index": {
+    "navigations_per_match": 3,
+    "runs_seconds": [13.527, 30.598],
+    "median_seconds": 22.0625,
+    "documents_per_run": 2,
+    "sets": [1, 2],
+    "html_bytes_by_run": [2241290, 2421549],
+    "status_by_run": ["complete", "complete"]
+  },
+  "summary_first_baseline": {
+    "navigations_per_match": 4,
+    "elapsed_seconds": 36.436,
+    "navigation_seconds": {
+      "summary": 5.215,
+      "point_by_point_index": 14.017,
+      "set_1": 3.626,
+      "set_2": 9.649
+    },
+    "documents": [
+      {"set": 1, "status": "loaded", "html_bytes": 1017576},
+      {"set": 2, "status": "loaded", "html_bytes": 1226234}
+    ]
+  },
+  "interpretation": "This is one match with two direct runs and one summary-first run. Flashscore navigation varied substantially between runs, so elapsed-time differences are a pilot only and must not be generalized. The directly verified improvement is one fewer page navigation and one fewer network-slot operation per match. The standalone parser benchmark is separate. A broad paired throughput test across matches, concurrent jobs and browser process starts remains open."
+}

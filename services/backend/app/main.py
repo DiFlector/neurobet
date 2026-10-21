@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import asc, case, desc, func, text
+from sqlalchemy import and_, asc, case, desc, func, or_, text
 
 from sports_core import registry
 try:
@@ -572,6 +572,7 @@ def get_event_point_history(
     """Return archived, point-in-time Flashscore point history for a Fonbet event."""
     from db.connection import SessionLocal
     from db.models import TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJobEvent
+    from tennis_adapter.point_history import is_authoritative_point_history_version
     try:
         event_uuid = uuid.UUID(event_id)
     except ValueError as exc:
@@ -605,8 +606,11 @@ def get_event_point_history(
         ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).all()
         latest_by_source_set = {}
         for version in versions:
+            if not is_authoritative_point_history_version(version.events_json, version.quality_json):
+                continue
             # Persisted set_number also represents an empty/removed set document,
-            # so a later correction can tombstone an older parsed sequence.
+            # so an explicitly marked empty correction can tombstone an older
+            # parsed sequence. Fetch/parse failures are skipped above.
             set_numbers = {version.quality_json.get("set_number")} if isinstance(version.quality_json, dict) and version.quality_json.get("set_number") else set()
             set_numbers.update(item.get("set") for item in (version.events_json or []) if item.get("set") is not None)
             for set_no in set_numbers or {None}:
@@ -3212,6 +3216,24 @@ def get_scheduled_queue() -> List[Dict[str, Any]]:
     return list_search_queue()
 
 
+def _is_overdue_live_pbp(row: Dict[str, Any], confirmed_event_ids: set[str], now: datetime) -> bool:
+    """Count only runnable live PBP work with a confirmed Flashscore source."""
+    if row.get("kind") != "pbp" or row.get("mode") != "live":
+        return False
+    if row.get("status") not in {"queued", "retry"} or row.get("event_id") not in confirmed_event_ids:
+        return False
+    retry_at = row.get("next_retry_at")
+    if not retry_at:
+        return False
+    try:
+        due_at = retry_at if isinstance(retry_at, datetime) else datetime.fromisoformat(str(retry_at))
+    except ValueError:
+        return False
+    if due_at.tzinfo is None:
+        due_at = due_at.replace(tzinfo=timezone.utc)
+    return due_at <= now
+
+
 @app.get("/api/tennis-history/flashscore/queue")
 def get_flashscore_research_queue(
     limit: int = Query(50, ge=1, le=200),
@@ -3238,9 +3260,23 @@ def get_flashscore_research_queue(
         ).all()
         eligible_ids = {str(event.id) for event in event_rows}
         event_map = {str(event.id): event for event in event_rows}
+        event_ids = [event.id for event in event_rows]
+        active_participant_ids = {
+            participant_id
+            for event in event_rows
+            for participant_id in (event.participant_a_id, event.participant_b_id)
+            if participant_id
+        }
         rows: list[dict[str, Any]] = []
 
-        point_jobs = session.query(TennisPointRefreshJob).order_by(TennisPointRefreshJob.updated_at.desc()).all()
+        terminal_point_statuses = ("completed", "finalized", "skipped", "superseded")
+        point_scope = [TennisPointRefreshJob.event_id.in_(event_ids)]
+        if include_completed:
+            point_scope.append(and_(TennisPointRefreshJob.status.in_(terminal_point_statuses),
+                                    TennisPointRefreshJob.updated_at >= now - timedelta(hours=24)))
+        point_jobs = session.query(TennisPointRefreshJob).filter(or_(*point_scope)).order_by(
+            TennisPointRefreshJob.updated_at.desc()
+        ).all()
         for job in point_jobs:
             event = event_map.get(str(job.event_id))
             if event is None and not (include_completed and job.status in {"completed", "finalized", "skipped", "superseded"} and job.updated_at >= now - timedelta(hours=24)):
@@ -3256,7 +3292,14 @@ def get_flashscore_research_queue(
                 "last_success_at": job.updated_at.isoformat() if job.status in {"completed", "finalized"} else None,
                 "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
 
-        match_jobs = session.query(TennisMatchLookupJob).order_by(TennisMatchLookupJob.updated_at.desc()).all()
+        terminal_match_statuses = ("matched", "waiting_confirmation")
+        match_scope = [TennisMatchLookupJob.event_id.in_(event_ids)]
+        if include_completed:
+            match_scope.append(and_(TennisMatchLookupJob.status.in_(terminal_match_statuses),
+                                    TennisMatchLookupJob.updated_at >= now - timedelta(hours=24)))
+        match_jobs = session.query(TennisMatchLookupJob).filter(or_(*match_scope)).order_by(
+            TennisMatchLookupJob.updated_at.desc()
+        ).all()
         for job in match_jobs:
             event = event_map.get(str(job.event_id))
             if event is None and not (include_completed and job.status in {"matched", "waiting_confirmation"} and job.updated_at >= now - timedelta(hours=24)):
@@ -3272,10 +3315,14 @@ def get_flashscore_research_queue(
                 "last_success_at": job.updated_at.isoformat() if job.status == "matched" else None,
                 "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
 
+        player_scope = [Participant.id.in_(active_participant_ids)]
+        if include_completed:
+            player_scope.append(and_(TennisPlayerRefreshJob.status == "completed",
+                                     TennisPlayerRefreshJob.updated_at >= now - timedelta(hours=24)))
         player_jobs = session.query(TennisPlayerRefreshJob, Participant, TennisPlayerProfile).join(
             Participant, Participant.id == TennisPlayerRefreshJob.participant_id
         ).outerjoin(TennisPlayerProfile, TennisPlayerProfile.participant_id == Participant.id).filter(
-            Participant.sport_code == "tennis"
+            Participant.sport_code == "tennis", or_(*player_scope)
         ).order_by(TennisPlayerRefreshJob.requested_at.desc()).all()
         participant_events: dict[str, list[Any]] = {}
         for event in event_map.values():
@@ -3311,19 +3358,17 @@ def get_flashscore_research_queue(
         identity_confirmation = sum(1 for row in rows if row["status"] == "identity_confirmation_required")
         link_history = session.query(TennisPointMatchLink).filter(
             TennisPointMatchLink.fonbet_event_id.is_not(None), TennisPointMatchLink.available_at <= now
-        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+        ).distinct(TennisPointMatchLink.source_match_id).order_by(
+            TennisPointMatchLink.source_match_id,
+            TennisPointMatchLink.available_at.desc(),
+            TennisPointMatchLink.id.desc(),
+        ).all()
         latest_by_source = {}
         for link in link_history:
             latest_by_source[link.source_match_id] = link
         confirmed_event_ids = {str(link.fonbet_event_id) for link in latest_by_source.values()
                                if link.fonbet_event_id and link.status in {"matched", "manual"}}
-        overdue_pbp = sum(
-            1 for row in rows
-            if row["kind"] == "pbp" and row["mode"] == "live"
-            and row.get("event_id") in confirmed_event_ids
-            and row["status"] not in {"completed", "finalized", "skipped", "superseded"}
-            and row.get("next_retry_at") and datetime.fromisoformat(row["next_retry_at"]) <= now
-        )
+        overdue_pbp = sum(1 for row in rows if _is_overdue_live_pbp(row, confirmed_event_ids, now))
 
         if kind:
             rows = [row for row in rows if row["kind"] == kind]

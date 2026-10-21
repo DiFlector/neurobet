@@ -29,9 +29,7 @@ COPY sports/tennis /app/sports/tennis
 RUN pip install --no-cache-dir /app/sports/tennis
 
 COPY services/neural/pyproject.toml /app/
-COPY services/neural/app /app/app
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 \
-    && pip install --no-cache-dir --no-deps . \
     && pip install --no-cache-dir \
         "pydantic>=2.7.0" \
         "numpy>=1.26.0" \
@@ -44,6 +42,9 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
         "catboost>=1.2.0" \
         "lightgbm>=4.0.0" \
         "xgboost>=2.0.0"
+
+COPY services/neural/app /app/app
+RUN pip install --no-cache-dir --no-deps .
 
 RUN mkdir -p /app/models/checkpoints
 

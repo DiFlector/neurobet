@@ -1,0 +1,285 @@
+{
+  "generated_at": "2026-10-21T12:31:10.605395+00:00",
+  "scope": "same archived HTML corpus; parse-only; warm-up excluded; alternating parser order",
+  "network_used": false,
+  "database_writes": 0,
+  "corpus": {
+    "documents": 30,
+    "unique_matches": 30,
+    "total_html_bytes": 32832939,
+    "iterations_per_parser": 8,
+    "stored_parser_versions": [
+      "flashscore-point-history-v3",
+      "flashscore-point-history-v4"
+    ]
+  },
+  "baseline": {
+    "parser_version": "flashscore-point-history-v4",
+    "source_file": "/tmp/tennis_point_history_before.py",
+    "revision": null,
+    "median_seconds": 1.3232494635158218,
+    "min_seconds": 1.1949913799762726,
+    "max_seconds": 1.658990110969171,
+    "documents_per_second": 22.671462053943465,
+    "megabytes_per_second": 24.812357688598016
+  },
+  "current": {
+    "parser_version": "flashscore-point-history-v4",
+    "median_seconds": 1.3792873305501416,
+    "min_seconds": 1.093480231007561,
+    "max_seconds": 1.5700136700179428,
+    "documents_per_second": 21.750362912442775,
+    "megabytes_per_second": 23.804277957736534,
+    "events_per_corpus_pass": 627
+  },
+  "speedup_percent": -4.062813149452227,
+  "semantic_comparison": {
+    "document_comparisons": 240,
+    "event_count_equal_documents": 240,
+    "exact_event_signature_equal_documents": 240,
+    "differences": [],
+    "note": "A difference is not automatically a regression: v4 fixes known server-side and terminal-event semantics; inspect against the separate source DOM review."
+  },
+  "documents": [
+    {
+      "source_match_id": "E9vF4SAD",
+      "fonbet_event_id": "d9a12b4a-2003-40a7-a2b2-52f589591de9",
+      "document_id": "2b963da6-d71c-47bd-867d-0951734764c4",
+      "content_hash": "39165583a7a3e78b21e257e7721014baea2e386702ff31b34ce2aa0f1aff53d3",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:30:07.620256+00:00"
+    },
+    {
+      "source_match_id": "KY54BgIq",
+      "fonbet_event_id": "02b09f41-12ff-4506-ba1f-4fd2d942eb59",
+      "document_id": "55c89bfa-f18c-4e44-8988-314fff0c26cb",
+      "content_hash": "96cd97833d29e19b9014a85d063d07d373e64e8d1c1c0aa3fcdb72e5548bab1b",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:27:29.615535+00:00"
+    },
+    {
+      "source_match_id": "0rANrMk1",
+      "fonbet_event_id": "70fbc6c9-1dee-4e5b-9614-6dcdbf0a88b7",
+      "document_id": "1f14ceaa-33e3-43ed-b235-7d88d880862f",
+      "content_hash": "1f7329058d8b9595da5d5825d3913f9139a189641f2923faa64a893841309b9b",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:27:11.992338+00:00"
+    },
+    {
+      "source_match_id": "AoLdaDAm",
+      "fonbet_event_id": "95d4b2f5-677c-4915-be37-2fc8a1c820bd",
+      "document_id": "57f55298-1290-4b4b-89f9-a4511fe5bde2",
+      "content_hash": "4aab9884392e5716cc81f3fa678b36381bfaf59d094b50acd1838a303bf86c31",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:23:43.851857+00:00"
+    },
+    {
+      "source_match_id": "nNliaWlm",
+      "fonbet_event_id": "6acda045-2487-4b40-a593-bed89ba20cdb",
+      "document_id": "add1465f-350d-4c8b-a2cc-095f17d80440",
+      "content_hash": "85533c0e04fb3c84f42acf2d88d3406491290dad28fdd681b3645664e2ea6ecc",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:16:25.605230+00:00"
+    },
+    {
+      "source_match_id": "SrNEpU7j",
+      "fonbet_event_id": "03c27fa9-7e8f-4d92-a02e-fb0ec6aad1b4",
+      "document_id": "a4ee5069-c8cb-4ec9-ba01-fd577da5f944",
+      "content_hash": "d2ba1055d6f133852ff9e21738ce85bad0f5a14301056e23b2f4dfc4f4dcab04",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:14:49.599682+00:00"
+    },
+    {
+      "source_match_id": "zs0yGRyp",
+      "fonbet_event_id": "ea440c49-fd7a-47ec-9bea-5cfc8f149d05",
+      "document_id": "f9134e49-02f2-4a24-b092-aed9b34d8694",
+      "content_hash": "16cc69f226fd85312b711e55591ae3b75bfeeda667bbcc61e8e6150e19ae8ca6",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:14:14.093292+00:00"
+    },
+    {
+      "source_match_id": "nHDiv2iT",
+      "fonbet_event_id": "41ebdf20-b4e4-4478-85e9-f2545a3474d9",
+      "document_id": "39601d71-8927-407e-8f01-aafaa1ce5bf7",
+      "content_hash": "31c413fe40d86a90f2ae2ccc7f7a299da5e70a4b99fc52cc194ba27e8921e075",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:12:39.974726+00:00"
+    },
+    {
+      "source_match_id": "hfOGBTiR",
+      "fonbet_event_id": "b91d1d67-ae80-4445-baa6-1153711bf5b3",
+      "document_id": "acb7b3ab-0817-4760-b238-5acf45bac226",
+      "content_hash": "fcda0ca6445eff1e1da8043eecc7b87bb878c760d7607763e1f5591d5840d188",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:12:21.405850+00:00"
+    },
+    {
+      "source_match_id": "KUsbomdk",
+      "fonbet_event_id": "62401ec9-4785-4580-b89f-63fd5dd1bed7",
+      "document_id": "04c6ec02-4221-40c9-a31d-8c55db239ae9",
+      "content_hash": "46857bd2f55ac50503e25fd96cbf8f438c2a96133d7cadd1b6c5eee017b2f2aa",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:10:53.499558+00:00"
+    },
+    {
+      "source_match_id": "bw8mYRzg",
+      "fonbet_event_id": "9c0effed-3cf0-457c-af72-2f28680d9e13",
+      "document_id": "2c311a42-82be-4940-b267-f55266515684",
+      "content_hash": "ef9b56ef6c4efcfc1626d52b60ae0892c781d5a1a76736245ed33fe89df33265",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:04:49.539480+00:00"
+    },
+    {
+      "source_match_id": "4dlglQzK",
+      "fonbet_event_id": "b2f57d39-4d4f-4a29-9e30-b2d5d9f43e12",
+      "document_id": "073c7afe-898c-43bf-95c3-2f8584ba46c4",
+      "content_hash": "80679a5963c62ee7d16b35f37bc5d7536f5638b232cf8f797d08836c11d267e0",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:03:05.912313+00:00"
+    },
+    {
+      "source_match_id": "86W5fRIj",
+      "fonbet_event_id": "50d3001f-bec1-49cf-b971-2ccbec237783",
+      "document_id": "e9adbe30-6c0e-4ba2-a5a8-533ad35c4abd",
+      "content_hash": "1219fef09373851c03b65bd339528ea16ab1bd036095da6afbe531dc2c6a5a6f",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:02:42.827089+00:00"
+    },
+    {
+      "source_match_id": "EsWDKc0c",
+      "fonbet_event_id": "18a27f24-c9e9-41e1-9000-719b6a0bfbaa",
+      "document_id": "4eb57770-98f6-48d2-9d36-063cfc9ea619",
+      "content_hash": "bd7809979083aa0594acf066cf4bf8779fb3c5e65b4cc6a5c23fe5add0a4b664",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:01:49.304549+00:00"
+    },
+    {
+      "source_match_id": "UXWDUTIt",
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "document_id": "9fb49465-e2df-4852-a313-5dd3bb99f38f",
+      "content_hash": "05fdbbf9553cc5cf8c282931b9a82faa57363420520359b65f21b5a930a62547",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:01:34.802287+00:00"
+    },
+    {
+      "source_match_id": "AHDzd3aT",
+      "fonbet_event_id": "d4b3b20d-9ea2-4411-a432-cd5e1b0451bc",
+      "document_id": "116b92e8-c963-4bb5-b332-9b413f9a4661",
+      "content_hash": "a421e9b9af3d82b380be75a2e8c488000bf1fd92461b1993249791b2767d14c2",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:00:51.083141+00:00"
+    },
+    {
+      "source_match_id": "IRjLM3El",
+      "fonbet_event_id": "53171f52-13bd-4b13-890b-3d768a58a42c",
+      "document_id": "64e371d9-43b8-4aeb-87ab-f14727efe618",
+      "content_hash": "e51594aa73399c580396d6e5df3811f130656ed1d12857c78d1c7db52825a705",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:59:26.475245+00:00"
+    },
+    {
+      "source_match_id": "0ItWvhAb",
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "document_id": "83bc6c62-54f1-4301-a640-30ce79a8b251",
+      "content_hash": "e3c5599fbc9090e8a748a14bcbd4c9eb62b2916df28c8f7ffe80ba585383f9c1",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:53:21.373803+00:00"
+    },
+    {
+      "source_match_id": "0KqNR9Dj",
+      "fonbet_event_id": "239681ef-96e4-48ac-9185-eaa9ee9df287",
+      "document_id": "52f3dbce-f977-4f47-b015-ad52391458d1",
+      "content_hash": "3d7985f92ba26657fbb6fbe4fba5a3caf30b3a0aadd4554cc5ead2c566a31252",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:53:10.363869+00:00"
+    },
+    {
+      "source_match_id": "xbdqylLi",
+      "fonbet_event_id": "079e0a99-ba92-4c47-9941-306c556550a6",
+      "document_id": "6211d49c-b87b-41a5-b88d-54b0ebfffa35",
+      "content_hash": "2ead28e1ebcdeaf13beb7dcdc4ee95a50a2ecc437cd427a2e079055506f914b6",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:51:53.412821+00:00"
+    },
+    {
+      "source_match_id": "QJn14fYN",
+      "fonbet_event_id": "220e9211-b022-451c-b0b3-c167d6a4e8fe",
+      "document_id": "fb58cdb0-f560-443a-a339-6323da2d3e72",
+      "content_hash": "82e018d0fdb8446a43c7ebf7883a70f952e9d287741bec1aca227ad4be160f05",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:51:16.598553+00:00"
+    },
+    {
+      "source_match_id": "vV6BKNOq",
+      "fonbet_event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "document_id": "625fc117-506f-4103-9895-ea41a6048b7c",
+      "content_hash": "51d84d740ea2db944e7e096acad3b32f339bc362a1a4c3bbc65c6e2f79ddc8f8",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:18:17.643658+00:00"
+    },
+    {
+      "source_match_id": "nJQUcQ7s",
+      "fonbet_event_id": "d4a9d283-2507-4706-9b0b-31174d007888",
+      "document_id": "387f0ab5-428c-45cd-aaba-8f75fafb4a20",
+      "content_hash": "f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:11:10.776423+00:00"
+    },
+    {
+      "source_match_id": "WAlDxZFD",
+      "fonbet_event_id": "f232c8b5-6fd2-429f-8e17-2d3e9fdee428",
+      "document_id": "6abf9dbe-3a2f-4795-89e6-9f7a5d662777",
+      "content_hash": "0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T08:51:59.230598+00:00"
+    },
+    {
+      "source_match_id": "ltboIW4e",
+      "fonbet_event_id": "5c7d53e0-0e33-4db4-829b-6d17c701942a",
+      "document_id": "c1b5daf1-1512-4f33-b4dc-a27588404815",
+      "content_hash": "94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:53:20.137146+00:00"
+    },
+    {
+      "source_match_id": "nqALMPsJ",
+      "fonbet_event_id": "2c56621c-be9f-4fbb-ab77-f4551b21a28a",
+      "document_id": "0571a565-fa0f-4a6c-b9ee-721eecf2fb58",
+      "content_hash": "b4cb5b0ba2d924e59a8d535b403a98bea18fabc0c62242d3311e33de29a83b1e",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:34:09.688010+00:00"
+    },
+    {
+      "source_match_id": "h4onFrXb",
+      "fonbet_event_id": "2abb4575-b303-41ab-a6e8-01fc9c27dccc",
+      "document_id": "fd45e994-f141-4af0-9c36-ecf180ed067e",
+      "content_hash": "ef8465b514933504cffe4bb56a998a6bab73bd768a5f97956b70703c75fb9f2b",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:25:02.448767+00:00"
+    },
+    {
+      "source_match_id": "2TkVRpXO",
+      "fonbet_event_id": "8b048749-5115-4fe1-ad36-6b92392cffea",
+      "document_id": "ffd6c536-055c-42aa-8750-2ef2868a726d",
+      "content_hash": "81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93",
+      "parser_version_stored": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:24:39.032554+00:00"
+    },
+    {
+      "source_match_id": "UXYqpB76",
+      "fonbet_event_id": "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+      "document_id": "a870511c-1f78-4fd9-94f9-307354a7ca21",
+      "content_hash": "25b0a077a4efb1bb57adf7bdf07783ca4d38b2095d88f1d9a36daa486ba0bffe",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T07:03:48.451242+00:00"
+    },
+    {
+      "source_match_id": "EsW7JYiJ",
+      "fonbet_event_id": "1f961d14-1974-4828-b408-45c5ffc5ca8f",
+      "document_id": "aad9f689-cb5c-41d9-ab8a-1ea3ab75ba2e",
+      "content_hash": "ea5dd73a9f26ecd7e0d84d3a38e0b2b0520cffc1588aab9c16ff49d4d145367b",
+      "parser_version_stored": "flashscore-point-history-v3",
+      "retrieved_at": "2026-10-21T06:51:49.050023+00:00"
+    }
+  ]
+}

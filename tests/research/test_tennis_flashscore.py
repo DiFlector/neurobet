@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import asyncio
 import hashlib
+import threading
 
 import pytest
 
 from app.tennis_flashscore import (
+    _run_browser_awaitable,
     FlashscoreTennisImporter,
     _player_name_matches,
     is_auto_confirmable_player_match,
@@ -13,6 +16,8 @@ from app.tennis_flashscore import (
     _profile_search_queries,
     _profile_search_failure_reason,
     _profile_search_exception_reason,
+    _search_flashscore_player_endpoint,
+    _close_profile_http_client,
     _observation_hash,
     _observation_payload,
     _browser_launch_options,
@@ -29,11 +34,123 @@ from app.tennis_flashscore import (
     PARSER_VERSION,
     parse_player_profile,
 )
-from app.player_profiles import _canonical_match_key, _is_duplicate_adjacent_fact, _matching_canonical_match_key
-from app.point_history import (
-    _external_home_is_fonbet_a, _external_match_state, _match_page_url, _point_by_point_index_url,
-    _point_by_point_set_tabs, _point_by_point_set_url,
+from app.player_profiles import (
+    _canonical_match_key, _is_duplicate_adjacent_fact, _matching_canonical_match_key,
+    _post_match_profile_refresh_due, profile_refresh_timeout_seconds,
+    lock_flashscore_source_entities,
 )
+
+
+def test_incremental_profile_refresh_has_shorter_timeout_than_initial_history():
+    assert profile_refresh_timeout_seconds(None, {}) == 300
+    assert profile_refresh_timeout_seconds(datetime.now(timezone.utc), {}) == 120
+    assert profile_refresh_timeout_seconds(None, {
+        "FLASHSCORE_TENNIS_PROFILE_TIMEOUT_SECONDS": "420",
+        "FLASHSCORE_TENNIS_INCREMENTAL_TIMEOUT_SECONDS": "75",
+    }) == 420
+    assert profile_refresh_timeout_seconds(datetime.now(timezone.utc), {
+        "FLASHSCORE_TENNIS_PROFILE_TIMEOUT_SECONDS": "420",
+        "FLASHSCORE_TENNIS_INCREMENTAL_TIMEOUT_SECONDS": "75",
+    }) == 75
+    assert profile_refresh_timeout_seconds(datetime.now(timezone.utc), {
+        "FLASHSCORE_TENNIS_INCREMENTAL_TIMEOUT_SECONDS": "1",
+    }) == 30
+
+
+def test_browser_awaitable_handles_sync_scraper_called_from_running_event_loop():
+    async def caller():
+        caller_thread = threading.get_ident()
+
+        async def browser_work():
+            await asyncio.sleep(0)
+            return threading.get_ident(), "ok"
+
+        result = _run_browser_awaitable(browser_work())
+        return caller_thread, result
+
+    caller_thread, (browser_thread, value) = asyncio.run(caller())
+    assert value == "ok"
+    assert browser_thread != caller_thread
+
+
+@pytest.fixture(autouse=True)
+def reset_profile_search_http_pool():
+    _close_profile_http_client()
+    yield
+    _close_profile_http_client()
+from app.point_history import (
+    _confirmed_link_page, _discover_live_match, _external_home_is_fonbet_a, _external_match_state,
+    _match_page_url, _match_url_has_player_ids,
+    _normalize_live_match_discovery,
+    _open_point_history_entry, _point_by_point_index_url,
+    _point_by_point_set_tabs, _point_by_point_set_url, _preferred_point_history_url,
+)
+
+
+def test_live_match_discovery_ambiguity_is_not_treated_as_a_match_record():
+    ambiguous = _normalize_live_match_discovery({
+        "status": "ambiguous",
+        "candidates": [
+            {"source_match_id": "matcha", "url": "https://www.flashscore.com/match/tennis/a/?mid=matcha", "label": "A"},
+            {"source_match_id": "matchb", "url": "https://www.flashscore.com/match/tennis/b/?mid=matchb", "label": "B"},
+        ],
+    })
+    assert ambiguous["status"] == "ambiguous"
+    assert [row["source_match_id"] for row in ambiguous["candidates"]] == ["matcha", "matchb"]
+    assert "source_match_id" not in ambiguous
+
+    matched = _normalize_live_match_discovery({
+        "status": "matched", "source_match_id": "matchc",
+        "url": "https://www.flashscore.com/match/tennis/c/?mid=matchc",
+    })
+    assert matched["status"] == "matched"
+    assert matched["source_match_id"] == "matchc"
+    assert _normalize_live_match_discovery({"status": "ambiguous", "candidates": [{}]})["status"] == "unmatched"
+
+
+def test_live_match_discovery_collapses_duplicate_board_links_for_same_fixture():
+    import time
+    import app.point_history as point_history
+
+    point_history._LIVE_MATCH_CACHE.update(
+        links=[
+            {"href": "https://www.flashscore.com/match/tennis/player-a-player-a/player-b-player-b/?mid=fixture1", "text": "A - B"},
+            {"href": "https://www.flashscore.com/match/tennis/player-a-player-a/player-b-player-b/summary/?mid=fixture1", "text": "A - B"},
+        ],
+        expires=time.monotonic() + 30,
+    )
+    result = _discover_live_match("player-a", "player-b")
+    assert result["status"] == "matched"
+    assert result["source_match_id"] == "fixture1"
+
+
+def test_live_match_discovery_requires_exact_player_ids_in_separate_slugs():
+    import time
+    import app.point_history as point_history
+
+    assert _match_url_has_player_ids(
+        "https://www.flashscore.com/match/tennis/adkar-vaishnavi-riKJvzYF/shkutova-anna-O8EO0106/?mid=rRgwzmTF",
+        "riKJvzYF", "O8EO0106",
+    )
+    assert _match_url_has_player_ids(
+        "https://www.flashscore.com/match/tennis/shkutova-anna-O8EO0106/adkar-vaishnavi-riKJvzYF/?mid=rRgwzmTF",
+        "riKJvzYF", "O8EO0106",
+    )
+    assert not _match_url_has_player_ids(
+        "https://www.flashscore.com/match/tennis/adkar-riKJvzYF2/shkutova-O8EO0106/?mid=rRgwzmTF",
+        "riKJvzYF", "O8EO0106",
+    )
+    assert not _match_url_has_player_ids(
+        "https://www.flashscore.com/match/tennis/adkar-riKJvzYF/?player=O8EO0106&mid=rRgwzmTF",
+        "riKJvzYF", "O8EO0106",
+    )
+    point_history._LIVE_MATCH_CACHE.update(links=[
+        {"href": "https://www.flashscore.com/match/tennis/adkar-vaishnavi-riKJvzYF/shkutova-anna-O8EO0106/?mid=rRgwzmTF", "text": "Adkar — Shkutova"},
+        {"href": "https://www.flashscore.com/match/tennis/adkar-riKJvzYF2/shkutova-O8EO0106/?mid=substring-decoy", "text": "decoy"},
+    ], expires=time.monotonic() + 30)
+    result = _discover_live_match("riKJvzYF", "O8EO0106")
+    assert result["status"] == "matched"
+    assert result["source_match_id"] == "rRgwzmTF"
 
 
 def test_exact_player_confirmation_requires_full_ordered_name_match():
@@ -43,6 +160,34 @@ def test_exact_player_confirmation_requires_full_ordered_name_match():
     assert not is_exact_player_name_match("Tsitsipas S", "Tsitsipas Stefanos")
     assert not is_exact_player_name_match("Stefanos Tsitsipas", "Tsitsipas Stefanos")
     assert not is_exact_player_name_match("Tsitsipas Stefanos", "Tsitsipas Stefanos Jr")
+
+
+def test_overlapping_profile_import_locks_are_deduplicated_and_ordered():
+    class Result:
+        def all(self):
+            return []
+
+    class Session:
+        statement = None
+        params = None
+
+        def execute(self, statement, params):
+            self.statement = str(statement)
+            self.params = params
+            return Result()
+
+    session = Session()
+    lock_flashscore_source_entities(
+        session,
+        player_ids={"P2": "Two", "P1": "One"},
+        match_ids={"M1", "M2", "M1"},
+    )
+
+    assert session.params["lock_keys"] == [
+        "flashscore:match:M1", "flashscore:match:M2",
+        "flashscore:player:P1", "flashscore:player:P2",
+    ]
+    assert "pg_advisory_xact_lock" in session.statement
 
 
 def test_automatic_player_confirmation_accepts_only_simple_full_surname_and_initial():
@@ -55,6 +200,44 @@ def test_automatic_player_confirmation_accepts_only_simple_full_surname_and_init
     assert not is_auto_confirmable_player_match("Альварадо-берроспи А-о", "Alvarado Berrospi Alberto Odiseo")
     assert not is_auto_confirmable_player_match("Паскуаль-ферра Р", "Pascual Ferra Roger")
     assert not is_auto_confirmable_player_match("Силва Л-Ф", "Silva Luiz Felipe")
+
+
+def test_russian_initials_and_surnames_accept_common_flashscore_transliterations():
+    # Exact surname + initial remains the only abbreviated-name auto-approval
+    # rule; spelling variants cover common Flashscore transliteration choices.
+    for fonbet_name, flashscore_name in [
+        ("Нишимото Ч", "Nishimoto Chikako"),
+        ("Нишимото Ч", "Nishimoto Catherine"),  # Ч is also rendered as C
+        ("Жукова А", "Jukova Anastasia"),
+        ("Шкутова А", "Skutova Anna"),
+        ("Циципас С", "Cicipas Stefanos"),
+        ("Хачанов К", "Hachanov Karen"),
+    ]:
+        assert is_auto_confirmable_player_match(fonbet_name, flashscore_name), (fonbet_name, flashscore_name)
+
+    assert _player_name_matches("Шкутова А", "Skutova Anna")
+    assert _player_name_matches("Жукова А", "Jukova Anastasia")
+    assert _player_name_matches("Чайковская В", "Caykovskaya Violetta")
+    assert not is_auto_confirmable_player_match("Чайковская В", "Caykovsky Viktor")
+
+
+def test_yi_is_preserved_during_diacritic_folding_and_c_initials_are_auto_confirmable():
+    # NFKD must not collapse й into и; Flashscore varies between i/y/j and
+    # uses c for ч in both shortened given names and full surnames.
+    for fonbet_name, flashscore_name in [
+        ("Чайковская В", "Caykovskaya Violetta"),
+        ("Чайковская В", "Chaykovskaya Violetta"),
+        ("Нишимото Ч", "Nishimoto Catherine"),
+        ("Шкутова А", "Skutova Anna"),
+        ("Жукова А", "Jukova Anastasia"),
+        ("Циципас С", "Cicipas Stefanos"),
+    ]:
+        assert is_auto_confirmable_player_match(fonbet_name, flashscore_name), (
+            fonbet_name, flashscore_name
+        )
+
+    # Similar-looking but different surnames must still stay out of auto-approval.
+    assert not is_auto_confirmable_player_match("Чайковская В", "Caykovsky Violetta")
 
 
 def test_point_history_side_order_is_resolved_for_name_only_archive_matches():
@@ -95,6 +278,107 @@ def test_flashscore_search_payload_filters_to_tennis_player_and_builds_profile_u
         "source_player_id": "QNuG0Gzb",
         "gender": "male",
     }]
+
+
+def test_profile_search_endpoint_returns_only_tennis_player_candidates(monkeypatch):
+    import httpx
+
+    class Response:
+        status_code = 200
+        content = b"[]"
+        def json(self):
+            return [
+                {"id": "84GyAaXB", "url": "rus-arantxa", "name": "Rus Arantxa",
+                 "type": {"id": 3, "name": "Player"}, "sport": {"id": 2, "name": "Tennis"}},
+                {"id": "zBkyuyRI", "url": "benfica", "name": "Benfica",
+                 "type": {"id": 2, "name": "Team"}, "sport": {"id": 1, "name": "Soccer"}},
+            ]
+
+    calls = []
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs["follow_redirects"] is False
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, endpoint, params):
+            calls.append((endpoint, params))
+            return Response()
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    result = _search_flashscore_player_endpoint("Arantxa Rus", ["Arantxa Rus"])
+    assert result["status"] == "matched"
+    assert result["candidate"]["source_player_id"] == "84GyAaXB"
+    assert calls == [("https://s.livesport.services/api/v2/search/", {"q": "Arantxa Rus"})]
+
+
+def test_profile_search_acquires_rate_limit_slot_for_each_http_request(monkeypatch):
+    import httpx
+    from contextlib import nullcontext
+
+    class Response:
+        status_code = 200
+        content = b"[]"
+        def json(self): return []
+
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, endpoint, params): return Response()
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    slots = []
+    clients = []
+    original_client = Client
+
+    def make_client(**kwargs):
+        clients.append(kwargs)
+        return original_client(**kwargs)
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    def acquire():
+        slots.append("acquired")
+        return nullcontext()
+
+    result = _search_flashscore_player_endpoint(
+        "Player Name", ["player name", "name player", "player"], source_access=acquire
+    )
+    assert result["status"] == "not_found"
+    assert len(slots) == 3
+    assert len(clients) == 1
+
+
+@pytest.mark.parametrize("status_code,expected", [(403, "blocked"), (429, "blocked")])
+def test_profile_search_endpoint_treats_rate_limits_as_blocked(monkeypatch, status_code, expected):
+    import httpx
+
+    class Response:
+        content = b"blocked"
+        def __init__(self): self.status_code = status_code
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, endpoint, params): return Response()
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    result = _search_flashscore_player_endpoint("Player Name", ["Player Name"])
+    assert result["status"] == expected
+
+
+def test_profile_search_endpoint_never_maps_transport_timeout_to_not_found(monkeypatch):
+    import httpx
+
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, endpoint, params): raise httpx.TimeoutException("timeout")
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    result = _search_flashscore_player_endpoint("Player Name", ["Player Name"])
+    assert result["status"] == "source_unavailable"
+    assert result["reason"] == "SEARCH_HTTP_ERROR"
 
 
 def test_profile_search_variants_cover_order_and_initial_without_unbounded_queries():
@@ -518,6 +802,91 @@ def test_imported_exact_source_url_is_used_for_pbp_page():
     assert _match_page_url(state) == source_url
 
 
+def test_confirmed_live_link_can_drive_pbp_before_profile_match_import():
+    link = SimpleNamespace(
+        source_match_id="vV6BKNOq",
+        evidence_json={
+            "source_url": "https://www.flashscore.com/match/tennis/masabayashi-tomohiro-23AG6J1b/"
+            "suksumrarn-thantub-tW8olIAn/?mid=vV6BKNOq/summary/?mid=vV6BKNOq",
+        },
+    )
+
+    resolved = _confirmed_link_page(link, "tW8olIAn", "23AG6J1b")
+
+    assert resolved == (
+        "https://www.flashscore.com/match/tennis/masabayashi-tomohiro-23AG6J1b/"
+        "suksumrarn-thantub-tW8olIAn/summary/?mid=vV6BKNOq",
+        False,
+    )
+
+
+def test_confirmed_live_link_rejects_untrusted_or_wrong_player_urls():
+    foreign = SimpleNamespace(source_match_id="match-123", evidence_json={
+        "source_url": "https://example.invalid/match/tennis/player-a/player-b/?mid=match-123",
+    })
+    wrong_players = SimpleNamespace(source_match_id="match-123", evidence_json={
+        "source_url": "https://www.flashscore.com/match/tennis/other-a/other-b/?mid=match-123",
+    })
+
+    assert _confirmed_link_page(foreign, "player-a", "player-b") is None
+    assert _confirmed_link_page(wrong_players, "player-a", "player-b") is None
+
+
+def test_direct_pbp_navigation_timeout_falls_back_to_confirmed_summary_url():
+    class Response:
+        status = 200
+
+    class Page:
+        def __init__(self):
+            self.urls = []
+
+        def goto(self, url, **kwargs):
+            self.urls.append(url)
+            if len(self.urls) == 1:
+                raise TimeoutError("direct PBP route timed out")
+            return Response()
+
+    page = Page()
+    summary = "https://www.flashscore.com/match/tennis/player-a/player-b/summary/?mid=match123"
+
+    response, error = _open_point_history_entry(page, summary)
+
+    assert response.status == 200
+    assert error is None
+    assert page.urls == [
+        "https://www.flashscore.com/match/tennis/player-a/player-b/summary/point-by-point/?mid=match123",
+        summary,
+    ]
+
+
+def test_finished_match_refreshes_player_history_that_predates_the_result():
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
+    finished_at = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)
+    profile = SimpleNamespace(
+        source_identities={"flashscore": "player-id"},
+        last_success_at=datetime(2026, 10, 21, 9, 0, tzinfo=timezone.utc),
+    )
+    previous_job = SimpleNamespace(
+        status="completed", updated_at=datetime(2026, 10, 21, 9, 5, tzinfo=timezone.utc),
+    )
+
+    assert _post_match_profile_refresh_due(profile, previous_job, finished_at, now)
+
+
+def test_post_finish_profile_refresh_is_not_requeued_for_same_result():
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
+    finished_at = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)
+    profile = SimpleNamespace(
+        source_identities={"flashscore": "player-id"},
+        last_success_at=datetime(2026, 10, 21, 11, 30, tzinfo=timezone.utc),
+    )
+    completed_job = SimpleNamespace(
+        status="completed", updated_at=datetime(2026, 10, 21, 11, 35, tzinfo=timezone.utc),
+    )
+
+    assert not _post_match_profile_refresh_due(profile, completed_job, finished_at, now)
+
+
 def test_point_by_point_url_removes_redirected_query_before_appending_tab():
     assert _point_by_point_set_url(
         "https://www.flashscore.com/match/tennis/player-a/player-b/?mid=match-123", "match-123", 1
@@ -528,6 +897,18 @@ def test_point_by_point_url_removes_redirected_query_before_appending_tab():
     assert _point_by_point_index_url(
         "https://www.flashscore.com.ua/match/tennis/player-a/player-b/?mid=match-123", "match-123"
     ) == "https://www.flashscore.com.ua/match/tennis/player-a/player-b/summary/point-by-point/?mid=match-123"
+
+
+def test_point_history_opens_direct_index_when_confirmed_source_match_id_exists():
+    summary = "https://www.flashscore.com/match/tennis/player-a/player-b/summary/?mid=match123"
+    assert _preferred_point_history_url(summary) == (
+        "https://www.flashscore.com/match/tennis/player-a/player-b/summary/point-by-point/?mid=match123"
+    )
+
+
+def test_point_history_keeps_legacy_summary_url_without_match_id():
+    summary = "https://www.flashscore.com/match/tennis/player-a/player-b/summary/"
+    assert _preferred_point_history_url(summary) == summary
 
 
 def test_point_by_point_set_tabs_keep_only_the_same_source_match():

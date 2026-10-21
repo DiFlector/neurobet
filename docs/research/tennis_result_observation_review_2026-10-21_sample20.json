@@ -1,0 +1,192 @@
+{
+  "eligible_numeric_singles": 25,
+  "events_snapshot_precedes_metadata_availability": 19,
+  "events_with_exact_final_score_snapshot": 19,
+  "events_without_result_time_but_with_snapshot_evidence": 0,
+  "examples": [
+    {
+      "fonbet_event_id": "0296a55d-a62c-4d75-8d3d-5c4eab2155c2",
+      "fonbet_source_event_id": "69129953",
+      "metadata_available_at": "2026-10-21T12:13:37.269291+00:00",
+      "observed_score": "0-2 (2-6, 2-6)",
+      "official_final_score": "0:2 (2-6 2-6)",
+      "snapshot_observed_at": "2026-10-20T10:49:55.872931+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "0accc495-b94d-4fa4-a10b-8279e3f01eb4",
+      "fonbet_source_event_id": "69154099",
+      "metadata_available_at": "2026-10-21T16:46:17.153819+00:00",
+      "observed_score": "2-1 (2-6, 6-1, 7-6)",
+      "official_final_score": "2:1 (2-6 6-1 7-6)",
+      "snapshot_observed_at": "2026-10-21T10:25:54.246572+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "13885c5e-c816-4d94-9a65-86e3f8dc4739",
+      "fonbet_source_event_id": "68949963",
+      "metadata_available_at": "2026-10-21T12:14:12.406765+00:00",
+      "observed_score": "0-2 (5-7, 3-6)",
+      "official_final_score": "0:2 (5-7 3-6)",
+      "snapshot_observed_at": "2026-10-15T05:03:36.781265+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "fonbet_source_event_id": "69148307",
+      "metadata_available_at": "2026-10-21T16:46:14.907277+00:00",
+      "observed_score": "2-0 (7-5, 6-4)",
+      "official_final_score": "2:0 (7-5 6-4)",
+      "snapshot_observed_at": "2026-10-21T11:32:54.157534+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "37013d1b-a214-4b97-bf9a-553f32a1e272",
+      "fonbet_source_event_id": "69074838",
+      "metadata_available_at": "2026-10-21T12:14:01.543709+00:00",
+      "observed_score": "0-2 (3-6, 4-6)",
+      "official_final_score": "0:2 (3-6 4-6)",
+      "snapshot_observed_at": "2026-10-18T11:06:10.659686+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "37c897e8-fdf2-427a-bc6b-1e2c0ce7f409",
+      "fonbet_source_event_id": "69096893",
+      "metadata_available_at": "2026-10-21T12:13:47.728846+00:00",
+      "observed_score": "2-0 (6-0, 6-1)",
+      "official_final_score": "2:0 (6-0 6-1)",
+      "snapshot_observed_at": "2026-10-19T05:12:26.861129+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "40148366-53b2-4168-b959-297f7a7e8f2b",
+      "fonbet_source_event_id": "69178532",
+      "metadata_available_at": "2026-10-21T16:46:20.877034+00:00",
+      "observed_score": "2-0 (6-4, 6-4)",
+      "official_final_score": "2:0 (6-4 6-4)",
+      "snapshot_observed_at": "2026-10-21T15:38:20.122601+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "50e5a54e-8272-42c5-9dcc-b8b92340f5ca",
+      "fonbet_source_event_id": "68958037",
+      "metadata_available_at": "2026-10-21T12:14:13.589554+00:00",
+      "observed_score": "0-2 (5-7, 3-6)",
+      "official_final_score": "0:2 (5-7 3-6)",
+      "snapshot_observed_at": "2026-10-15T08:04:20.901947+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "5d98bb5a-b05d-4d6e-adaf-38c21a6d1193",
+      "fonbet_source_event_id": "69097255",
+      "metadata_available_at": "2026-10-21T12:13:48.110174+00:00",
+      "observed_score": "2-0 (6-2, 7-6)",
+      "official_final_score": "2:0 (6-2 7-6)",
+      "snapshot_observed_at": "2026-10-19T08:14:44.663929+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "6604d719-7e1b-4f2e-9298-a3f334c9f5c6",
+      "fonbet_source_event_id": "69068926",
+      "metadata_available_at": "2026-10-21T12:13:47.786359+00:00",
+      "observed_score": "1-2 (6-2, 3-6, 5-7)",
+      "official_final_score": "1:2 (6-2 3-6 5-7)",
+      "snapshot_observed_at": "2026-10-19T06:57:58.760579+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "8158ca28-219e-4d9e-86e8-1a5009180d4b",
+      "fonbet_source_event_id": "69138327",
+      "metadata_available_at": "2026-10-21T16:46:13.213870+00:00",
+      "observed_score": "2-0 (6-2, 6-2)",
+      "official_final_score": "2:0 (6-2 6-2)",
+      "snapshot_observed_at": "2026-10-21T08:59:15.198152+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "942d159a-a0e6-4111-92a2-c9c7c79b7b2a",
+      "fonbet_source_event_id": "69096753",
+      "metadata_available_at": "2026-10-21T12:13:47.933439+00:00",
+      "observed_score": "1-2 (6-7, 6-3, 5-10)",
+      "official_final_score": "1:2 (6-7 6-3 5-10)",
+      "snapshot_observed_at": "2026-10-19T08:18:51.571611+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "9772f8e7-d274-48eb-99e3-2176d4af00f0",
+      "fonbet_source_event_id": "68892053",
+      "metadata_available_at": "2026-10-21T12:14:42.432323+00:00",
+      "observed_score": "0-2 (2-6, 3-6)",
+      "official_final_score": "0:2 (2-6 3-6)",
+      "snapshot_observed_at": "2026-10-13T14:01:11.512618+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "fonbet_source_event_id": "69148215",
+      "metadata_available_at": "2026-10-21T16:46:12.935107+00:00",
+      "observed_score": "2-0 (6-4, 6-2)",
+      "official_final_score": "2:0 (6-4 6-2)",
+      "snapshot_observed_at": "2026-10-21T06:34:13.767627+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "c392a3ec-60b7-4cfc-b3dd-640e30d77214",
+      "fonbet_source_event_id": "69148301",
+      "metadata_available_at": "2026-10-21T16:46:14.247335+00:00",
+      "observed_score": "0-2 (5-7, 3-6)",
+      "official_final_score": "0:2 (5-7 3-6)",
+      "snapshot_observed_at": "2026-10-21T06:43:21.924281+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "c95318d6-3c90-4ca9-b899-fda64457c80d",
+      "fonbet_source_event_id": "68924318",
+      "metadata_available_at": "2026-10-21T12:14:12.612858+00:00",
+      "observed_score": "2-0 (6-3, 7-6)",
+      "official_final_score": "2:0 (6-3 7-6)",
+      "snapshot_observed_at": "2026-10-15T05:57:18.098160+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "cc044091-c784-4988-8f32-aa29bc7d2049",
+      "fonbet_source_event_id": "69097257",
+      "metadata_available_at": "2026-10-21T12:13:48.122069+00:00",
+      "observed_score": "2-1 (6-1, 5-7, 14-12)",
+      "official_final_score": "2:1 (6-1 5-7 14-12)",
+      "snapshot_observed_at": "2026-10-19T07:40:08.282827+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "d1bb7785-363e-4ad8-a238-b6385ad3d909",
+      "fonbet_source_event_id": "69074770",
+      "metadata_available_at": "2026-10-21T12:14:01.213573+00:00",
+      "observed_score": "0-2 (2-6, 1-6)",
+      "official_final_score": "0:2 (2-6 1-6)",
+      "snapshot_observed_at": "2026-10-18T10:27:18.370263+00:00",
+      "snapshot_status": "live"
+    },
+    {
+      "fonbet_event_id": "fdf05a73-c0a2-443f-90eb-c406bcb78947",
+      "fonbet_source_event_id": "69148281",
+      "metadata_available_at": "2026-10-21T16:46:14.236351+00:00",
+      "observed_score": "2-0 (6-4, 6-3)",
+      "official_final_score": "2:0 (6-4 6-3)",
+      "snapshot_observed_at": "2026-10-21T07:14:47.617581+00:00",
+      "snapshot_status": "live"
+    }
+  ],
+  "generated_at": "2026-10-21T16:46:41.323097+00:00",
+  "mutates_database": false,
+  "observed_at_range": {
+    "max": "2026-10-21T15:38:20.122601+00:00",
+    "min": "2026-10-13T14:01:11.512618+00:00"
+  },
+  "sample_limit": 20,
+  "snapshot_rows_scanned": 14770,
+  "snapshot_statuses": {
+    "live": 19
+  },
+  "source": "Fonbet EventStateSnapshot.score exact normalized match to official final score",
+  "valid_final_results": 20
+}

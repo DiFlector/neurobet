@@ -49,6 +49,37 @@ class EventResultMatcher:
     _INCOMPLETE_SCORE_PREFIXES = ("0:0", "0-0", "-:-", ":")
 
     @staticmethod
+    def _append_result_observation(meta: Dict[str, Any], result: CanonicalMatchResult) -> None:
+        """Append a new definitive result version, suppressing only adjacent repeats."""
+        history = list(meta.get("fonbet_official_result_observations") or [])
+        current = meta.get("fonbet_official_result")
+
+        # Preserve the prior version when it already has a source-availability
+        # timestamp. This is not a backfill: older rows without that evidence
+        # remain unknown until a newly observed result is received.
+        if current and not history:
+            available_at = current.get("available_at") if isinstance(current, dict) else None
+            if available_at:
+                history.append({"available_at": available_at, "result": dict(current)})
+
+        payload = result.model_dump(mode="json")
+        semantic_payload = {
+            key: value for key, value in payload.items()
+            if key not in {"available_at", "timestamp"}
+        }
+        last_semantic_payload = None
+        if history:
+            last = history[-1].get("result")
+            if isinstance(last, dict):
+                last_semantic_payload = {
+                    key: value for key, value in last.items()
+                    if key not in {"available_at", "timestamp"}
+                }
+        if last_semantic_payload != semantic_payload:
+            history.append({"available_at": payload.get("available_at"), "result": payload})
+        meta["fonbet_official_result_observations"] = history
+
+    @staticmethod
     def normalize_name(name: str) -> str:
         """Strip punctuation for participant matching."""
         return " ".join(re.findall(r"\w+", name.lower())) if name else ""
@@ -348,11 +379,15 @@ class EventResultMatcher:
         observed_at = utc_now()
         resolved_available_at = result.available_at or observed_at
         if existing_official:
-            old_payload = existing_official.model_dump(mode="json", exclude={"available_at"})
-            new_payload = result.model_dump(mode="json", exclude={"available_at"})
+            old_payload = existing_official.model_dump(mode="json", exclude={"available_at", "timestamp"})
+            new_payload = result.model_dump(mode="json", exclude={"available_at", "timestamp"})
             if old_payload == new_payload and existing_official.available_at is not None:
                 resolved_available_at = existing_official.available_at
         result = result.model_copy(update={"available_at": resolved_available_at})
+
+        # Keep the current result convenient to read while preserving every
+        # distinct observation for correction-aware as-of audits and replay.
+        cls._append_result_observation(meta, result)
 
         # Update event state to finished
         event.status = "finished" if result.status != "CANCELLED" else "cancelled"

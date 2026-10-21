@@ -3,6 +3,8 @@
 import os
 import re
 import uuid
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 from urllib.parse import urlparse
@@ -15,7 +17,8 @@ from db.connection import SessionLocal
 from db.models import (
     Event, ExtTennisMatch, ManualConfirmationDecision, ManualConfirmationRequest,
     Participant, TennisMatchLookupJob, TennisPlayerIdentityLink, TennisPlayerProfile,
-    TennisPlayerRefreshJob, TennisPointMatchLink, TennisPointRefreshJob,
+    TennisPlayerMetricSnapshot, TennisPlayerRefreshJob, TennisPlayerResultFact,
+    TennisPointMatchLink, TennisPointRefreshJob,
     TennisPointRefreshJobEvent,
 )
 from db.tennis_confirmations import upsert_manual_confirmation
@@ -100,6 +103,10 @@ def _request_payload(row: ManualConfirmationRequest, session) -> dict[str, Any]:
                 "score": match.score,
             })
         evidence.setdefault("source_match_id", row.candidate_id)
+    latest_decision = session.query(ManualConfirmationDecision).filter_by(
+        request_id=row.id
+    ).order_by(ManualConfirmationDecision.created_at.desc(), ManualConfirmationDecision.id.desc()).first()
+    correctable, correction_reason = _confirmation_correction_state(session, row)
     return {
         "id": str(row.id), "kind": row.kind, "subject_id": row.subject_id,
         "candidate_id": row.candidate_id, "source": row.source,
@@ -108,7 +115,45 @@ def _request_payload(row: ManualConfirmationRequest, session) -> dict[str, Any]:
         "updated_at": row.updated_at.isoformat(),
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
         "decided_by": row.decided_by,
+        "latest_decision": latest_decision.decision if latest_decision else None,
+        "can_correct": correctable,
+        "correction_unavailable_reason": correction_reason,
     }
+
+
+def _confirmation_correction_state(session, item) -> tuple[bool, str | None]:
+    """Only the newest terminal choice for a subject may be corrected."""
+    if item.status not in {"approved", "rejected"}:
+        return False, "Заявка не имеет решения, которое можно исправить"
+    pending = session.query(ManualConfirmationRequest.id).filter(
+        ManualConfirmationRequest.kind == item.kind,
+        ManualConfirmationRequest.subject_id == item.subject_id,
+        ManualConfirmationRequest.source == item.source,
+        ManualConfirmationRequest.status == "pending",
+    ).first()
+    if pending:
+        return False, "По этой сущности уже ожидает решения новое предложение"
+    latest = session.query(ManualConfirmationRequest).filter(
+        ManualConfirmationRequest.kind == item.kind,
+        ManualConfirmationRequest.subject_id == item.subject_id,
+        ManualConfirmationRequest.source == item.source,
+        ManualConfirmationRequest.status.in_(("approved", "rejected")),
+    ).order_by(ManualConfirmationRequest.decided_at.desc(), ManualConfirmationRequest.id.desc()).first()
+    if latest is None or latest.id != item.id:
+        return False, "Есть более новое решение для этой сущности"
+    return True, None
+
+
+def _validate_confirmation_status_for_decision(status: str, decision: str) -> str | None:
+    """Return the old terminal state for corrections; pending is a first decision."""
+    if status == "pending":
+        return None
+    if status not in {"approved", "rejected"}:
+        raise HTTPException(status_code=409, detail="Only the latest approved or rejected decision can be corrected")
+    target_status = {"approve": "approved", "reject": "rejected"}[decision]
+    if status == target_status:
+        raise HTTPException(status_code=409, detail="This decision is already current; choose the opposite decision to correct it")
+    return status
 
 
 @router.get("/api/admin/confirmations")
@@ -201,6 +246,116 @@ def _get_or_create_player_profile(session, participant_id) -> TennisPlayerProfil
     return profile
 
 
+def _reconcile_player_facts_after_identity_decision(
+    session, profile: TennisPlayerProfile, participant_id: uuid.UUID,
+    source_player_id: str, *, accept: bool, now: datetime,
+) -> int:
+    """Append a temporal correction for facts from a manually changed identity.
+
+    Profile facts and metric snapshots are immutable history. Rejecting an
+    approved identity appends invalid fact versions and a new current metrics
+    snapshot, so neither live forecasts nor future imports keep using the
+    wrong player's results. Re-approving a rejected identity restores only
+    facts invalidated by this same correction path.
+    """
+    from tennis_adapter.player_metrics import aggregate_results, digest_metrics
+
+    rows = session.query(TennisPlayerResultFact).filter(
+        TennisPlayerResultFact.participant_id == participant_id,
+        TennisPlayerResultFact.source == "flashscore",
+        TennisPlayerResultFact.source_payload["source_player_id"].astext == source_player_id,
+    ).order_by(TennisPlayerResultFact.available_at, TennisPlayerResultFact.id).all()
+    latest_by_match = {}
+    versions_by_match = {}
+    for row in rows:
+        versions_by_match.setdefault(row.source_match_id, []).append(row)
+        latest_by_match[row.source_match_id] = row
+
+    changed = 0
+    for match_id, latest in latest_by_match.items():
+        if accept:
+            if latest.valid:
+                continue
+            if (latest.source_payload or {}).get("invalidated_reason") != "admin_rejected_profile_identity":
+                continue
+            prior_valid = next((row for row in reversed(versions_by_match[match_id][:-1]) if row.valid), None)
+            if prior_valid is None:
+                continue
+            payload = dict(prior_valid.source_payload or {})
+            payload.update({"restored_at": now.isoformat(), "identity_restored": True})
+            result_hash = hashlib.sha256(json.dumps({
+                "prior_hash": prior_valid.result_hash,
+                "restored_after": latest.result_hash,
+                "available_at": now.isoformat(),
+            }, sort_keys=True).encode()).hexdigest()
+            session.add(TennisPlayerResultFact(
+                participant_id=participant_id, source="flashscore", source_match_id=match_id,
+                result_hash=result_hash, played_at=prior_valid.played_at, available_at=now,
+                surface=prior_valid.surface, tour_level=prior_valid.tour_level, won=prior_valid.won,
+                valid=True, sets_played=prior_valid.sets_played,
+                duration_minutes=prior_valid.duration_minutes, serve_points=prior_valid.serve_points,
+                serve_points_won=prior_valid.serve_points_won, source_payload=payload,
+            ))
+            changed += 1
+        else:
+            if not latest.valid:
+                continue
+            payload = dict(latest.source_payload or {})
+            payload.update({"valid": False, "invalidated_reason": "admin_rejected_profile_identity",
+                           "invalidated_at": now.isoformat()})
+            result_hash = hashlib.sha256(json.dumps({
+                "prior_hash": latest.result_hash,
+                "valid": False,
+                "reason": "admin_rejected_profile_identity",
+                "available_at": now.isoformat(),
+            }, sort_keys=True).encode()).hexdigest()
+            session.add(TennisPlayerResultFact(
+                participant_id=participant_id, source="flashscore", source_match_id=match_id,
+                result_hash=result_hash, played_at=latest.played_at, available_at=now,
+                surface=latest.surface, tour_level=latest.tour_level, won=latest.won,
+                valid=False, sets_played=latest.sets_played,
+                duration_minutes=latest.duration_minutes, serve_points=latest.serve_points,
+                serve_points_won=latest.serve_points_won, source_payload=payload,
+            ))
+            changed += 1
+
+    if not changed:
+        return 0
+    session.flush()
+
+    all_facts = session.query(TennisPlayerResultFact).filter(
+        TennisPlayerResultFact.participant_id == participant_id,
+        TennisPlayerResultFact.available_at <= now,
+    ).order_by(TennisPlayerResultFact.played_at, TennisPlayerResultFact.available_at,
+               TennisPlayerResultFact.id).all()
+    current_by_match = {}
+    for fact in all_facts:
+        current_by_match[fact.source_match_id] = fact
+    selected = [fact for fact in current_by_match.values() if fact.valid and (
+        fact.source != "flashscore" or
+        (fact.source_payload or {}).get("source_player_id") == (source_player_id if accept else None)
+    )]
+    metrics = aggregate_results({
+        "played_at": fact.played_at, "won": fact.won, "surface": fact.surface,
+        "tour_level": fact.tour_level, "sets_played": fact.sets_played,
+        "duration_minutes": fact.duration_minutes, "serve_points": fact.serve_points,
+        "serve_points_won": fact.serve_points_won,
+    } for fact in selected)
+    digest = digest_metrics(metrics)
+    profile.metrics_json = metrics
+    profile.history_digest = digest
+    profile.metrics_version = int(profile.metrics_version or 0) + 1
+    profile.history_match_count = int(metrics["overall"]["matches"])
+    profile.source_watermark = max((fact.played_at for fact in selected), default=None)
+    profile.metrics_available_at = now
+    session.add(TennisPlayerMetricSnapshot(
+        participant_id=participant_id, metrics_version=profile.metrics_version,
+        available_at=now, source_watermark=profile.source_watermark,
+        history_digest=digest, metrics_json=metrics,
+    ))
+    return changed
+
+
 def _supersede_siblings(session, item, reviewer: str, now: datetime) -> None:
     siblings = session.query(ManualConfirmationRequest).filter(
         ManualConfirmationRequest.kind == item.kind,
@@ -250,9 +405,16 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
         item = session.query(ManualConfirmationRequest).filter_by(id=request_id).with_for_update().first()
         if item is None:
             raise HTTPException(status_code=404, detail="Confirmation request not found")
-        if item.status != "pending" or item.version != payload.expected_version:
+        if item.version != payload.expected_version:
             raise HTTPException(status_code=409, detail="Confirmation request is no longer current")
+        previous_status = _validate_confirmation_status_for_decision(item.status, payload.decision)
+        correction = previous_status is not None
+        if correction:
+            can_correct, reason = _confirmation_correction_state(session, item)
+            if not can_correct:
+                raise HTTPException(status_code=409, detail=reason or "Confirmation decision is no longer current")
         evidence = dict(item.evidence_json or {})
+        reconciled_facts = 0
         if item.kind == "player_profile":
             try:
                 participant_id = uuid.UUID(item.subject_id)
@@ -275,6 +437,10 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
             for link in now_latest:
                 latest_by_source.setdefault(link.source_player_id, link)
             if payload.decision == "approve":
+                if correction and previous_status == "rejected":
+                    reconciled_facts = _reconcile_player_facts_after_identity_decision(
+                        session, profile, participant_id, source_player_id, accept=True, now=now,
+                    )
                 prior_ids = [source_id for source_id, link in latest_by_source.items()
                              if link.status == "confirmed" and source_id != source_player_id]
                 for old_id in prior_ids:
@@ -299,18 +465,35 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
                 ))
                 result_status = "approved"
             else:
+                was_current_identity = identities.get("flashscore") == source_player_id
                 identities["flashscore_rejected_ids"] = sorted(set(identities.get("flashscore_rejected_ids") or []) | {source_player_id})
                 identities["flashscore_candidates"] = [row for row in identities.get("flashscore_candidates", [])
                                                           if str(row.get("source_player_id")) != source_player_id]
+                if identities.get("flashscore") == source_player_id:
+                    identities.pop("flashscore", None)
+                    if profile.profile_url == profile_url:
+                        profile.profile_url = None
                 profile.source_identities = identities
                 profile.sync_status = "pending"
-                profile.sync_error = "PROFILE_SEARCH_AFTER_REJECTION"
+                profile.sync_error = "PROFILE_SEARCH_AFTER_CORRECTION" if correction else "PROFILE_SEARCH_AFTER_REJECTION"
                 session.add(TennisPlayerIdentityLink(
                     participant_id=participant_id, source="flashscore", source_player_id=source_player_id,
                     status="rejected", evidence_json={"method": "admin_rejection", "request_id": str(item.id)},
                     available_at=now,
                 ))
+                if was_current_identity:
+                    reconciled_facts = _reconcile_player_facts_after_identity_decision(
+                        session, profile, participant_id, source_player_id, accept=False, now=now,
+                    )
                 result_status = "rejected"
+            if payload.decision == "approve":
+                rejected_ids = set(identities.get("flashscore_rejected_ids") or [])
+                rejected_ids.discard(source_player_id)
+                if rejected_ids:
+                    identities["flashscore_rejected_ids"] = sorted(rejected_ids)
+                else:
+                    identities.pop("flashscore_rejected_ids", None)
+                profile.source_identities = identities
             if payload.decision == "approve":
                 _supersede_siblings(session, item, reviewer, now)
         elif item.kind == "event_match":
@@ -388,10 +571,13 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
         session.add(ManualConfirmationDecision(
             request_id=item.id, decision=payload.decision, request_version=payload.expected_version,
             decided_by=reviewer, details_json={"kind": item.kind, "subject_id": item.subject_id,
-                                                "candidate_id": item.candidate_id}, created_at=now,
+                                                "candidate_id": item.candidate_id,
+                                                "reconciled_profile_facts": reconciled_facts,
+                                                "corrected_previous_status": previous_status if correction else None}, created_at=now,
         ))
         session.commit()
         return {"id": str(item.id), "status": item.status, "decision": payload.decision,
+                "corrected": correction,
                 "next_action": "player_search" if item.kind == "player_profile" and payload.decision == "reject" else
                               "player_refresh" if item.kind == "player_profile" else
                               "match_search" if payload.decision == "reject" else "point_history"}

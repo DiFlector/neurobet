@@ -212,15 +212,54 @@ def test_event_result_matcher_marks_finished():
         official = (matched.metadata_json or {}).get("fonbet_official_result") or {}
         first_available_at = official.get("available_at")
         assert first_available_at
+        assert len((matched.metadata_json or {}).get("fonbet_official_result_observations") or []) == 1
         repeated = EventResultMatcher.match_and_complete_event(
             session, canonical.model_copy(update={"available_at": datetime(2000, 1, 1, tzinfo=timezone.utc)})
         )
         repeated_official = (repeated.metadata_json or {}).get("fonbet_official_result") or {}
         assert repeated_official.get("available_at") == first_available_at
+        assert len((repeated.metadata_json or {}).get("fonbet_official_result_observations") or []) == 1
         session.commit()
         print("test_event_result_matcher_marks_finished: OK")
     finally:
         session.close()
+
+
+def test_event_result_corrections_keep_append_only_a_to_b_to_a_history():
+    """The pure history primitive preserves corrections and suppresses adjacent repeats."""
+    base = CanonicalMatchResult(
+        source_event_id="fixture-1",
+        sport_code="tennis",
+        tournament="ATP Tour",
+        participant_a="Player A",
+        participant_b="Player B",
+        final_score="2:1 (6-4 4-6 6-3)",
+        winner="player_a",
+        status="FINISHED",
+        available_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    corrected = base.model_copy(update={
+        "final_score": "2:1 (6-2 2-6 6-1)",
+        "available_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+    })
+    returned = base.model_copy(update={"available_at": datetime(2026, 1, 3, tzinfo=timezone.utc)})
+    repeated_poll = returned.model_copy(update={
+        "timestamp": datetime(2026, 1, 4, tzinfo=timezone.utc),
+        "available_at": datetime(2026, 1, 4, tzinfo=timezone.utc),
+    })
+    meta = {}
+
+    EventResultMatcher._append_result_observation(meta, base)
+    EventResultMatcher._append_result_observation(meta, corrected)
+    EventResultMatcher._append_result_observation(meta, returned)
+    EventResultMatcher._append_result_observation(meta, repeated_poll)
+
+    history = meta["fonbet_official_result_observations"]
+    assert [item["result"]["final_score"] for item in history] == [
+        base.final_score, corrected.final_score, returned.final_score,
+    ]
+    assert [datetime.fromisoformat(item["available_at"].replace("Z", "+00:00"))
+            for item in history] == [base.available_at, corrected.available_at, returned.available_at]
 
 
 def test_settlement_win():
@@ -878,6 +917,7 @@ if __name__ == "__main__":
     test_fonbet_results_get_by_date_parsing()
     test_retirement_and_walkover_detection()
     test_event_result_matcher_marks_finished()
+    test_event_result_corrections_keep_append_only_a_to_b_to_a_history()
     test_settlement_win()
     test_settlement_loss()
     test_settlement_void()
