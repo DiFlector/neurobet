@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from .composite_predictor import is_composite_checkpoint, load_predictor
@@ -37,6 +37,33 @@ def _log_skip_once(key: str, message: str) -> None:
         return
     _logged_skips.add(key)
     logger.info(message)
+
+
+def _ready_tennis_preparation(session, events) -> set[str]:
+    """Read cached readiness; the dedicated Flashscore worker owns refresh work."""
+    from db.models.external_tennis import TennisPlayerProfile
+
+    participant_ids = {
+        participant_id
+        for event in events
+        for participant_id in (event.participant_a_id, event.participant_b_id)
+        if participant_id is not None
+    }
+    if not participant_ids:
+        return set()
+    profiles = session.query(TennisPlayerProfile).filter(
+        TennisPlayerProfile.participant_id.in_(participant_ids),
+    ).all()
+    ready = {
+        profile.participant_id
+        for profile in profiles
+        if profile.sync_status in {"available", "empty", "stale"} and profile.metrics_version > 0
+    }
+    return {
+        str(event.id)
+        for event in events
+        if event.participant_a_id in ready and event.participant_b_id in ready
+    }
 
 
 def load_registry_predictors() -> tuple[Dict[str, MLPredictor], Dict[str, List[MLPredictor]]]:
@@ -870,6 +897,21 @@ def evaluate_pending_events(
             needs_work = ~combat_done
             if shadow_sports:
                 needs_work = or_(needs_work, Event.sport_code.in_(shadow_sports))
+            cutoff = datetime.now(timezone.utc)
+            forecast_events = (
+                session.query(Event)
+                .filter(Event.sport_code == "tennis", Event.status.in_(["live", "prematch"]))
+                .filter(~synthetic)
+                .filter(or_(
+                    Event.status == "live",
+                    and_(Event.status == "prematch", Event.scheduled_start_at >= cutoff,
+                         Event.scheduled_start_at <= cutoff + timedelta(hours=6)),
+                ))
+                .order_by(Event.is_live.desc(), Event.scheduled_start_at.asc())
+                .all()
+            )
+            preparation_ready_ids = _ready_tennis_preparation(session, forecast_events)
+            odds_free_forecast_ids = {str(evt.id) for evt in forecast_events} & preparation_ready_ids
             active_events = (
                 session.query(Event)
                 .filter(Event.status.in_(["live", "prematch"]))
@@ -879,11 +921,11 @@ def evaluate_pending_events(
                 .limit(30)
                 .all()
             )
-            if not active_events:
+            if not active_events and not forecast_events:
                 session.commit()
                 return 0
+            active_events = list({str(evt.id): evt for evt in [*forecast_events, *active_events]}.values())
 
-            cutoff = datetime.now(timezone.utc)
             llm_budget = [1]
             player_history = None
             for evt in active_events:
@@ -893,22 +935,17 @@ def evaluate_pending_events(
                     continue
                 predictor = predictors.get(sport_code)
                 shadows_for_sport = shadows.get(sport_code, [])
-                if (not predictor or not predictor.checkpoint_data) and not shadows_for_sport:
+                if (not predictor or not predictor.checkpoint_data) and not shadows_for_sport and sport_code != "tennis":
                     _log_skip_once(
                         f"off:{sport_code}",
                         f"Skip {sport_code} events: no model for this sport",
                     )
                     continue
-                if feature_registry.get(sport_code) is None:
+                if feature_registry.get(sport_code) is None and sport_code != "tennis":
                     _log_skip_once(
                         f"features:{sport_code}",
                         f"Skip {sport_code} events: no feature builder for this sport",
                     )
-                    continue
-
-                odds_a, odds_b = _latest_outcome_odds(session, evt.id)
-                if odds_a is None or odds_b is None:
-                    logger.debug("Skip event %s: no match-winner odds snapshot", evt.id)
                     continue
 
                 states = (
@@ -920,6 +957,20 @@ def evaluate_pending_events(
                     .order_by(EventStateSnapshot.observed_at.asc())
                     .all()
                 )
+                if sport_code == "tennis" and str(evt.id) in odds_free_forecast_ids:
+                    try:
+                        from .tennis_forecast import persist_event_forecasts
+
+                        with session.begin_nested():
+                            evaluated_count += persist_event_forecasts(session, evt, states, cutoff)
+                    except Exception as exc:
+                        logger.warning("Odds-free forecast failed for event %s: %s", evt.id, exc)
+
+                odds_a, odds_b = _latest_outcome_odds(session, evt.id)
+                if odds_a is None or odds_b is None:
+                    logger.debug("Skip betting evaluation for event %s: no match-winner odds snapshot", evt.id)
+                    continue
+
                 odds_rows = (
                     session.query(OddsSnapshot)
                     .filter(

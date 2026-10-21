@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
-from sqlalchemy import String, Boolean, Numeric, DateTime, ForeignKey, Index
+from sqlalchemy import String, Boolean, Numeric, DateTime, ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from ..base import Base, UUIDPrimaryKeyMixin, utc_now
@@ -23,6 +23,27 @@ class FeatureSnapshot(Base):
 
     __table_args__ = (
         Index("idx_feature_snapshots_event_time", "event_id", "observed_at"),
+    )
+
+
+class TennisForecastSnapshot(Base, UUIDPrimaryKeyMixin):
+    """Immutable odds-free forecast captured for one distinct match state."""
+    __tablename__ = "tennis_forecast_snapshots"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    forecast_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "model_name", "model_version", "sequence_no", name="uq_tennis_forecast_sequence"),
+        Index("idx_tennis_forecasts_event_time", "event_id", "observed_at"),
+        Index("idx_tennis_forecasts_model_time", "model_name", "model_version", "observed_at"),
     )
 
 

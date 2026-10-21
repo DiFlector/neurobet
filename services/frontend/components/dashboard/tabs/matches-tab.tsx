@@ -328,9 +328,9 @@ export function MatchesTab({
           }
           if (showAllMatches) {
             for (const prediction of eventPredictions) {
-              if (decisionStatus(prediction, evt.sport_code).chosen) {
-                markets.add(prediction.market || "match_winner");
-              }
+              // В режиме «Показывать все» карточки нужны для каждого рынка с
+              // прогнозом, даже если модель ещё не подтвердила сторону.
+              markets.add(prediction.market || "match_winner");
             }
           }
           if (markets.size === 0) {
@@ -354,6 +354,7 @@ export function MatchesTab({
               predictions={eventPredictions}
               bets={eventBets}
               marketFilter={market}
+              showAll={showAllMatches}
               betOutcome={betOutcomeByEvent.get(evt.id) || null}
               onInspect={onInspectEvent}
             />

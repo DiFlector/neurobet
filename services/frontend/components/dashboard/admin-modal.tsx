@@ -30,20 +30,7 @@ import { getApiBase } from "@/lib/api";
 import { getSportNameRu } from "@/lib/formatters";
 import { AdminBacktestPanel } from "@/components/dashboard/admin-backtest-panel";
 import { AdminModelDetail } from "@/components/dashboard/admin-model-detail";
-
-// Хеш SHA-256 от пароля пользователя "!Zz128500246315"
-// Пароль нигде не хранится в открытом виде.
-const ADMIN_PASSWORD_SHA256 =
-  "74a9bec65c78f58d627cdadbac3403f43094f8f952736029fe9dc5978fe9f8ba";
-const ADMIN_USERNAME = "diflector";
-
-async function computeSHA256(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+import { AdminConfirmationsPanel } from "@/components/dashboard/admin-confirmations-panel";
 
 interface AdminModalProps {
   onResetSimulation: () => Promise<void>;
@@ -94,16 +81,17 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
   const [modelRows, setModelRows] = React.useState<ModelLiveRecord[] | null>(null);
   const [modelsLoading, setModelsLoading] = React.useState(false);
-  const [section, setSection] = React.useState<"overview" | "backtest">("overview");
+  const [section, setSection] = React.useState<"overview" | "backtest" | "confirmations">("overview");
   const [expandedModelId, setExpandedModelId] = React.useState<string | null>(null);
+  const [pendingConfirmations, setPendingConfirmations] = React.useState(0);
 
   // Проверка сессии при открытии
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      const auth = sessionStorage.getItem("neurobet_admin_auth");
-      if (auth === "true") {
-        setIsAuthenticated(true);
-      }
+      if (!open) return;
+      fetch(`${getApiBase()}/admin/session`, { cache: "no-store", credentials: "same-origin" })
+        .then((res) => setIsAuthenticated(res.ok))
+        .catch(() => setIsAuthenticated(false));
     }
   }, [open]);
 
@@ -141,27 +129,33 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
     setIsLoggingIn(true);
 
     try {
-      const trimmedUser = username.trim();
-      const hashedPw = await computeSHA256(password);
-
-      if (trimmedUser === ADMIN_USERNAME && hashedPw === ADMIN_PASSWORD_SHA256) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem("neurobet_admin_auth", "true");
-        setPassword("");
-        setErrorMsg(null);
-      } else {
-        setErrorMsg("Неверное имя пользователя или пароль администратора");
+      const response = await fetch(`${getApiBase()}/admin/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        setErrorMsg(response.status === 503
+          ? "Серверная авторизация админки не настроена"
+          : detail.detail || "Неверное имя пользователя или пароль администратора");
+        return;
       }
+      setIsAuthenticated(true);
+      setPassword("");
+      setErrorMsg(null);
     } catch {
-      setErrorMsg("Ошибка криптографической проверки пароля");
+      setErrorMsg("Ошибка запроса авторизации администратора");
     } finally {
       setIsLoggingIn(false);
     }
   };
 
   const handleLogout = () => {
+    fetch(`${getApiBase()}/admin/session`, { method: "DELETE", credentials: "same-origin", cache: "no-store" }).catch(() => {});
     setIsAuthenticated(false);
-    sessionStorage.removeItem("neurobet_admin_auth");
     setPassword("");
     setActionStatus(null);
   };
@@ -256,7 +250,7 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                 className="text-xs h-9 bg-background/80"
               />
               <p className="text-[10px] text-muted-foreground">
-                Пароль проверяется в браузере и не отправляется открытым текстом.
+                Пароль проверяется сервером; после входа используется защищённая сессия.
               </p>
             </div>
 
@@ -296,6 +290,17 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
                 Бэктест
               </Button>
               <Button
+                size="sm"
+                variant={section === "confirmations" ? "default" : "outline"}
+                className="h-8 text-xs"
+                onClick={() => setSection("confirmations")}
+              >
+                Подтверждения
+                {pendingConfirmations > 0 && (
+                  <Badge className="ml-1.5 h-4 min-w-4 px-1 text-[9px]">{pendingConfirmations}</Badge>
+                )}
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 className="ml-auto h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
@@ -307,6 +312,8 @@ export function AdminModal({ onResetSimulation }: AdminModalProps) {
             </div>
             {section === "backtest" ? (
               <AdminBacktestPanel />
+            ) : section === "confirmations" ? (
+              <AdminConfirmationsPanel onPendingCountChange={setPendingConfirmations} />
             ) : (
             <>
             <div className="space-y-2">

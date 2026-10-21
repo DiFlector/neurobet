@@ -1,0 +1,32 @@
+{
+  "manifest_version": "tennis_shared_walk_forward_v1",
+  "created_at": "2026-10-20T23:25:39.399779+00:00",
+  "dataset_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "ordered_event_ids": [],
+  "event_times": {},
+  "development_event_ids": [],
+  "holdout_event_ids": [],
+  "folds": [
+    {
+      "fold": 1,
+      "train_event_ids": [],
+      "validation_event_ids": []
+    },
+    {
+      "fold": 2,
+      "train_event_ids": [],
+      "validation_event_ids": []
+    },
+    {
+      "fold": 3,
+      "train_event_ids": [],
+      "validation_event_ids": []
+    },
+    {
+      "fold": 4,
+      "train_event_ids": [],
+      "validation_event_ids": []
+    }
+  ],
+  "holdout_quality_metrics_opened": false
+}

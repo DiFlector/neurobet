@@ -9,6 +9,7 @@ description = "Web research and contextual tennis information extractor"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27.0",
+    "playwright>=1.43.0",
     "pydantic>=2.7.0",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
@@ -16,6 +17,7 @@ dependencies = [
     "ddgs>=9.0.0",
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
+    "boto3>=1.34.0",
 ]
 
 [tool.hatch.build.targets.wheel]

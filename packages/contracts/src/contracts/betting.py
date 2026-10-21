@@ -100,3 +100,7 @@ class CanonicalMatchResult(BaseContract):
     is_retired: bool = Field(default=False, description="True if one participant retired/withdrew")
     is_walkover: bool = Field(default=False, description="True if match was a walkover")
     comments: str = Field(default="", description="Official comments/reasons from bookmaker results")
+    available_at: Optional[datetime] = Field(
+        default=None,
+        description="When this official result was first observed and accepted by Neurobet",
+    )

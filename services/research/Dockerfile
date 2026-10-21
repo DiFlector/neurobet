@@ -19,7 +19,15 @@ RUN pip install --no-cache-dir /app/packages/observability
 COPY packages/db /app/packages/db
 RUN pip install --no-cache-dir /app/packages/db
 
+COPY sports/tennis /app/packages/sport-tennis
+RUN pip install --no-cache-dir /app/packages/sport-tennis
+
 COPY services/research/pyproject.toml /app/
+RUN pip install --no-cache-dir "playwright>=1.43.0" && playwright install --with-deps chromium
+
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
 COPY services/research/app /app/app
 RUN pip install --no-cache-dir .
 

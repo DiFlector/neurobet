@@ -209,6 +209,14 @@ def test_event_result_matcher_marks_finished():
         assert matched.finished_at is not None
         assert matched.current_score["final_score"] == "2:1 (6-4 4-6 6-3)"
         assert matched.current_score["winner"] == "player_a"
+        official = (matched.metadata_json or {}).get("fonbet_official_result") or {}
+        first_available_at = official.get("available_at")
+        assert first_available_at
+        repeated = EventResultMatcher.match_and_complete_event(
+            session, canonical.model_copy(update={"available_at": datetime(2000, 1, 1, tzinfo=timezone.utc)})
+        )
+        repeated_official = (repeated.metadata_json or {}).get("fonbet_official_result") or {}
+        assert repeated_official.get("available_at") == first_available_at
         session.commit()
         print("test_event_result_matcher_marks_finished: OK")
     finally:

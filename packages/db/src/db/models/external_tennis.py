@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import DateTime, Float, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,6 +64,318 @@ class ExtTennisMatch(Base):
         Index("idx_ext_tennis_matches_available", "available_at"),
         Index("idx_ext_tennis_matches_players", "winner_name", "loser_name"),
     )
+
+
+class ExtTennisMatchObservation(Base):
+    """Immutable source-specific version of a parsed match result."""
+
+    __tablename__ = "ext_tennis_match_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    observation_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_content_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_match_id", "available_at", name="uq_ext_tennis_match_observation_version"),
+        Index("idx_ext_tennis_match_observation_time", "source", "source_match_id", "available_at"),
+    )
+
+
+class TennisPlayerProfile(Base):
+    """Current identity/sync state and denormalized metrics for one Fonbet participant."""
+
+    __tablename__ = "tennis_player_profiles"
+
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), primary_key=True
+    )
+    canonical_player_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="SET NULL"), nullable=True
+    )
+    source_identities: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    profile_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    sync_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    sync_error: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_watermark: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_full_history_scan_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    history_match_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    metrics_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    metrics_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    history_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    metrics_available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tennis_player_profiles_canonical", "canonical_player_id"),
+        Index("idx_tennis_player_profiles_sync", "sync_status", "last_attempt_at"),
+    )
+
+
+class TennisPlayerIdentityLink(Base):
+    """Append-only, point-in-time evidence linking a Fonbet participant to a source player."""
+    __tablename__ = "tennis_player_identity_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_player_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tennis_player_identity_asof", "participant_id", "source", "available_at"),
+        Index("idx_tennis_player_identity_source", "source", "source_player_id", "available_at"),
+    )
+
+
+class TennisPlayerRefreshJob(Base):
+    """Durable, coalesced refresh work item keyed by canonical participant."""
+
+    __tablename__ = "tennis_player_refresh_jobs"
+
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="idle", nullable=False)
+    requested_reason: Mapped[str] = mapped_column(String(48), default="event", nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    progress_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tennis_player_refresh_dispatch", "status", "next_run_at", "lease_until"),
+    )
+
+
+class TennisPlayerMetricSnapshot(Base):
+    """Immutable metric versions used by historical training and replay."""
+
+    __tablename__ = "tennis_player_metric_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=False
+    )
+    metrics_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_watermark: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    history_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    metrics_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("participant_id", "metrics_version", "history_digest", name="uq_tennis_player_metric_snapshot"),
+        Index("idx_tennis_player_metric_asof", "participant_id", "available_at"),
+    )
+
+
+class TennisPlayerResultFact(Base):
+    """Idempotent per-player contribution; corrections replace the fact and dirty the profile."""
+
+    __tablename__ = "tennis_player_result_facts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    result_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    surface: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
+    tour_level: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
+    won: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    valid: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sets_played: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    serve_points: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    serve_points_won: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    source_payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("participant_id", "source", "source_match_id", "available_at", name="uq_tennis_player_result_fact_version"),
+        Index("idx_tennis_player_fact_time", "participant_id", "played_at", "available_at"),
+    )
+
+
+class TennisPointDocument(Base):
+    """Archived point-by-point source document as observed at a specific time."""
+    __tablename__ = "tennis_point_documents"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="flashscore")
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    archived_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    availability_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown_legacy")
+    retrospective: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    parse_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    quality_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+    __table_args__ = (Index("idx_tennis_point_document_asof", "source_match_id", "source_url", "retrieved_at"),)
+
+
+class TennisPointHistoryVersion(Base):
+    """Immutable parser output; each changed document creates a new version."""
+    __tablename__ = "tennis_point_history_versions"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tennis_point_documents.id", ondelete="CASCADE"), nullable=False)
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    fonbet_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    availability_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown_legacy")
+    events_json: Mapped[list] = mapped_column(JSONB, nullable=False)
+    quality_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    retrospective: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (Index("idx_tennis_point_history_event_available", "fonbet_event_id", "available_at"),)
+
+
+class FlashscoreImportJob(Base):
+    """Durable, coalesced full-profile import requested by the worker/API."""
+    __tablename__ = "flashscore_import_jobs"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
+    profile_urls: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    progress_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    result_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (Index("idx_flashscore_import_dispatch", "status", "next_run_at", "lease_until"),)
+
+
+class TennisPointMatchLink(Base):
+    """Candidate or manually resolved Flashscore to Fonbet event association."""
+    __tablename__ = "tennis_point_match_links"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    fonbet_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="unmatched")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TennisPointRefreshJob(Base):
+    """Coalesced durable polling job for one live Fonbet event."""
+    __tablename__ = "tennis_point_refresh_jobs"
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    last_requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (Index("idx_tennis_point_refresh_dispatch", "status", "next_run_at", "lease_until"),)
+
+
+class TennisPointRefreshJobEvent(Base):
+    """Append-only status history used by point-history as-of reads."""
+    __tablename__ = "tennis_point_refresh_job_events"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    source_match_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("idx_tennis_point_job_event_asof", "event_id", "available_at"),)
+
+
+class TennisMatchLookupJob(Base):
+    """Durable lookup for the external live match associated with a Fonbet event."""
+    __tablename__ = "tennis_match_lookup_jobs"
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    source_match_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (Index("idx_tennis_match_lookup_dispatch", "status", "next_run_at", "lease_until"),)
+
+
+class ManualConfirmationRequest(Base):
+    """Durable review item for an uncertain external identity or match link."""
+    __tablename__ = "manual_confirmation_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    candidate_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="flashscore")
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    __table_args__ = (
+        Index("idx_manual_confirmation_status_created", "status", "created_at"),
+        Index("idx_manual_confirmation_subject", "kind", "subject_id", "status"),
+        Index("uq_manual_confirmation_pending_pair", "kind", "subject_id", "candidate_id", "source",
+              unique=True, postgresql_where=text("status = 'pending'")),
+    )
+
+
+class ManualConfirmationDecision(Base):
+    """Append-only audit trail for every human confirmation decision."""
+    __tablename__ = "manual_confirmation_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("manual_confirmation_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    decision: Mapped[str] = mapped_column(String(24), nullable=False)
+    request_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    decided_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    details_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (Index("idx_manual_confirmation_decisions_request", "request_id", "created_at"),)
 
 
 class ExtTennisRanking(Base):

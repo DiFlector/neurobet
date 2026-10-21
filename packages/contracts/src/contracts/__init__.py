@@ -1,7 +1,7 @@
 from .base import BaseContract, utc_now
 from .events import Event, EventState, TennisGameScore, TennisSetScore, BasketballQuarterScore
 from .odds import Selection, Market, OddsSnapshot
-from .predictions import FeatureVector, OutcomePrediction, MLPrediction
+from .predictions import FeatureVector, OutcomePrediction, MLPrediction, TennisForecast, TennisForecastScenario, TennisPointEvent, TennisPointHistory
 from .research import ResearchEvidence, ResearchPacket, ResearchRequest
 from .external_predictions import ExternalPredictionDTO, PredictionConsensusSummary
 from .decisions import (
@@ -70,6 +70,10 @@ __all__ = [
     "FeatureVector",
     "OutcomePrediction",
     "MLPrediction",
+    "TennisForecast",
+    "TennisForecastScenario",
+    "TennisPointEvent",
+    "TennisPointHistory",
     "ResearchEvidence",
     "ResearchPacket",
     "ResearchRequest",

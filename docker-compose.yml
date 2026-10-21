@@ -341,6 +341,31 @@ services:
   # ============================================================================
   # Core Platform: Web Research
   # ============================================================================
+  research-proxy-relay:
+    build:
+      context: .
+      dockerfile: services/research/proxy-relay.Dockerfile
+    container_name: neurobet_research_proxy_relay
+    restart: unless-stopped
+    network_mode: host
+    user: "65534:65534"
+    command:
+      - TCP-LISTEN:${RESEARCH_PROXY_PORT:-17890},bind=${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1},reuseaddr,fork
+      - TCP:127.0.0.1:${HOST_HTTP_PROXY_PORT:-7890}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z ${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1} ${RESEARCH_PROXY_PORT:-17890}"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+
   research:
     build:
       context: .
@@ -355,6 +380,15 @@ services:
       RESEARCH_SEARXNG_URL: ${RESEARCH_SEARXNG_URL:-http://searxng:8080}
       RESEARCH_PERSIST_DB: ${RESEARCH_PERSIST_DB:-true}
       RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-15}
+      FLASHSCORE_TENNIS_POINT_POLL_SECONDS: ${FLASHSCORE_TENNIS_POINT_POLL_SECONDS:-30}
+      FLASHSCORE_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_TENNIS_POINT_CONCURRENCY:-2}
+      FLASHSCORE_TENNIS_PROFILE_CONCURRENCY: ${FLASHSCORE_TENNIS_PROFILE_CONCURRENCY:-2}
+      FLASHSCORE_EXECUTOR_ENABLED: "true"
+      RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager
       POSTGRES_HOST: postgres
       POSTGRES_INTERNAL_PORT: "5432"
     depends_on:
@@ -362,6 +396,8 @@ services:
         condition: service_healthy
       searxng:
         condition: service_started
+      research-proxy-relay:
+        condition: service_healthy
     networks:
       - neurobet-public
       - neurobet-internal
@@ -379,6 +415,58 @@ services:
         limits:
           cpus: '2.0'
           memory: 1536M
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  flashscore-worker:
+    build:
+      context: .
+      dockerfile: services/research/Dockerfile
+    container_name: neurobet_flashscore_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.flashscore_worker"]
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-UTC}
+      FLASHSCORE_EXECUTOR_ENABLED: "true"
+      FLASHSCORE_DISCOVERY_SECONDS: ${FLASHSCORE_DISCOVERY_SECONDS:-15}
+      FLASHSCORE_TENNIS_POINT_POLL_SECONDS: ${FLASHSCORE_TENNIS_POINT_POLL_SECONDS:-30}
+      FLASHSCORE_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_TENNIS_POINT_CONCURRENCY:-2}
+      FLASHSCORE_TENNIS_PROFILE_CONCURRENCY: ${FLASHSCORE_TENNIS_PROFILE_CONCURRENCY:-2}
+      RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager
+      POSTGRES_HOST: postgres
+      POSTGRES_INTERNAL_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      research-proxy-relay:
+        condition: service_healthy
+    networks:
+      - neurobet-public
+      - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2048M
     healthcheck:
       test: ["CMD-SHELL", "test -f /tmp/healthy || exit 1"]
       interval: 15s

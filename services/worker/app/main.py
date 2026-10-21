@@ -104,6 +104,7 @@ async def main():
             await consumer_bets.process_one(process_validated_bet, count=5, block_ms=200)
             await consumer_raw.process_one(process_fonbet_raw, count=5, block_ms=200)
 
+            now_ts = asyncio.get_event_loop().time()
             # Periodic settlement + LLM decision sync (every ~30s)
             now_ts = asyncio.get_event_loop().time()
             if now_ts - last_settle_sync > 30:

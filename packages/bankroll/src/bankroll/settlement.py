@@ -341,6 +341,19 @@ class EventResultMatcher:
             )
             return event
 
+        # Persist when this official Fonbet result became available to Neurobet.
+        # This is deliberately distinct from scheduled_start_at and is not
+        # backfilled for legacy rows. Preserve the first observation time for an
+        # unchanged result; a correction receives a new availability timestamp.
+        observed_at = utc_now()
+        resolved_available_at = result.available_at or observed_at
+        if existing_official:
+            old_payload = existing_official.model_dump(mode="json", exclude={"available_at"})
+            new_payload = result.model_dump(mode="json", exclude={"available_at"})
+            if old_payload == new_payload and existing_official.available_at is not None:
+                resolved_available_at = existing_official.available_at
+        result = result.model_copy(update={"available_at": resolved_available_at})
+
         # Update event state to finished
         event.status = "finished" if result.status != "CANCELLED" else "cancelled"
         event.is_live = False

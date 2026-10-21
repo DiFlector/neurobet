@@ -21,6 +21,23 @@ class ResearchConfig:
             "1",
             "yes",
         )
+        self.flashscore_tennis_profile_urls: List[str] = [
+            value.strip()
+            for value in os.getenv("FLASHSCORE_TENNIS_PROFILE_URLS", "").split(",")
+            if value.strip()
+        ]
+        self.flashscore_tennis_request_delay_seconds: float = max(
+            2.0, float(os.getenv("FLASHSCORE_TENNIS_REQUEST_DELAY_SECONDS", "2.0"))
+        )
+        self.flashscore_tennis_profile_concurrency: int = max(
+            1, int(os.getenv("FLASHSCORE_TENNIS_PROFILE_CONCURRENCY", "1"))
+        )
+        self.flashscore_tennis_point_poll_seconds: int = max(
+            10, int(os.getenv("FLASHSCORE_TENNIS_POINT_POLL_SECONDS", "30"))
+        )
+        self.flashscore_tennis_point_concurrency: int = max(
+            1, int(os.getenv("FLASHSCORE_TENNIS_POINT_CONCURRENCY", "1"))
+        )
 
         # MinIO
         self.minio_host: str = os.getenv("MINIO_HOST", "minio")
@@ -40,6 +57,7 @@ class ResearchConfig:
             "sports.ru",
             "championat.com",
             "flashscore.com",
+            "flashscore.com.ua",
             "bbc.com",
             "theguardian.com",
             "apnews.com",

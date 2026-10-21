@@ -45,7 +45,7 @@ try:
     from db.connection import SessionLocal
     from db.models.events import Event, EventStateSnapshot
     from db.models.odds import Market, MarketSelection, OddsSnapshot
-    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision, ModelBetJournal, ExternalPrediction
+    from db.models.predictions import MLPrediction, FeatureSnapshot, LLMDecision, ModelBetJournal, ExternalPrediction, TennisForecastSnapshot
     from db.models.betting import (
         VirtualAccount, LedgerEntry, Bet, BetSettlement, BetProposal, BetValidationResult
     )
@@ -58,6 +58,9 @@ try:
         BacktestRunResult,
     )
     from db.models.research import WebResearchRun, WebDocument, WebEvidence
+    from db.models.external_tennis import TennisPlayerProfile
+    from db.models.external_tennis import TennisPlayerIdentityLink
+    from db.models.external_tennis import TennisPointHistoryVersion, TennisPointRefreshJob
 except ImportError:
     DataQualityEngine = None
     SessionLocal = None
@@ -67,6 +70,7 @@ except ImportError:
     MarketSelection = None
     OddsSnapshot = None
     MLPrediction = None
+    TennisForecastSnapshot = None
     FeatureSnapshot = None
     LLMDecision = None
     ModelBetJournal = None
@@ -85,6 +89,10 @@ except ImportError:
     WebResearchRun = None
     WebDocument = None
     WebEvidence = None
+    TennisPlayerIdentityLink = None
+    TennisPlayerProfile = None
+    TennisPointHistoryVersion = None
+    TennisPointRefreshJob = None
 
 try:
     from bankroll import (
@@ -143,6 +151,9 @@ app = FastAPI(
     description="Research & Betting Simulation REST API for Neurobet (Primary Sport: Tennis)",
     root_path=os.getenv("BACKEND_ROOT_PATH", ""),
 )
+
+from .admin_confirmations import router as admin_confirmations_router
+app.include_router(admin_confirmations_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -286,6 +297,74 @@ def get_events(
         from .quality_display import quality_by_event
 
         quality = quality_by_event(session, events)
+        forecast_by_event = {}
+        player_profiles = {}
+        point_history_by_event = {}
+        point_job_by_event = {}
+        if events and TennisPointRefreshJob is not None:
+            event_ids = [event.id for event in events]
+            for job in session.query(TennisPointRefreshJob).filter(TennisPointRefreshJob.event_id.in_(event_ids)).all():
+                point_job_by_event[str(job.event_id)] = job
+        if events and TennisPointHistoryVersion is not None:
+            event_ids = [event.id for event in events]
+            ranked_points = session.query(
+                TennisPointHistoryVersion.id.label("point_version_id"),
+                func.row_number().over(partition_by=(TennisPointHistoryVersion.fonbet_event_id),
+                    order_by=TennisPointHistoryVersion.retrieved_at.desc()).label("row_number"),
+            ).filter(TennisPointHistoryVersion.fonbet_event_id.in_(event_ids)).subquery()
+            for item in session.query(TennisPointHistoryVersion).join(ranked_points,
+                ranked_points.c.point_version_id == TennisPointHistoryVersion.id).filter(ranked_points.c.row_number == 1).all():
+                point_history_by_event[str(item.fonbet_event_id)] = item
+        if TennisPlayerProfile is not None and events:
+            participant_ids = {
+                participant_id
+                for event in events
+                for participant_id in (event.participant_a_id, event.participant_b_id)
+                if participant_id is not None
+            }
+            for profile in session.query(TennisPlayerProfile).filter(TennisPlayerProfile.participant_id.in_(participant_ids)).all() if participant_ids else []:
+                metrics = profile.metrics_json or {}
+                player_profiles[str(profile.participant_id)] = {
+                    "participant_id": str(profile.participant_id),
+                    "canonical_player_id": str(profile.canonical_player_id) if profile.canonical_player_id else None,
+                    "profile_url": profile.profile_url,
+                    "status": profile.sync_status,
+                    "error": profile.sync_error,
+                    "metrics_version": profile.metrics_version,
+                    "history_match_count": profile.history_match_count,
+                    "available_at": profile.metrics_available_at.isoformat() if profile.metrics_available_at else None,
+                    "source_watermark": profile.source_watermark.isoformat() if profile.source_watermark else None,
+                    "last_full_history_scan_at": profile.last_full_history_scan_at.isoformat() if profile.last_full_history_scan_at else None,
+                    "overall": metrics.get("overall", {}),
+                    "recent": metrics.get("recent", {}),
+                    "elo": metrics.get("elo", {}),
+                    "glicko": metrics.get("glicko", {}),
+                    "load": metrics.get("load", {}),
+                    "coverage": metrics.get("coverage", {}),
+                }
+        if TennisForecastSnapshot is not None and events:
+            event_ids = [event.id for event in events]
+            ranked_forecasts = (
+                session.query(
+                    TennisForecastSnapshot.id.label("forecast_id"),
+                    func.row_number().over(
+                        partition_by=(TennisForecastSnapshot.event_id, TennisForecastSnapshot.model_name),
+                        order_by=TennisForecastSnapshot.observed_at.desc(),
+                    ).label("row_number"),
+                )
+                .filter(TennisForecastSnapshot.event_id.in_(event_ids))
+                .subquery()
+            )
+            snapshots = (
+                session.query(TennisForecastSnapshot)
+                .join(ranked_forecasts, ranked_forecasts.c.forecast_id == TennisForecastSnapshot.id)
+                .filter(ranked_forecasts.c.row_number <= 20)
+                .order_by(TennisForecastSnapshot.observed_at.desc())
+                .all()
+            )
+            for snapshot in snapshots:
+                event_key = str(snapshot.event_id)
+                forecast_by_event.setdefault(event_key, {}).setdefault(snapshot.model_name, []).append(snapshot.forecast_json)
 
         return {
             "total": total,
@@ -311,6 +390,18 @@ def get_events(
                         float(e.quality_score) if e.quality_score is not None else 100.0,
                     ),
                     "quality_reasons": quality.get(e.id, {}).get("quality_reasons", []),
+                    "tennis_forecasts": forecast_by_event.get(str(e.id), {}),
+                    "tennis_player_profiles": {
+                        "a": player_profiles.get(str(e.participant_a_id)) if e.participant_a_id else None,
+                        "b": player_profiles.get(str(e.participant_b_id)) if e.participant_b_id else None,
+                    },
+                    "point_history": ({
+                        "source_match_id": point_history_by_event[str(e.id)].source_match_id,
+                        "retrieved_at": point_history_by_event[str(e.id)].retrieved_at.isoformat(),
+                        "confirmed_points": (point_history_by_event[str(e.id)].quality_json or {}).get("confirmed_points", 0),
+                        "gaps": (point_history_by_event[str(e.id)].quality_json or {}).get("gaps", []),
+                    } if str(e.id) in point_history_by_event else None),
+                    "point_history_status": point_job_by_event[str(e.id)].status if str(e.id) in point_job_by_event else "not_queued",
                 }
                 for e in events
             ],
@@ -427,6 +518,261 @@ def get_event_timeline(event_id: str, limit: int = 200) -> List[Dict[str, Any]]:
             }
             for s in snapshots
         ]
+
+
+@app.get("/api/events/{event_id}/forecasts")
+def get_event_tennis_forecasts(
+    event_id: str,
+    model_name: Optional[str] = None,
+    limit: int = Query(200, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+) -> Dict[str, Any]:
+    """Return odds-free forecast history, newest first."""
+    if not SessionLocal or not TennisForecastSnapshot:
+        return {"total": 0, "forecasts": []}
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid event UUID")
+    with SessionLocal() as session:
+        query = session.query(TennisForecastSnapshot).filter(TennisForecastSnapshot.event_id == event_uuid)
+        if model_name:
+            query = query.filter(TennisForecastSnapshot.model_name == model_name)
+        total = query.count()
+        rows = query.order_by(
+            TennisForecastSnapshot.observed_at.desc(), TennisForecastSnapshot.id.desc()
+        ).offset(offset).limit(limit).all()
+        return {"total": total, "limit": limit, "offset": offset, "forecasts": [row.forecast_json for row in rows]}
+
+
+@app.get("/api/events/{event_id}/forecasts/latest")
+def get_latest_tennis_forecast(event_id: str, model_name: Optional[str] = None) -> Dict[str, Any]:
+    """Return the newest odds-free forecast, optionally for one candidate."""
+    if not SessionLocal or not TennisForecastSnapshot:
+        return {"forecast": None}
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid event UUID")
+    with SessionLocal() as session:
+        query = session.query(TennisForecastSnapshot).filter(TennisForecastSnapshot.event_id == event_uuid)
+        if model_name:
+            query = query.filter(TennisForecastSnapshot.model_name == model_name)
+        row = query.order_by(
+            TennisForecastSnapshot.observed_at.desc(), TennisForecastSnapshot.id.desc()
+        ).first()
+        return {"forecast": row.forecast_json if row else None}
+
+
+@app.get("/api/events/{event_id}/point-history")
+def get_event_point_history(
+    event_id: str, as_of: Optional[datetime] = None, limit: int = 500, offset: int = 0,
+    include_versions: bool = False,
+) -> Dict[str, Any]:
+    """Return archived, point-in-time Flashscore point history for a Fonbet event."""
+    from db.connection import SessionLocal
+    from db.models import TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJobEvent
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid event_id") from exc
+    limit, offset = max(1, min(int(limit), 2000)), max(0, int(offset))
+    with SessionLocal() as session:
+        resolved_as_of = as_of or datetime.now(timezone.utc)
+        resolved_as_of = resolved_as_of.replace(tzinfo=timezone.utc) if resolved_as_of.tzinfo is None else resolved_as_of.astimezone(timezone.utc)
+        event_links = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.fonbet_event_id == event_uuid,
+            TennisPointMatchLink.available_at <= resolved_as_of,
+        ).all()
+        candidate_source_ids = list({link.source_match_id for link in event_links})
+        all_link_rows = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.source_match_id.in_(candidate_source_ids) if candidate_source_ids else False,
+            TennisPointMatchLink.fonbet_event_id.is_not(None),
+            TennisPointMatchLink.available_at <= resolved_as_of,
+        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+        # Resolve the latest assignment for a source match globally before
+        # interpreting its status, so reassignment cannot leave two active events.
+        latest_links = {}
+        for link in all_link_rows:
+            latest_links[link.source_match_id] = link
+        valid_links = [link for link in latest_links.values()
+                       if link.fonbet_event_id == event_uuid and link.status in ("matched", "manual")]
+        source_ids = list(dict.fromkeys(link.source_match_id for link in valid_links))
+        versions = session.query(TennisPointHistoryVersion).filter(
+            TennisPointHistoryVersion.source_match_id.in_(source_ids) if source_ids else False,
+            TennisPointHistoryVersion.available_at.is_not(None),
+            TennisPointHistoryVersion.available_at <= resolved_as_of,
+        ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).all()
+        latest_by_source_set = {}
+        for version in versions:
+            # Persisted set_number also represents an empty/removed set document,
+            # so a later correction can tombstone an older parsed sequence.
+            set_numbers = {version.quality_json.get("set_number")} if isinstance(version.quality_json, dict) and version.quality_json.get("set_number") else set()
+            set_numbers.update(item.get("set") for item in (version.events_json or []) if item.get("set") is not None)
+            for set_no in set_numbers or {None}:
+                latest_by_source_set[(version.source_match_id, set_no)] = version
+        selected_versions = list(latest_by_source_set.items())
+        newest = max((row for _, row in selected_versions), key=lambda row: (row.available_at, str(row.id)), default=None)
+        sequence = []
+        for (source_match_id, set_no), version in selected_versions:
+            for index, item in enumerate(version.events_json or []):
+                if set_no is not None and item.get("set") != set_no:
+                    continue
+                sequence.append({**item, "source_match_id": version.source_match_id,
+                    "set_order": item.get("set") if item.get("set") is not None else 0,
+                    "order": index, "document_id": str(version.document_id),
+                    "retrieved_at": version.retrieved_at.isoformat(),
+                    "parsed_at": version.parsed_at.isoformat() if version.parsed_at else None,
+                    "available_at": version.available_at.isoformat() if version.available_at else None,
+                    "parser_version": version.parser_version, "retrospective": version.retrospective})
+        sequence.sort(key=lambda item: (item["set_order"], item["source_match_id"], item["order"], item["available_at"] or ""))
+        total = len(sequence)
+        page = sequence[offset:offset + limit]
+        job_event = session.query(TennisPointRefreshJobEvent).filter(
+            TennisPointRefreshJobEvent.event_id == event_uuid,
+            TennisPointRefreshJobEvent.available_at <= resolved_as_of,
+        ).order_by(TennisPointRefreshJobEvent.available_at.desc(), TennisPointRefreshJobEvent.id.desc()).first()
+        selected_quality = [version.quality_json or {} for _, version in selected_versions]
+        gaps = [gap for quality in selected_quality for gap in quality.get("gaps", [])]
+        versions_payload = None
+        if include_versions:
+            versions_payload = [{"source_match_id": row.source_match_id,
+                "document_id": str(row.document_id), "retrieved_at": row.retrieved_at.isoformat(),
+                "parsed_at": row.parsed_at.isoformat() if row.parsed_at else None,
+                "available_at": row.available_at.isoformat() if row.available_at else None,
+                "availability_status": row.availability_status,
+                "parser_version": row.parser_version, "retrospective": row.retrospective,
+                "quality": row.quality_json or {}}
+                for row in versions]
+        return {
+            "event_id": event_id, "as_of": resolved_as_of.isoformat(), "resolved_as_of": resolved_as_of.isoformat(),
+            "source": "flashscore", "source_match_id": newest.source_match_id if newest else (source_ids[-1] if source_ids else None),
+            "versions_total": len(versions), "total": total, "limit": limit, "offset": offset,
+            "sequence": page, "versions": versions_payload,
+            "freshness_seconds": max(0.0, (resolved_as_of-newest.available_at).total_seconds()) if newest else None,
+            "collection_status": job_event.status if job_event else "not_queued",
+            "last_error": job_event.last_error if job_event else None,
+            "incompleteness_reasons": gaps if selected_versions else ["point_history_unavailable"],
+            "confirmed_points": sum(bool(item.get("confirmed")) for item in sequence) if selected_versions else None,
+        }
+
+
+@app.post("/api/events/{event_id}/point-history/link")
+def resolve_event_point_history_link(event_id: str, payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
+    """Manually confirm an ambiguous external match link for an event."""
+    from .admin_auth import require_admin
+    require_admin(request)
+    from db.connection import SessionLocal
+    from db.models import Event, ExtTennisMatch, TennisMatchLookupJob, TennisPlayerProfile, TennisPointMatchLink, TennisPointRefreshJob, TennisPointRefreshJobEvent
+    source_match_id = str(payload.get("source_match_id") or "").strip()
+    if not source_match_id:
+        raise HTTPException(status_code=422, detail="source_match_id is required")
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid event_id") from exc
+    with SessionLocal() as session:
+        event = session.get(Event, event_uuid)
+        if event is None or event.sport_code != "tennis":
+            raise HTTPException(status_code=404, detail="Tennis event not found")
+        links = session.query(TennisPointMatchLink).filter_by(source_match_id=source_match_id).order_by(
+            TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()
+        ).all()
+        if not links:
+            raise HTTPException(status_code=404, detail="No saved candidate link")
+        now = datetime.now(timezone.utc)
+        latest_link = links[0]
+        if latest_link.fonbet_event_id not in (None, event_uuid) and latest_link.status in {"manual", "matched"}:
+            raise HTTPException(status_code=409, detail="Source match is already linked to another event")
+        external = session.query(ExtTennisMatch).filter_by(source="flashscore", source_match_id=source_match_id).order_by(
+            ExtTennisMatch.available_at.desc()
+        ).first()
+        a_profile = session.get(TennisPlayerProfile, event.participant_a_id) if event.participant_a_id else None
+        b_profile = session.get(TennisPlayerProfile, event.participant_b_id) if event.participant_b_id else None
+        source_a = str((a_profile.source_identities or {}).get("flashscore") or "") if a_profile else ""
+        source_b = str((b_profile.source_identities or {}).get("flashscore") or "") if b_profile else ""
+        if external and source_a and source_b:
+            if external.home_player_id == source_a and external.away_player_id == source_b:
+                external_home_is_a = True
+            elif external.home_player_id == source_b and external.away_player_id == source_a:
+                external_home_is_a = False
+            else:
+                raise HTTPException(status_code=422, detail="Flashscore player IDs do not match the event participants")
+        elif external and external.home_name.casefold() == event.participant_a_name.casefold() and external.away_name.casefold() == event.participant_b_name.casefold():
+            external_home_is_a = True
+        elif external and external.home_name.casefold() == event.participant_b_name.casefold() and external.away_name.casefold() == event.participant_a_name.casefold():
+            external_home_is_a = False
+        else:
+            external_home_is_a = payload.get("external_home_is_fonbet_a")
+            if external_home_is_a not in (True, False):
+                raise HTTPException(status_code=422, detail="Cannot verify side order; provide external_home_is_fonbet_a")
+        session.add(TennisPointMatchLink(
+            source_match_id=source_match_id,
+            fonbet_event_id=event_uuid,
+            status="manual",
+            confidence=1.0,
+            evidence_json={"resolution": "manual_confirmation", "event_id": event_id,
+                           "external_home_is_fonbet_a": external_home_is_a,
+                           "previous_link_id": str(latest_link.id)},
+            available_at=now,
+        ))
+        lookup = session.get(TennisMatchLookupJob, event_uuid, with_for_update=True)
+        if lookup:
+            lookup.status = "matched"; lookup.source_match_id = source_match_id
+            lookup.last_error = None; lookup.next_run_at = now; lookup.updated_at = now
+            lookup.attempt_token = None; lookup.lease_until = None
+        point_job = session.get(TennisPointRefreshJob, event_uuid, with_for_update=True)
+        if point_job:
+            point_job.status = "queued"; point_job.last_error = None; point_job.next_run_at = now
+            point_job.last_requested_at = now; point_job.updated_at = now
+            session.add(TennisPointRefreshJobEvent(event_id=event_uuid, status="queued", last_error=None,
+                source_match_id=source_match_id, available_at=now))
+        session.commit()
+        return {"status": "linked", "event_id": event_id, "source_match_id": source_match_id}
+
+
+@app.get("/api/tennis-history/players/{participant_id}")
+def get_tennis_player_metrics(participant_id: str) -> Dict[str, Any]:
+    """Return the current cached tennis metrics for a Fonbet participant."""
+    if not SessionLocal or not TennisPlayerProfile:
+        raise HTTPException(status_code=503, detail="Tennis player metrics are unavailable")
+    try:
+        participant_uuid = uuid.UUID(participant_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid participant UUID")
+    with SessionLocal() as session:
+        profile = session.get(TennisPlayerProfile, participant_uuid)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="Tennis participant profile not found")
+        links = session.query(TennisPlayerIdentityLink).filter_by(
+            participant_id=participant_uuid, source="flashscore"
+        ).order_by(TennisPlayerIdentityLink.available_at.desc(), TennisPlayerIdentityLink.id.desc()).all()
+        latest_link = links[0] if links else None
+        identities = profile.source_identities or {}
+        confirmed = bool(
+            latest_link
+            and latest_link.status == "confirmed"
+            and identities.get("flashscore") in {None, latest_link.source_player_id}
+        )
+        has_unconfirmed_source = bool(
+            identities.get("flashscore")
+            or identities.get("flashscore_candidates")
+            or profile.profile_url
+            or latest_link
+        ) and not confirmed
+        return {
+            "participant_id": str(profile.participant_id),
+            "canonical_player_id": str(profile.canonical_player_id) if profile.canonical_player_id else None,
+            "source_identities": profile.source_identities,
+            "profile_url": profile.profile_url,
+            "status": "identity_confirmation_required" if has_unconfirmed_source else profile.sync_status,
+            "error": "FLASHScore_PROFILE_REQUIRES_CONFIRMATION" if has_unconfirmed_source else profile.sync_error,
+            "metrics_version": profile.metrics_version if not has_unconfirmed_source else 0,
+            "history_match_count": profile.history_match_count if not has_unconfirmed_source else 0,
+            "available_at": profile.metrics_available_at.isoformat() if profile.metrics_available_at and not has_unconfirmed_source else None,
+            "history_digest": profile.history_digest if not has_unconfirmed_source else None,
+            "metrics": profile.metrics_json if not has_unconfirmed_source else {},
+        }
 
 
 @app.get("/api/events/{event_id}/odds")
@@ -2864,6 +3210,197 @@ def get_scheduled_queue() -> List[Dict[str, Any]]:
     from .research_queue import list_search_queue
 
     return list_search_queue()
+
+
+@app.get("/api/tennis-history/flashscore/queue")
+def get_flashscore_research_queue(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    kind: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    mode: Optional[str] = Query(None, description="live or prematch"),
+    search: Optional[str] = None,
+    include_completed: bool = False,
+) -> Dict[str, Any]:
+    """Read-only operational view of durable Flashscore jobs."""
+    from db.models import FlashscoreImportJob, TennisMatchLookupJob, TennisPlayerRefreshJob, TennisPointDocument, TennisPointRefreshJob
+    from db.models.external_tennis import TennisPlayerProfile, TennisPointMatchLink
+    from db.models.sports import Participant
+
+    now = datetime.now(timezone.utc)
+    active_cutoff = now - timedelta(seconds=90)
+    with SessionLocal() as session:
+        event_rows = session.query(Event).filter(Event.sport_code == "tennis", Event.finished_at.is_(None)).filter(
+            ~Event.participant_a_name.contains("/"), ~Event.participant_b_name.contains("/"),
+        ).filter(
+            (Event.is_live.is_(True) & (Event.last_seen_at >= active_cutoff)) |
+            (Event.is_live.is_(False) & (Event.scheduled_start_at >= now) & (Event.scheduled_start_at <= now + timedelta(hours=6)))
+        ).all()
+        eligible_ids = {str(event.id) for event in event_rows}
+        event_map = {str(event.id): event for event in event_rows}
+        rows: list[dict[str, Any]] = []
+
+        point_jobs = session.query(TennisPointRefreshJob).order_by(TennisPointRefreshJob.updated_at.desc()).all()
+        for job in point_jobs:
+            event = event_map.get(str(job.event_id))
+            if event is None and not (include_completed and job.status in {"completed", "finalized", "skipped", "superseded"} and job.updated_at >= now - timedelta(hours=24)):
+                continue
+            event = event or session.get(Event, job.event_id)
+            if event is None:
+                continue
+            event_mode = "live" if event.is_live else "prematch"
+            rows.append({"id": f"pbp:{job.event_id}", "event_id": str(job.event_id),
+                "label": f"{event.participant_a_name} — {event.participant_b_name}", "player": None,
+                "kind": "pbp", "status": job.status, "priority": 0 if event.is_live else 10,
+                "mode": event_mode, "wait_seconds": max(0, int((now - job.last_requested_at).total_seconds())),
+                "last_success_at": job.updated_at.isoformat() if job.status in {"completed", "finalized"} else None,
+                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
+
+        match_jobs = session.query(TennisMatchLookupJob).order_by(TennisMatchLookupJob.updated_at.desc()).all()
+        for job in match_jobs:
+            event = event_map.get(str(job.event_id))
+            if event is None and not (include_completed and job.status in {"matched", "waiting_confirmation"} and job.updated_at >= now - timedelta(hours=24)):
+                continue
+            event = event or session.get(Event, job.event_id)
+            if event is None:
+                continue
+            rows.append({"id": f"match:{job.event_id}", "event_id": str(job.event_id),
+                "label": f"{event.participant_a_name} — {event.participant_b_name}", "player": None,
+                "kind": "match_lookup", "status": job.status, "priority": 1 if event.is_live else 11,
+                "mode": "live" if event.is_live else "prematch",
+                "wait_seconds": max(0, int((now - job.updated_at).total_seconds())),
+                "last_success_at": job.updated_at.isoformat() if job.status == "matched" else None,
+                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
+
+        player_jobs = session.query(TennisPlayerRefreshJob, Participant, TennisPlayerProfile).join(
+            Participant, Participant.id == TennisPlayerRefreshJob.participant_id
+        ).outerjoin(TennisPlayerProfile, TennisPlayerProfile.participant_id == Participant.id).filter(
+            Participant.sport_code == "tennis"
+        ).order_by(TennisPlayerRefreshJob.requested_at.desc()).all()
+        participant_events: dict[str, list[Any]] = {}
+        for event in event_map.values():
+            for pid in (event.participant_a_id, event.participant_b_id):
+                if pid:
+                    participant_events.setdefault(str(pid), []).append(event)
+        for job, participant, profile in player_jobs:
+            associated = participant_events.get(str(participant.id), [])
+            if not associated and not (include_completed and job.status == "completed"):
+                continue
+            display_status = "identity_confirmation_required" if profile and profile.sync_status == "identity_confirmation_required" else job.status
+            rows.append({"id": f"player:{participant.id}", "event_id": str(associated[0].id) if associated else None,
+                "related_event_ids": [str(event.id) for event in associated],
+                "label": " · ".join(dict.fromkeys(f"{e.participant_a_name} — {e.participant_b_name}" for e in associated[:3])) or participant.canonical_name,
+                "player": participant.canonical_name, "kind": "player_history", "status": display_status,
+                "priority": 10, "mode": "live" if any(e.is_live for e in associated) else "prematch",
+                "wait_seconds": max(0, int((now - job.requested_at).total_seconds())),
+                "last_success_at": profile.last_success_at.isoformat() if profile and profile.last_success_at else None,
+                "next_retry_at": job.next_run_at.isoformat() if job.status in {"retry", "queued"} else None,
+                "reason": job.last_error, "related_events": len(associated)})
+
+        imports = session.query(FlashscoreImportJob).order_by(FlashscoreImportJob.updated_at.desc()).limit(200).all()
+        for job in imports:
+            if job.status in {"completed", "finalized", "skipped", "superseded"} and (not include_completed or job.updated_at < now - timedelta(hours=24)):
+                continue
+            rows.append({"id": f"archive:{job.id}", "event_id": None, "label": ", ".join(job.profile_urls or [])[:180],
+                "player": None, "kind": "full_archive", "status": job.status, "priority": 20,
+                "mode": "archive", "wait_seconds": max(0, int((now - job.created_at).total_seconds())),
+                "last_success_at": job.updated_at.isoformat() if job.status == "completed" else None,
+                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 0})
+
+        summary_statuses = {name: sum(1 for row in rows if row["status"] == name) for name in {row["status"] for row in rows}}
+        identity_confirmation = sum(1 for row in rows if row["status"] == "identity_confirmation_required")
+        link_history = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.fonbet_event_id.is_not(None), TennisPointMatchLink.available_at <= now
+        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+        latest_by_source = {}
+        for link in link_history:
+            latest_by_source[link.source_match_id] = link
+        confirmed_event_ids = {str(link.fonbet_event_id) for link in latest_by_source.values()
+                               if link.fonbet_event_id and link.status in {"matched", "manual"}}
+        overdue_pbp = sum(
+            1 for row in rows
+            if row["kind"] == "pbp" and row["mode"] == "live"
+            and row.get("event_id") in confirmed_event_ids
+            and row["status"] not in {"completed", "finalized", "skipped", "superseded"}
+            and row.get("next_retry_at") and datetime.fromisoformat(row["next_retry_at"]) <= now
+        )
+
+        if kind:
+            rows = [row for row in rows if row["kind"] == kind]
+        if status_filter:
+            rows = [row for row in rows if row["status"] == status_filter]
+        if mode in {"live", "prematch"}:
+            rows = [row for row in rows if row["mode"] == mode]
+        if search:
+            needle = search.casefold()
+            rows = [row for row in rows if needle in (row.get("label") or "").casefold() or needle in (row.get("player") or "").casefold()]
+        status_rank = {"running": 0, "queued": 1, "retry": 2, "blocked": 3, "completed": 4, "finalized": 4, "skipped": 5}
+        rows.sort(key=lambda row: (status_rank.get(row["status"], 3), row["priority"], row["next_retry_at"] or "", row["id"]))
+        total = len(rows)
+        page = rows[offset:offset + limit]
+        statuses = {name: sum(1 for row in rows if row["status"] == name) for name in {row["status"] for row in rows}}
+        profiles_ready = session.query(func.count(TennisPlayerProfile.participant_id)).filter(
+            TennisPlayerProfile.participant_id.in_({pid for e in event_map.values() for pid in (e.participant_a_id, e.participant_b_id) if pid}),
+            TennisPlayerProfile.metrics_version > 0,
+            TennisPlayerProfile.sync_status.in_(("available", "empty", "stale")),
+        ).scalar() if event_map else 0
+        hour_ago = now - timedelta(hours=1)
+        documents_saved_last_hour = session.query(func.count(TennisPointDocument.id)).filter(
+            TennisPointDocument.retrieved_at >= hour_ago).scalar() or 0
+        confirmed_links_last_hour = session.query(func.count(TennisPointMatchLink.id)).filter(
+            TennisPointMatchLink.available_at >= hour_ago,
+            TennisPointMatchLink.status.in_(("matched", "manual"))).scalar() or 0
+        worker_state = {"configured": True, "healthy": False, "last_heartbeat_at": None, "network_slots": 0, "network_slots_limit": 2, "cooldown_until": None}
+        try:
+            source_control = session.execute(text("SELECT slot_limit, cooldown_until, executor_heartbeat_at FROM flashscore_source_control WHERE id=1")).mappings().first()
+            if source_control:
+                worker_state["network_slots_limit"] = int(source_control["slot_limit"])
+                worker_state["cooldown_until"] = source_control["cooldown_until"].isoformat() if source_control["cooldown_until"] else None
+                heartbeat_at = source_control["executor_heartbeat_at"]
+                worker_state["last_heartbeat_at"] = heartbeat_at.isoformat() if heartbeat_at else None
+                worker_state["healthy"] = bool(heartbeat_at and heartbeat_at >= now - timedelta(seconds=45))
+                worker_state["network_slots"] = int(session.execute(text("SELECT count(*) FROM flashscore_source_requests WHERE acquired_at IS NOT NULL AND lease_until > now() AND heartbeat_at >= now()-interval '15 seconds'")).scalar() or 0)
+        except Exception:
+            # Queue visibility still works when the worker-control migration has
+            # not yet been deployed; the empty control status remains explicit.
+            worker_state["configured"] = False
+        return {"items": page, "total": total, "limit": limit, "offset": offset,
+            "generated_at": now.isoformat(), "eligible_matches": len(eligible_ids),
+            "prepared_players": int(profiles_ready or 0), "statuses": summary_statuses,
+            "identity_confirmation_required": identity_confirmation, "overdue_pbp": overdue_pbp,
+            "documents_saved_last_hour": int(documents_saved_last_hour),
+            "confirmed_links_last_hour": int(confirmed_links_last_hour),
+            "worker": worker_state}
+
+
+@app.get("/api/events/{event_id}/flashscore-research")
+def get_event_flashscore_research(event_id: uuid.UUID) -> Dict[str, Any]:
+    from db.models import TennisMatchLookupJob, TennisPlayerRefreshJob, TennisPointRefreshJob
+    from db.models.external_tennis import TennisPlayerProfile
+    with SessionLocal() as session:
+        event = session.get(Event, event_id)
+        if event is None or event.sport_code != "tennis":
+            raise HTTPException(status_code=404, detail="Tennis event not found")
+        players = []
+        for participant_id, name in ((event.participant_a_id, event.participant_a_name), (event.participant_b_id, event.participant_b_name)):
+            profile = session.get(TennisPlayerProfile, participant_id) if participant_id else None
+            job = session.get(TennisPlayerRefreshJob, participant_id) if participant_id else None
+            players.append({"participant_id": str(participant_id) if participant_id else None, "name": name,
+                "status": profile.sync_status if profile else "pending", "metrics_version": profile.metrics_version if profile else 0,
+                "last_success_at": profile.last_success_at.isoformat() if profile and profile.last_success_at else None,
+                "job_status": job.status if job else None, "reason": (job.last_error if job else None) or (profile.sync_error if profile else None)})
+        point = session.get(TennisPointRefreshJob, event_id)
+        match = session.get(TennisMatchLookupJob, event_id)
+        return {"event_id": str(event_id), "mode": "live" if event.is_live else "prematch",
+            "players": players, "point_history": {"status": point.status if point else "not_queued",
+                "updated_at": point.updated_at.isoformat() if point else None,
+                "next_retry_at": point.next_run_at.isoformat() if point else None,
+                "reason": point.last_error if point else None},
+            "match_lookup": {"status": match.status if match else "not_queued",
+                "updated_at": match.updated_at.isoformat() if match else None,
+                "next_retry_at": match.next_run_at.isoformat() if match else None,
+                "source_match_id": match.source_match_id if match else None,
+                "reason": match.last_error if match else None}}
 
 
 @app.get("/api/scheduler/stats")

@@ -2,7 +2,7 @@ from .quality import DataQualityIssue
 from .sports import Sport, League, Participant, ParticipantAlias
 from .events import Event, EventStateSnapshot, RawSnapshot
 from .odds import Market, MarketSelection, OddsSnapshot, OddsChangeEvent
-from .predictions import FeatureSnapshot, MLPrediction, LLMDecision, ModelBetJournal, ExternalPrediction
+from .predictions import FeatureSnapshot, MLPrediction, LLMDecision, ModelBetJournal, ExternalPrediction, TennisForecastSnapshot
 from .research import WebResearchRun, WebDocument, WebEvidence
 from .betting import (
     VirtualAccount,
@@ -16,9 +16,24 @@ from .external_tennis import (
     ExtTennisCanonicalMatch,
     ExtTennisCanonicalPlayer,
     ExtTennisMatch,
+    ExtTennisMatchObservation,
     ExtTennisPlayer,
     ExtTennisRanking,
     ExtTennisServeLog,
+    TennisPlayerMetricSnapshot,
+    TennisPlayerIdentityLink,
+    TennisPlayerRefreshJob,
+    TennisPlayerProfile,
+    TennisPlayerResultFact,
+    TennisPointDocument,
+    TennisPointHistoryVersion,
+    TennisPointMatchLink,
+    TennisPointRefreshJob,
+    TennisPointRefreshJobEvent,
+    TennisMatchLookupJob,
+    ManualConfirmationRequest,
+    ManualConfirmationDecision,
+    FlashscoreImportJob,
 )
 from .ml_registry import (
     ModelVersion,
@@ -48,6 +63,7 @@ __all__ = [
     "LLMDecision",
     "ModelBetJournal",
     "ExternalPrediction",
+    "TennisForecastSnapshot",
     "WebResearchRun",
     "WebDocument",
     "WebEvidence",
@@ -66,8 +82,23 @@ __all__ = [
     "AuditLog",
     "ExtTennisPlayer",
     "ExtTennisMatch",
+    "ExtTennisMatchObservation",
     "ExtTennisRanking",
     "ExtTennisServeLog",
+    "TennisPlayerProfile",
+    "TennisPlayerMetricSnapshot",
+    "TennisPlayerIdentityLink",
+    "TennisPlayerRefreshJob",
+    "TennisPlayerResultFact",
+    "TennisPointDocument",
+    "TennisPointHistoryVersion",
+    "TennisPointMatchLink",
+    "TennisPointRefreshJob",
+    "TennisPointRefreshJobEvent",
+    "TennisMatchLookupJob",
+    "ManualConfirmationRequest",
+    "ManualConfirmationDecision",
+    "FlashscoreImportJob",
     "ExtTennisCanonicalPlayer",
     "ExtTennisCanonicalMatch",
 ]

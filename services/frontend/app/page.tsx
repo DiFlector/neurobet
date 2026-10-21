@@ -23,6 +23,7 @@ import {
   fetchTrainingRuns,
   fetchSchedulerQueue,
   fetchSchedulerStats,
+  fetchFlashscoreQueue,
   fetchEventDetails,
   fetchTennisPolicy,
   resetSimulationApi,
@@ -40,6 +41,7 @@ import {
   TrainingRun,
   QueueItem,
   QueueStats,
+  FlashscoreQueueData,
   EventDetailData,
 } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
@@ -61,6 +63,15 @@ export default function DashboardPage() {
   const [trainingRuns, setTrainingRuns] = React.useState<TrainingRun[]>([]);
   const [queue, setQueue] = React.useState<QueueItem[]>([]);
   const [queueStats, setQueueStats] = React.useState<QueueStats | null>(null);
+  const [flashscoreQueue, setFlashscoreQueue] = React.useState<FlashscoreQueueData | null>(null);
+  const [flashscoreQueueStale, setFlashscoreQueueStale] = React.useState(false);
+  const [flashscoreQueueOffset, setFlashscoreQueueOffset] = React.useState(0);
+  const [flashscoreIncludeCompleted, setFlashscoreIncludeCompleted] = React.useState(false);
+  const [flashscoreFilters, setFlashscoreFilters] = React.useState<{ kind?: string; status?: string; mode?: string; search?: string }>({});
+  const handleFlashscoreFiltersChange = React.useCallback((filters: { kind?: string; status?: string; mode?: string; search?: string }) => {
+    setFlashscoreQueueOffset(0);
+    setFlashscoreFilters(filters);
+  }, []);
 
   const [selectedEventData, setSelectedEventData] = React.useState<EventDetailData | null>(null);
   const [modalOpen, setModalOpen] = React.useState<boolean>(false);
@@ -125,13 +136,16 @@ export default function DashboardPage() {
         ]);
         setQueue(qList);
         if (qSt) setQueueStats(qSt);
+        const fsQueue = await fetchFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
+        if (fsQueue) { setFlashscoreQueue(fsQueue); setFlashscoreQueueStale(false); }
+        else setFlashscoreQueueStale(true);
       }
     } catch (err) {
       console.error("[Dashboard] loadTabContent error:", err);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, activeSport, activeStatus, searchQuery]);
+  }, [activeTab, activeSport, activeStatus, searchQuery, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters]);
 
   React.useEffect(() => {
     loadInitialData();
@@ -196,14 +210,16 @@ export default function DashboardPage() {
         const lList = await fetchLedger(50);
         if (lList.length > 0) setLedger(lList);
       } else if (view.activeTab === "scheduler") {
-        const [qList, qSt] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats()]);
+        const [qList, qSt, fsQueue] = await Promise.all([fetchSchedulerQueue(), fetchSchedulerStats(), fetchFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters })]);
         setQueue(qList);
         if (qSt) setQueueStats(qSt);
+        if (fsQueue) { setFlashscoreQueue(fsQueue); setFlashscoreQueueStale(false); }
+        else setFlashscoreQueueStale(true);
       }
     } catch (err) {
       console.error("[Dashboard] refreshLive error:", err);
     }
-  }, [applyPredictions]);
+  }, [applyPredictions, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters]);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
@@ -395,7 +411,7 @@ export default function DashboardPage() {
 
           {/* Tab 5: Scheduler Priority Queue */}
           <TabsContent value="scheduler" className="mt-0 focus-visible:outline-none">
-            <QueueTab queue={queue} stats={queueStats} loading={loading} />
+            <QueueTab queue={queue} stats={queueStats} flashscore={flashscoreQueue} flashscoreStale={flashscoreQueueStale} loading={loading} onSelectEvent={handleInspectEvent} onFlashscoreOffsetChange={setFlashscoreQueueOffset} onFlashscoreFiltersChange={handleFlashscoreFiltersChange} includeCompleted={flashscoreIncludeCompleted} onIncludeCompletedChange={(value) => { setFlashscoreQueueOffset(0); setFlashscoreIncludeCompleted(value); }} />
           </TabsContent>
         </Tabs>
       </main>
