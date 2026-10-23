@@ -35,6 +35,8 @@ class CollectorService:
         )
         self.semaphore = asyncio.Semaphore(settings.max_concurrency)
         self.last_content_hash: Optional[str] = None
+        self.last_source_content_hash: Optional[str] = None
+        self.last_source_s3_key: Optional[str] = None
         self.total_polls = 0
         self.total_live_events_seen = 0
 
@@ -79,7 +81,11 @@ class CollectorService:
                                 endpoint,
                                 len(normalized.get("events") or []),
                             )
-                            return normalized
+                            return {
+                                **normalized,
+                                "_source_payload": normalized.get("_source_payload", data),
+                                "_source_url": endpoint,
+                            }
                 except Exception as exc:
                     logger.debug("Endpoint %s failed: %s", endpoint, exc)
 
@@ -99,7 +105,25 @@ class CollectorService:
                 return { events: [] };
             }"""
         )
-        return events_json if events_json.get("events") else {"events": []}
+        if events_json.get("events"):
+            live_ids = {
+                event.get("source_event_id")
+                for event in FonbetLiveTennisParser.parse_events_feed(events_json)
+            }
+            source_events = [
+                event for event in events_json.get("events", [])
+                if isinstance(event, dict)
+                and str(event.get("source_event_id") or event.get("id") or "") in live_ids
+            ]
+            return {
+                "events": events_json["events"],
+                "_source_payload": {
+                    "capture_scope": "verbatim live tennis event cards; unrelated page rows omitted",
+                    "events": source_events,
+                },
+                "_source_url": settings.fonbet_live_url,
+            }
+        return {"events": []}
 
     async def poll_once(self) -> Optional[str]:
         """Execute a single polling iteration with resilience and validation."""
@@ -119,6 +143,32 @@ class CollectorService:
                 # Extract strictly LIVE events
                 live_events = FonbetLiveTennisParser.parse_events_feed(raw_feed)
                 self.total_live_events_seen += len(live_events)
+
+                # Preserve the unmodified upstream response separately from the
+                # normalized event snapshot. The stream carries only its content
+                # hash and S3 key, never the potentially large source payload.
+                source_payload = raw_feed.get("_source_payload", raw_feed)
+                source_url = raw_feed.get("_source_url", settings.fonbet_live_url)
+                source_bytes = json.dumps(
+                    source_payload,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                source_content_hash = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+                source_s3_key = self.last_source_s3_key
+                source_has_event_rows = bool(
+                    source_payload.get("events") if isinstance(source_payload, dict) else source_payload
+                )
+                if source_has_event_rows and source_content_hash != self.last_source_content_hash:
+                    source_s3_key = self.s3_writer.save_source_payload(
+                        content_hash=source_content_hash,
+                        source_payload=source_payload,
+                        source_url=source_url,
+                        collected_at=collected_at,
+                    )
+                    self.last_source_content_hash = source_content_hash
+                    self.last_source_s3_key = source_s3_key
 
                 # Compute SHA-256 hash
                 payload_to_hash = {
@@ -155,6 +205,9 @@ class CollectorService:
                     # 2. Publish to Redis Stream 'fonbet.raw'
                     envelope_payload = dict(snapshot_dict)
                     envelope_payload["raw_s3_key"] = s3_key
+                    if source_s3_key and source_content_hash == self.last_source_content_hash:
+                        envelope_payload["source_payload_hash"] = source_content_hash
+                        envelope_payload["source_payload_s3_key"] = source_s3_key
 
                     envelope = MessageEnvelope(
                         stream_name=STREAM_FONBET_RAW,

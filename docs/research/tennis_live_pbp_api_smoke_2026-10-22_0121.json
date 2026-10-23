@@ -1,0 +1,80 @@
+{
+  "acceptance": "PBP contains all three sets and matches the set/game score through set 3 at 0-3. It is not synchronized to the current point: source PBP last ordinary point is 15-40 (retrieved 01:20:48.620Z), while Fonbet state at 01:21:01.595Z reports 30-40. Keep as observed source history; do not certify the latest live point as complete.",
+  "flashscore_source_match_id": "nFpUNjLN",
+  "fonbet_event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+  "fonbet_event_key": "fonbet_69173294",
+  "fonbet_snapshot": {
+    "current_game": {
+      "is_tiebreak": false,
+      "points_a": "30",
+      "points_b": "40",
+      "schema_version": "1.0.0",
+      "timestamp": "2026-10-22T01:21:01.595422Z"
+    },
+    "current_period": 3,
+    "current_set_line": {
+      "detail": "30*-40",
+      "games_a": 0,
+      "games_b": 3,
+      "live": true
+    },
+    "score_timestamp": "2026-10-22T01:21:01.595432Z",
+    "sets": [
+      {
+        "games_a": 6,
+        "games_b": 4,
+        "schema_version": "1.0.0",
+        "set_number": 1,
+        "timestamp": "2026-10-22T01:21:01.595399Z"
+      },
+      {
+        "games_a": 2,
+        "games_b": 6,
+        "schema_version": "1.0.0",
+        "set_number": 2,
+        "timestamp": "2026-10-22T01:21:01.595403Z"
+      }
+    ]
+  },
+  "observed_at": "2026-10-22T01:21:05Z",
+  "orientation_evidence": {
+    "available_at": "2026-10-22T01:19:31.665047+00:00",
+    "external_home_is_fonbet_a": true,
+    "source": "flashscore_scoreboard_dom_confirmed_profile_ids"
+  },
+  "pbp": {
+    "as_of": "2026-10-22T01:21:05.350131+00:00",
+    "collection_status": "completed",
+    "freshness_seconds": 16.729714,
+    "incompleteness_reasons": [],
+    "last_error": null,
+    "resolved_as_of": "2026-10-22T01:21:05.350131+00:00",
+    "total": 146,
+    "versions_total": 16
+  },
+  "pbp_latest_ordinary_point": {
+    "available_at": "2026-10-22T01:20:48.620417+00:00",
+    "game_score": [
+      0,
+      3
+    ],
+    "point_score": [
+      "15",
+      "40"
+    ],
+    "retrieved_at": "2026-10-22T01:20:47.461515+00:00",
+    "set": 3,
+    "state_after": [
+      "15",
+      "40"
+    ]
+  },
+  "raw_evidence": {
+    "fonbet_state": "docs/research/tennis_live_pbp_api_smoke_2026-10-22_0121_fonbet_state.json",
+    "fonbet_state_sha256": "d148109b84c040ae170884026b0bbeb30731ea75f087bfd9efe8a462b88cefc5",
+    "pbp_response": "docs/research/tennis_live_pbp_api_smoke_2026-10-22_0121_response.json",
+    "pbp_response_sha256": "737988c5ede61f3b26f0b1a0473ea8d2bbf6680015e7aed25bc6f0dbfa70b1f6"
+  },
+  "side_orientation_confirmed": true,
+  "worker_image_rollout_at": "2026-10-22T01:11:47Z"
+}

@@ -1,0 +1,106 @@
+{
+  "observed_at_utc": "2026-10-22T05:39:29+00:00",
+  "concurrent_prepare": {
+    "evidence": "docs/research/tennis_prepare_concurrency_2026-10-22.json",
+    "four_processes": true,
+    "duplicate_jobs": false
+  },
+  "stale_profile_prepare": {
+    "evidence": "docs/research/tennis_prepare_stale_concurrency_2026-10-22.json",
+    "http_statuses": [
+      200,
+      200,
+      200,
+      200
+    ]
+  },
+  "player_status_api": [
+    {
+      "participant_id": "42b2d592-b7e2-4384-a442-ea526ef4c4a2",
+      "canonical_name": "Rublev Andrey",
+      "status": "running",
+      "error": null,
+      "metrics_version": 2,
+      "history_match_count": 1233,
+      "refresh_job": {
+        "status": "queued",
+        "reason": "event_refresh",
+        "attempts": 2,
+        "lease_until": null,
+        "progress": {
+          "stage": "queued"
+        },
+        "error": null
+      }
+    },
+    {
+      "participant_id": "bbe45762-0587-4d6a-8524-82970454ac7d",
+      "canonical_name": "Tsitsipas Stefanos",
+      "status": "running",
+      "error": null,
+      "metrics_version": 4,
+      "history_match_count": 1199,
+      "refresh_job": {
+        "status": "queued",
+        "reason": "event_refresh",
+        "attempts": 6,
+        "lease_until": null,
+        "progress": {
+          "stage": "queued"
+        },
+        "error": null
+      }
+    }
+  ],
+  "worker_health": "healthy",
+  "profile_worker_concurrency_limit": 2,
+  "running_jobs_with_valid_lease": [
+    {
+      "participant_id": "a69d2312-f882-44da-8aaa-fd798fdd90e4",
+      "status": "running",
+      "reason": "event_refresh",
+      "attempts": 22,
+      "requested_at": "2026-10-22 04:53:01.815706+00",
+      "updated_at": "2026-10-22 05:38:30.158918+00",
+      "lease_until": "2026-10-22 05:43:30.158918+00",
+      "progress": {
+        "stage": "claimed",
+        "attempt": 22,
+        "history_scope": "full_accessible",
+        "matches_parsed": 51,
+        "pagination_complete": true
+      }
+    },
+    {
+      "participant_id": "2af4de18-fb6c-4d7b-97c9-a88d7f4be5f7",
+      "status": "running",
+      "reason": "new_event",
+      "attempts": 18,
+      "requested_at": "2026-10-22 04:52:46.341473+00",
+      "updated_at": "2026-10-22 05:39:14.959569+00",
+      "lease_until": "2026-10-22 05:44:14.959553+00",
+      "progress": {
+        "stage": "loading_history",
+        "profile_url": "https://www.flashscore.com/player/sun-fajing/nX9b6kfH/results/",
+        "resume_pages": 0,
+        "page_checkpoint": {
+          "pages": [],
+          "parser_version": "flashscore-tennis-player-v8"
+        }
+      }
+    }
+  ],
+  "slots_fully_occupied": true,
+  "restart_recovery_evidence": {
+    "checkpoint_report": "docs/research/flashscore_worker_restart_2026-10-22_active-import-checkpoints.json",
+    "recovered_attempt": "36->37",
+    "checkpoint_pages_preserved": 16,
+    "worker_healthy_after_restart": true,
+    "profile_lease_regressions": 2
+  },
+  "postgres_memory_snapshot": "1.982GiB / 2GiB",
+  "interpretation": "Concurrent requests coalesce into durable jobs; the player API exposes each queued job, attempts, progress and error state. At observation time both profile-worker slots were occupied by valid current leases (new_event and event_refresh), explaining why the older queued probes had not been claimed. Worker restart recovery of a real nonempty archive-import checkpoint is separately verified. This does not establish full-queue throughput or clear the backlog.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

@@ -104,6 +104,25 @@ def test_handled_navigation_error_can_invalidate_browser():
     assert not hasattr(pool._local, "state")
 
 
+def test_closing_lane_browser_releases_slot_for_the_next_lane(monkeypatch, tmp_path):
+    monkeypatch.setenv("FLASHSCORE_BROWSER_PROCESSES", "1")
+    monkeypatch.setenv("FLASHSCORE_BROWSER_SLOT_DIR", str(tmp_path))
+    monkeypatch.setenv("FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS", "0.2")
+    first, browser, playwright = _pool_with_fake_state()
+    second = ThreadLocalChromium()
+    first._local.state.slot_fd = first._acquire_slot()
+
+    with pytest.raises(TimeoutError, match="FLASHSCORE_BROWSER_SLOT_TIMEOUT"):
+        second._acquire_slot()
+
+    first.close_current()
+    fd = second._acquire_slot()
+    second._release_slot(fd)
+    assert browser.closed
+    assert playwright.stopped
+    assert not hasattr(first._local, "state")
+
+
 def test_age_limit_restarts_browser_with_a_fresh_driver(monkeypatch):
     pool = ThreadLocalChromium(max_jobs=50, max_age_seconds=1)
     old_browser, old_playwright = FakeBrowser(), FakePlaywright()

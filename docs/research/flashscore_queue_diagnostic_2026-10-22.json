@@ -1,0 +1,74 @@
+{
+  "captured_at_utc": "2026-10-22T07:19:56.216956+00:00",
+  "api_generated_at": "2026-10-22T07:19:55.808284+00:00",
+  "total": 118,
+  "statuses": {
+    "identity_confirmation_required": 2,
+    "matched": 2,
+    "queued": 32,
+    "waiting_players": 50,
+    "retry": 15,
+    "waiting_match": 2,
+    "completed": 13,
+    "running": 2
+  },
+  "worker": {
+    "configured": true,
+    "healthy": true,
+    "last_heartbeat_at": "2026-10-22T07:19:48.866338+00:00",
+    "network_slots": 0,
+    "network_slots_limit": 2,
+    "cooldown_until": null
+  },
+  "by_status": {
+    "waiting_players": {
+      "count": 50,
+      "kinds": {
+        "pbp": 25,
+        "match_lookup": 25
+      },
+      "reasons": {
+        "PLAYER_SOURCE_IDS_MISSING": 25,
+        "<none>": 25
+      },
+      "oldest_wait_seconds": 12805
+    },
+    "retry": {
+      "count": 15,
+      "kinds": {
+        "pbp": 2,
+        "player_history": 13
+      },
+      "reasons": {
+        "point_history_tab_missing": 1,
+        "HTTP_404_MATCH_PAGE_UNAVAILABLE": 1,
+        "SEARCH_COMPLETED_NO_MATCH": 13
+      },
+      "oldest_wait_seconds": 12806
+    },
+    "queued": {
+      "count": 32,
+      "kinds": {
+        "player_history": 27,
+        "full_archive": 5
+      },
+      "reasons": {
+        "<none>": 27,
+        "source_terminal_empty_response_count_mismatch_confirmed": 2,
+        "RESULTS_SECTION_NOT_LOADED": 3
+      },
+      "oldest_wait_seconds": 104064
+    },
+    "running": {
+      "count": 2,
+      "kinds": {
+        "player_history": 1,
+        "full_archive": 1
+      },
+      "reasons": {
+        "<none>": 2
+      },
+      "oldest_wait_seconds": 965
+    }
+  }
+}

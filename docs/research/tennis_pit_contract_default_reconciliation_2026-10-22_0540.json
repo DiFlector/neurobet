@@ -1,0 +1,46 @@
+{
+  "observed_at_utc": "2026-10-22T05:39:29+00:00",
+  "question": "Does the earlier PIT-pass statement based on contract defaults satisfy the latest independent-tennis admission feature availability contract?",
+  "earlier_checkpoint": {
+    "path": "docs/research/tennis_training_preflight_2026-10-22_final-rollout.md",
+    "observed_at_utc": "2026-10-22T01:46:00Z",
+    "claim": "4,220/4,220 PIT checks pass only under documented contract priors and explicit unknowns; fully source-observed examples 0."
+  },
+  "latest_completed_audit": {
+    "path": "docs/research/tennis_label_audit_2026-10-22_0421.json",
+    "generated_at": "2026-10-22T04:21:23.299892+00:00",
+    "sha256": "1cd0314097c8df1e6ee8961e766d757e696ec0eb29c73462f99d50ba35ec0e73",
+    "checked_examples": 4379,
+    "certified_examples": 0,
+    "uncertified_examples": 4379,
+    "fully_source_observed_examples": 0,
+    "contract_defaulted_examples": 4379,
+    "event_format": {
+      "available": 0,
+      "contract_defaulted": 0,
+      "missing_or_unverifiable": 4379
+    },
+    "other_contract_defaults": {
+      "player_metrics": 4155,
+      "serve_metrics_a": 4379,
+      "serve_metrics_b": 4379,
+      "event_surface": 4379
+    }
+  },
+  "current_contract_evidence": {
+    "feature_contract": "tennis_odds_free_v1",
+    "required_format_fields": [
+      "best_of",
+      "best_of_available_at"
+    ],
+    "missing_or_future_format_fails_closed": true,
+    "runtime_forecasts_after_neural_restart": 2,
+    "runtime_status": "UNSUPPORTED_FORMAT",
+    "evidence_path": "docs/research/tennis_live_forecast_post_neural_rollout_2026-10-22_0536.json"
+  },
+  "conclusion": "The older PIT pass is not an admission pass under the current contract: it allowed documented priors and explicit unknowns, while the current source-group audit additionally requires a causal event_format observation. All 4,379 examples lack source-timed event_format, so the latest audit correctly certifies 0/4,379. Keep the admission gate blocked; do not lower thresholds or treat defaults as observed source data.",
+  "training_started": false,
+  "candidate_evaluation_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

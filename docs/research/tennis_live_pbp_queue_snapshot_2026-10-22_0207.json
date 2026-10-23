@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-10-22T02:06:59.998Z",
+  "source": "Neurobet MCP live-events API; sport=tennis,status=live,limit=25",
+  "live_events_total": 19,
+  "returned": 19,
+  "point_history_status": {
+    "waiting_players": 15,
+    "retry": 4
+  },
+  "events_with_both_player_profiles_available": 0,
+  "events_with_point_history_payload": 4,
+  "events_with_confirmed_usable_point_sequence": 0,
+  "notes": "The four point_history payloads were objects attached to retry status and did not expose a point sequence or event count. They are not accepted as live PBP documents."
+}

@@ -1,0 +1,223 @@
+{
+  "window_start": "2026-10-23T03:40:14.816618+00:00",
+  "window_end": "2026-10-23T04:10:14.763098+00:00",
+  "baseline_window_start": "2026-10-23T02:51:37.437298+00:00",
+  "baseline_window_end": "2026-10-23T03:21:37.437319+00:00",
+  "baseline": {
+    "successful_profiles": 2,
+    "successful_participants": [
+      "528696b7-a960-47ba-8cd0-9a9ab73d0aef",
+      "a95eabe5-3594-4c4e-aa72-dee4a920f082"
+    ],
+    "confirmed_identity_links": 0,
+    "confirmed_participants": [],
+    "matched_search_jobs": 0,
+    "matched_events": [],
+    "point_jobs_updated": 1,
+    "point_job_statuses": {
+      "waiting_players": 1
+    },
+    "pbp_documents_retrieved": 0,
+    "source_match_ids_with_documents": [],
+    "archive_jobs_completed": 0,
+    "archives": {
+      "5490c204-cc65-44f5-a50e-db677ff62922": {
+        "status": "queued",
+        "attempts": 75,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T04:10:37.307103+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "27477840-aaaf-4ce7-8a22-a1ac26ffe6d5": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:41:41.065351+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "bd5a3224-14e1-4ade-b52b-33d35bb727db": {
+        "status": "completed",
+        "attempts": 3,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:56:52.507894+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "3b688d36-8a55-4163-a13c-d07868e27813": {
+        "status": "queued",
+        "attempts": 82,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:47:17.048500+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "2e4c6510-7653-4547-b63f-676dccfafc28": {
+        "status": "queued",
+        "attempts": 78,
+        "last_error": "source_terminal_empty_response_count_mismatch_confirmed",
+        "updated_at": "2026-10-23T03:42:29.630790+00:00",
+        "checkpoint_profiles": 1,
+        "checkpoint_pages": 16
+      },
+      "efcdaeae-03dd-41f7-b8ee-dee03584f3bf": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:48:19.333637+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "bc912bbc-cfe7-4087-b6d8-9fd20d0018f8": {
+        "status": "queued",
+        "attempts": 77,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:39:16.156594+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "47aabc3a-48d8-436b-8270-b016b967c1b0": {
+        "status": "queued",
+        "attempts": 76,
+        "last_error": "source_terminal_empty_response_count_mismatch_confirmed",
+        "updated_at": "2026-10-23T03:41:03.559407+00:00",
+        "checkpoint_profiles": 1,
+        "checkpoint_pages": 2
+      },
+      "cfdc24e9-6225-4fae-8fe5-718f94a2c05c": {
+        "status": "queued",
+        "attempts": 19,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:49:06.987343+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "c29b9bdf-4d7b-4309-9dd4-4bbb30b1138c": {
+        "status": "queued",
+        "attempts": 35,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:40:10.154323+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "9c041ab6-da57-4c82-802a-b23ac39f944e": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:56:09.278799+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      }
+    }
+  },
+  "trial": {
+    "successful_profiles": 2,
+    "successful_participants": [
+      "628decbc-fd97-4207-a0dd-4ba8f198ad91",
+      "73e1eb11-a512-4d3f-9bfa-e288fb237be0"
+    ],
+    "confirmed_identity_links": 0,
+    "confirmed_participants": [],
+    "matched_search_jobs": 0,
+    "matched_events": [],
+    "point_jobs_updated": 2,
+    "point_job_statuses": {
+      "retry": 1,
+      "queued": 1
+    },
+    "pbp_documents_retrieved": 0,
+    "source_match_ids_with_documents": [],
+    "archive_jobs_completed": 4,
+    "archives": {
+      "5490c204-cc65-44f5-a50e-db677ff62922": {
+        "status": "queued",
+        "attempts": 75,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T04:10:37.307103+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "27477840-aaaf-4ce7-8a22-a1ac26ffe6d5": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:41:41.065351+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "bd5a3224-14e1-4ade-b52b-33d35bb727db": {
+        "status": "completed",
+        "attempts": 3,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:56:52.507894+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "3b688d36-8a55-4163-a13c-d07868e27813": {
+        "status": "queued",
+        "attempts": 82,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:47:17.048500+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "2e4c6510-7653-4547-b63f-676dccfafc28": {
+        "status": "queued",
+        "attempts": 78,
+        "last_error": "source_terminal_empty_response_count_mismatch_confirmed",
+        "updated_at": "2026-10-23T03:42:29.630790+00:00",
+        "checkpoint_profiles": 1,
+        "checkpoint_pages": 16
+      },
+      "efcdaeae-03dd-41f7-b8ee-dee03584f3bf": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:48:19.333637+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "bc912bbc-cfe7-4087-b6d8-9fd20d0018f8": {
+        "status": "queued",
+        "attempts": 77,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:39:16.156594+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "47aabc3a-48d8-436b-8270-b016b967c1b0": {
+        "status": "queued",
+        "attempts": 76,
+        "last_error": "source_terminal_empty_response_count_mismatch_confirmed",
+        "updated_at": "2026-10-23T03:41:03.559407+00:00",
+        "checkpoint_profiles": 1,
+        "checkpoint_pages": 2
+      },
+      "cfdc24e9-6225-4fae-8fe5-718f94a2c05c": {
+        "status": "queued",
+        "attempts": 19,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:49:06.987343+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "c29b9bdf-4d7b-4309-9dd4-4bbb30b1138c": {
+        "status": "queued",
+        "attempts": 35,
+        "last_error": "RESULTS_SECTION_NOT_LOADED",
+        "updated_at": "2026-10-23T03:40:10.154323+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      },
+      "9c041ab6-da57-4c82-802a-b23ac39f944e": {
+        "status": "completed",
+        "attempts": 1,
+        "last_error": null,
+        "updated_at": "2026-10-23T03:56:09.278799+00:00",
+        "checkpoint_profiles": 0,
+        "checkpoint_pages": 0
+      }
+    }
+  }
+}

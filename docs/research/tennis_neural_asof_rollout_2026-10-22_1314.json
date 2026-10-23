@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-10-22T13:14:00Z",
+  "purpose": "Record the production rollout of point-in-time player metric identity provenance for the pre-training tennis forecast pipeline. No model training or candidate evaluation was started.",
+  "integration_test": {
+    "test": "tests/api/test_tennis_player_identity_as_of_integration.py",
+    "result": "passed",
+    "summary": "1 passed in 14.98s against the working PostgreSQL database; the test cleans up its temporary A-to-B profile rebind records in finally."
+  },
+  "image_build": {
+    "strategy": "Use the previously deployed Neural image as the base and overlay only the four validated source files; this avoids reinstalling the large SciPy/XGBoost dependency set after the full Dockerfile build stalled or failed on a corrupt temporary SciPy wheel.",
+    "image_tag": "neurobet-neural:asof-pit-test-20261022",
+    "image_id": "sha256:87c4867dacb8abdb738ce40f51a9b82509be509103848a754fe475effe0d2ff8",
+    "production_tag": "neurobet-neural:latest",
+    "rollback_image_tag": "neurobet-neural:asof-base-20261022",
+    "rollback_image_id": "sha256:bf10f5d44183c315f879e2070eb2f12353285a622baeeaf3413a7a72f6a586c1"
+  },
+  "deployed_files": {
+    "packages/db/src/db/identity.py": "d233f85402ae1d40a681bab4b81a2872d283e229f6767caf68b6026caa4c25aa",
+    "packages/db/src/db/models/__init__.py": "5624922713012ef2e927fc72904927f02a82fe8fc40a48ca4be2c68599f13093",
+    "packages/db/src/db/models/external_tennis.py": "8d6eee94c5c77c34dad3e2e5c5eb985485c11b6b3f1fe26bea2924538395a56f",
+    "services/neural/app/player_metrics.py": "ebcc1f73a4644f6ec53b9d327146939293d86afc3f06dcf591a2db1a2bc9f592"
+  },
+  "production_verification": {
+    "container": "neurobet_neural",
+    "image_id": "sha256:87c4867dacb8abdb738ce40f51a9b82509be509103848a754fe475effe0d2ff8",
+    "health": "healthy",
+    "health_endpoint": {"status": "healthy", "service": "neural"},
+    "source_hashes_match_checkout": true,
+    "metric_snapshot_has_source_player_id": true
+  },
+  "safety": {
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_opened": false,
+    "shadow_registered": false
+  }
+}

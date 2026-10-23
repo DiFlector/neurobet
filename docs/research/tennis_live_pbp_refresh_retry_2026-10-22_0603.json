@@ -1,0 +1,137 @@
+{
+  "captured_at_utc": "2026-10-22T06:03:55.734753+00:00",
+  "source": "deployed read-only Backend event, point-history and queue APIs",
+  "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+  "fonbet_source_event_id": "69174206",
+  "flashscore_source_match_id": "A5F0BCMP",
+  "fonbet_state": {
+    "observed_at": "2026-10-22T06:03:49.488400Z",
+    "status": "live",
+    "score": {
+      "sets": [
+        {
+          "games_a": 7,
+          "games_b": 6,
+          "timestamp": "2026-10-22T06:03:49.488373Z",
+          "set_number": 1,
+          "schema_version": "1.0.0"
+        },
+        {
+          "games_a": 1,
+          "games_b": 6,
+          "timestamp": "2026-10-22T06:03:49.488376Z",
+          "set_number": 2,
+          "schema_version": "1.0.0"
+        }
+      ],
+      "stats": {
+        "aces_a": 0,
+        "aces_b": 0,
+        "sets_a": 1,
+        "sets_b": 1,
+        "set_lines": [
+          {
+            "live": false,
+            "detail": null,
+            "games_a": 7,
+            "games_b": 6
+          },
+          {
+            "live": false,
+            "detail": null,
+            "games_a": 1,
+            "games_b": 6
+          },
+          {
+            "live": true,
+            "detail": "6*-3",
+            "games_a": 6,
+            "games_b": 6
+          }
+        ],
+        "match_clock": {
+          "label": null,
+          "paused": false,
+          "running": true,
+          "base_seconds": 14629,
+          "updated_at_ms": 1792649029488
+        },
+        "double_faults_a": 0,
+        "double_faults_b": 0,
+        "break_points_saved_a": 0,
+        "break_points_saved_b": 0,
+        "first_serve_win_pct_a": 0.0,
+        "first_serve_win_pct_b": 0.0
+      },
+      "server": "player_a",
+      "event_id": "fonbet_69174206",
+      "quarters": [],
+      "timestamp": "2026-10-22T06:03:49.488400Z",
+      "possession": null,
+      "sport_code": "tennis",
+      "current_game": {
+        "points_a": "6",
+        "points_b": "3",
+        "timestamp": "2026-10-22T06:03:49.488393Z",
+        "is_tiebreak": true,
+        "schema_version": "1.0.0"
+      },
+      "current_period": 3,
+      "is_break_point": false,
+      "schema_version": "1.0.0",
+      "match_clock_seconds": 14629
+    }
+  },
+  "point_history": {
+    "as_of": "2026-10-22T06:03:50.733900+00:00",
+    "source_match_id": "A5F0BCMP",
+    "versions_total": 17,
+    "total": 246,
+    "collection_status": "retry",
+    "last_error": "SET_3_NAVIGATION_TimeoutError",
+    "incompleteness_reasons": [],
+    "confirmed_points": 246
+  },
+  "latest_version_available_at": "2026-10-22T06:03:23.864920+00:00",
+  "pbp_job": {
+    "id": "pbp:91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "label": "Ян Иди — Юань Чэнии",
+    "player": null,
+    "kind": "pbp",
+    "status": "retry",
+    "priority": 0,
+    "mode": "live",
+    "wait_seconds": 94,
+    "last_success_at": null,
+    "next_retry_at": "2026-10-22T06:18:24.039657+00:00",
+    "reason": "SET_3_NAVIGATION_TimeoutError",
+    "related_events": 1
+  },
+  "queue": {
+    "total": 61,
+    "statuses": {
+      "matched": 2,
+      "queued": 23,
+      "waiting_players": 24,
+      "retry": 7,
+      "completed": 3,
+      "running": 2
+    },
+    "eligible_matches": 14,
+    "prepared_players": 3,
+    "overdue_pbp": 0,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T06:03:48.354499+00:00",
+      "network_slots": 0,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "interpretation": "At capture the live Fonbet match had progressed to tiebreak 6:3, while the latest PBP version available at 06:01:45 ended at 5:2. The PBP job had entered retry after SET_3_NAVIGATION_TimeoutError with next_retry_at 06:18:24. Worker heartbeat was healthy, but this PBP was not caught up; overdue_pbp=0 excludes this retry from that counter.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

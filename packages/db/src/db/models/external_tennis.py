@@ -61,6 +61,7 @@ class ExtTennisMatch(Base):
 
     __table_args__ = (
         UniqueConstraint("source", "source_match_id", name="uq_ext_tennis_matches_source"),
+        Index("idx_ext_tennis_matches_source_played", "source", "played_at"),
         Index("idx_ext_tennis_matches_available", "available_at"),
         Index("idx_ext_tennis_matches_players", "winner_name", "loser_name"),
     )
@@ -155,6 +156,7 @@ class TennisPlayerRefreshJob(Base):
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     progress_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -175,6 +177,7 @@ class TennisPlayerMetricSnapshot(Base):
     participant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=False
     )
+    source_player_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     metrics_version: Mapped[int] = mapped_column(Integer, nullable=False)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source_watermark: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -271,6 +274,7 @@ class FlashscoreImportJob(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
@@ -298,6 +302,7 @@ class TennisPointRefreshJob(Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     last_requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
@@ -320,6 +325,23 @@ class TennisPointRefreshJobEvent(Base):
     __table_args__ = (Index("idx_tennis_point_job_event_asof", "event_id", "available_at"),)
 
 
+class TennisPointSourceRefreshJob(Base):
+    """Durable PBP retrieval keyed by source identity, independent of Fonbet links."""
+    __tablename__ = "tennis_point_source_refresh_jobs"
+    source_match_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_error: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (Index("idx_tennis_point_source_refresh_dispatch", "status", "next_run_at", "lease_until"),)
+
+
 class TennisMatchLookupJob(Base):
     """Durable lookup for the external live match associated with a Fonbet event."""
     __tablename__ = "tennis_match_lookup_jobs"
@@ -327,6 +349,7 @@ class TennisMatchLookupJob(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     source_match_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -451,7 +474,7 @@ class ExtTennisCanonicalMatch(Base):
 
 
 class ExtTennisServeLog(Base):
-    """Charted serve points. A row is usable only at available_at."""
+    """Charted serve points with separate event and first-known timestamps."""
 
     __tablename__ = "ext_tennis_serve_logs"
 
@@ -459,7 +482,12 @@ class ExtTennisServeLog(Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     source_match_id: Mapped[str] = mapped_column(String(160), nullable=False)
     player_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_event_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    legacy_available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    availability_provenance: Mapped[str] = mapped_column(String(64), default="database_ingest_time", nullable=False)
+    source_confidence: Mapped[str] = mapped_column(String(24), default="unknown", nullable=False)
+    retrospective: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     surface: Mapped[str] = mapped_column(String(32), default="unknown", nullable=False)
     serve_points: Mapped[float] = mapped_column(Float, nullable=False)
     serve_points_won: Mapped[float] = mapped_column(Float, nullable=False)

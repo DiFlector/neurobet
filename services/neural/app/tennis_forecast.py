@@ -21,8 +21,9 @@ ODDS_FREE_FEATURE_SOURCE_GROUPS = {
     "serve_metrics_b": ("serve_probability_b", "serve_sample_weight_b"),
     "event_state": (
         "sets_a", "sets_b", "games_a", "games_b", "points_a", "points_b",
-        "server_a", "server_b", "server_unknown", "is_tiebreak", "sets_to_win",
+          "server_a", "server_b", "server_unknown", "is_tiebreak",
     ),
+      "event_format": ("sets_to_win",),
     "event_surface": ("surface_hard", "surface_clay", "surface_grass", "surface_carpet", "surface_unknown"),
 }
 ODDS_FREE_FEATURE_NAMES = (
@@ -88,6 +89,33 @@ def point_in_time_surface(metadata: Any, as_of: datetime) -> Tuple[str, Optional
     if surface not in {"hard", "clay", "grass", "carpet"}:
         return "unknown", available.isoformat(), "unsupported_or_missing_surface"
     return surface, available.isoformat(), "observed"
+
+
+def point_in_time_best_of(metadata: Any, as_of: datetime) -> Tuple[Optional[int], Optional[str], str]:
+    """Use match format only when an explicit source value has a causal observation time."""
+    values = metadata if isinstance(metadata, dict) else {}
+    raw_best_of = values.get("best_of")
+    try:
+        if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
+            raise ValueError("non_integer_best_of")
+        best_of = int(raw_best_of) if not isinstance(raw_best_of, bool) else None
+    except (TypeError, ValueError, OverflowError):
+        best_of = None
+    if best_of not in (3, 5):
+        return None, None, "missing_or_unsupported_value"
+    raw_available = values.get("best_of_available_at")
+    if isinstance(raw_available, str):
+        try:
+            raw_available = datetime.fromisoformat(raw_available.replace("Z", "+00:00"))
+        except ValueError:
+            raw_available = None
+    if not isinstance(raw_available, datetime):
+        return None, None, "missing_source_timestamp"
+    available = raw_available.replace(tzinfo=timezone.utc) if raw_available.tzinfo is None else raw_available.astimezone(timezone.utc)
+    cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
+    if available > cutoff:
+        return None, available.isoformat(), "source_after_cutoff"
+    return best_of, available.isoformat(), "observed"
 
 
 @dataclass(frozen=True)
@@ -467,49 +495,111 @@ def _live_serve_rates(states, base_a, base_b, best_of: int = 3):
     return base_a, base_b, {"a": 0.0, "b": 0.0}
 
 
-def player_serve_rates(session, player_a: str, player_b: str, cutoff, surface: str = "unknown") -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
-    """Read real historical serve-point denominators available by the cutoff."""
+def player_serve_rate_snapshot(
+    session, player_a: str, player_b: str, cutoff, surface: str = "unknown"
+) -> tuple[Tuple[float, float, float], Tuple[float, float, float], Dict[str, Any]]:
+    """Return PIT serve rates and explicit volume/freshness/source provenance."""
     from datetime import timedelta
     from sqlalchemy import or_, select
     from db.models.external_tennis import ExtTennisServeLog
     from .players import canonical_player_name
 
+    cutoff = cutoff.replace(tzinfo=timezone.utc) if cutoff.tzinfo is None else cutoff.astimezone(timezone.utc)
+    start = cutoff - timedelta(days=365)
     left, right = canonical_player_name(player_a), canonical_player_name(player_b)
     rates = {left: {"all": [0.0, 0.0], "surface": [0.0, 0.0]}, right: {"all": [0.0, 0.0], "surface": [0.0, 0.0]}}
+    provenance: dict[str, list[dict[str, Any]]] = {"a": [], "b": []}
     if not left or not right:
-        return (0.62, 0.62, 0.0), (0.62, 0.62, 0.0)
-    start = cutoff - timedelta(days=365)
+        unknown = {side: {"volume_known": False, "sample_points": 0.0, "freshness_days": None,
+                          "source_event_at": None, "available_at": None, "sources": [],
+                          "availability_provenance": [], "source_confidence": None,
+                          "retrospective": None, "missingness": "player_name_unresolved"}
+                   for side in ("a", "b")}
+        return (0.62, 0.62, 0.0), (0.62, 0.62, 0.0), unknown
     name_filters = []
     for name in (player_a, player_b):
         tokens = [token for token in canonical_player_name(name).split() if len(token) > 1]
         if tokens:
             name_filters.append(ExtTennisServeLog.player_name.contains(tokens[-1], autoescape=True))
     if not name_filters:
-        return (0.62, 0.62, 0.0), (0.62, 0.62, 0.0)
+        unknown = {side: {"volume_known": False, "sample_points": 0.0, "freshness_days": None,
+                          "source_event_at": None, "available_at": None, "sources": [],
+                          "availability_provenance": [], "source_confidence": None,
+                          "retrospective": None, "missingness": "player_name_unresolved"}
+                   for side in ("a", "b")}
+        return (0.62, 0.62, 0.0), (0.62, 0.62, 0.0), unknown
     rows = session.execute(
-        select(ExtTennisServeLog.player_name, ExtTennisServeLog.serve_points, ExtTennisServeLog.serve_points_won, ExtTennisServeLog.surface)
-        .where(ExtTennisServeLog.available_at <= cutoff, ExtTennisServeLog.available_at >= start, or_(*name_filters))
-        .order_by(ExtTennisServeLog.available_at)
+        select(
+            ExtTennisServeLog.player_name, ExtTennisServeLog.serve_points,
+            ExtTennisServeLog.serve_points_won, ExtTennisServeLog.surface,
+            ExtTennisServeLog.source, ExtTennisServeLog.source_event_at,
+            ExtTennisServeLog.available_at, ExtTennisServeLog.availability_provenance,
+            ExtTennisServeLog.source_confidence, ExtTennisServeLog.retrospective,
+        ).where(
+            ExtTennisServeLog.available_at <= cutoff,
+            ExtTennisServeLog.source_event_at >= start,
+            ExtTennisServeLog.source_event_at <= cutoff,
+            or_(*name_filters),
+        ).order_by(ExtTennisServeLog.source_event_at, ExtTennisServeLog.available_at)
     ).all()
     wanted_surface = (surface or "unknown").strip().lower()
-    for name, played, won, row_surface in rows:
+    for (name, played, won, row_surface, source, source_event_at, available_at,
+         availability_provenance, source_confidence, retrospective) in rows:
         row_surface = (row_surface or "unknown").strip().lower()
         key = canonical_player_name(name)
         if key not in rates or not played or float(played) <= 0:
             continue
+        side = "a" if key == left else "b"
         rates[key]["all"][0] += float(won or 0.0)
         rates[key]["all"][1] += float(played)
         if wanted_surface == "unknown" or row_surface in (wanted_surface, "unknown"):
             rates[key]["surface"][0] += float(won or 0.0)
             rates[key]["surface"][1] += float(played)
+        provenance[side].append({
+            "source": source, "source_event_at": source_event_at,
+            "available_at": available_at, "availability_provenance": availability_provenance,
+            "source_confidence": source_confidence, "retrospective": bool(retrospective),
+            "serve_points": float(played),
+        })
+
     def choose(key):
         sampled = rates[key]["surface"]
         if sampled[1] <= 0:
             sampled = rates[key]["all"]
         return _smoothed_rate(*sampled, prior=0.62)
-    left_rate = choose(left)
-    right_rate = choose(right)
-    return (left_rate[0], 0.62, left_rate[1]), (right_rate[0], 0.62, right_rate[1])
+
+    left_rate, right_rate = choose(left), choose(right)
+
+    def describe(side: str) -> dict[str, Any]:
+        items = provenance[side]
+        if not items:
+            return {"volume_known": False, "sample_points": 0.0, "freshness_days": None,
+                    "source_event_at": None, "available_at": None, "sources": [],
+                    "availability_provenance": [], "source_confidence": None,
+                    "retrospective": None, "missingness": "no_eligible_serve_logs"}
+        newest = max(items, key=lambda item: (item["source_event_at"], item["available_at"]))
+        return {
+            "volume_known": True,
+            "sample_points": sum(item["serve_points"] for item in items),
+            "freshness_days": max(0, (cutoff - newest["source_event_at"]).days),
+            "source_event_at": newest["source_event_at"].isoformat(),
+            "available_at": max(item["available_at"] for item in items).isoformat(),
+            "sources": sorted({item["source"] for item in items if item["source"]}),
+            "availability_provenance": sorted({item["availability_provenance"] for item in items if item["availability_provenance"]}),
+            "source_confidence": sorted({item["source_confidence"] for item in items if item["source_confidence"]}) or None,
+            "retrospective": all(item["retrospective"] for item in items),
+            "missingness": None,
+        }
+
+    return ((left_rate[0], 0.62, left_rate[1]),
+            (right_rate[0], 0.62, right_rate[1]),
+            {"a": describe("a"), "b": describe("b")})
+
+
+def player_serve_rates(session, player_a: str, player_b: str, cutoff, surface: str = "unknown") -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+    """Compatibility wrapper for callers needing only rates and sample weights."""
+    left, right, _details = player_serve_rate_snapshot(session, player_a, player_b, cutoff, surface)
+    return left, right
 
 
 def persist_event_forecasts(session, event, states, cutoff) -> int:
@@ -520,13 +610,9 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     from db.models.predictions import TennisForecastSnapshot
     from contracts.predictions import TennisForecast
 
-    raw_best_of = (event.metadata_json or {}).get("best_of")
-    try:
-        best_of = int(raw_best_of) if raw_best_of is not None else None
-    except (TypeError, ValueError):
-        best_of = None
-    if best_of not in (3, 5):
-        best_of = None
+    best_of, best_of_available_at, best_of_resolution = point_in_time_best_of(
+        event.metadata_json, cutoff
+    )
     unavailable_reason = None
     state_value = None
     if states:
@@ -554,23 +640,51 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     surface, surface_available_at, surface_resolution = point_in_time_surface(
         event.metadata_json, source_cutoff
     )
-    serve_a, serve_b = player_serve_rates(session, event.participant_a_name, event.participant_b_name, source_cutoff, surface)
+    serve_a, serve_b, serve_provenance = player_serve_rate_snapshot(
+        session, event.participant_a_name, event.participant_b_name, source_cutoff, surface
+    )
     from .player_metrics import load_player_metric, pair_features
 
     metric_a = load_player_metric(session, event.participant_a_id, source_cutoff)
     metric_b = load_player_metric(session, event.participant_b_id, source_cutoff)
     if metric_a and metric_a["metrics"].get("serve", {}).get("points", 0) > 0:
+        metric_serve = metric_a["metrics"]["serve"]
         serve_a = _smoothed_rate(
-            metric_a["metrics"]["serve"].get("points_won", 0),
-            metric_a["metrics"]["serve"].get("points", 0),
+            metric_serve.get("points_won", 0),
+            metric_serve.get("points", 0),
             prior=0.62,
         ) + (0.62,)
+        serve_provenance["a"] = {
+            "volume_known": True,
+            "sample_points": float(metric_serve.get("points", 0)),
+            "freshness_days": max(0, (source_cutoff - datetime.fromisoformat(metric_a["available_at"])).days),
+            "source_event_at": None,
+            "available_at": metric_a["available_at"],
+            "sources": ["participant_metric_snapshot"],
+            "availability_provenance": ["metrics_available_at"],
+            "source_confidence": None,
+            "retrospective": True,
+            "missingness": None,
+        }
     if metric_b and metric_b["metrics"].get("serve", {}).get("points", 0) > 0:
+        metric_serve = metric_b["metrics"]["serve"]
         serve_b = _smoothed_rate(
-            metric_b["metrics"]["serve"].get("points_won", 0),
-            metric_b["metrics"]["serve"].get("points", 0),
+            metric_serve.get("points_won", 0),
+            metric_serve.get("points", 0),
             prior=0.62,
         ) + (0.62,)
+        serve_provenance["b"] = {
+            "volume_known": True,
+            "sample_points": float(metric_serve.get("points", 0)),
+            "freshness_days": max(0, (source_cutoff - datetime.fromisoformat(metric_b["available_at"])).days),
+            "source_event_at": None,
+            "available_at": metric_b["available_at"],
+            "sources": ["participant_metric_snapshot"],
+            "availability_provenance": ["metrics_available_at"],
+            "source_confidence": None,
+            "retrospective": True,
+            "missingness": None,
+        }
     pair = pair_features(metric_a, metric_b)
     live_samples = {"a": 0.0, "b": 0.0}
     if state_value is not None:
@@ -630,6 +744,9 @@ def persist_event_forecasts(session, event, states, cutoff) -> int:
     }
     value["data_quality_detail"] = {
         **value.get("data_quality_detail", {}),
+        "best_of_available_at": best_of_available_at,
+        "best_of_resolution": best_of_resolution,
+        "historical_serve_provenance": serve_provenance,
         "player_metrics_a_version": metric_a["metrics_version"] if metric_a else None,
         "player_metrics_b_version": metric_b["metrics_version"] if metric_b else None,
         "player_metrics_a_available_at": metric_a["available_at"] if metric_a else None,

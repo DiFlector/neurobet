@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-10-21T22:16:09.493730+00:00",
+  "runtime_scope": "temporary backend container with worktree source mounted; API not deployed to the existing service",
+  "endpoint": "GET /api/tennis/odds-free/strategy-replay",
+  "http_status": 200,
+  "eligible_event_count": 1,
+  "live_event_count": 1,
+  "prematch_event_count": 0,
+  "prematch_horizon_hours": 6,
+  "history_horizon_hours": 6,
+  "forecast_count": 0,
+  "signals_policy_mode": 0,
+  "signals_positive_ev_mode": 0,
+  "policy_digest": "9d2d42865f79938273802b3409ff7a5a02b4b619ed71c098c9a166535013140e",
+  "database_write_check": {
+    "bets_delta": 0,
+    "ledger_entries_delta": 0,
+    "model_bet_journal_delta": 0
+  },
+  "limitation": "No forecasts existed for eligible live/prematch events in the rolling six-hour window; positive candidate generation was verified with fixtures, not live rows."
+}

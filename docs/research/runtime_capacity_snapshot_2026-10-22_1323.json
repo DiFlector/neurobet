@@ -1,0 +1,45 @@
+{
+  "observed_at_utc": "2026-10-22T13:23:30Z",
+  "flashscore": {
+    "profile_concurrency": 2,
+    "browser_processes": 2,
+    "cpu_limit_vcpu": 1.5,
+    "cpu_sample_percent": 145.6,
+    "memory_sample": "975.6 MiB / 2 GiB",
+    "profile_jobs": {
+      "running": 2,
+      "queued": 692,
+      "retry_search_completed_no_match": 860,
+      "completed": 308
+    },
+    "point_jobs_waiting_for_players": {
+      "historical_match_not_indexed": 2458,
+      "source_player_id_missing": 205
+    },
+    "decision": "Do not raise browser concurrency: current CPU is at quota and most queued point work lacks indexed match/player identity; extra browser slots do not address these blockers."
+  },
+  "postgres": {
+    "memory_before_maintenance": "995.4 MiB / 2.5 GiB",
+    "cpu_before_maintenance_percent": 36.17,
+    "docker_shm_before_bytes": 67108864,
+    "parallel_vacuum_failure": "could not resize shared memory segment to 130135904 bytes: No space left on device",
+    "compose_change": "postgres shm_size set to 512m",
+    "container_recreated": true,
+    "health_after_recreate": "healthy",
+    "docker_shm_after_bytes": 536870912,
+    "maintenance": {
+      "command": "VACUUM (ANALYZE, PARALLEL 0, VERBOSE) ext_tennis_matches",
+      "duration_seconds": 73.41,
+      "dead_tuples_removed": 8621,
+      "dead_item_identifiers_removed": 170167,
+      "estimated_live_rows_after_analyze": 1162479,
+      "estimated_dead_rows_after_analyze": 0,
+      "table_size_after": "811 MB"
+    },
+    "post_maintenance_sample": {
+      "memory": "459.1 MiB / 2.5 GiB",
+      "cpu_percent": 14.98,
+      "health": "healthy"
+    }
+  }
+}

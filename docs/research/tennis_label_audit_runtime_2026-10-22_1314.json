@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-10-22T13:14:00Z",
+  "purpose": "Record an interrupted current-data admission audit; no training, candidate evaluation, holdout quality analysis, or SHADOW registration occurred.",
+  "audit": {
+    "script": "scripts/research/tennis_label_audit.py",
+    "command": "docker compose run --rm --no-deps neural; checkout mounted at /checkout; invoke build_report()",
+    "result": "cancelled_after_10_minutes",
+    "failure_point": "_result_score_snapshot_evidence latest exact-score snapshot lookup",
+    "postgres_error": "QueryCanceled by operator",
+    "previous_completed_admission": "docs/research/tennis_label_audit_2026-10-22_0808.json",
+    "previous_admission_sha256": "3a44d7d986f37f88fe274fc9e54503f8f20d679da8466fdf27530fa6dc85f7c3",
+    "current_report_created": false
+  },
+  "query_diagnostic": {
+    "table": "event_state_snapshots",
+    "available_event_time_indexes": [
+      "idx_event_state_snapshots_lookup (event_id, observed_at)",
+      "idx_event_state_snapshots_event_time_desc (event_id, observed_at DESC)"
+    ],
+    "single_event_explain_analyze": "1.548 seconds, 577 shared-buffer reads for the lateral latest-row lookup; Timescale scanned an uncompressed and a compressed chunk, then stopped after finding a row.",
+    "audit_batch_size": 100,
+    "audit_query_wait": "DataFileRead"
+  },
+  "database_observation": {
+    "postgres_container_memory_during_audit": "1.055 GiB / 2.5 GiB",
+    "audit_container_memory": "306.4 MiB / 8 GiB",
+    "service_health_after_cancel": "PostgreSQL healthy; Neural healthy; Research and Flashscore worker healthy"
+  },
+  "safety": {
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  },
+  "next_action": "Optimize or bound result snapshot availability lookup, then rerun the read-only audit and write a new manifest/provenance pair."
+}

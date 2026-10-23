@@ -1,0 +1,166 @@
+{
+  "execution_id": "tennis-admission-2026-10-22T1326Z",
+  "started_at": "2026-10-22T13:26:51+00:00",
+  "audit_cutoff": "2026-10-22T13:27:17.282295+00:00",
+  "finished_at": "2026-10-22T14:25:55.878724+00:00",
+  "duration_seconds": 3544.879,
+  "purpose": "Read-only current-data admission audit after newly collected Flashscore PBP and result observations; no training or holdout quality evaluation.",
+  "execution": {
+    "container": "one-off Compose Neural container",
+    "command": "docker compose run -T --rm --no-deps -v /srv/neurobet:/checkout -w /checkout --entrypoint python neural -c build_report()",
+    "audit_source_path": "scripts/research/tennis_label_audit.py",
+    "audit_source_sha256": "6e5138eeebe73d2228ce8f35f2913a696c5c4ecaa269396b5c26fed9ee5746a9",
+    "result_observation_source_path": "scripts/research/tennis_result_observation.py",
+    "result_observation_source_sha256": "6448713d2c56d32190599d07a0a632ddd7d4fd6d1455fa7d937c6ed08100d7d2",
+    "report_path": "docs/research/tennis_label_audit_20261022T1326Z.json",
+    "report_sha256": "44bd02cb73ba43673dfd413e9363c54a843913184f31c65560c492f0f1919c9d",
+    "manifest_path": "docs/research/tennis_training_manifest_49c609244205.json",
+    "manifest_sha256": "5f91c76e53b1a5680f0e4f58cfdd2a8304973e5d42d149b88d9d8bcf6ce8fc95",
+    "manifest_dataset_digest": "49c609244205d9a155c005e452757e1ea67af1b71c4717be808b1fb3294c8e5e",
+    "provenance_path": "docs/research/tennis_training_examples_05fe1c44b9f0.jsonl",
+    "provenance_examples": 5519,
+    "provenance_sha256": "62bac10277fc832a14f13d126091e97c3797dc81ee7ac552247301a76015dfec"
+  },
+  "admission": {
+    "status": "blocked",
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "odds_free_feature_availability_not_certified"
+    ],
+    "required_thresholds_unchanged": {
+      "initial_train_matches": 500,
+      "each_validation_window_matches": 100,
+      "holdout_matches": 200,
+      "both_classes": true,
+      "point_in_time_clean": true
+    },
+    "target_labelled_matches": {
+      "point": 54,
+      "game": 54,
+      "set": 54,
+      "match": 2567
+    },
+    "source_observed_examples": {
+      "point": 500,
+      "game": 85,
+      "set": 7,
+      "match": 0
+    },
+    "effective_causal_train_matches_each_fold": {
+      "point": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "game": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "set": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "match": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "validation_labelled_matches_per_fold": {
+      "point": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "game": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "set": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "match": [
+        204,
+        204,
+        205,
+        204
+      ]
+    },
+    "holdout_labelled_matches_per_target": {
+      "point": 17,
+      "game": 17,
+      "set": 17,
+      "match": 511
+    },
+    "feature_availability": {
+      "checked_examples": 5519,
+      "certified_examples": 0,
+      "source_groups": {
+        "player_metrics": {
+          "available": 665,
+          "contract_defaulted": 4854,
+          "missing_or_unverifiable": 0
+        },
+        "serve_metrics_a": {
+          "available": 0,
+          "contract_defaulted": 5519,
+          "missing_or_unverifiable": 0
+        },
+        "serve_metrics_b": {
+          "available": 0,
+          "contract_defaulted": 5519,
+          "missing_or_unverifiable": 0
+        },
+        "event_state": {
+          "available": 5519,
+          "contract_defaulted": 0,
+          "missing_or_unverifiable": 0
+        },
+        "event_format": {
+          "available": 0,
+          "contract_defaulted": 0,
+          "missing_or_unverifiable": 5519
+        },
+        "event_surface": {
+          "available": 0,
+          "contract_defaulted": 5519,
+          "missing_or_unverifiable": 0
+        }
+      }
+    },
+    "result_time_sources": {
+      "fonbet_official_result_metadata": 2275,
+      "fonbet_exact_final_score_snapshot": 277,
+      "unavailable": 143
+    },
+    "unknown_result_time_excluded_matches": 143,
+    "point_history": {
+      "documents": 1521,
+      "source_matches": 105,
+      "confirmed_outcomes": 8618
+    },
+    "manifest": {
+      "matches": 2552,
+      "development_matches": 2041,
+      "holdout_matches": 511,
+      "holdout_quality_metrics_opened": false
+    },
+    "training_started": false,
+    "candidate_metrics_evaluated": false,
+    "shadow_registered": false
+  }
+}

@@ -72,3 +72,23 @@ class MinIORawWriter:
         )
         logger.info("Saved raw snapshot to s3://%s/%s (%d bytes)", self.bucket, object_key, len(body_bytes))
         return object_key
+
+    def save_source_payload(
+        self,
+        content_hash: str,
+        source_payload: Any,
+        source_url: str,
+        collected_at: datetime,
+    ) -> str:
+        """Persist an unmodified upstream feed as a content-addressed S3 object."""
+        snapshot = {
+            "source": "fonbet",
+            "collector_version": settings.collector_version,
+            "collected_at": collected_at.isoformat(),
+            "sport_code": settings.sport_code,
+            "page_type": "live_source_payload",
+            "url": source_url,
+            "content_hash": content_hash,
+            "source_payload": source_payload,
+        }
+        return self.save_raw_snapshot(content_hash, snapshot, collected_at)

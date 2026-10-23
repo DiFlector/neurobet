@@ -1,0 +1,69 @@
+{
+  "checked_at": "2026-10-22T00:14:54Z",
+  "fonbet_event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+  "fonbet_source_event_id": "fonbet_69173294",
+  "flashscore_source_match_id": "nFpUNjLN",
+  "api": {
+    "path": "/api/events/cb7ca562-272e-498d-a657-ddea74cae648/point-history?limit=2000&include_versions=true",
+    "versions_total": 7,
+    "sequence_events": 53,
+    "confirmed_events": 53,
+    "collection_status": "retry",
+    "last_error": "point_history_tab_missing",
+    "resolved_as_of": "2026-10-22T00:14:43.622821+00:00"
+  },
+  "latest_nonempty_source_version": {
+    "document_id": "36e24019-22d2-456a-b451-5f8044215240",
+    "retrieved_at": "2026-10-21T23:53:22.094149+00:00",
+    "available_at": "2026-10-21T23:53:24.580381+00:00",
+    "confirmed_sequence_events": 53,
+    "parser_version": "flashscore-point-history-v5",
+    "source_set": 1,
+    "last_source_game_score": [
+      5,
+      3
+    ]
+  },
+  "latest_version": {
+    "document_id": "c3ed8b55-9d5b-4846-b6e3-4ef947eae603",
+    "retrieved_at": "2026-10-21T23:58:54.325490+00:00",
+    "fetch_status": "point_history_tab_missing",
+    "set_tab_confirmed": false,
+    "event_count": 0
+  },
+  "latest_fonbet_state": {
+    "observed_at": "2026-10-22T00:14:54.353851+00:00",
+    "status": "live",
+    "score": "1-0 (6-4, 1-2*)",
+    "sets_a_b": [
+      1,
+      0
+    ],
+    "set1_games_a_b": [
+      6,
+      4
+    ],
+    "set2_games_a_b": [
+      1,
+      2
+    ]
+  },
+  "effective_link": {
+    "status": "matched",
+    "available_at": "2026-10-21T23:58:54.68544+00:00",
+    "external_home_is_fonbet_a": null,
+    "orientation_source": null
+  },
+  "source_side_evidence": "Archived scoreboard DOM and confirmed profile identities establish home=Nishimoto/Fonbet A, but no persisted/manual confirmation is present in the effective link.",
+  "assessment": {
+    "fresh_live_score_alignment_verified": false,
+    "side_orientation_persisted": false,
+    "training_label_eligible": false,
+    "reasons": [
+      "the newest non-empty source version is from 23:53 UTC and ends at set-1 games 5:3 while a 00:14 Fonbet snapshot has set 1 at 6:4 and set 2 underway",
+      "the latest PBP version is empty because Flashscore did not publish the point-history tab",
+      "the current effective match link has null side orientation"
+    ]
+  },
+  "writes_performed_by_verifier": false
+}

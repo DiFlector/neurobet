@@ -1,0 +1,29 @@
+{
+  "observed_at_utc": "2026-10-22T14:28:16Z",
+  "change": {
+    "migration_revision": "034_ext_tennis_source_played",
+    "index": "idx_ext_tennis_matches_source_played",
+    "columns": ["source", "played_at"],
+    "creation_mode": "CREATE INDEX CONCURRENTLY",
+    "valid": true,
+    "ready": true,
+    "size": "13 MB"
+  },
+  "reason": {
+    "query_path": "services/research/app/point_history.py collect_event_point_history: when there is no confirmed source link, search ExtTennisMatch by source='flashscore' and played_at within two days of scheduled start",
+    "pre_change_explain": "Index Scan using uq_ext_tennis_matches_source; played_at applied as a Filter; estimated cost 0.55..62117.18",
+    "live_observation": "An ExtTennisMatch read held a point-refresh transaction while the dispatcher waited on its transaction ID for about nine minutes. pg_stat_activity text was truncated, so this observation is not attributed to the date-range branch with certainty."
+  },
+  "verification": {
+    "post_change_explain": "Index Scan using idx_ext_tennis_matches_source_played; source and played_at range both in Index Cond; estimated cost 0.44..8.74",
+    "explain_analyze": {
+      "rows": 151,
+      "execution_time_ms": 1.273,
+      "planning_time_ms": 3.621,
+      "shared_buffers_hit": 154
+    },
+    "alembic_version": "034_ext_tennis_source_played",
+    "postgres_health": "healthy",
+    "flashscore_browser_slots_changed": false
+  }
+}

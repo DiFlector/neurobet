@@ -40,9 +40,14 @@ def _log_skip_once(key: str, message: str) -> None:
 
 
 def _ready_tennis_preparation(session, events) -> set[str]:
-    """Read cached readiness; the dedicated Flashscore worker owns refresh work."""
+    """Allow odds-free forecasts when either player's cache is fresh within 7 days.
+
+    Profile refresh is asynchronous. A running or retrying refresh must not hide
+    already stored point-in-time metrics that are still inside the freshness window.
+    """
     from db.models.external_tennis import TennisPlayerProfile
 
+    now = datetime.now(timezone.utc)
     participant_ids = {
         participant_id
         for event in events
@@ -57,12 +62,15 @@ def _ready_tennis_preparation(session, events) -> set[str]:
     ready = {
         profile.participant_id
         for profile in profiles
-        if profile.sync_status in {"available", "empty", "stale"} and profile.metrics_version > 0
+        if profile.metrics_version > 0
+        and profile.history_match_count > 0
+        and profile.last_success_at is not None
+        and profile.last_success_at >= now - timedelta(days=7)
     }
     return {
         str(event.id)
         for event in events
-        if event.participant_a_id in ready and event.participant_b_id in ready
+        if event.participant_a_id in ready or event.participant_b_id in ready
     }
 
 
@@ -898,15 +906,11 @@ def evaluate_pending_events(
             if shadow_sports:
                 needs_work = or_(needs_work, Event.sport_code.in_(shadow_sports))
             cutoff = datetime.now(timezone.utc)
+            from tennis_adapter.odds_free_replay import odds_free_event_filters
             forecast_events = (
                 session.query(Event)
-                .filter(Event.sport_code == "tennis", Event.status.in_(["live", "prematch"]))
+                .filter(*odds_free_event_filters(Event, cutoff))
                 .filter(~synthetic)
-                .filter(or_(
-                    Event.status == "live",
-                    and_(Event.status == "prematch", Event.scheduled_start_at >= cutoff,
-                         Event.scheduled_start_at <= cutoff + timedelta(hours=6)),
-                ))
                 .order_by(Event.is_live.desc(), Event.scheduled_start_at.asc())
                 .all()
             )

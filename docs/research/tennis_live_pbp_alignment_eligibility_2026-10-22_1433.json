@@ -1,0 +1,18 @@
+{
+  "generated_at_utc": "2026-10-22T14:34:05Z",
+  "scope": "Read-only eligibility check for Phase 50 live Flashscore PBP score-and-side alignment acceptance.",
+  "freshness_rule": "live tennis event status/is_live and last_seen_at within 2 minutes of the PostgreSQL query",
+  "query_source": "live PostgreSQL tables events, tennis_point_match_links, tennis_point_history_versions",
+  "counts": {
+    "live_events_last_2m": 35,
+    "confirmed_live_links": 0,
+    "linked_live_with_pbp_version": 0,
+    "linked_live_with_nonretrospective_pbp": 0
+  },
+  "eligible_matches": [],
+  "result": "not_verifiable_no_confirmed_live_pbp_link",
+  "interpretation": "This check does not assert a PBP mismatch. The acceptance cannot be executed against a current live event because none of the recently observed live events has a confirmed Flashscore match link and PBP version.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

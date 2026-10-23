@@ -1,0 +1,100 @@
+{
+  "observed_at_utc": "2026-10-22T15:34:00Z",
+  "status": "aborted_resource_threshold",
+  "scope": "3-browser Flashscore worker trial and PostgreSQL snapshot",
+  "worker_configuration": {
+    "browser_process_budget": 3,
+    "live_pbp_workers": 1,
+    "background_workers": 2,
+    "source_network_slots_limit": 2,
+    "source_min_start_spacing_seconds": 2,
+    "container_memory_limit": "2 GiB"
+  },
+  "trial_samples": {
+    "runtime_count": 22,
+    "resource_count": 20,
+    "started_at": "2026-10-22T15:22:04.283051+00:00",
+    "last_sample_at": "2026-10-22T15:32:43.093165+00:00",
+    "max_memory_mib": 2044.9,
+    "max_browser_roots": 3,
+    "max_pids": 329,
+    "max_cpu_percent": 149.4,
+    "last_runtime": {
+      "confirmed_links_last_hour": 99,
+      "documents_saved_last_hour": 98,
+      "eligible_matches": 22,
+      "http_status": 200,
+      "identity_confirmation_required": 0,
+      "job_status_counts": {
+        "running": 1
+      },
+      "latency_seconds": 0.229,
+      "observed_at": "2026-10-22T15:32:37.940178+00:00",
+      "oldest_job_reason": null,
+      "oldest_job_wait_seconds": 299,
+      "overdue_pbp": 0,
+      "prepared_players": 21,
+      "statuses": {
+        "completed": 13,
+        "matched": 1,
+        "queued": 9,
+        "retry": 26,
+        "running": 4,
+        "waiting_players": 42
+      },
+      "worker": {
+        "configured": true,
+        "cooldown_until": null,
+        "healthy": true,
+        "last_heartbeat_at": "2026-10-22T15:32:31.520325+00:00",
+        "network_slots": 1,
+        "network_slots_limit": 2
+      }
+    },
+    "limitations": [
+      "Trial stopped early when worker memory reached 1.997 GiB of 2 GiB; not a 30-minute throughput soak.",
+      "No fixed eligible cohort was tracked, so queue/status deltas do not establish throughput.",
+      "Source slots were often idle and at most 1 of 2 was used; dominant queue waits required match indexing or player source IDs."
+    ]
+  },
+  "postgres": {
+    "container_memory_limit": "2.5 GiB",
+    "memory_observed": "908.5 MiB",
+    "cpu_observed_percent_of_one_core": 85.62,
+    "database_size": "~6.5 GB",
+    "connections": 18,
+    "max_connections": 100,
+    "active_queries": 2,
+    "lock_waiters": 0,
+    "cache_hit_percent": 98,
+    "temp_files": 14,
+    "temp_bytes": 127000000,
+    "deadlocks": 0,
+    "wal_sync_waiters": 1,
+    "checkpoints_timed_since_reset": 26,
+    "checkpoints_requested_since_reset": 1,
+    "notes": "pg_stat_statements unavailable; pg_stat_activity sampled two short idle-in-transaction sessions and one WALSync waiter; no long-running transaction observed"
+  },
+  "decision": {
+    "browser_process_budget_restored_to": 2,
+    "reason": "3-browser trial approached memory limit without demonstrated throughput gain; preserve worker headroom",
+    "rollback_verification": {
+      "worker_health": "healthy",
+      "worker_restarts": 0,
+      "configured_browser_processes": 2,
+      "configured_live_pbp_workers": 1,
+      "post_restart_worker_memory": "590.1 MiB / 2 GiB",
+      "postgres_memory": "885.4 MiB / 2.5 GiB",
+      "redis_memory": "506.4 MiB / 512 MiB",
+      "collector_memory": "486.9 MiB / 512 MiB"
+    },
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  },
+  "raw_samples": {
+    "runtime_path": "docs/research/flashscore_runtime_soak_2026-10-22_3browser.jsonl",
+    "resource_path": "docs/research/flashscore_resource_soak_2026-10-22_3browser.jsonl"
+  }
+}

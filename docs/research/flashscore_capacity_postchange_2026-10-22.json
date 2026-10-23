@@ -1,0 +1,101 @@
+{
+  "started_at_utc": "2026-10-22T07:08:10.462804+00:00",
+  "completed_at_utc": "2026-10-22T07:39:15.548163+00:00",
+  "sample_count": 12,
+  "interval_seconds": 25,
+  "change": {
+    "browser_processes_before": 2,
+    "browser_processes_after": 3,
+    "background_browser_workers_before": 1,
+    "background_browser_workers_after": 2,
+    "live_pbp_workers": 1,
+    "global_source_network_slots_limit": 2,
+    "browser_processes_trial": 3,
+    "browser_processes_final": 2,
+    "background_browser_workers_trial": 2,
+    "background_browser_workers_final": 1
+  },
+  "postgres": {
+    "container_memory_limit": "2GiB",
+    "before_observed_memory": "1.998GiB / 2GiB",
+    "after_peak_observed_memory": "909MiB / 2GiB",
+    "settings": {
+      "shared_buffers": {
+        "setting": "98304",
+        "unit": "8kB",
+        "effective": "768MB"
+      },
+      "work_mem": {
+        "setting": "8192",
+        "unit": "kB",
+        "effective": "8MB"
+      },
+      "maintenance_work_mem": {
+        "setting": "262144",
+        "unit": "kB",
+        "effective": "256MB"
+      },
+      "effective_cache_size": {
+        "setting": "196608",
+        "unit": "8kB",
+        "effective": "1536MB"
+      }
+    },
+    "health": "healthy"
+  },
+  "flashscore_worker": {
+    "container_memory_limit": "2GiB",
+    "after_peak_observed_memory": "1.45GiB / 2GiB",
+    "healthy_samples": 7,
+    "samples": 7,
+    "queue_status_start": {
+      "queued": 29,
+      "waiting_players": 36,
+      "waiting_match": 2,
+      "retry": 7,
+      "completed": 4,
+      "running": 4
+    },
+    "queue_status_end": {
+      "queued": 28,
+      "waiting_players": 37,
+      "waiting_match": 2,
+      "retry": 8,
+      "completed": 6,
+      "running": 4
+    },
+    "queue_total_start": 82,
+    "queue_total_end": 85,
+    "healthy_at_11_minute_checkpoint": true,
+    "queue_status_11_minute_checkpoint": {
+      "identity_confirmation_required": 2,
+      "matched": 2,
+      "queued": 32,
+      "waiting_players": 50,
+      "retry": 16,
+      "waiting_match": 2,
+      "completed": 12,
+      "running": 2
+    },
+    "queue_total_11_minute_checkpoint": 118,
+    "trial_peak_observed_memory": "1.723GiB / 2GiB",
+    "post_rollback_samples": 3,
+    "post_rollback_healthy_samples": 3,
+    "post_rollback_peak_observed_memory": "1006MiB / 2GiB",
+    "final_browser_processes": 2,
+    "healthy_after_rollback": true
+  },
+  "research": {
+    "container_memory_limit": "1.5GiB",
+    "after_peak_observed_memory": "255.8MiB / 1.5GiB",
+    "healthy": "healthy at final service check"
+  },
+  "limitations": [
+    "The 3-process trial approached the 2-GiB worker limit and was reverted; final runtime remains at 2 browser processes.",
+    "The observations are operational checks, not a 30-minute acceptance soak under the final 2-process configuration.",
+    "Queue total is scoped to currently eligible matches; do not interpret it as a fixed-cohort completion rate.",
+    "The global source request gate remains at 2 and enforces a 2-second start spacing; it can fall to 1 after source throttling."
+  ],
+  "raw_samples": "flashscore_capacity_observation_2026-10-22.jsonl",
+  "raw_samples_sha256": "1d47884838674ba609485c0cb03aa3d679da8782c36769b3a4d6abed57dd0185"
+}

@@ -1,0 +1,39 @@
+{
+  "observed_at": "2026-10-22T02:26:08Z",
+  "source": "Neurobet MCP live-events API; sport=tennis,status=live,limit=100",
+  "total_live_events": 20,
+  "forecast_rows": 8,
+  "available": 0,
+  "unavailable": 8,
+  "reason_counts": {
+    "UNSUPPORTED_FORMAT": 8
+  },
+  "format_source_check": {
+    "forecast_reader": "services/neural/app/tennis_forecast.py:persist_event_forecasts reads event.metadata_json.best_of and accepts only 3 or 5",
+    "unknown_format_policy": "fail closed; no best-of-3 inference",
+    "database_check": {
+      "method": "read-only PostgreSQL query against events.metadata_json",
+      "sampled_source_event_ids": ["69170715", "69171570", "69174125"],
+      "metadata_keys_observed": ["raw_tournament", "surface", "set_winners"],
+      "best_of_present": false
+    },
+    "live_api_exposes_event_metadata_json": false,
+    "direct_fonbet_payload_check": {
+      "endpoint": "https://line-lb51-w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1600",
+      "sampled_source_event_ids": ["69170715", "69171570", "69174125"],
+      "source_fields": ["applicability", "id", "kind", "level", "name", "num", "place", "priority", "rootKind", "sortOrder", "sportId", "startTime", "team1", "team1Id", "team2", "team2Id", "tv"],
+      "explicit_format_field_present": false
+    },
+    "runtime_evidence": "all 8 persisted forecasts in this snapshot have unavailable_reason=UNSUPPORTED_FORMAT",
+    "conclusion": "The sampled current Fonbet live payloads and persisted event metadata lack explicit best_of. The normalizer also dropped any such field if present. The code now preserves a future explicit supported source value, but these sampled events remain unavailable; no format was inferred from tournament names."
+  },
+  "point_history_status_counts": {
+    "waiting_players": 16,
+    "retry": 3,
+    "running": 1
+  },
+  "holdout_quality_metrics_opened": false,
+  "training_started": false,
+  "shadow_registered": false,
+  "no_bets_or_ledger_changes": true
+}

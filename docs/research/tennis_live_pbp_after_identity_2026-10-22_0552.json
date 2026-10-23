@@ -1,0 +1,138 @@
+{
+  "captured_at_utc": "2026-10-22T05:52:03.737869+00:00",
+  "source": "deployed read-only Backend queue and per-event Flashscore research APIs",
+  "event": {
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "mode": "live",
+    "players": [
+      {
+        "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+        "name": "Ян Иди",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      },
+      {
+        "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+        "name": "Юань Чэнии",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      }
+    ],
+    "point_history": {
+      "status": "running",
+      "updated_at": "2026-10-22T05:51:58.440338+00:00",
+      "next_retry_at": "2026-10-22T05:51:50.070826+00:00",
+      "reason": null
+    },
+    "match_lookup": {
+      "status": "matched",
+      "updated_at": "2026-10-22T05:51:50.070826+00:00",
+      "next_retry_at": "2026-10-22T05:49:24.768703+00:00",
+      "source_match_id": "A5F0BCMP",
+      "reason": null
+    }
+  },
+  "queue": {
+    "total": 61,
+    "eligible_matches": 14,
+    "prepared_players": 4,
+    "statuses": {
+      "identity_confirmation_required": 1,
+      "matched": 1,
+      "queued": 23,
+      "waiting_players": 26,
+      "retry": 4,
+      "completed": 2,
+      "running": 4
+    },
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 47,
+    "confirmed_links_last_hour": 48,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T05:51:57.022686+00:00",
+      "network_slots": 1,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "event_jobs": [
+    {
+      "id": "pbp:91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "label": "Ян Иди — Юань Чэнии",
+      "player": null,
+      "kind": "pbp",
+      "status": "running",
+      "priority": 0,
+      "mode": "live",
+      "wait_seconds": 13,
+      "last_success_at": null,
+      "next_retry_at": "2026-10-22T05:51:50.070826+00:00",
+      "reason": null,
+      "related_events": 1
+    },
+    {
+      "id": "player:63905f58-2567-4b48-aff7-984c24a9ff7f",
+      "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "related_event_ids": [
+        "91f04ffb-700e-478b-a72e-d71ce213ce53"
+      ],
+      "label": "Ян Иди — Юань Чэнии",
+      "player": "Ян Иди",
+      "kind": "player_history",
+      "status": "queued",
+      "priority": 10,
+      "mode": "live",
+      "wait_seconds": 163,
+      "last_success_at": null,
+      "next_retry_at": "2026-10-22T05:49:20.085804+00:00",
+      "reason": null,
+      "related_events": 1
+    },
+    {
+      "id": "player:e6b41855-3fac-456f-a700-3352f4886aea",
+      "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "related_event_ids": [
+        "91f04ffb-700e-478b-a72e-d71ce213ce53"
+      ],
+      "label": "Ян Иди — Юань Чэнии",
+      "player": "Юань Чэнии",
+      "kind": "player_history",
+      "status": "queued",
+      "priority": 10,
+      "mode": "live",
+      "wait_seconds": 163,
+      "last_success_at": null,
+      "next_retry_at": "2026-10-22T05:49:20.638504+00:00",
+      "reason": null,
+      "related_events": 1
+    },
+    {
+      "id": "match:91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+      "label": "Ян Иди — Юань Чэнии",
+      "player": null,
+      "kind": "match_lookup",
+      "status": "matched",
+      "priority": 1,
+      "mode": "live",
+      "wait_seconds": 13,
+      "last_success_at": "2026-10-22T05:51:50.070826+00:00",
+      "next_retry_at": "2026-10-22T05:49:24.768703+00:00",
+      "reason": null,
+      "related_events": 1
+    }
+  ],
+  "interpretation": "Two manually confirmed player identities are preserved with evidence; Flashscore match A5F0BCMP is now matched and the PBP job is running. Player profile refreshes remain queued, and no PBP document has yet been verified or admitted as a label.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

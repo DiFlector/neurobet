@@ -1,0 +1,23 @@
+{
+  "observed_at_utc": "2026-10-22T05:02:52Z",
+  "source": "Neurobet MCP neurobet_list_live_events, sport=tennis, status=live, limit=50",
+  "total_live_events": 18,
+  "captured_live_events": 18,
+  "events_with_both_profiles_available": 0,
+  "point_history_status_counts": {
+    "waiting_players": 14,
+    "not_queued": 2,
+    "retry": 2
+  },
+  "stored_forecast_count": 5,
+  "forecast_unavailable_reasons": {
+    "UNSUPPORTED_FORMAT": 5
+  },
+  "newest_forecast_calculated_at": "2026-10-22T04:00:55.548296Z",
+  "neural_container_started_at": "2026-10-22T04:04:32.200125Z",
+  "neural_health": "healthy",
+  "neural_image": "sha256:bf10f5d44183c315f879e2070eb2f12353285a622baeeaf3413a7a72f6a586c1",
+  "post_neural_restart_forecast_observed": false,
+  "training_started": false,
+  "shadow_registered": false
+}

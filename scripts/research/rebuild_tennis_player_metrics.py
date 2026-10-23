@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from db.identity import confirmed_source_player_id
 
 from db.connection import SessionLocal
 from db.models import TennisPlayerMetricSnapshot, TennisPlayerProfile, TennisPlayerResultFact
@@ -69,6 +70,9 @@ def rebuild(apply: bool) -> tuple[int, int]:
             profile.metrics_available_at = now
             session.add(TennisPlayerMetricSnapshot(
                 participant_id=profile.participant_id,
+                source_player_id=confirmed_source_player_id(
+                    session, profile.participant_id, source="flashscore", as_of=now
+                ),
                 metrics_version=next_version,
                 available_at=now,
                 source_watermark=watermark,

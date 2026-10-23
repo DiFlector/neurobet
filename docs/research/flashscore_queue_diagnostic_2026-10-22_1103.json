@@ -1,0 +1,57 @@
+{
+  "generated_at_utc": "2026-10-22T11:03:54Z",
+  "scope": "Read-only breakdown of the live durable tennis point-refresh queue and match-lookup queue",
+  "queue_total": 2952,
+  "point_refresh_jobs": {
+    "completed": 3,
+    "finalized": 44,
+    "running": 1,
+    "waiting_match": 4,
+    "waiting_players": 2628,
+    "queued": 54,
+    "retry": 218,
+    "waiting_players_reasons": {
+      "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED": 2322,
+      "PLAYER_SOURCE_IDS_MISSING": 306
+    },
+    "queued_reasons": {
+      "PLAYER_SOURCE_IDS_MISSING": 30,
+      "point_history_tab_missing": 15,
+      "no_error": 4,
+      "SET_2_NAVIGATION_TimeoutError": 2,
+      "POINT_BY_POINT_NAVIGATION_TimeoutError": 2,
+      "FLASHSCORE_MATCH_LINK_NOT_FOUND": 1
+    },
+    "retry_reasons": {
+      "unmatched": 128,
+      "PLAYER_SOURCE_IDS_MISSING": 69,
+      "point_history_tab_missing": 10,
+      "FLASHSCORE_MATCH_LINK_NOT_FOUND": 8,
+      "POINT_BY_POINT_NAVIGATION_TimeoutError": 1,
+      "TimeoutError": 1,
+      "complete": 1
+    }
+  },
+  "match_lookup_jobs": {
+    "matched": 43,
+    "running": 1,
+    "waiting_match": 3,
+    "retry": 1,
+    "waiting_players": 487,
+    "waiting_match_reason": "EVENT_NO_LONGER_FRESH_LIVE",
+    "waiting_players_last_error_missing": 487
+  },
+  "source_keyed_refresh_jobs": {
+    "total": 0
+  },
+  "interpretation": [
+    "Waiting for indexed player history or missing source player IDs accounts for 2,628 of 2,951 point jobs; browser slot count does not resolve this wait directly.",
+    "There are 218 retry jobs; 128 carry the legacy unmatched reason and are not currently consuming a browser slot.",
+    "One SQL aggregation split by status/last_error totals 2,952 point jobs; the immediately preceding standalone total was 2,951, showing one row changed during the live census. Only one point job and one match-lookup job were running in the grouped capture. This is a point-in-time queue census, not a throughput soak."
+  ],
+  "safety": {
+    "training_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  }
+}

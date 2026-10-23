@@ -142,6 +142,16 @@ class ThreadLocalChromium:
         """Retire this thread's browser after a handled navigation/renderer error."""
         self._local.retire_current = True
 
+    def close_current(self) -> None:
+        """Close this thread's idle browser and release its shared slot lock."""
+        state = getattr(self._local, "state", None)
+        if state is None:
+            return
+        self._close_state(state)
+        if getattr(self._local, "state", None) is state:
+            del self._local.state
+        self._local.retire_current = False
+
     @contextmanager
     def context(self, launch_options: dict[str, Any], **context_options: Any) -> Iterator[tuple[Any, Any]]:
         """Yield ``(browser, context)`` and always discard the job context."""

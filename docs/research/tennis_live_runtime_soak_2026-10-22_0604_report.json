@@ -1,0 +1,96 @@
+{
+  "started_at_utc": "2026-10-22T06:05:58.366769+00:00",
+  "completed_at_utc": "2026-10-22T06:35:46.896695+00:00",
+  "duration_seconds": 1788.529926,
+  "sample_count": 60,
+  "queue_event_http_success_samples": 60,
+  "queue_http_failures": 0,
+  "event_http_failures": 0,
+  "point_history_samples": 15,
+  "point_history_http_failures": 0,
+  "worker_healthy_samples": 60,
+  "latency_ms": {
+    "queue": {
+      "samples": 60,
+      "p50": 85.7,
+      "p95": 765.8,
+      "max": 1376.7
+    },
+    "event": {
+      "samples": 60,
+      "p50": 9.1,
+      "p95": 114.9,
+      "max": 421.4
+    },
+    "point_history": {
+      "samples": 15,
+      "p50": 133.1,
+      "p95": 1028.5,
+      "max": 1028.5
+    }
+  },
+  "queue_start": {
+    "generated_at": "2026-10-22T06:05:58.387767+00:00",
+    "total": 61,
+    "eligible_matches": 14,
+    "prepared_players": 3,
+    "statuses": {
+      "matched": 2,
+      "queued": 23,
+      "waiting_players": 24,
+      "retry": 7,
+      "completed": 3,
+      "running": 2
+    },
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 54,
+    "confirmed_links_last_hour": 56,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T06:05:50.497752+00:00",
+      "network_slots": 0,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "queue_end": {
+    "generated_at": "2026-10-22T06:35:46.898180+00:00",
+    "total": 5,
+    "eligible_matches": 0,
+    "prepared_players": 0,
+    "statuses": {
+      "queued": 4,
+      "running": 1
+    },
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 64,
+    "confirmed_links_last_hour": 66,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T06:35:40.160497+00:00",
+      "network_slots": 0,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "target_event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+  "target_pbp": {
+    "latest_state": {
+      "status": "queued",
+      "updated_at": "2026-10-22T06:03:24.039664+00:00",
+      "next_retry_at": "2026-10-22T06:18:33.780314+00:00",
+      "reason": "SET_3_NAVIGATION_TimeoutError"
+    },
+    "latest_history": null,
+    "recovered": false,
+    "reason": "SET_3_NAVIGATION_TimeoutError; job remained queued with attempts=6 and no new source version through soak end"
+  },
+  "http_failures": [],
+  "acceptance": {
+    "api_and_worker_stable": true,
+    "target_pbp_retry_recovered": false,
+    "phase53_soak": "blocked"
+  }
+}

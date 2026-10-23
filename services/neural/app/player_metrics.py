@@ -6,6 +6,13 @@ from typing import Any, Optional
 from sqlalchemy import select
 
 
+PLAYER_HISTORY_MAX_AGE = timedelta(days=7)
+
+
+def _utc(moment: datetime) -> datetime:
+    return moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
+
+
 def _latest_confirmed_flashscore_id(link_rows) -> Optional[str]:
     """Return the selected source ID from rows already ordered newest first."""
     if not link_rows or link_rows[0].status != "confirmed":
@@ -42,8 +49,6 @@ def load_player_metric(session, participant_id, cutoff: datetime) -> Optional[di
     # source link in point-in-time reads.
     confirmed_source_id = _latest_confirmed_flashscore_id(link_rows)
     identities = profile.source_identities or {}
-    if confirmed_source_id and not _profile_identity_matches(profile, confirmed_source_id):
-        return None
     if not confirmed_source_id and (
         identities.get("flashscore") or identities.get("flashscore_candidates") or profile.profile_url
     ):
@@ -82,28 +87,45 @@ def load_player_metric(session, participant_id, cutoff: datetime) -> Optional[di
             select(TennisPlayerProfile).where(TennisPlayerProfile.participant_id.in_(confirmed_ids))
         ).scalars().all() or [profile]
     metric_profile_ids = [row.participant_id for row in metric_profiles]
-    snapshot = session.execute(
-        select(TennisPlayerMetricSnapshot)
-        .where(
-            TennisPlayerMetricSnapshot.participant_id.in_(metric_profile_ids),
-            TennisPlayerMetricSnapshot.available_at <= cutoff,
+    snapshot_query = select(TennisPlayerMetricSnapshot).where(
+        TennisPlayerMetricSnapshot.participant_id.in_(metric_profile_ids),
+        TennisPlayerMetricSnapshot.available_at <= cutoff,
+    )
+    if confirmed_source_id:
+        snapshot_query = snapshot_query.where(
+            TennisPlayerMetricSnapshot.source_player_id == confirmed_source_id
         )
+    else:
+        snapshot_query = snapshot_query.where(TennisPlayerMetricSnapshot.source_player_id.is_(None))
+    snapshot = session.execute(
+        snapshot_query
         .order_by(TennisPlayerMetricSnapshot.available_at.desc(), TennisPlayerMetricSnapshot.metrics_version.desc())
         .limit(1)
     ).scalars().first()
     metric_owner = next((row for row in metric_profiles if snapshot and row.participant_id == snapshot.participant_id), None)
     if snapshot is None:
+        if confirmed_source_id:
+            # The current profile aggregate may still belong to an identity
+            # that was manually replaced. Only immutable snapshots carry the
+            # source identity needed to serve a rebind-safe as_of read.
+            return None
         eligible_profiles = [row for row in metric_profiles if row.metrics_available_at and row.metrics_available_at <= cutoff]
         metric_owner = max(eligible_profiles, key=lambda row: row.metrics_available_at, default=None)
     else:
         metric_owner = metric_owner or profile
     metrics = snapshot.metrics_json if snapshot else (metric_owner.metrics_json if metric_owner else None)
+    if snapshot is None and metric_owner is not None:
+        if not _profile_identity_matches(metric_owner, confirmed_source_id):
+            return None
     if metrics is None:
+        return None
+    available_at = snapshot.available_at if snapshot else metric_owner.metrics_available_at
+    if available_at is None or _utc(cutoff) - _utc(available_at) > PLAYER_HISTORY_MAX_AGE:
         return None
     return {
         "participant_id": str(participant_id),
         "metrics_version": snapshot.metrics_version if snapshot else metric_owner.metrics_version,
-        "available_at": (snapshot.available_at if snapshot else metric_owner.metrics_available_at).isoformat(),
+        "available_at": available_at.isoformat(),
         "source_watermark": (snapshot.source_watermark if snapshot else metric_owner.source_watermark).isoformat() if (snapshot.source_watermark if snapshot else metric_owner.source_watermark) else None,
         "history_digest": snapshot.history_digest if snapshot else metric_owner.history_digest,
         "sync_status": profile.sync_status,

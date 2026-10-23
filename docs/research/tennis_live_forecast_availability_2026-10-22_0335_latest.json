@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-10-22 03:36:52 UTC",
+  "source": "neurobet MCP live events API",
+  "sport_code": "tennis",
+  "status_filter": "live",
+  "total": 20,
+  "returned": 20,
+  "point_history_status_counts": {
+    "not_queued": 3,
+    "waiting_players": 15,
+    "retry": 2
+  },
+  "forecast_unavailable_reason_counts": {
+    "UNSUPPORTED_FORMAT": 10
+  },
+  "samples": [
+    {
+      "source_event_id": "69131748",
+      "point_history_status": "not_queued",
+      "forecast_available": false,
+      "forecast_reasons": []
+    },
+    {
+      "source_event_id": "69171604",
+      "point_history_status": "waiting_players",
+      "forecast_available": false,
+      "forecast_reasons": [
+        "UNSUPPORTED_FORMAT"
+      ]
+    },
+    {
+      "source_event_id": "69184287",
+      "point_history_status": "waiting_players",
+      "forecast_available": false,
+      "forecast_reasons": []
+    },
+    {
+      "source_event_id": "69148197",
+      "point_history_status": "not_queued",
+      "forecast_available": false,
+      "forecast_reasons": []
+    },
+    {
+      "source_event_id": "69184187",
+      "point_history_status": "waiting_players",
+      "forecast_available": false,
+      "forecast_reasons": []
+    },
+    {
+      "source_event_id": "69173975",
+      "point_history_status": "not_queued",
+      "forecast_available": false,
+      "forecast_reasons": []
+    }
+  ]
+}

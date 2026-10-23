@@ -1,0 +1,74 @@
+{
+  "confirmed_links_last_hour": 27,
+  "documents_saved_last_hour": 26,
+  "eligible_matches": 6,
+  "generated_at": "2026-10-21T23:15:49.465706+00:00",
+  "http_status": 200,
+  "identity_confirmation_required": 0,
+  "overdue_pbp": 1,
+  "pbp_nonterminal": [
+    {
+      "event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+      "mode": "live",
+      "reason": "EXPECTED_SET_1_HISTORY_NOT_AVAILABLE",
+      "status": "retry",
+      "wait_seconds": 297
+    },
+    {
+      "event_id": "6a84d4d8-c5bc-4a29-a3d5-dbf674b37ee8",
+      "mode": "live",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "status": "waiting_players",
+      "wait_seconds": 5163
+    },
+    {
+      "event_id": "608c93f4-0a69-4903-b523-812bdb5e57c9",
+      "mode": "live",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "status": "waiting_players",
+      "wait_seconds": 2227
+    },
+    {
+      "event_id": "48e86d70-5076-4a3c-8c13-0d137e6a1648",
+      "mode": "live",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "status": "waiting_players",
+      "wait_seconds": 613
+    },
+    {
+      "event_id": "57849d81-6cc2-4104-99c5-ffa93bb07e73",
+      "mode": "live",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "status": "waiting_players",
+      "wait_seconds": 613
+    },
+    {
+      "event_id": "ce7b6bfd-0a7f-49d2-b46c-51fb4794e2f3",
+      "mode": "live",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "status": "waiting_players",
+      "wait_seconds": 297
+    }
+  ],
+  "prepared_players": 7,
+  "returned_items": 200,
+  "source": "GET /api/tennis-history/flashscore/queue?limit=200&include_completed=true (live read-only backend response)",
+  "statuses": {
+    "completed": 492,
+    "finalized": 37,
+    "matched": 25,
+    "queued": 5,
+    "retry": 12,
+    "running": 1,
+    "waiting_players": 10
+  },
+  "total_jobs": 582,
+  "worker": {
+    "configured": true,
+    "cooldown_until": null,
+    "healthy": true,
+    "last_heartbeat_at": "2026-10-21T23:15:49.899262+00:00",
+    "network_slots": 0,
+    "network_slots_limit": 2
+  }
+}

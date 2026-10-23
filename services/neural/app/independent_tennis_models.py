@@ -24,7 +24,25 @@ from .tennis_forecast import (
 
 TARGET_NAMES = ("point", "game", "set", "match")
 MAX_SEQUENCE_STATES = 64
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
+ODDS_FREE_CALIBRATION_VERSION = "uncalibrated_v1"
+ODDS_FREE_INFERENCE_VERSION = "tennis_odds_free_inference_v1"
+POINT_BASELINE_PARAMETERS = {
+    "lr": {
+        "scaler": "StandardScaler",
+        "classifier": "LogisticRegression",
+        "solver": "lbfgs",
+        "C": 1.0,
+        "max_iter": 1000,
+    },
+    "gb": {
+        "classifier": "HistGradientBoostingClassifier",
+        "learning_rate": 0.05,
+        "max_iter": 80,
+        "max_leaf_nodes": 15,
+        "l2_regularization": 1.0,
+    },
+}
 _STATIC_GROUPS = ("player_metrics", "serve_metrics_a", "serve_metrics_b", "event_surface")
 ODDS_FREE_STATIC_FEATURE_NAMES = tuple(
     name for group in _STATIC_GROUPS for name in ODDS_FREE_FEATURE_SOURCE_GROUPS[group]
@@ -194,17 +212,32 @@ def masked_multitask_bce(
     return torch.stack(available).mean(), losses
 
 
-def save_gru_checkpoint(path: str, model: TennisForecastGRU, *, seed: int, metadata: dict | None = None) -> None:
+def save_gru_checkpoint(
+    path: str,
+    model: TennisForecastGRU,
+    *,
+    seed: int,
+    training_device: str,
+    metadata: dict | None = None,
+) -> None:
     payload = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "model_type": "independent_tennis_gru",
+        "calibration_version": ODDS_FREE_CALIBRATION_VERSION,
+        "inference_contract_version": ODDS_FREE_INFERENCE_VERSION,
         "feature_version": ODDS_FREE_FEATURE_VERSION,
         "feature_names": list(ODDS_FREE_FEATURE_NAMES),
         "static_feature_names": list(ODDS_FREE_STATIC_FEATURE_NAMES),
         "sequence_feature_names": list(ODDS_FREE_SEQUENCE_FEATURE_NAMES),
         "targets": list(TARGET_NAMES),
         "seed": int(seed),
+        "training_device": str(training_device),
         "architecture": {"static_size": model.static_size, "hidden_size": model.hidden_size},
+        "inference_parameters": {
+            "max_sequence_states": MAX_SEQUENCE_STATES,
+            "sequence_features_per_state": len(ODDS_FREE_SEQUENCE_FEATURE_NAMES),
+            "includes_interval_and_missing_masks": True,
+        },
         "metadata": metadata or {},
         "state_dict": model.state_dict(),
     }
@@ -215,6 +248,10 @@ def load_gru_checkpoint(path: str, *, map_location: str | torch.device = "cpu") 
     payload = torch.load(path, map_location=map_location, weights_only=False)
     if payload.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
         raise ValueError("unsupported_checkpoint_schema")
+    if payload.get("calibration_version") != ODDS_FREE_CALIBRATION_VERSION:
+        raise ValueError("checkpoint_calibration_version_mismatch")
+    if payload.get("inference_contract_version") != ODDS_FREE_INFERENCE_VERSION:
+        raise ValueError("checkpoint_inference_version_mismatch")
     if payload.get("feature_version") != ODDS_FREE_FEATURE_VERSION:
         raise ValueError("checkpoint_feature_version_mismatch")
     if payload.get("feature_names") != list(ODDS_FREE_FEATURE_NAMES):
@@ -225,6 +262,15 @@ def load_gru_checkpoint(path: str, *, map_location: str | torch.device = "cpu") 
         raise ValueError("checkpoint_sequence_feature_names_mismatch")
     if payload.get("targets") != list(TARGET_NAMES):
         raise ValueError("checkpoint_target_names_mismatch")
+    expected_inference_parameters = {
+        "max_sequence_states": MAX_SEQUENCE_STATES,
+        "sequence_features_per_state": len(ODDS_FREE_SEQUENCE_FEATURE_NAMES),
+        "includes_interval_and_missing_masks": True,
+    }
+    if payload.get("inference_parameters") != expected_inference_parameters:
+        raise ValueError("checkpoint_inference_parameters_mismatch")
+    if not payload.get("training_device"):
+        raise ValueError("checkpoint_training_device_missing")
     model = TennisForecastGRU(**payload["architecture"])
     model.load_state_dict(payload["state_dict"])
     model.to(map_location)
@@ -272,17 +318,22 @@ def fit_point_baseline(
 
         model = Pipeline([
             ("scaler", StandardScaler()),
-            ("classifier", LogisticRegression(C=1.0, max_iter=1000, random_state=int(seed))),
+            ("classifier", LogisticRegression(
+                C=POINT_BASELINE_PARAMETERS["lr"]["C"],
+                max_iter=POINT_BASELINE_PARAMETERS["lr"]["max_iter"],
+                solver=POINT_BASELINE_PARAMETERS["lr"]["solver"],
+                random_state=int(seed),
+            )),
         ])
         model.fit(x, y.astype(np.int64), classifier__sample_weight=weights)
     elif method == "gb":
         from sklearn.ensemble import HistGradientBoostingClassifier
 
         model = HistGradientBoostingClassifier(
-            learning_rate=0.05,
-            max_iter=80,
-            max_leaf_nodes=15,
-            l2_regularization=1.0,
+            learning_rate=POINT_BASELINE_PARAMETERS["gb"]["learning_rate"],
+            max_iter=POINT_BASELINE_PARAMETERS["gb"]["max_iter"],
+            max_leaf_nodes=POINT_BASELINE_PARAMETERS["gb"]["max_leaf_nodes"],
+            l2_regularization=POINT_BASELINE_PARAMETERS["gb"]["l2_regularization"],
             random_state=int(seed),
         )
         model.fit(x, y.astype(np.int64), sample_weight=weights)
@@ -290,23 +341,63 @@ def fit_point_baseline(
         raise ValueError("unsupported_point_baseline_method")
     metadata = {
         "model_type": f"tennis_point_{method}",
+        "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "calibration_version": ODDS_FREE_CALIBRATION_VERSION,
+        "inference_contract_version": ODDS_FREE_INFERENCE_VERSION,
         "feature_version": ODDS_FREE_FEATURE_VERSION,
         "feature_names": list(ODDS_FREE_FEATURE_NAMES),
         "target": "point",
         "seed": int(seed),
+        "training_device": "cpu",
+        "model_parameters": {
+            **POINT_BASELINE_PARAMETERS[method],
+            "random_state": int(seed),
+            "match_balanced_sample_weight": True,
+        },
+        "inference_parameters": {
+            "positive_class_probability": True,
+            "input_feature_count": len(ODDS_FREE_FEATURE_NAMES),
+        },
         "known_examples": int(len(y)),
         "unique_matches": len(set(selected_event_ids)),
     }
     return model, metadata
 
 
-def save_point_baseline_checkpoint(path: str, model: object, metadata: dict) -> None:
-    import joblib
-
+def _validate_point_checkpoint_metadata(metadata: dict) -> None:
     if metadata.get("feature_version") != ODDS_FREE_FEATURE_VERSION:
         raise ValueError("point_checkpoint_feature_version_mismatch")
     if metadata.get("feature_names") != list(ODDS_FREE_FEATURE_NAMES):
         raise ValueError("point_checkpoint_feature_names_mismatch")
+    if metadata.get("checkpoint_schema_version") != CHECKPOINT_SCHEMA_VERSION:
+        raise ValueError("point_checkpoint_schema_version_mismatch")
+    if metadata.get("calibration_version") != ODDS_FREE_CALIBRATION_VERSION:
+        raise ValueError("point_checkpoint_calibration_version_mismatch")
+    if metadata.get("inference_contract_version") != ODDS_FREE_INFERENCE_VERSION:
+        raise ValueError("point_checkpoint_inference_version_mismatch")
+    method = str(metadata.get("model_type", "")).rsplit("_", 1)[-1]
+    if method not in POINT_BASELINE_PARAMETERS or metadata.get("target") != "point":
+        raise ValueError("point_checkpoint_contract_mismatch")
+    expected_model_parameters = {
+        **POINT_BASELINE_PARAMETERS[method],
+        "random_state": int(metadata.get("seed", -1)),
+        "match_balanced_sample_weight": True,
+    }
+    if metadata.get("model_parameters") != expected_model_parameters:
+        raise ValueError("point_checkpoint_model_parameters_mismatch")
+    if metadata.get("inference_parameters") != {
+        "positive_class_probability": True,
+        "input_feature_count": len(ODDS_FREE_FEATURE_NAMES),
+    }:
+        raise ValueError("point_checkpoint_inference_parameters_mismatch")
+    if metadata.get("training_device") != "cpu":
+        raise ValueError("point_checkpoint_training_device_mismatch")
+
+
+def save_point_baseline_checkpoint(path: str, model: object, metadata: dict) -> None:
+    import joblib
+
+    _validate_point_checkpoint_metadata(metadata)
     joblib.dump({"metadata": dict(metadata), "model": model}, path)
 
 
@@ -315,10 +406,7 @@ def load_point_baseline_checkpoint(path: str) -> tuple[object, dict]:
 
     payload = joblib.load(path)
     metadata = payload.get("metadata") or {}
-    if metadata.get("feature_version") != ODDS_FREE_FEATURE_VERSION:
-        raise ValueError("point_checkpoint_feature_version_mismatch")
-    if metadata.get("feature_names") != list(ODDS_FREE_FEATURE_NAMES):
-        raise ValueError("point_checkpoint_feature_names_mismatch")
+    _validate_point_checkpoint_metadata(metadata)
     if metadata.get("target") != "point" or metadata.get("model_type") not in {
         "tennis_point_lr", "tennis_point_gb"
     }:

@@ -1,0 +1,68 @@
+{
+  "observed_at_utc": "2026-10-22T05:30:04.340856Z",
+  "service": "research",
+  "image_id": "sha256:29041f0cd4e1a3c30c4525bb6365510c956d8bd9230f82b8970e46170538e67b",
+  "container_started_at": "2026-10-22T05:28:03.924963411Z",
+  "health": "healthy",
+  "api_checks_after_rollout": [
+    {
+      "path": "/health",
+      "status": 200,
+      "elapsed_ms": 18.8
+    },
+    {
+      "path": "/api/tennis-history/players/42b2d592-b7e2-4384-a442-ea526ef4c4a2",
+      "status": 200,
+      "elapsed_ms": 135.0
+    },
+    {
+      "path": "/api/tennis-history/players/bbe45762-0587-4d6a-8524-82970454ac7d",
+      "status": 200,
+      "elapsed_ms": 69.4
+    }
+  ],
+  "concurrency_test": {
+    "test": "tests/research/test_periodic_predictions_nonblocking.py::test_periodic_predictions_cycle_does_not_block_api_event_loop",
+    "result": "passed",
+    "execution": "built neurobet-research image, current test file mounted read-only",
+    "pytest": "1 passed in 2.75s"
+  },
+  "durable_refresh_jobs_from_concurrency_probe": [
+    {
+      "participant_id": "42b2d592-b7e2-4384-a442-ea526ef4c4a2",
+      "profile_status": "running",
+      "job_status": "queued",
+      "reason": "event_refresh",
+      "attempts": 2
+    },
+    {
+      "participant_id": "bbe45762-0587-4d6a-8524-82970454ac7d",
+      "profile_status": "running",
+      "job_status": "queued",
+      "reason": "event_refresh",
+      "attempts": 6
+    }
+  ],
+  "unchanged_services": {
+    "flashscore_worker_health": "healthy",
+    "flashscore_worker_restarted": false
+  },
+  "implementation": "periodic_predictions awaits asyncio.to_thread(coordinator.run_cycle)",
+  "failure_attribution_limit": "Pre-rollout HTTP requests timed out, but the available logs do not establish that the periodic predictions call was the sole cause of that observed stall. The synchronous call was a confirmed event-loop blocking path and is now isolated in a worker thread.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false,
+  "runtime_periodic_predictions_cycle": {
+    "started_at": "2026-10-22T05:28:37Z",
+    "completed_at": "2026-10-22T05:28:43Z",
+    "elapsed_seconds": 6.0,
+    "scraped": 114,
+    "saved_new": 31,
+    "cleaned_expired": 6,
+    "health_probe_after_cycle": {
+      "status": 200,
+      "elapsed_ms": 17.4,
+      "captured_at": "2026-10-22T05:30:04.340856Z"
+    }
+  }
+}

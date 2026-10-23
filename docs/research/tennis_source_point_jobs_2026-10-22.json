@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-22T08:49:00Z",
+  "migration": {
+    "revision": "033_source_point_jobs",
+    "database_revision": "033_source_point_jobs",
+    "table": "tennis_point_source_refresh_jobs",
+    "verified": true
+  },
+  "implementation": {
+    "queue_key": "source_match_id",
+    "fonbet_event_fk": false,
+    "ambiguous_match_candidate_enqueues_before_link": true,
+    "source_only_versions": {
+      "fonbet_event_id": null,
+      "retrospective": true,
+      "side_orientation_inferred": false
+    },
+    "lease_fencing_and_expiry_reclaim": true,
+    "uses_existing_background_browser_lane": true
+  },
+  "tests": {
+    "command_scope": [
+      "tests/research/test_tennis_flashscore.py",
+      "tests/research/test_tennis_refresh_lease_integration.py"
+    ],
+    "result": "passed",
+    "passed": 64,
+    "failed": 0,
+    "warnings": 2,
+    "database_backed": true,
+    "source_only_persistence_and_expired_lease_reclaim": "passed",
+    "ambiguous_live_candidate_to_source_queue": {
+      "result": "passed",
+      "database_backed": true,
+      "flashscore_discovery": "mocked ambiguous result; no external request",
+      "source_jobs_enqueued": 2,
+      "fonbet_event_links_created": 0,
+      "manual_confirmation_requests_created": 2,
+      "cleanup_verified": true
+    }
+  },
+  "runtime": {
+    "research_image": "sha256:6b6b9a02b22dfb8a11f3bd4dcba73cc83c8a6059ee3a9b91a01b49b419af4bde",
+    "flashscore_worker_image": "sha256:4ad38d097eb6695ae279a4cd62a0946d1c8ec087ef49a22a29d51cb460733353",
+    "research_healthy": true,
+    "flashscore_worker_healthy": true,
+    "verified_at": "2026-10-22T08:43:50Z",
+    "source_job_dispatched_from_live_ambiguous_candidate": true,
+    "source_job_table_rows_at_check": 0,
+    "runtime_contour_status": "deployed and healthy; database-backed smoke verified ambiguous candidate enqueue, source-only rows, confirmation requests, and no Fonbet link; browser fetch remains separately gated by source rate limits",
+    "ambiguous_candidate_smoke_at": "2026-10-22T08:48:00Z",
+    "ambiguous_candidate_smoke_uses_real_flashscore_network": false
+  },
+  "training": {
+    "started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  }
+}

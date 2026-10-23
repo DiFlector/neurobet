@@ -15,7 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { decisionStatus, stakeReason } from "@/lib/decision-status";
 import { formatCurrency } from "@/lib/formatters";
 import { isPlacedBet } from "@/lib/placed-bets";
-import { BetItem, EventItem, PredictionItem } from "@/lib/types";
+import { BetItem, EventItem, PredictionItem, TennisForecastItem } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
 import { getLocalizedParticipantName } from "@/lib/locale-names";
 import { MatchTimer, stakeKindFromMarket } from "@/components/dashboard/match-timer";
@@ -147,6 +147,22 @@ function sideChoiceHint(
 
 function lineKey(row: PredictionItem): string {
   return `${row.market || "match"}:${row.model_name || row.model_version || row.id || "line"}`;
+}
+
+function tennisPointLabel(raw: unknown, tieBreak: boolean): string {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return "?";
+  if (tieBreak) return String(value);
+  return (["0", "15", "30", "40", "A"] as const)[value] || String(value);
+}
+
+function tennisForecastScore(row: TennisForecastItem): string {
+  const state = row.state || {};
+  const sets = `${state.sets_a ?? "?"}:${state.sets_b ?? "?"}`;
+  const games = `${state.games_a ?? "?"}:${state.games_b ?? "?"}`;
+  const tieBreak = Boolean(state.tiebreak);
+  const points = `${tennisPointLabel(state.points_a, tieBreak)}:${tennisPointLabel(state.points_b, tieBreak)}`;
+  return `${sets} сет · ${games} гейм · ${points}${tieBreak ? " (тай-брейк)" : ""}`;
 }
 
 function scoredLines(predictions: PredictionItem[], shadow: boolean): PredictionItem[] {
@@ -564,24 +580,38 @@ export function MatchCard({
                 );
               }
               const availableRows = rows.filter((row) => row.forecast_available !== false);
-              const points = availableRows.map((row, index) => {
-                const x = rows.length === 1 ? 50 : 4 + (index / (rows.length - 1)) * 92;
-                const y = 46 - row.probabilities.match_a * 40;
-                return `${x},${y}`;
+              const pointsFor = (side: "a" | "b") => availableRows.map((row, index) => {
+                const x = availableRows.length === 1 ? 50 : 4 + (index / (availableRows.length - 1)) * 92;
+                const probabilityA = row.probabilities.match_a;
+                const probability = side === "a" ? probabilityA : 1 - probabilityA;
+                return `${x},${46 - probability * 40}`;
               }).join(" ");
+              const previous = availableRows.length > 1 ? availableRows[availableRows.length - 2] : null;
+              const scoreChanged = previous && tennisForecastScore(previous) !== tennisForecastScore(latest);
+              const qualityDelta = previous && typeof previous.data_quality === "number" && typeof latest.data_quality === "number"
+                ? latest.data_quality - previous.data_quality
+                : null;
               return (
                 <div key={model} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
                   <div className="min-w-0">
                     <div className="text-[10px] text-muted-foreground">{model} · {latest.model_version}</div>
-                    <svg viewBox="0 0 100 50" role="img" aria-label={`Траектория вероятности победы ${playerA}`} className="h-8 w-full overflow-visible">
+                    <svg viewBox="0 0 100 50" role="img" aria-label={`Вероятность победы: ${playerA} и ${playerB}`} className="h-8 w-full overflow-visible">
                       <line x1="0" y1="26" x2="100" y2="26" stroke="currentColor" strokeOpacity="0.2" strokeDasharray="2 2" />
-                      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-500" />
+                      <polyline points={pointsFor("a")} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-500" />
+                      <polyline points={pointsFor("b")} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" className="text-violet-500" />
                     </svg>
+                    <div className="text-[10px] text-muted-foreground">Линии: {playerA} / {playerB} · {latest.observed_at ? new Date(latest.observed_at).toLocaleTimeString() : "время неизвестно"}</div>
+                    <div className="text-[10px] text-muted-foreground">Счёт: {tennisForecastScore(latest)}{scoreChanged && previous ? ` · изменение: ${tennisForecastScore(previous)} → ${tennisForecastScore(latest)}` : ""}</div>
+                    {(qualityDelta !== null || latest.quality_reasons?.length) && <div className="text-[10px] text-muted-foreground">
+                      {qualityDelta !== null ? `Качество ${Math.round((previous?.data_quality || 0) * 100)}% → ${Math.round(Number(latest.data_quality || 0) * 100)}%` : "Причины качества"}
+                      {latest.quality_reasons?.length ? ` · ${latest.quality_reasons.join(", ")}` : ""}
+                    </div>}
                     <div className="text-[10px] text-muted-foreground">3 очка: {latest.scenarios?.next_3_points?.slice(0, 3).map((scenario) => `${scenario.path} ${Math.round(scenario.probability * 100)}%`).join(" · ") || "нет данных"}</div>
                     <div className="text-[10px] text-muted-foreground">2 гейма: {latest.scenarios?.next_2_games?.slice(0, 3).map((scenario) => `${scenario.path} ${Math.round(scenario.probability * 100)}%`).join(" · ") || "нет данных"}</div>
                   </div>
                   <div className="text-right text-[11px] tabular-nums">
                     <div>{playerA}: {Math.round(latest.probabilities.match_a * 100)}%</div>
+                    <div>{playerB}: {Math.round((1 - latest.probabilities.match_a) * 100)}%</div>
                     <div className="text-muted-foreground">Сет {Math.round(latest.probabilities.current_set_a * 100)}%</div>
                     <div className="text-muted-foreground">Гейм {Math.round(latest.probabilities.next_game_a * 100)}%</div>
                     <div className="text-muted-foreground">Качество {Math.round((latest.data_quality || 0) * 100)}%</div>

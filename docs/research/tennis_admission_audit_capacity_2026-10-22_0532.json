@@ -1,0 +1,14 @@
+{
+  "observed_at_utc": "2026-10-22T05:32:32Z",
+  "postgres_container": "neurobet_postgres",
+  "memory_usage": "1.991 GiB / 2 GiB",
+  "active_work_at_observation": [
+    {"query_family": "event_state_snapshots read", "age_seconds": 8, "wait": "ClientRead"},
+    {"query_family": "event_state_snapshots read", "age_seconds": 7, "wait": "DataFileRead"},
+    {"query_family": "event_state_snapshots read", "age_seconds": 7, "wait": "BufferIO"}
+  ],
+  "decision": "do not start another full multi-target label audit until PostgreSQL has memory headroom; last complete audit remains tennis_label_audit_2026-10-22_0421.json",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

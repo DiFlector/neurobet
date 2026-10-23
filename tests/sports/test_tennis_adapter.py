@@ -19,6 +19,7 @@ from tennis_adapter import (
     detect_tennis_surface,
     normalize_russian_player_name,
 )
+from tennis_adapter.adapter import merge_event_metadata
 from db.connection import SessionLocal
 from db.models import Event, EventStateSnapshot, OddsSnapshot
 
@@ -93,6 +94,35 @@ def test_hierarchical_state_and_score():
     assert state.current_game.points_b == "30"
     assert state.stats["aces_a"] == 7
     print("test_hierarchical_state_and_score: OK")
+
+
+def test_event_metadata_preserves_only_explicit_best_of():
+    adapter = TennisSportAdapter()
+    base = {
+        "id": "tn_format_1",
+        "participant_a": "Игрок А",
+        "participant_b": "Игрок Б",
+        "best_of": 5,
+    }
+    assert adapter.parse_event(base).metadata["best_of"] == 5
+    assert "best_of" not in adapter.parse_event({**base, "best_of": 4}).metadata
+    assert "best_of" not in adapter.parse_event({**base, "best_of": 3.5}).metadata
+    unknown = {key: value for key, value in base.items() if key != "best_of"}
+    assert "best_of" not in adapter.parse_event(unknown).metadata
+
+
+def test_best_of_metadata_timestamp_is_first_observation_and_changes_on_correction():
+    first = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    second = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    initial = merge_event_metadata({}, {"best_of": 3}, first)
+    assert initial["best_of_available_at"] == first.isoformat()
+    repeated = merge_event_metadata(initial, {"best_of": 3}, second)
+    assert repeated["best_of_available_at"] == first.isoformat()
+    corrected = merge_event_metadata(repeated, {"best_of": 5}, second)
+    assert corrected["best_of_available_at"] == second.isoformat()
+    assert "best_of_available_at" not in merge_event_metadata(
+        {}, {"surface": "hard"}, second
+    )
 
 
 def test_odds_snapshot_and_mvp_market():

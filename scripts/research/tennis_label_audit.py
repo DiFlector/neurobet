@@ -21,15 +21,43 @@ from tennis_result_observation import score_signature
 
 
 PIT_FEATURE_SOURCE_GROUPS = (
-    "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_surface",
+    "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_format", "event_surface",
 )
+SNAPSHOT_LOOKUP_BATCH_SIZE = 100
+SNAPSHOT_HISTORY_LOOKUP_BATCH_SIZE = 10
+
+
+def _write_training_examples(example_rows: list[dict], output_dir: str) -> dict:
+    """Write deterministic JSONL and return both logical and byte-level hashes."""
+    logical_payload = "\n".join(
+        json.dumps(row, sort_keys=True, separators=(",", ":")) for row in example_rows
+    ).encode("utf-8")
+    logical_digest = hashlib.sha256(logical_payload).hexdigest()
+    examples_path = os.path.join(
+        output_dir, f"tennis_training_examples_{logical_digest[:12]}.jsonl"
+    )
+    os.makedirs(os.path.dirname(examples_path), exist_ok=True)
+    temporary_path = examples_path + ".tmp"
+    file_digest = hashlib.sha256()
+    with open(temporary_path, "w", encoding="utf-8") as handle:
+        for row in example_rows:
+            rendered = json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+            handle.write(rendered)
+            file_digest.update(rendered.encode("utf-8"))
+    os.replace(temporary_path, examples_path)
+    return {
+        "path": examples_path,
+        "examples": len(example_rows),
+        "sha256": file_digest.hexdigest(),
+        "logical_digest": logical_digest,
+    }
 
 
 def _validate_feature_availability(as_of: datetime, source_available_at: dict,
                                   contract_defaults: set[str] | None = None) -> dict:
     """Fail closed unless a source is causal or a documented contract prior is used."""
     cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
-    contract_defaults = contract_defaults or set()
+    contract_defaults = (contract_defaults or set()) - {"event_format"}
     missing, future = [], []
     for name in PIT_FEATURE_SOURCE_GROUPS:
         raw = source_available_at.get(name)
@@ -49,6 +77,22 @@ def _validate_feature_availability(as_of: datetime, source_available_at: dict,
             "missing_sources": missing, "future_sources": future,
             "contract_defaulted_sources": sorted(contract_defaults),
             "as_of": cutoff.isoformat()}
+
+
+def _summarize_feature_availability(checks: list[dict]) -> dict:
+    """Separate causal contract priors from values observed in source data."""
+    certified = [item for item in checks if item.get("certified") is True]
+    defaulted = [item for item in checks if item.get("contract_defaulted_sources")]
+    return {
+        "checked_examples": len(checks),
+        "certified_examples": len(certified),
+        "uncertified_examples": len(checks) - len(certified),
+        "fully_source_observed_examples": sum(
+            item.get("certified") is True and not item.get("contract_defaulted_sources")
+            for item in checks
+        ),
+        "contract_defaulted_examples": len(defaulted),
+    }
 
 
 def _is_finished_set(a: int, b: int) -> bool:
@@ -265,11 +309,12 @@ def _snapshot_search_lower_bound(event: Event) -> datetime | None:
 def _result_score_snapshot_evidence(session, events: dict) -> tuple[dict, int]:
     """Find a persisted Fonbet state that exactly shows each final score.
 
-    A result backfilled today must not erase an earlier system observation.
-    The latest exact score observation is used as a conservative availability
-    time: it is guaranteed that the result was known by then, while finding the
-    first occurrence would require scanning a match's entire snapshot history.
-    Scheduled time and mutable Event.finished_at are never consulted.
+    Search snapshots only when the official result has no source availability
+    timestamp. A timestamped official result is already a valid conservative
+    label time; scanning its older snapshot history can only move availability
+    earlier and is unnecessary for the admission gate. The latest exact score
+    snapshot is used for undated results. Scheduled time and mutable
+    Event.finished_at are never consulted.
     """
     expected = {}
     for event_id, event in events.items():
@@ -288,47 +333,61 @@ def _result_score_snapshot_evidence(session, events: dict) -> tuple[dict, int]:
     requested = [
         (event_id, _score_token_pattern(signature), _snapshot_search_lower_bound(events[event_id]))
         for event_id, signature in expected.items()
+        if _utc_result_time(events[event_id]) is None
     ]
     bounded = [item for item in requested if item[2] is not None]
     if bounded:
-        requested_params = {
-            "event_ids": [item[0] for item in bounded],
-            "lower_bounds": [item[2] for item in bounded],
-        }
-        latest_rows = session.execute(text("""
-            WITH requested AS (
-                SELECT * FROM unnest(
-                    CAST(:event_ids AS uuid[]),
-                    CAST(:lower_bounds AS timestamptz[])
-                ) AS r(event_id, lower_bound)
-            )
-            SELECT requested.event_id, snapshot.id, snapshot.observed_at,
-                   snapshot.status, snapshot.score
-            FROM requested
-            JOIN LATERAL (
-                SELECT id, observed_at, status, score
-                FROM event_state_snapshots
-                WHERE event_id = requested.event_id
-                  AND observed_at >= requested.lower_bound
-                ORDER BY observed_at DESC, id DESC
-                LIMIT 1
-            ) AS snapshot ON TRUE
-        """), requested_params).yield_per(10000)
-        patterns = {event_id: pattern for event_id, pattern, _ in bounded}
-        for row in latest_rows:
-            if row.score is None or re.fullmatch(patterns[row.event_id], str(row.score)) is None:
-                continue
-            evidence[row.event_id] = {
-                "snapshot_id": str(row.id), "observed_at": row.observed_at,
-                "status": row.status, "score": row.score,
+        # Keep each Timescale lateral lookup small. A single unnest of the full
+        # archive made PostgreSQL hold a large historical read working set and
+        # could starve normal request traffic on the 2 GiB database service.
+        for start in range(0, len(bounded), SNAPSHOT_LOOKUP_BATCH_SIZE):
+            batch = bounded[start:start + SNAPSHOT_LOOKUP_BATCH_SIZE]
+            requested_params = {
+                "event_ids": [item[0] for item in batch],
+                "lower_bounds": [item[2] for item in batch],
             }
+            latest_rows = session.execute(text("""
+                WITH requested AS (
+                    SELECT * FROM unnest(
+                        CAST(:event_ids AS uuid[]),
+                        CAST(:lower_bounds AS timestamptz[])
+                    ) AS r(event_id, lower_bound)
+                )
+                SELECT requested.event_id, snapshot.id, snapshot.observed_at,
+                       snapshot.status, snapshot.score
+                FROM requested
+                JOIN LATERAL (
+                    SELECT id, observed_at, status, score
+                    FROM event_state_snapshots
+                    WHERE event_id = requested.event_id
+                      AND observed_at >= requested.lower_bound
+                    ORDER BY observed_at DESC, id DESC
+                    LIMIT 1
+                ) AS snapshot ON TRUE
+            """), requested_params).yield_per(SNAPSHOT_LOOKUP_BATCH_SIZE)
+            patterns = {event_id: pattern for event_id, pattern, _ in batch}
+            for row in latest_rows:
+                if row.score is None or re.fullmatch(patterns[row.event_id], str(row.score)) is None:
+                    continue
+                evidence[row.event_id] = {
+                    "snapshot_id": str(row.id), "observed_at": row.observed_at,
+                    "status": row.status, "score": row.score,
+                }
 
         # Most finished matches have the exact official score in their latest
         # persisted snapshot. Only mismatches need the slower historical search;
         # this retains corrections/older matching evidence without scanning every
         # event's full tape in the common case.
-        unresolved = [item for item in bounded if item[0] not in evidence]
-        if unresolved:
+        unresolved = [
+            item for item in bounded
+            if item[0] not in evidence and _utc_result_time(events[item[0]]) is None
+        ]
+        # When the official result already has a persisted source-availability
+        # timestamp, that timestamp is a valid conservative fallback. Scanning
+        # the full tape for an earlier exact score can only move availability
+        # earlier; it is unnecessary for safety and expensive on old snapshots.
+        for start in range(0, len(unresolved), SNAPSHOT_HISTORY_LOOKUP_BATCH_SIZE):
+            batch = unresolved[start:start + SNAPSHOT_HISTORY_LOOKUP_BATCH_SIZE]
             historical_rows = session.execute(text("""
                 WITH requested AS (
                     SELECT * FROM unnest(
@@ -350,10 +409,10 @@ def _result_score_snapshot_evidence(session, events: dict) -> tuple[dict, int]:
                     LIMIT 1
                 ) AS snapshot ON TRUE
             """), {
-                "event_ids": [item[0] for item in unresolved],
-                "patterns": [item[1] for item in unresolved],
-                "lower_bounds": [item[2] for item in unresolved],
-            }).yield_per(10000)
+                "event_ids": [item[0] for item in batch],
+                "patterns": [item[1] for item in batch],
+                "lower_bounds": [item[2] for item in batch],
+            }).yield_per(SNAPSHOT_HISTORY_LOOKUP_BATCH_SIZE)
             for row in historical_rows:
                 evidence[row.event_id] = {
                     "snapshot_id": str(row.id), "observed_at": row.observed_at,
@@ -421,6 +480,40 @@ def _temporal_precedence(train_ids, validation_ids, target_temporal):
             "earliest_validation_forecast_at": earliest_validation_forecast.isoformat() if earliest_validation_forecast else None}
 
 
+def _causal_training_membership(candidate_train_ids, validation_ids, labels, target_temporal):
+    """Purge labelled train matches whose outcomes were unknown at validation start."""
+    validation_times = [target_temporal.get(event_id, {}).get("forecast_at")
+                        for event_id in validation_ids]
+    missing_validation = sum(value is None for value in validation_times)
+    cutoff = min((value for value in validation_times if value is not None), default=None)
+    # A missing validation time makes the fold boundary ambiguous; fail closed
+    # instead of choosing a later forecast and accidentally admitting labels.
+    if missing_validation:
+        cutoff = None
+    labelled_candidates = [event_id for event_id in candidate_train_ids if labels.get(event_id)]
+    missing_label_time = [event_id for event_id in labelled_candidates
+                          if target_temporal.get(event_id, {}).get("label_available_at") is None]
+    future_label_time = [event_id for event_id in labelled_candidates
+                         if cutoff is not None
+                         and target_temporal.get(event_id, {}).get("label_available_at") is not None
+                         and target_temporal[event_id]["label_available_at"] > cutoff]
+    if cutoff is None:
+        eligible = []
+    else:
+        eligible = [event_id for event_id in labelled_candidates
+                    if target_temporal.get(event_id, {}).get("label_available_at") is not None
+                    and target_temporal[event_id]["label_available_at"] <= cutoff]
+    return eligible, {
+        "cutoff": cutoff.isoformat() if cutoff else None,
+        "candidate_labelled_matches": len(labelled_candidates),
+        "eligible_matches": len(eligible),
+        "purged_future_label_matches": len(future_label_time),
+        "purged_unknown_label_time_matches": len(missing_label_time),
+        "purged_no_validation_boundary_matches": len(labelled_candidates) if cutoff is None else 0,
+        "missing_validation_forecast_times": missing_validation,
+    }
+
+
 def _walk_forward_admission(target_rows, event_times, target_temporal=None):
     """Build one immutable whole-match split shared by all target masks."""
     # event_times contains only results whose source availability timestamp is
@@ -443,17 +536,20 @@ def _walk_forward_admission(target_rows, event_times, target_temporal=None):
         folds = [{"fold": i + 1,
                   "train_event_ids": [str(x) for x in development[:initial_end + edges[i]]],
                   "validation_event_ids": [str(x) for x in validation[edges[i]:edges[i + 1]]]} for i in range(4)]
-        manifest = {"manifest_version": "tennis_shared_walk_forward_v1",
+        manifest = {"manifest_version": "tennis_shared_walk_forward_v2",
                     "created_at": datetime.now(timezone.utc).isoformat(), "dataset_digest": digest,
                     "ordered_event_ids": [str(x) for x in ordered],
                     "event_times": {str(x): event_times[x].isoformat() for x in ordered},
                     "development_event_ids": [str(x) for x in development],
                     "holdout_event_ids": [str(x) for x in holdout], "folds": folds,
                     "holdout_quality_metrics_opened": False}
-        os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-        with open(manifest_path + ".tmp", "w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, ensure_ascii=False, indent=2)
-        os.replace(manifest_path + ".tmp", manifest_path)
+    manifest_changed = (
+        manifest.get("manifest_version") != "tennis_shared_walk_forward_v2"
+        or manifest.get("training_cutoff_policy")
+        != "target_label_available_at_or_before_earliest_validation_forecast"
+    )
+    manifest["manifest_version"] = "tennis_shared_walk_forward_v2"
+    manifest["training_cutoff_policy"] = "target_label_available_at_or_before_earliest_validation_forecast"
 
     def ids(values):
         return [uuid.UUID(value) for value in values if uuid.UUID(value) in event_times]
@@ -468,12 +564,20 @@ def _walk_forward_admission(target_rows, event_times, target_temporal=None):
         folds = []
         for fold in manifest["folds"]:
             train_ids, validation_ids = ids(fold["train_event_ids"]), ids(fold["validation_event_ids"])
-            temporal_train_ids = [event_id for event_id in train_ids if event_id in labels]
             temporal_validation_ids = [event_id for event_id in validation_ids if event_id in labels]
-            temporal = _temporal_precedence(temporal_train_ids, temporal_validation_ids,
+            eligible_train_ids, training_filter = _causal_training_membership(
+                train_ids, temporal_validation_ids, labels, target_temporal.get(target, {}))
+            target_train_membership = fold.setdefault("target_train_event_ids", {})
+            eligible_ids = [str(event_id) for event_id in eligible_train_ids]
+            if target_train_membership.get(target) != eligible_ids:
+                target_train_membership[target] = eligible_ids
+                manifest_changed = True
+            temporal = _temporal_precedence(eligible_train_ids, temporal_validation_ids,
                                             target_temporal.get(target, {}))
             folds.append({"fold": fold["fold"],
-                "train": _window_summary(train_ids, event_times, labels, 500),
+                "train": _window_summary(eligible_train_ids, event_times, labels, 500),
+                "train_candidates": _window_summary(train_ids, event_times, labels, 500),
+                "training_filter": training_filter,
                 "validation": _window_summary(validation_ids, event_times, labels, 100),
                 "temporal_precedence": temporal})
         holdout_summary = _window_summary(ids(manifest["holdout_event_ids"]), event_times, labels, 200)
@@ -486,6 +590,11 @@ def _walk_forward_admission(target_rows, event_times, target_temporal=None):
                 and f["train"]["both_classes"] and f["validation"]["both_classes"]
                 and f["temporal_precedence"]["passed"] for f in folds),
             "holdout_meets_minimums": holdout_summary["meets_match_minimum"] and holdout_summary["both_classes"]}
+    if manifest_changed:
+        os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
+        with open(manifest_path + ".tmp", "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, ensure_ascii=False, indent=2)
+        os.replace(manifest_path + ".tmp", manifest_path)
     return results, {"path": manifest_path, "dataset_digest": digest,
         "matches": len(manifest["ordered_event_ids"]), "development_matches": len(manifest["development_event_ids"]),
         "holdout_matches": len(manifest["holdout_event_ids"]), "holdout_quality_metrics_opened": False}
@@ -528,6 +637,11 @@ def build_report() -> dict:
             "availability_unknown_documents": 0, "availability_unknown_versions": 0},
         "feature_availability": {"contract_version": "tennis_odds_free_v1",
             "checked_examples": 0, "certified_examples": 0, "uncertified_examples": 0,
+            "fully_source_observed_examples": 0, "contract_defaulted_examples": 0,
+            "point_in_time_definition": (
+                "certified means every source-backed feature is available by the snapshot; "
+                "a documented contract prior or explicit unknown value is allowed only when "
+                "its missingness/sample-weight representation is part of the feature contract"),
             "source_groups": {}, "resolution_counts": {}, "exclusions": {}},
         "exclusions": {},
         "training_gate": {"status": "blocked", "required_per_target": {
@@ -663,12 +777,17 @@ def build_report() -> dict:
         # Match inference's name-based external serve-log lookup. These records
         # have no canonical player ID, so only the same normalized full name is
         # usable; surname-only matches would create identity leakage.
-        serve_log_rows = session.query(ExtTennisServeLog.player_name, ExtTennisServeLog.available_at).filter(
+        serve_log_rows = session.query(
+            ExtTennisServeLog.player_name, ExtTennisServeLog.available_at,
+            ExtTennisServeLog.source_event_at, ExtTennisServeLog.source,
+            ExtTennisServeLog.availability_provenance, ExtTennisServeLog.source_confidence,
+            ExtTennisServeLog.retrospective, ExtTennisServeLog.serve_points,
+        ).filter(
             ExtTennisServeLog.available_at <= now
         ).all()
         serve_logs_by_name = defaultdict(list)
-        for player_name, available_at in serve_log_rows:
-            serve_logs_by_name[normalize_russian_player_name(player_name)].append(available_at)
+        for row in serve_log_rows:
+            serve_logs_by_name[normalize_russian_player_name(row[0])].append(row[1:])
         feature_availability_by_event_snapshot = {}
 
         def feature_availability(event_id, snapshot_id, snapshot_at):
@@ -737,9 +856,11 @@ def build_report() -> dict:
                     )
                     since = snapshot_at - timedelta(days=365)
                     historical_logs = [value for value in serve_logs_by_name.get(name, [])
-                                       if since <= value <= snapshot_at]
+                                       if value[1] is not None and since <= value[1] <= snapshot_at
+                                       and value[0] <= snapshot_at]
                     if historical_logs:
-                        serve_times[side].append(max(historical_logs))
+                        newest = max(historical_logs, key=lambda value: (value[1], value[0]))
+                        serve_times[side].append(newest[0])
                         serve_resolution[side] = "observed_serve_log"
                     else:
                         # The serving prior and zero sample weight are explicit
@@ -757,11 +878,29 @@ def build_report() -> dict:
                 surface_at = surface_at.replace(tzinfo=timezone.utc)
             surface_known = bool(surface_at and surface_at <= snapshot_at and
                                  str(metadata.get("surface") or "").casefold() in {"hard", "clay", "grass", "carpet"})
+            raw_format_at = metadata.get("best_of_available_at")
+            try:
+                format_at = datetime.fromisoformat(str(raw_format_at).replace("Z", "+00:00")) if raw_format_at else None
+            except ValueError:
+                format_at = None
+            if format_at is not None and format_at.tzinfo is None:
+                format_at = format_at.replace(tzinfo=timezone.utc)
+            raw_best_of = metadata.get("best_of")
+            try:
+                if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
+                    raise ValueError("non_integer_best_of")
+                explicit_best_of = int(raw_best_of) if not isinstance(raw_best_of, bool) else None
+            except (TypeError, ValueError, OverflowError):
+                explicit_best_of = None
+            format_known = bool(
+                format_at and format_at <= snapshot_at and explicit_best_of in {3, 5}
+            )
             sources = {
                 "player_metrics": max(player_times).isoformat() if player_times else None,
                 "serve_metrics_a": max(serve_times["a"]).isoformat() if serve_times["a"] else None,
                 "serve_metrics_b": max(serve_times["b"]).isoformat() if serve_times["b"] else None,
                 "event_state": snapshot_at.isoformat(),
+                "event_format": format_at.isoformat() if format_known else None,
                 "event_surface": surface_at.isoformat() if surface_known else None,
             }
             contract_defaults = set()
@@ -778,6 +917,7 @@ def build_report() -> dict:
                        "source_resolution": {
                            "player_metrics": player_resolution,
                            "serve_metrics": serve_resolution,
+                           "event_format": "observed" if format_known else "missing_or_not_available_as_of",
                            "event_surface": "observed" if surface_known else "contract_default_unknown",
                            "event_state": "observed_snapshot",
                        }}
@@ -1117,9 +1257,7 @@ def build_report() -> dict:
         example_rows = [example_provenance[key] for key in sorted(example_provenance, key=lambda item: (item[0], repr(item[1])))]
         feature_report = report["feature_availability"]
         feature_checks = [row.get("feature_availability", {}) for row in example_rows]
-        feature_report["checked_examples"] = len(feature_checks)
-        feature_report["certified_examples"] = sum(bool(item.get("certified")) for item in feature_checks)
-        feature_report["uncertified_examples"] = feature_report["checked_examples"] - feature_report["certified_examples"]
+        feature_report.update(_summarize_feature_availability(feature_checks))
         for check in feature_checks:
             source_times = check.get("source_available_at", {})
             resolution = check.get("source_resolution", {})
@@ -1143,18 +1281,9 @@ def build_report() -> dict:
                     group["available"] += 1
             for name in check.get("missing_sources", []) + check.get("future_sources", []):
                 feature_report["exclusions"][name] = feature_report["exclusions"].get(name, 0) + 1
-        examples_digest = hashlib.sha256("\n".join(json.dumps(row, sort_keys=True, separators=(",", ":"))
-            for row in example_rows).encode("utf-8")).hexdigest()
-        examples_path = f"docs/research/tennis_training_examples_{examples_digest[:12]}.jsonl"
-        os.makedirs(os.path.dirname(examples_path), exist_ok=True)
-        temporary_examples_path = examples_path + ".tmp"
-        with open(temporary_examples_path, "w", encoding="utf-8") as handle:
-            for row in example_rows:
-                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-        os.replace(temporary_examples_path, examples_path)
-        report["training_examples_manifest"] = {
-            "path": examples_path, "examples": len(example_rows), "sha256": examples_digest,
-        }
+        report["training_examples_manifest"] = _write_training_examples(
+            example_rows, "docs/research"
+        )
         undated = sum(value is None for value in result_times.values())
         report["training_gate"]["chronology_timestamp_missing_matches"] = undated
         report["training_gate"]["result_availability_unknown_matches"] = sum(

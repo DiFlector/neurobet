@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
+from db.identity import confirmed_source_player_id
 
 from db.connection import SessionLocal
 from db.models import (
@@ -349,7 +350,11 @@ def _reconcile_player_facts_after_identity_decision(
     profile.source_watermark = max((fact.played_at for fact in selected), default=None)
     profile.metrics_available_at = now
     session.add(TennisPlayerMetricSnapshot(
-        participant_id=participant_id, metrics_version=profile.metrics_version,
+        participant_id=participant_id,
+        source_player_id=confirmed_source_player_id(
+            session, participant_id, source="flashscore", as_of=now
+        ),
+        metrics_version=profile.metrics_version,
         available_at=now, source_watermark=profile.source_watermark,
         history_digest=digest, metrics_json=metrics,
     ))

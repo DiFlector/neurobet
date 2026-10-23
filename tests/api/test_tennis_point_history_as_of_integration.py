@@ -22,6 +22,11 @@ def test_late_pbp_correction_and_link_cancellation_do_not_change_old_as_of():
         event = session.query(Event).filter(Event.sport_code == "tennis").first()
         assert event is not None, "integration DB needs at least one tennis event"
         event_id = event.id
+        reassigned_event = session.query(Event).filter(
+            Event.sport_code == "tennis", Event.id != event_id
+        ).first()
+        assert reassigned_event is not None, "integration DB needs two tennis events for reassignment coverage"
+        reassigned_event_id = reassigned_event.id
         session.add(TennisPointDocument(
             id=document_id,
             source="flashscore",
@@ -117,17 +122,45 @@ def test_late_pbp_correction_and_link_cancellation_do_not_change_old_as_of():
         non_authoritative_read = get_event_point_history(str(event_id), as_of=now + timedelta(seconds=1))
         assert non_authoritative_read["sequence"][0]["point_score"] == "15:0"
 
+        # Reassigning the same source match must affect only reads at or after
+        # the new link's availability time. A fixed earlier as_of remains
+        # stable, the old Fonbet event loses the source, and the new event
+        # receives its source history at its own point in time.
+        reassigned_at = now + timedelta(seconds=2)
+        with SessionLocal() as session:
+            session.add(TennisPointMatchLink(
+                source_match_id=source_match_id,
+                fonbet_event_id=reassigned_event_id,
+                status="matched",
+                confidence=1.0,
+                evidence_json={"integration_test": True, "reassigned": True},
+                available_at=reassigned_at,
+            ))
+            session.commit()
+        assert get_event_point_history(str(event_id), as_of=fixed_as_of) == old_read
+        old_event_after_reassignment = get_event_point_history(
+            str(event_id), as_of=reassigned_at + timedelta(seconds=1)
+        )
+        new_event_after_reassignment = get_event_point_history(
+            str(reassigned_event_id), as_of=reassigned_at + timedelta(seconds=1)
+        )
+        assert old_event_after_reassignment["total"] == 0
+        assert old_event_after_reassignment["source_match_id"] is None
+        assert new_event_after_reassignment["total"] == 1
+        assert new_event_after_reassignment["sequence"][0]["point_score"] == "15:0"
+
         # A source can deliberately tombstone a set only with an explicit
         # correction marker. An ordinary missing PBP page above must not.
+        correction_at = now + timedelta(seconds=4)
         with SessionLocal() as session:
             session.add(TennisPointHistoryVersion(
                 document_id=document_id,
                 source_match_id=source_match_id,
                 fonbet_event_id=event_id,
                 parser_version="asof-integration-test-empty-correction",
-                retrieved_at=now + timedelta(seconds=2),
-                parsed_at=now + timedelta(seconds=2),
-                available_at=now + timedelta(seconds=2),
+                retrieved_at=correction_at,
+                parsed_at=correction_at,
+                available_at=correction_at,
                 availability_status="available",
                 events_json=[],
                 quality_json={"set_number": 1, "explicit_empty_correction": True},
@@ -135,14 +168,16 @@ def test_late_pbp_correction_and_link_cancellation_do_not_change_old_as_of():
             ))
             session.add(TennisPointMatchLink(
                 source_match_id=source_match_id,
-                fonbet_event_id=event_id,
+                fonbet_event_id=reassigned_event_id,
                 status="unmatched",
                 confidence=0.0,
                 evidence_json={"integration_test": True, "cancelled": True},
-                available_at=now + timedelta(seconds=2),
+                available_at=correction_at,
             ))
             session.commit()
-        new_read = get_event_point_history(str(event_id), as_of=now + timedelta(seconds=3))
+        new_read = get_event_point_history(
+            str(reassigned_event_id), as_of=correction_at + timedelta(seconds=1)
+        )
         assert new_read["total"] == 0
     finally:
         with SessionLocal() as session:

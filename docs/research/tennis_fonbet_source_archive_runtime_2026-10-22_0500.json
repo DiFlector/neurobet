@@ -1,0 +1,30 @@
+{
+  "observed_at_utc": "2026-10-22T05:00:47.525358Z",
+  "service": "collector",
+  "image": "sha256:c7f524583750977d198e8bb80f21fd7040758a43b9c51e6c743d2031abee8e57",
+  "health": "healthy",
+  "collector_test_command": "docker run --rm --env-file .env --network neurobet_internal_net -v tests/collector:/tmp/collector-tests:ro neurobet-collector python /tmp/collector-tests/test_collector.py",
+  "collector_test_result": "ALL COLLECTOR TESTS PASSED SUCCESSFULLY",
+  "runtime_probe": {
+    "stream": "fonbet.raw",
+    "stream_message_id": "1792645246188-0",
+    "source_s3_key": "fonbet/tennis/2026-10-22/baea/baea5499acfe41b4ac44437c1b04b722638cbb9ad330e87d9fd8526eb67db2a2.json",
+    "stream_hash": "sha256:baea5499acfe41b4ac44437c1b04b722638cbb9ad330e87d9fd8526eb67db2a2",
+    "archive_hash": "sha256:baea5499acfe41b4ac44437c1b04b722638cbb9ad330e87d9fd8526eb67db2a2",
+    "recomputed_source_hash": "sha256:baea5499acfe41b4ac44437c1b04b722638cbb9ad330e87d9fd8526eb67db2a2",
+    "hashes_match": true,
+    "collected_at": "2026-10-22T05:00:44.990318+00:00",
+    "source_url": "https://line-lb51-w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1600",
+    "capture_scope": "verbatim live tennis event/child rows and sport ancestors; dynamic score/odds feed sections omitted",
+    "event_row_count": 43,
+    "sport_row_count": 11,
+    "explicit_best_of_values": [],
+    "raw_source_not_in_stream_payload": true
+  },
+  "training_started": false,
+  "shadow_registered": false,
+  "limitations": [
+    "No explicit best_of value was present in the observed source event rows; format availability remains unproven.",
+    "This scoped archive verifies collector-to-S3/Redis provenance only; it does not close manual source review or model admission gates."
+  ]
+}

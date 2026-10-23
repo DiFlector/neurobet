@@ -1,0 +1,67 @@
+{
+  "generated_at_utc": "2026-10-22T10:05:10Z",
+  "scope": "Read-only census of Flashscore point-history availability and explicit Fonbet match-format provenance",
+  "source": {
+    "tennis_events": {
+      "total": 3725,
+      "live": 183,
+      "upcoming_or_unknown": 230,
+      "finished": 3312,
+      "explicit_best_of": 0,
+      "best_of_with_source_time": 0
+    },
+    "flashscore_point_history_versions": {
+      "non_retrospective": {
+        "source_matches": 22,
+        "versions": 167,
+        "point_states": 6317,
+        "first_available_at_utc": "2026-10-21T14:28:46.519823Z",
+        "latest_available_at_utc": "2026-10-22T10:03:46.372834Z"
+      },
+      "retrospective": {
+        "source_matches": 76,
+        "versions": 1013,
+        "point_states": 18023,
+        "first_available_at_utc": "2026-10-20T14:18:31.504531Z",
+        "latest_available_at_utc": "2026-10-22T10:03:07.568158Z"
+      }
+    },
+    "point_refresh_queue": {
+      "waiting_players": 2604,
+      "retry": 201,
+      "queued": 71,
+      "finalized": 43,
+      "completed": 3,
+      "waiting_match": 3,
+      "running": 1
+    }
+  },
+  "recent_live_document": {
+    "fonbet_event_id": "69142452",
+    "flashscore_match_id": "KfsnwCD5",
+    "available_sets": {
+      "1": 68,
+      "2": 24
+    },
+    "parsed_events": 92,
+    "gaps": 0,
+    "status_at_capture": "live",
+    "final_label_available": false
+  },
+  "admission_impact": {
+    "newly_observed_non_retrospective_matches_since_0942_utc": 2,
+    "newly_observed_point_states_since_0942_utc": 266,
+    "new_events_are_finally_labelled": false,
+    "format_pit_examples_added": 0,
+    "admission_status": "blocked",
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "shadow_registered": false
+  },
+  "interpretation": [
+    "Observed live PBP coverage increased by two source matches and 266 point states since the 09:42 UTC snapshot.",
+    "The new match is still live, so it does not add a final match/game/set label yet.",
+    "No current Fonbet tennis event has an explicit best_of or source-timed best_of_available_at; source-format PIT remains blocked.",
+    "The full admission audit was not repeated because this delta contains live, not newly finalized, matches."
+  ]
+}

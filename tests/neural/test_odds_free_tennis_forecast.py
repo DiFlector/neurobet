@@ -21,6 +21,7 @@ parse_tennis_state = _MODULE.parse_tennis_state
 build_odds_free_feature_vector = _MODULE.build_odds_free_feature_vector
 validate_odds_free_feature_availability = _MODULE.validate_odds_free_feature_availability
 point_in_time_surface = _MODULE.point_in_time_surface
+point_in_time_best_of = _MODULE.point_in_time_best_of
 ODDS_FREE_FEATURE_SOURCE_GROUPS = _MODULE.ODDS_FREE_FEATURE_SOURCE_GROUPS
 ODDS_FREE_FEATURE_NAMES = _MODULE.ODDS_FREE_FEATURE_NAMES
 ODDS_FREE_FEATURE_VERSION = _MODULE.ODDS_FREE_FEATURE_VERSION
@@ -57,6 +58,8 @@ def test_odds_free_candidate_feature_contract_is_closed_and_ignores_prices():
     changed_prices = {**pair, "odds_a": 30.0, "odds_b": 1.01, "market_probability_a": 0.02}
     second = build_odds_free_feature_vector(state, changed_prices, serve_a, serve_b, "clay")
     assert len(first) == len(ODDS_FREE_FEATURE_NAMES) == 30
+    assert "sets_to_win" not in ODDS_FREE_FEATURE_SOURCE_GROUPS["event_state"]
+    assert ODDS_FREE_FEATURE_SOURCE_GROUPS["event_format"] == ("sets_to_win",)
     assert ODDS_FREE_FEATURE_VERSION == "tennis_odds_free_v1"
     assert first == second
     assert "odds" not in _MODULE.forecast.__code__.co_varnames
@@ -98,6 +101,22 @@ def test_surface_requires_its_own_timestamp_and_is_unknown_when_late():
     assert point_in_time_surface({
         "surface": "hard", "surface_available_at": "2025-12-31T23:00:00Z"
     }, cutoff) == ("hard", "2025-12-31T23:00:00+00:00", "observed")
+
+
+def test_best_of_requires_explicit_value_and_causal_observation_time():
+    from datetime import datetime, timezone
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert point_in_time_best_of({"best_of": 3}, cutoff) == (
+        None, None, "missing_source_timestamp"
+    )
+    assert point_in_time_best_of({
+        "best_of": 5, "best_of_available_at": "2026-01-02T00:00:00Z"
+    }, cutoff) == (None, "2026-01-02T00:00:00+00:00", "source_after_cutoff")
+    assert point_in_time_best_of({
+        "best_of": 3, "best_of_available_at": "2025-12-31T23:00:00Z"
+    }, cutoff) == (3, "2025-12-31T23:00:00+00:00", "observed")
+    assert point_in_time_best_of({"best_of": 4, "best_of_available_at": cutoff}, cutoff)[0] is None
+    assert point_in_time_best_of({"best_of": 3.5, "best_of_available_at": cutoff}, cutoff)[0] is None
 
 
 def test_adapter_score_shape_uses_live_line_instead_of_last_closed_set():

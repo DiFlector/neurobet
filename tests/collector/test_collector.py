@@ -50,6 +50,7 @@ def test_parser_filters_out_prematch_and_accepts_live():
         "score": "1-1 (6-4, 4-6, 3-2*)",
         "odds_a": 2.15,
         "odds_b": 1.72,
+        "best_of": 5,
     }
     parsed_live = FonbetLiveTennisParser.parse_single_live_card(live_card)
     assert parsed_live is not None, "Live event MUST be parsed"
@@ -65,6 +66,18 @@ def test_parser_filters_out_prematch_and_accepts_live():
     assert parsed_live["score_state"]["server"] == "player_a"
     assert len(parsed_live["markets"]) == 1
     assert parsed_live["markets"][0]["name"] == "Победитель матча"
+    assert parsed_live["best_of"] == 5
+
+    # Unknown formats remain unknown; tournament text must not synthesize one.
+    unknown_format = dict(live_card, id="88802")
+    unknown_format.pop("best_of")
+    parsed_unknown = FonbetLiveTennisParser.parse_single_live_card(unknown_format)
+    assert parsed_unknown is not None
+    assert "best_of" not in parsed_unknown
+    invalid_format = dict(live_card, id="88803", best_of=3.5)
+    parsed_invalid = FonbetLiveTennisParser.parse_single_live_card(invalid_format)
+    assert parsed_invalid is not None
+    assert "best_of" not in parsed_invalid
     print("test_parser_filters_out_prematch_and_accepts_live: OK")
 
 
@@ -109,6 +122,56 @@ def test_parser_card_error_isolation():
     assert parsed_events[0]["participant_a"] == "Андрей Рублев"
     assert parsed_events[1]["participant_a"] == "Александр Зверев"
     print("test_parser_card_error_isolation: OK")
+
+
+def test_line_feed_keeps_verbatim_source_rows_for_live_tennis_only():
+    source_event = {
+        "id": 901,
+        "sportId": 401,
+        "place": "live",
+        "team1": "Игрок А",
+        "team2": "Игрок Б",
+        "best_of": 3,
+        "unmapped_source_field": {"opaque": True},
+    }
+    source_child = {"id": 902, "parentId": 901, "sportId": 401, "place": "live", "name": "1-й сет"}
+    unrelated_event = {
+        "id": 990,
+        "sportId": 8,
+        "place": "live",
+        "team1": "Команда А",
+        "team2": "Команда Б",
+    }
+    feed = {
+        "fromVersion": 17,
+        "sports": [
+            {"id": 4, "name": "Теннис"},
+            {"id": 401, "parentId": 4, "name": "ATP"},
+            {"id": 8, "name": "Футбол"},
+        ],
+        "events": [source_event, source_child, unrelated_event],
+        "liveEventInfos": [{"eventId": 901, "scores": [[{"c1": 0, "c2": 0}]]}],
+        "eventMiscs": [{"id": 901, "timerSeconds": 3}, {"id": 990, "timerSeconds": 8}],
+        "customFactors": [
+            {"e": 901, "factors": [{"f": 921, "v": "1.9"}]},
+            {"e": 902, "factors": [{"f": 921, "v": "2.0"}]},
+            {"e": 990, "factors": [{"f": 921, "v": "1.5"}]},
+        ],
+        "eventBlocks": [{"eventId": 901, "block": 1}, {"eventId": 990, "block": 2}],
+    }
+
+    parsed = FonbetLiveTennisParser.from_line_feed(feed)
+    normalized = FonbetLiveTennisParser.parse_events_feed(parsed)
+    archived = parsed["_source_payload"]
+    assert normalized[0]["best_of"] == 3
+    assert [row["id"] for row in archived["events"]] == [901, 902]
+    assert archived["events"][0] == source_event
+    assert archived["events"][0]["unmapped_source_field"] == {"opaque": True}
+    assert [row["id"] for row in archived["sports"]] == [4, 401]
+    assert archived["feed_versions"] == {"fromVersion": 17}
+    assert "liveEventInfos" not in archived
+    assert "customFactors" not in archived
+    print("test_line_feed_keeps_verbatim_source_rows_for_live_tennis_only: OK")
 
 
 def test_sha256_content_hashing():
@@ -191,10 +254,107 @@ def test_minio_raw_snapshot_persistence():
     print("test_minio_raw_snapshot_persistence: OK")
 
 
+def test_source_writer_saves_exact_payload_with_hash_and_collection_time():
+    class Client:
+        def __init__(self):
+            self.put = None
+
+        def put_object(self, **kwargs):
+            self.put = kwargs
+
+    writer = MinIORawWriter.__new__(MinIORawWriter)
+    writer.bucket = "raw-snapshots"
+    writer.client = Client()
+    source = {"events": [{"id": 123, "best_of": 3, "opaque": {"x": 1}}]}
+    now = datetime.now(timezone.utc)
+    source_bytes = json.dumps(source, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    source_hash = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+
+    key = writer.save_source_payload(source_hash, source, "https://fonbet.example/list", now)
+    body = json.loads(writer.client.put["Body"].decode("utf-8"))
+    assert key.endswith(f"/{source_hash[7:]}.json")
+    assert body["source_payload"] == source
+    assert body["content_hash"] == source_hash
+    assert body["collected_at"] == now.isoformat()
+    assert body["url"] == "https://fonbet.example/list"
+    print("test_source_writer_saves_exact_payload_with_hash_and_collection_time: OK")
+
+
+def test_poll_archives_unmodified_source_payload_once_and_streams_only_key():
+    import asyncio
+
+    from app.service import CollectorService
+
+    class Writer:
+        def __init__(self):
+            self.source_payloads = []
+            self.normalized = []
+
+        def save_source_payload(self, **kwargs):
+            self.source_payloads.append(kwargs)
+            return f"source/{kwargs['content_hash'][7:]}"
+
+        def save_raw_snapshot(self, content_hash, snapshot_dict, collected_at):
+            self.normalized.append(snapshot_dict)
+            return f"normalized/{content_hash[7:]}"
+
+    class Publisher:
+        def __init__(self):
+            self.envelopes = []
+
+        def publish_envelope(self, envelope):
+            self.envelopes.append(envelope)
+
+    source_payload = {
+        "events": [{"id": "901", "place": "live", "opaqueSourceField": {"mode": "best-of-3"}}],
+        "sports": [{"id": 4, "name": "Tennis"}],
+    }
+    feed = {
+        "events": [{
+            "id": "901", "team1": "Игрок А", "team2": "Игрок Б",
+            "place": "live", "score": "0-0 (0-0)",
+        }],
+        "_source_payload": source_payload,
+        "_source_url": "https://fonbet.example/events/list",
+    }
+    writer = Writer()
+    publisher = Publisher()
+    service = CollectorService.__new__(CollectorService)
+    service.semaphore = asyncio.Semaphore(1)
+    service.s3_writer = writer
+    service.circuit_breaker = CircuitBreaker()
+    service.publisher = publisher
+    service.last_content_hash = None
+    service.last_source_content_hash = None
+    service.last_source_s3_key = None
+    service.total_polls = 0
+    service.total_live_events_seen = 0
+
+    async def fetch():
+        return feed
+
+    service.fetch_live_feed = fetch
+    asyncio.run(service.poll_once())
+    asyncio.run(service.poll_once())
+
+    assert len(writer.source_payloads) == 1
+    assert writer.source_payloads[0]["source_payload"] == source_payload
+    assert writer.source_payloads[0]["source_url"] == "https://fonbet.example/events/list"
+    assert len(publisher.envelopes) == 2
+    published = publisher.envelopes[0].payload
+    assert published["source_payload_s3_key"].startswith("source/")
+    assert published["source_payload_hash"] == writer.source_payloads[0]["content_hash"]
+    assert "source_payload" not in published
+    print("test_poll_archives_unmodified_source_payload_once_and_streams_only_key: OK")
+
+
 if __name__ == "__main__":
     test_parser_filters_out_prematch_and_accepts_live()
     test_parser_card_error_isolation()
+    test_line_feed_keeps_verbatim_source_rows_for_live_tennis_only()
     test_sha256_content_hashing()
     test_circuit_breaker_transitions_and_backoff()
     test_minio_raw_snapshot_persistence()
+    test_source_writer_saves_exact_payload_with_hash_and_collection_time()
+    test_poll_archives_unmodified_source_payload_once_and_streams_only_key()
     print("\nALL COLLECTOR TESTS PASSED SUCCESSFULLY!")

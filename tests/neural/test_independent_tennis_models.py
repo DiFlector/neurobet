@@ -5,6 +5,10 @@ import pytest
 import torch
 
 from app.independent_tennis_models import (
+    CHECKPOINT_SCHEMA_VERSION,
+    ODDS_FREE_CALIBRATION_VERSION,
+    ODDS_FREE_INFERENCE_VERSION,
+    MAX_SEQUENCE_STATES,
     ObservedFeatureState,
     TennisForecastGRU,
     build_causal_sequence,
@@ -85,7 +89,10 @@ def test_gru_checkpoint_save_load_parity_on_cpu(tmp_path):
         expected = model(static, sequences, lengths)
 
     checkpoint = tmp_path / "fixture-gru.pt"
-    save_gru_checkpoint(str(checkpoint), model, seed=17, metadata={"fixture_only": True})
+    save_gru_checkpoint(
+        str(checkpoint), model, seed=17, training_device="cpu",
+        metadata={"fixture_only": True},
+    )
     loaded, metadata = load_gru_checkpoint(str(checkpoint), map_location="cpu")
     loaded.eval()
     with torch.no_grad():
@@ -94,6 +101,11 @@ def test_gru_checkpoint_save_load_parity_on_cpu(tmp_path):
     assert torch.allclose(expected, actual)
     assert metadata["seed"] == 17
     assert metadata["metadata"]["fixture_only"] is True
+    assert metadata["schema_version"] == CHECKPOINT_SCHEMA_VERSION == 2
+    assert metadata["calibration_version"] == ODDS_FREE_CALIBRATION_VERSION
+    assert metadata["inference_contract_version"] == ODDS_FREE_INFERENCE_VERSION
+    assert metadata["training_device"] == "cpu"
+    assert metadata["inference_parameters"]["max_sequence_states"] == MAX_SEQUENCE_STATES
     device, _name = select_training_device()
     assert device.type in {"cpu", "cuda"}
 
@@ -114,6 +126,12 @@ def test_fixture_point_baseline_fits_and_checkpoint_roundtrips(tmp_path, method)
     expected = model.predict_proba(features[1:5])
     assert metadata["known_examples"] == 23
     assert metadata["unique_matches"] == 12
+    assert metadata["checkpoint_schema_version"] == CHECKPOINT_SCHEMA_VERSION
+    assert metadata["calibration_version"] == ODDS_FREE_CALIBRATION_VERSION
+    assert metadata["inference_contract_version"] == ODDS_FREE_INFERENCE_VERSION
+    assert metadata["training_device"] == "cpu"
+    assert metadata["model_parameters"]["random_state"] == 29
+    assert metadata["inference_parameters"]["input_feature_count"] == len(ODDS_FREE_FEATURE_NAMES)
 
     checkpoint = tmp_path / f"fixture-{method}.joblib"
     save_point_baseline_checkpoint(str(checkpoint), model, metadata)

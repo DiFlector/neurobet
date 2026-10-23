@@ -5,9 +5,11 @@ from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, creat
 from app.main import (
     app,
     _profile_status_after_preemption,
+    _player_refresh_claim_progress,
     _tennis_player_dispatch_priority,
     _tennis_stale_running_job_filter,
 )
+from app.player_profiles import advance_player_refresh_progress
 
 
 def test_player_dispatch_endpoint_remains_bound_to_dispatch_handler():
@@ -80,3 +82,28 @@ def test_preempted_profile_uses_cached_stale_status_or_pending_without_metrics()
 
     assert _profile_status_after_preemption(Profile(3)) == "stale"
     assert _profile_status_after_preemption(Profile(0)) == "pending"
+
+
+def test_reclaiming_player_job_preserves_nonempty_page_checkpoint():
+    checkpoint = {
+        "page_checkpoint": {
+            "parser_version": "flashscore-tennis-player-v8",
+            "pages": [
+                {"page_index": 1, "content_hash": "sha256:page-one", "archived_path": "snapshots/page-1"},
+                {"page_index": 2, "content_hash": "sha256:page-two", "archived_path": "snapshots/page-2"},
+            ],
+        },
+        "last_archived_page": {"page_index": 2},
+    }
+
+    reclaimed = _player_refresh_claim_progress(checkpoint, attempt=4)
+
+    assert reclaimed["stage"] == "claimed"
+    assert reclaimed["attempt"] == 4
+    assert reclaimed["page_checkpoint"] == checkpoint["page_checkpoint"]
+    assert reclaimed["last_archived_page"] == checkpoint["last_archived_page"]
+
+    queued = advance_player_refresh_progress(reclaimed, "queued")
+    assert queued["stage"] == "queued"
+    assert queued["page_checkpoint"] == checkpoint["page_checkpoint"]
+    assert queued["last_archived_page"] == checkpoint["last_archived_page"]

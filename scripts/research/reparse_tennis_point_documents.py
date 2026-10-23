@@ -69,16 +69,22 @@ def reparse(limit: int | None = None, apply: bool = False) -> dict:
             counts["eligible"] += 1
             archived = storage.read_document(old.archived_path)
             html = archived.get("html") if isinstance(archived, dict) else None
-            if not isinstance(html, str) or not html:
+            raw_feed = archived.get("raw_feed") if isinstance(archived, dict) else None
+            if not (isinstance(html, str) and html or isinstance(raw_feed, str) and raw_feed):
                 counts["missing_archive"] += 1
                 continue
             try:
-                parsed = parse_point_history_html(html)
+                if isinstance(raw_feed, str) and raw_feed:
+                    from app.point_history import _parse_point_history_feed
+                    parsed = _parse_point_history_feed(raw_feed)
+                else:
+                    parsed = parse_point_history_html(html)
             except Exception:
                 counts["parse_errors"] += 1
                 continue
             quality = {**(parsed.get("quality") or {}),
                        "set_number": (old.quality_json or {}).get("set_number"),
+                       "fetch_transport": (old.quality_json or {}).get("fetch_transport", "browser"),
                        "reparsed_from_document_id": str(old.id)}
             if not parsed.get("events"):
                 quality.setdefault("gaps", []).append("HISTORY_EMPTY_OR_UNRECOGNIZED")

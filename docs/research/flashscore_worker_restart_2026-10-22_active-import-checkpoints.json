@@ -1,0 +1,74 @@
+{
+  "captured_at": "2026-10-22T00:27:08.930927+00:00",
+  "scope": "Read-only pre-restart evidence for the two real active archive-import jobs; only flashscore-worker will be restarted.",
+  "jobs": [
+    {
+      "id": "7831cdf7-d35c-4a4a-9739-2512d090512d",
+      "status": "running",
+      "attempts": 2,
+      "lease_until": "2026-10-22T00:31:42.074758+00:00",
+      "updated_at": "2026-10-22T00:26:42.074758+00:00",
+      "checkpoint_profile_count": 10,
+      "checkpoint_page_count": 219,
+      "current_profile_url": null,
+      "processed_profiles": null
+    },
+    {
+      "id": "2e4c6510-7653-4547-b63f-676dccfafc28",
+      "status": "running",
+      "attempts": 36,
+      "lease_until": "2026-10-22T00:30:04.051787+00:00",
+      "updated_at": "2026-10-22T00:25:04.051787+00:00",
+      "checkpoint_profile_count": 1,
+      "checkpoint_page_count": 16,
+      "current_profile_url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+      "processed_profiles": "1"
+    }
+  ],
+  "worker_health": "healthy",
+  "worker_process_count": 16,
+  "chrome_root_count": 2,
+  "verifier_database_writes": false,
+  "restart_started_at": "2026-10-22T00:27:21.03613036Z",
+  "after_restart_observed_at": "2026-10-22T00:30:43.850395+00:00",
+  "after_restart_jobs": [
+    {
+      "id": "2e4c6510-7653-4547-b63f-676dccfafc28",
+      "status": "running",
+      "attempts": 37,
+      "lease_until": "2026-10-22T00:35:39.319254+00:00",
+      "updated_at": "2026-10-22T00:30:39.319254+00:00",
+      "checkpoint_profile_count": 1,
+      "checkpoint_page_count": 16,
+      "current_profile_url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/"
+    },
+    {
+      "id": "7831cdf7-d35c-4a4a-9739-2512d090512d",
+      "status": "running",
+      "attempts": 2,
+      "lease_until": "2026-10-22T00:32:12.080687+00:00",
+      "updated_at": "2026-10-22T00:27:12.080687+00:00",
+      "checkpoint_profile_count": 10,
+      "checkpoint_page_count": 219,
+      "current_profile_url": null
+    }
+  ],
+  "after_restart_worker_health": "healthy",
+  "after_restart_chrome_root_count": 2,
+  "recovery_assessment": {
+    "success": true,
+    "recovered_job_id": "2e4c6510-7653-4547-b63f-676dccfafc28",
+    "attempt_before": 36,
+    "attempt_after": 37,
+    "lease_refreshed": true,
+    "checkpoint_pages_before": 16,
+    "checkpoint_pages_after": 16,
+    "other_active_job_checkpoint_pages": 219,
+    "evidence": "The renewed attempt is running with its existing checkpoint pages in PostgreSQL after the restarted worker resumed dispatch."
+  },
+  "profile_job_queue_regression": {
+    "tests": "test_tennis_refresh_lease_integration.py",
+    "passed": 2,
+    "checks": "expired retry enqueue preserves page_checkpoint; claim stage/attempt update preserves page_checkpoint"
+  }
+}

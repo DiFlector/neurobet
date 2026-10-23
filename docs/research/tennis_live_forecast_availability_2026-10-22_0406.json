@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-10-22T04:06:14Z",
+  "source": "neurobet MCP live events API",
+  "sport_code": "tennis",
+  "status_filter": "live",
+  "total": 20,
+  "returned": 20,
+  "point_history_status_counts": {
+    "waiting_players": 13,
+    "not_queued": 4,
+    "completed": 2,
+    "retry": 1
+  },
+  "both_player_profiles_available": 0,
+  "latest_forecast_calculated_at": "2026-10-22T04:00:55.548296Z",
+  "latest_forecast_after_neural_rollout": false,
+  "forecast_reason_counts": {"UNSUPPORTED_FORMAT": 10}
+}

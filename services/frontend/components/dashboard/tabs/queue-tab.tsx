@@ -182,6 +182,11 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
             <Badge variant="outline" className="font-mono text-[10px]">
               Слоты {flashscore?.worker.network_slots ?? 0} из {flashscore?.worker.network_slots_limit ?? 2}
             </Badge>
+            {flashscore?.worker.browser_lanes && <span className="text-[10px] text-muted-foreground">
+              Браузеры: live {flashscore.worker.browser_lanes.live_pbp.active}/{flashscore.worker.browser_lanes.live_pbp.capacity}
+              · матчи {flashscore.worker.browser_lanes.current_matches.active}/{flashscore.worker.browser_lanes.current_matches.capacity}
+              · архив {flashscore.worker.browser_lanes.backlog.active}/{flashscore.worker.browser_lanes.backlog.capacity}
+            </span>}
             <span className="text-[10px] text-muted-foreground">
               {flashscore?.worker.cooldown_until && new Date(flashscore.worker.cooldown_until) > new Date() ? `Пауза источника до ${new Date(flashscore.worker.cooldown_until).toLocaleTimeString("ru-RU")}` : flashscore?.worker.healthy ? "Исполнитель работает" : flashscore?.worker.configured ? "Исполнитель не отвечает" : "Состояние регулятора недоступно"}
             </span>
@@ -190,7 +195,8 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
             <span>В очереди: {flashscore?.statuses.queued ?? 0}</span>
             <span>Выполняется: {flashscore?.statuses.running ?? 0}</span>
             <span>Нужна идентификация: {flashscore?.identity_confirmation_required ?? 0}</span>
-            <span>Повторы / ошибки: {(flashscore?.statuses.retry ?? 0) + (flashscore?.statuses.failed ?? 0)}</span>
+            <span>Повторы запланированы: {flashscore?.statuses.retry ?? 0}</span>
+            <span>Ошибки: {(flashscore?.statuses.failed ?? 0) + (flashscore?.statuses.blocked ?? 0)}</span>
             <span>Просроченный live PBP: {flashscore?.overdue_pbp ?? 0}</span>
             <span>PBP-документов за час: {flashscore?.documents_saved_last_hour ?? 0}</span>
             <span>Связей за час: {flashscore?.confirmed_links_last_hour ?? 0}</span>
@@ -216,7 +222,7 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-muted/40"><TableRow className="text-xs">
-                <TableHead>Матч / игрок</TableHead><TableHead>Работа</TableHead><TableHead>Статус</TableHead><TableHead>Приоритет</TableHead><TableHead>Ожидание</TableHead><TableHead>Последнее обновление</TableHead><TableHead>Следующая попытка</TableHead><TableHead>Причина</TableHead>
+                <TableHead>Матч / игрок</TableHead><TableHead>Работа</TableHead><TableHead>Статус</TableHead><TableHead>Приоритет</TableHead><TableHead>Ожидание / работа</TableHead><TableHead>Последняя активность</TableHead><TableHead>Следующая попытка</TableHead><TableHead>Причина</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {visible.length === 0 ? <TableRow><TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">{loading ? "Загрузка очереди…" : "Заданий по выбранным фильтрам нет"}</TableCell></TableRow> : visible.map((item) => (
@@ -227,12 +233,20 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
                       {item.mode && item.mode !== "archive" && <div className="text-[10px] text-muted-foreground">{item.mode === "live" ? "Live" : "Prematch"}</div>}
                     </TableCell>
                     <TableCell>{kindLabels[item.kind] || item.kind}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{statusLabels[item.status] || item.status}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px]">{statusLabels[item.status] || item.status}</Badge>
+                      {typeof item.attempts === "number" && item.attempts > 0 && <div className="mt-1 text-[10px] text-muted-foreground">Попытка {item.attempts}</div>}
+                      {item.lease_expired && <div className="mt-1 text-[10px] text-destructive">Lease истёк</div>}
+                    </TableCell>
                     <TableCell>{item.priority ?? "—"}</TableCell>
-                    <TableCell>{Math.floor((item.wait_seconds || 0) / 60)} мин</TableCell>
-                    <TableCell>{item.last_success_at ? new Date(item.last_success_at).toLocaleString("ru-RU") : "—"}</TableCell>
+                    <TableCell>
+                      {item.status === "running" && item.attempt_seconds != null ? `${Math.floor(item.attempt_seconds / 60)} мин выполняется` :
+                       (item.status === "retry" || item.status === "queued") && item.retry_in_seconds != null ? `повтор через ${Math.max(1, Math.ceil(item.retry_in_seconds / 60))} мин` :
+                       item.wait_seconds != null ? `${Math.floor(item.wait_seconds / 60)} мин в очереди` : "—"}
+                    </TableCell>
+                    <TableCell>{item.last_activity_at ? new Date(item.last_activity_at).toLocaleString("ru-RU") : "—"}</TableCell>
                     <TableCell>{item.next_retry_at ? new Date(item.next_retry_at).toLocaleString("ru-RU") : "—"}</TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={item.reason || ""}>{item.reason || "—"}</TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={item.last_error || item.reason || ""}>{item.reason || "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

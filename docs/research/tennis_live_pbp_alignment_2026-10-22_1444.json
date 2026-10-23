@@ -1,0 +1,2063 @@
+{
+  "generated_at_utc": "2026-10-22T14:44:53.178363Z",
+  "scope": "Phase 50 live PBP score and side orientation acceptance check for one currently live tennis event.",
+  "event_id": "1aadb07c-c1d9-47e4-abf9-1c88f625bdf6",
+  "fonbet_source_event_id": "69161612",
+  "api_url_path": "/api/events/1aadb07c-c1d9-47e4-abf9-1c88f625bdf6/point-history",
+  "api_response": {
+    "event_id": "1aadb07c-c1d9-47e4-abf9-1c88f625bdf6",
+    "as_of": "2026-10-22T14:44:53.037375+00:00",
+    "resolved_as_of": "2026-10-22T14:44:53.037375+00:00",
+    "source": "flashscore",
+    "source_match_id": "AJWwyZCG",
+    "versions_total": 4,
+    "total": 55,
+    "limit": 500,
+    "offset": 0,
+    "sequence": [
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 0,
+        "point_score": [
+          "15",
+          "0"
+        ],
+        "state_after": [
+          "15",
+          "0"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 0,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 1,
+        "point_score": [
+          "15",
+          "15"
+        ],
+        "state_after": [
+          "15",
+          "15"
+        ],
+        "state_before": [
+          "15",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 1,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 2,
+        "point_score": [
+          "30",
+          "15"
+        ],
+        "state_after": [
+          "30",
+          "15"
+        ],
+        "state_before": [
+          "15",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 2,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 3,
+        "point_score": [
+          "40",
+          "15"
+        ],
+        "state_after": [
+          "40",
+          "15"
+        ],
+        "state_before": [
+          "30",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 3,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 4,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            1,
+            0
+          ]
+        },
+        "state_before": [
+          "40",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 4,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          2,
+          0
+        ],
+        "point_index": 0,
+        "point_score": [
+          "15",
+          "0"
+        ],
+        "state_after": [
+          "15",
+          "0"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 5,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          2,
+          0
+        ],
+        "point_index": 1,
+        "point_score": [
+          "30",
+          "0"
+        ],
+        "state_after": [
+          "30",
+          "0"
+        ],
+        "state_before": [
+          "15",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 6,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          2,
+          0
+        ],
+        "point_index": 2,
+        "point_score": [
+          "40",
+          "0"
+        ],
+        "state_after": [
+          "40",
+          "0"
+        ],
+        "state_before": [
+          "30",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 7,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          2,
+          0
+        ],
+        "point_index": 3,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            2,
+            0
+          ]
+        },
+        "state_before": [
+          "40",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 8,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 0,
+        "point_score": [
+          "15",
+          "0"
+        ],
+        "state_after": [
+          "15",
+          "0"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 9,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 1,
+        "point_score": [
+          "30",
+          "0"
+        ],
+        "state_after": [
+          "30",
+          "0"
+        ],
+        "state_before": [
+          "15",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 10,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 2,
+        "point_score": [
+          "40",
+          "0"
+        ],
+        "state_after": [
+          "40",
+          "0"
+        ],
+        "state_before": [
+          "30",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 11,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 3,
+        "point_score": [
+          "40",
+          "15"
+        ],
+        "state_after": [
+          "40",
+          "15"
+        ],
+        "state_before": [
+          "40",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 12,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 4,
+        "point_score": [
+          "40",
+          "30"
+        ],
+        "state_after": [
+          "40",
+          "30"
+        ],
+        "state_before": [
+          "40",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 13,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          3,
+          0
+        ],
+        "point_index": 5,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            3,
+            0
+          ]
+        },
+        "state_before": [
+          "40",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 14,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 0,
+        "point_score": [
+          "0",
+          "15"
+        ],
+        "state_after": [
+          "0",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 15,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 1,
+        "point_score": [
+          "15",
+          "15"
+        ],
+        "state_after": [
+          "15",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 16,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 2,
+        "point_score": [
+          "30",
+          "15"
+        ],
+        "state_after": [
+          "30",
+          "15"
+        ],
+        "state_before": [
+          "15",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 17,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 3,
+        "point_score": [
+          "30",
+          "30"
+        ],
+        "state_after": [
+          "30",
+          "30"
+        ],
+        "state_before": [
+          "30",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 18,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 4,
+        "point_score": [
+          "30",
+          "40"
+        ],
+        "state_after": [
+          "30",
+          "40"
+        ],
+        "state_before": [
+          "30",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 19,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 5,
+        "point_score": [
+          "40",
+          "40"
+        ],
+        "state_after": [
+          "40",
+          "40"
+        ],
+        "state_before": [
+          "30",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 20,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 6,
+        "point_score": [
+          "AD",
+          "40"
+        ],
+        "state_after": [
+          "AD",
+          "40"
+        ],
+        "state_before": [
+          "40",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 21,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 1,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          4,
+          0
+        ],
+        "point_index": 7,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            4,
+            0
+          ]
+        },
+        "state_before": [
+          "AD",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 22,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 0,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          1
+        ],
+        "point_index": 0,
+        "point_score": [
+          "0",
+          "15"
+        ],
+        "state_after": [
+          "0",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 23,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 0,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          1
+        ],
+        "point_index": 1,
+        "point_score": [
+          "0",
+          "30"
+        ],
+        "state_after": [
+          "0",
+          "30"
+        ],
+        "state_before": [
+          "0",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 24,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 0,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          1
+        ],
+        "point_index": 2,
+        "point_score": [
+          "0",
+          "40"
+        ],
+        "state_after": [
+          "0",
+          "40"
+        ],
+        "state_before": [
+          "0",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 25,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": 0,
+        "winner": 1,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          4,
+          1
+        ],
+        "point_index": 3,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            4,
+            1
+          ]
+        },
+        "state_before": [
+          "0",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 26,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          2
+        ],
+        "point_index": 0,
+        "point_score": [
+          "0",
+          "15"
+        ],
+        "state_after": [
+          "0",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 27,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          2
+        ],
+        "point_index": 1,
+        "point_score": [
+          "0",
+          "30"
+        ],
+        "state_after": [
+          "0",
+          "30"
+        ],
+        "state_before": [
+          "0",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 28,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          4,
+          2
+        ],
+        "point_index": 2,
+        "point_score": [
+          "0",
+          "40"
+        ],
+        "state_after": [
+          "0",
+          "40"
+        ],
+        "state_before": [
+          "0",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 29,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          4,
+          2
+        ],
+        "point_index": 3,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            4,
+            2
+          ]
+        },
+        "state_before": [
+          "0",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 30,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          2
+        ],
+        "point_index": 0,
+        "point_score": [
+          "15",
+          "0"
+        ],
+        "state_after": [
+          "15",
+          "0"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 31,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          2
+        ],
+        "point_index": 1,
+        "point_score": [
+          "30",
+          "0"
+        ],
+        "state_after": [
+          "30",
+          "0"
+        ],
+        "state_before": [
+          "15",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 32,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          2
+        ],
+        "point_index": 2,
+        "point_score": [
+          "40",
+          "0"
+        ],
+        "state_after": [
+          "40",
+          "0"
+        ],
+        "state_before": [
+          "30",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 33,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          2
+        ],
+        "point_index": 3,
+        "point_score": [
+          "40",
+          "15"
+        ],
+        "state_after": [
+          "40",
+          "15"
+        ],
+        "state_before": [
+          "40",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 34,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          5,
+          2
+        ],
+        "point_index": 4,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            5,
+            2
+          ]
+        },
+        "state_before": [
+          "40",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 35,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          3
+        ],
+        "point_index": 0,
+        "point_score": [
+          "0",
+          "15"
+        ],
+        "state_after": [
+          "0",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 36,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          3
+        ],
+        "point_index": 1,
+        "point_score": [
+          "0",
+          "30"
+        ],
+        "state_after": [
+          "0",
+          "30"
+        ],
+        "state_before": [
+          "0",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 37,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          5,
+          3
+        ],
+        "point_index": 2,
+        "point_score": [
+          "0",
+          "40"
+        ],
+        "state_after": [
+          "0",
+          "40"
+        ],
+        "state_before": [
+          "0",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 38,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          5,
+          3
+        ],
+        "point_index": 3,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            5,
+            3
+          ]
+        },
+        "state_before": [
+          "0",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 39,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          6,
+          3
+        ],
+        "point_index": 0,
+        "point_score": [
+          "15",
+          "0"
+        ],
+        "state_after": [
+          "15",
+          "0"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 40,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          6,
+          3
+        ],
+        "point_index": 1,
+        "point_score": [
+          "30",
+          "0"
+        ],
+        "state_after": [
+          "30",
+          "0"
+        ],
+        "state_before": [
+          "15",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 41,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          6,
+          3
+        ],
+        "point_index": 2,
+        "point_score": [
+          "40",
+          "0"
+        ],
+        "state_after": [
+          "40",
+          "0"
+        ],
+        "state_before": [
+          "30",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 42,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          6,
+          3
+        ],
+        "point_index": 3,
+        "point_score": [
+          "40",
+          "15"
+        ],
+        "state_after": [
+          "40",
+          "15"
+        ],
+        "state_before": [
+          "40",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 43,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 1,
+        "server": null,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          6,
+          3
+        ],
+        "point_index": 4,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            6,
+            3
+          ]
+        },
+        "state_before": [
+          "40",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 1,
+        "order": 44,
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 0,
+        "point_score": [
+          "0",
+          "15"
+        ],
+        "state_after": [
+          "0",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "0"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 0,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 1,
+        "point_score": [
+          "15",
+          "15"
+        ],
+        "state_after": [
+          "15",
+          "15"
+        ],
+        "state_before": [
+          "0",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 1,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 2,
+        "point_score": [
+          "15",
+          "30"
+        ],
+        "state_after": [
+          "15",
+          "30"
+        ],
+        "state_before": [
+          "15",
+          "15"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 2,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 3,
+        "point_score": [
+          "30",
+          "30"
+        ],
+        "state_after": [
+          "30",
+          "30"
+        ],
+        "state_before": [
+          "15",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 3,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 4,
+        "point_score": [
+          "30",
+          "40"
+        ],
+        "state_after": [
+          "30",
+          "40"
+        ],
+        "state_before": [
+          "30",
+          "30"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 4,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 5,
+        "point_score": [
+          "40",
+          "40"
+        ],
+        "state_after": [
+          "40",
+          "40"
+        ],
+        "state_before": [
+          "30",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 5,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 6,
+        "point_score": [
+          "AD",
+          "40"
+        ],
+        "state_after": [
+          "AD",
+          "40"
+        ],
+        "state_before": [
+          "40",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 6,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 1,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 7,
+        "point_score": [
+          "40",
+          "40"
+        ],
+        "state_after": [
+          "40",
+          "40"
+        ],
+        "state_before": [
+          "AD",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 7,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "confirmed",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 8,
+        "point_score": [
+          "AD",
+          "40"
+        ],
+        "state_after": [
+          "AD",
+          "40"
+        ],
+        "state_before": [
+          "40",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 8,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      },
+      {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 9,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            1,
+            0
+          ]
+        },
+        "state_before": [
+          "AD",
+          "40"
+        ],
+        "retrospective": false,
+        "source_match_id": "AJWwyZCG",
+        "set_order": 2,
+        "order": 9,
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "parser_version": "flashscore-point-history-v5"
+      }
+    ],
+    "versions": [
+      {
+        "source_match_id": "AJWwyZCG",
+        "document_id": "db035d51-c3d7-4092-ba7d-7b2a0417ff4b",
+        "retrieved_at": "2026-10-22T14:43:13.515418+00:00",
+        "parsed_at": "2026-10-22T14:43:16.703837+00:00",
+        "available_at": "2026-10-22T14:43:16.723178+00:00",
+        "availability_status": "known",
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "quality": {
+          "gaps": [],
+          "complete": true,
+          "set_number": 1,
+          "event_count": 45,
+          "fetch_status": null,
+          "ambiguous_points": 0,
+          "confirmed_points": 45,
+          "collection_status": "complete",
+          "set_tab_confirmed": true
+        }
+      },
+      {
+        "source_match_id": "AJWwyZCG",
+        "document_id": "7fe37838-417a-4177-82d7-d3bd8ce44902",
+        "retrieved_at": "2026-10-22T14:43:16.419884+00:00",
+        "parsed_at": "2026-10-22T14:43:17.323474+00:00",
+        "available_at": "2026-10-22T14:43:17.437985+00:00",
+        "availability_status": "known",
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "quality": {
+          "gaps": [],
+          "complete": true,
+          "set_number": 2,
+          "event_count": 10,
+          "fetch_status": null,
+          "ambiguous_points": 0,
+          "confirmed_points": 10,
+          "collection_status": "complete",
+          "set_tab_confirmed": true
+        }
+      },
+      {
+        "source_match_id": "AJWwyZCG",
+        "document_id": "d29d9071-07f2-4870-b17c-eda425e42055",
+        "retrieved_at": "2026-10-22T14:44:07.836141+00:00",
+        "parsed_at": "2026-10-22T14:44:10.815866+00:00",
+        "available_at": "2026-10-22T14:44:10.829808+00:00",
+        "availability_status": "known",
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "quality": {
+          "gaps": [],
+          "complete": true,
+          "set_number": 1,
+          "event_count": 45,
+          "fetch_status": null,
+          "ambiguous_points": 0,
+          "confirmed_points": 45,
+          "collection_status": "complete",
+          "set_tab_confirmed": true
+        }
+      },
+      {
+        "source_match_id": "AJWwyZCG",
+        "document_id": "a9b39d8c-7dc7-4c76-aa0a-c289d4ffced1",
+        "retrieved_at": "2026-10-22T14:44:10.670709+00:00",
+        "parsed_at": "2026-10-22T14:44:11.020785+00:00",
+        "available_at": "2026-10-22T14:44:11.033824+00:00",
+        "availability_status": "known",
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "quality": {
+          "gaps": [],
+          "complete": true,
+          "set_number": 2,
+          "event_count": 10,
+          "fetch_status": null,
+          "ambiguous_points": 0,
+          "confirmed_points": 10,
+          "collection_status": "complete",
+          "set_tab_confirmed": true
+        }
+      }
+    ],
+    "freshness_seconds": 42.003551,
+    "collection_status": "completed",
+    "last_error": null,
+    "incompleteness_reasons": [],
+    "confirmed_points": 55
+  },
+  "database_snapshot": {
+    "event": {
+      "id": "1aadb07c-c1d9-47e4-abf9-1c88f625bdf6",
+      "source_event_id": "69161612",
+      "participant_a_name": "Мария Т",
+      "participant_b_name": "Куликова А",
+      "last_seen_at": "2026-10-22T14:44:45.000016+00:00",
+      "current_score": {
+        "sets": [
+          {
+            "games_a": 6,
+            "games_b": 3,
+            "timestamp": "2026-10-22T14:44:45.000247Z",
+            "set_number": 1,
+            "schema_version": "1.0.0"
+          }
+        ],
+        "stats": {
+          "aces_a": 0,
+          "aces_b": 0,
+          "sets_a": 1,
+          "sets_b": 0,
+          "set_lines": [
+            {
+              "live": false,
+              "detail": null,
+              "games_a": 6,
+              "games_b": 3
+            },
+            {
+              "live": true,
+              "detail": "00*-15",
+              "games_a": 1,
+              "games_b": 0
+            }
+          ],
+          "match_clock": {
+            "label": null,
+            "paused": false,
+            "running": true,
+            "base_seconds": 2685,
+            "updated_at_ms": 1792680285000
+          },
+          "double_faults_a": 0,
+          "double_faults_b": 0,
+          "break_points_saved_a": 0,
+          "break_points_saved_b": 0,
+          "first_serve_win_pct_a": 0.0,
+          "first_serve_win_pct_b": 0.0
+        },
+        "server": "player_a",
+        "event_id": "fonbet_69161612",
+        "quarters": [],
+        "timestamp": "2026-10-22T14:44:45.000267Z",
+        "possession": null,
+        "sport_code": "tennis",
+        "current_game": {
+          "points_a": "00",
+          "points_b": "15",
+          "timestamp": "2026-10-22T14:44:45.000261Z",
+          "is_tiebreak": false,
+          "schema_version": "1.0.0"
+        },
+        "current_period": 2,
+        "is_break_point": false,
+        "schema_version": "1.0.0",
+        "match_clock_seconds": 2685
+      }
+    },
+    "link": {
+      "source_match_id": "AJWwyZCG",
+      "status": "matched",
+      "available_at": "2026-10-22T14:44:11.033892+00:00",
+      "evidence": {
+        "method": "live_match_anchor_external_player_ids",
+        "fonbet_participants": [
+          "Мария Т",
+          "Куликова А"
+        ],
+        "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids",
+        "external_home_is_fonbet_a": true
+      }
+    },
+    "profiles": [
+      {
+        "side": "a",
+        "source_player_id": "OGYNaUZG"
+      },
+      {
+        "side": "b",
+        "source_player_id": "xEfGPrID"
+      }
+    ],
+    "document": {
+      "available_at": "2026-10-22T14:44:11.033824+00:00",
+      "retrospective": false,
+      "source_url": "https://www.flashscore.com/match/tennis/kulikova-anastasia-xEfGPrID/maria-tatjana-OGYNaUZG/summary/point-by-point/set-2/?mid=AJWwyZCG",
+      "quality": {
+        "gaps": [],
+        "complete": true,
+        "set_number": 2,
+        "event_count": 10,
+        "fetch_status": null,
+        "ambiguous_points": 0,
+        "confirmed_points": 10,
+        "collection_status": "complete",
+        "set_tab_confirmed": true
+      },
+      "last_state": {
+        "set": 2,
+        "server": 1,
+        "winner": 0,
+        "quality": "terminal_from_game_result",
+        "confirmed": true,
+        "game_score": [
+          1,
+          0
+        ],
+        "point_index": 9,
+        "point_score": null,
+        "state_after": {
+          "game_result": [
+            1,
+            0
+          ]
+        },
+        "state_before": [
+          "AD",
+          "40"
+        ],
+        "retrospective": false
+      }
+    }
+  },
+  "checks": {
+    "api_has_live_authoritative_pbp": true,
+    "same_current_game_score": true,
+    "fonbet_score_state_is_post_game_points": true,
+    "side_orientation_explicit": true,
+    "source_ids_match_confirmed_sides": true,
+    "pbp_nonretrospective": true,
+    "pbp_age_seconds_at_fonbet_snapshot": 33.966192
+  },
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false,
+  "result": "passed"
+}

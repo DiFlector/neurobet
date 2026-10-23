@@ -1,0 +1,86 @@
+{
+  "started_at_utc": "2026-10-22T09:53:47Z",
+  "sampled_at_utc": "2026-10-22T10:01:44Z",
+  "trial_ended_at_utc": "2026-10-22T09:58:12Z",
+  "status": "aborted_resource_threshold",
+  "configuration": {
+    "browser_processes": 4,
+    "live_pbp_workers": 2,
+    "background_browser_workers": 2,
+    "discovery_seconds": 5,
+    "player_preparation_seconds": 60,
+    "source_network_slot_limit": 2,
+    "source_minimum_start_spacing_seconds": 2
+  },
+  "runtime": {
+    "research_health": "healthy",
+    "flashscore_worker_health": "healthy",
+    "dispatch_log_intervals_seconds": [10, 10, 7],
+    "latest_pbp_active_count": 2,
+    "latest_pbp_concurrency_limit": 2,
+    "queue_total": 179,
+    "eligible_matches": 43,
+    "queue_statuses": {
+      "queued": 68,
+      "waiting_players": 80,
+      "retry": 14,
+      "completed": 8,
+      "running": 4
+    },
+    "documents_saved_last_hour": 53,
+    "confirmed_links_last_hour": 54,
+    "network_slots_in_use": 1,
+    "network_slots_limit": 2
+  },
+  "resources": {
+    "flashscore_worker_memory": "792.3 MiB / 2 GiB",
+    "flashscore_worker_cpu": "33.32%",
+    "research_memory": "139.7 MiB / 1.5 GiB",
+    "postgres_memory": "883.1 MiB / 2.5 GiB",
+    "postgres_cpu": "32.48%",
+    "postgres_connections": 13,
+    "postgres_max_connections": 100,
+    "postgres_lock_waiters": 0,
+    "redis_memory": "511.8 MiB / 512 MiB",
+    "worker_memory_peak_observed": "1.553 GiB / 2 GiB",
+    "worker_cpu_peak_observed": "149.92%",
+    "worker_browser_roots_peak_observed": 4
+  },
+  "post_rollback": {
+    "browser_processes": 2,
+    "research_health": "healthy",
+    "flashscore_worker_health": "healthy",
+    "worker_memory": "827.2 MiB / 2 GiB",
+    "worker_cpu": "113.60%",
+    "queue_total": 8,
+    "eligible_matches": 0,
+    "queue_statuses": {
+      "queued": 7,
+      "running": 1
+    },
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 60,
+    "postgres_memory": "874.6 MiB / 2.5 GiB",
+    "postgres_connections": 12,
+    "postgres_max_connections": 100,
+    "postgres_lock_waiters": 0,
+    "redis_memory": "511 MiB / 512 MiB"
+  },
+  "interpretation": [
+    "The PBP dispatcher is now issuing work more frequently than the prior 15-second loop, and reached two active jobs in this sample.",
+    "Queue totals and the last-hour counters are rolling and depend on the changing eligible-event set; this short sample does not establish a completion-rate improvement.",
+    "The four-process configuration was stopped after memory rose to 1.553 GiB and CPU reached the 1.5-vCPU quota; the existing two-process configuration was restored before continuing the soak.",
+    "Current PostgreSQL usage is below its configured memory, connection, and CPU limits; no PostgreSQL setting was raised in this change."
+  ],
+  "limitations": [
+    "Four-process sample covers about four minutes, not the 30-minute acceptance soak; the capacity experiment was stopped early for resource headroom, and two processes were restored.",
+    "A growing queue includes identity-waiting and retry jobs that browser capacity alone cannot resolve.",
+    "Redis is close to its 512 MiB container limit and should be monitored separately."
+  ],
+  "raw_samples": {
+    "queue": "flashscore_soak_2026-10-22_4slots.jsonl",
+    "queue_sha256": "e22eae96f0b716aa4f6ad258028d8d0fea09f32a5aa59925225daae74b6edba6",
+    "resources": "flashscore_resources_2026-10-22_4slots.jsonl",
+    "resources_sha256": "e9f3cdcd4ecc1e54f14474c88e40d4e8b25809786aca405a03135f35dc2d3090"
+  }
+}

@@ -1,0 +1,346 @@
+{
+  "generated_at": "2026-10-22T04:19:33.033629Z",
+  "status": "observation_only",
+  "source": "Neurobet MCP list_live_events; tennis/live, limit 50",
+  "total_live_events": 21,
+  "returned_events": 21,
+  "eligible_both_profiles": 0,
+  "eligible_source_event_ids": [],
+  "point_history_status_counts": {
+    "waiting_players": 14,
+    "not_queued": 4,
+    "retry": 3
+  },
+  "events": [
+    {
+      "source_event_id": "69184288",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        80,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69151444",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        0,
+        340
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69150357",
+      "profiles": [
+        null,
+        "not_found"
+      ],
+      "history_counts": [
+        null,
+        0
+      ],
+      "point_history_status": "not_queued"
+    },
+    {
+      "source_event_id": "69147366",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69182427",
+      "profiles": [
+        null,
+        null
+      ],
+      "history_counts": [
+        null,
+        null
+      ],
+      "point_history_status": "not_queued"
+    },
+    {
+      "source_event_id": "69174129",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69174190",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69173340",
+      "profiles": [
+        "running",
+        "available"
+      ],
+      "history_counts": [
+        9,
+        233
+      ],
+      "point_history_status": "retry"
+    },
+    {
+      "source_event_id": "69172693",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        159,
+        25
+      ],
+      "point_history_status": "retry"
+    },
+    {
+      "source_event_id": "69172689",
+      "profiles": [
+        "stale",
+        "running"
+      ],
+      "history_counts": [
+        136,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69172694",
+      "profiles": [
+        "stale",
+        "identity_confirmation_required"
+      ],
+      "history_counts": [
+        474,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69131748",
+      "profiles": [
+        null,
+        null
+      ],
+      "history_counts": [
+        null,
+        null
+      ],
+      "point_history_status": "not_queued"
+    },
+    {
+      "source_event_id": "69171604",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        1,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69184287",
+      "profiles": [
+        "stale",
+        "not_found"
+      ],
+      "history_counts": [
+        26,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69173975",
+      "profiles": [
+        null,
+        null
+      ],
+      "history_counts": [
+        null,
+        null
+      ],
+      "point_history_status": "not_queued"
+    },
+    {
+      "source_event_id": "69184186",
+      "profiles": [
+        "running",
+        "running"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69171568",
+      "profiles": [
+        "stale",
+        "available"
+      ],
+      "history_counts": [
+        316,
+        15
+      ],
+      "point_history_status": "retry"
+    },
+    {
+      "source_event_id": "69174206",
+      "profiles": [
+        "not_found",
+        "not_found"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69174193",
+      "profiles": [
+        "available",
+        "running"
+      ],
+      "history_counts": [
+        92,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69174207",
+      "profiles": [
+        "not_found",
+        "not_found"
+      ],
+      "history_counts": [
+        0,
+        0
+      ],
+      "point_history_status": "waiting_players"
+    },
+    {
+      "source_event_id": "69184181",
+      "profiles": [
+        "running",
+        "available"
+      ],
+      "history_counts": [
+        0,
+        89
+      ],
+      "point_history_status": "waiting_players"
+    }
+  ],
+  "forecasts": [
+    {
+      "source_event_id": "69147366",
+      "calculated_at": "2026-10-22T04:00:55.548296Z",
+      "observed_at": "2026-10-22T04:00:38.600905Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69172693",
+      "calculated_at": "2026-10-22T03:40:32.519731Z",
+      "observed_at": "2026-10-22T03:40:26.488542Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69172694",
+      "calculated_at": "2026-10-22T03:40:22.154835Z",
+      "observed_at": "2026-10-22T03:40:07.805874Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69171604",
+      "calculated_at": "2026-10-22T03:26:50.958013Z",
+      "observed_at": "2026-10-22T03:26:45.746921Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69171568",
+      "calculated_at": "2026-10-22T03:16:51.949820Z",
+      "observed_at": "2026-10-22T03:16:46.510029Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69171568",
+      "calculated_at": "2026-10-22T03:10:22.687520Z",
+      "observed_at": "2026-10-22T03:09:57.996800Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69184186",
+      "calculated_at": "2026-10-22T03:06:52.818258Z",
+      "observed_at": "2026-10-22T03:06:42.711448Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69174193",
+      "calculated_at": "2026-10-22T02:03:17.625270Z",
+      "observed_at": "2026-10-22T02:03:06.815530Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    },
+    {
+      "source_event_id": "69184181",
+      "calculated_at": "2026-10-22T01:40:16.543513Z",
+      "observed_at": "2026-10-22T01:39:45.475275Z",
+      "available": false,
+      "reason": "UNSUPPORTED_FORMAT",
+      "feature_version": "tennis_odds_free_v1"
+    }
+  ],
+  "notes": [
+    "No training, candidate evaluation, holdout quality query, or SHADOW registration was performed.",
+    "Latest returned live snapshot is after neural rollout. Forecast timestamps are from persisted API rows; no post-restart forecast is present in this sample."
+  ]
+}

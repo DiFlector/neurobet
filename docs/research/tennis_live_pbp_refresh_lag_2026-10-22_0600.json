@@ -1,0 +1,154 @@
+{
+  "captured_at_utc": "2026-10-22T06:00:26.859382+00:00",
+  "source": "deployed read-only Backend queue, event and point-history APIs",
+  "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+  "fonbet_source_event_id": "69174206",
+  "flashscore_source_match_id": "A5F0BCMP",
+  "fonbet_live_score": {
+    "sets": [
+      {
+        "games_a": 7,
+        "games_b": 6,
+        "timestamp": "2026-10-22T06:00:11.970790Z",
+        "set_number": 1,
+        "schema_version": "1.0.0"
+      },
+      {
+        "games_a": 1,
+        "games_b": 6,
+        "timestamp": "2026-10-22T06:00:11.970794Z",
+        "set_number": 2,
+        "schema_version": "1.0.0"
+      }
+    ],
+    "stats": {
+      "aces_a": 0,
+      "aces_b": 0,
+      "sets_a": 1,
+      "sets_b": 1,
+      "set_lines": [
+        {
+          "live": false,
+          "detail": null,
+          "games_a": 7,
+          "games_b": 6
+        },
+        {
+          "live": false,
+          "detail": null,
+          "games_a": 1,
+          "games_b": 6
+        },
+        {
+          "live": true,
+          "detail": "5*-1",
+          "games_a": 6,
+          "games_b": 6
+        }
+      ],
+      "match_clock": {
+        "label": null,
+        "paused": false,
+        "running": true,
+        "base_seconds": 14411,
+        "updated_at_ms": 1792648811969
+      },
+      "double_faults_a": 0,
+      "double_faults_b": 0,
+      "break_points_saved_a": 0,
+      "break_points_saved_b": 0,
+      "first_serve_win_pct_a": 0.0,
+      "first_serve_win_pct_b": 0.0
+    },
+    "server": "player_a",
+    "event_id": "fonbet_69174206",
+    "quarters": [],
+    "timestamp": "2026-10-22T06:00:11.970823Z",
+    "possession": null,
+    "sport_code": "tennis",
+    "current_game": {
+      "points_a": "5",
+      "points_b": "1",
+      "timestamp": "2026-10-22T06:00:11.970813Z",
+      "is_tiebreak": true,
+      "schema_version": "1.0.0"
+    },
+    "current_period": 3,
+    "is_break_point": false,
+    "schema_version": "1.0.0",
+    "match_clock_seconds": 14411
+  },
+  "point_history": {
+    "as_of": "2026-10-22T06:00:22.131363+00:00",
+    "source_match_id": "A5F0BCMP",
+    "versions_total": 9,
+    "total": 242,
+    "collection_status": "running",
+    "incompleteness_reasons": [],
+    "confirmed_points": 242
+  },
+  "latest_saved_pbp_version": {
+    "source_match_id": "A5F0BCMP",
+    "document_id": "b87fe425-c917-461d-8516-4b7a6057bc9e",
+    "retrieved_at": "2026-10-22T05:56:32.701544+00:00",
+    "parsed_at": "2026-10-22T05:56:35.113142+00:00",
+    "available_at": "2026-10-22T05:56:35.130515+00:00",
+    "availability_status": "known",
+    "parser_version": "flashscore-point-history-v5",
+    "retrospective": false,
+    "quality": {
+      "gaps": [],
+      "complete": true,
+      "set_number": 3,
+      "event_count": 78,
+      "fetch_status": null,
+      "ambiguous_points": 0,
+      "confirmed_points": 78,
+      "collection_status": "complete",
+      "set_tab_confirmed": true
+    }
+  },
+  "queue": {
+    "total": 61,
+    "statuses": {
+      "matched": 2,
+      "queued": 21,
+      "waiting_players": 24,
+      "retry": 7,
+      "completed": 3,
+      "running": 4
+    },
+    "eligible_matches": 14,
+    "prepared_players": 4,
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 52,
+    "confirmed_links_last_hour": 54,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T06:00:25.156254+00:00",
+      "network_slots": 1,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "event_pbp_job": {
+    "id": "pbp:91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "label": "Ян Иди — Юань Чэнии",
+    "player": null,
+    "kind": "pbp",
+    "status": "running",
+    "priority": 0,
+    "mode": "live",
+    "wait_seconds": 93,
+    "last_success_at": null,
+    "next_retry_at": "2026-10-22T05:57:05.308876+00:00",
+    "reason": null,
+    "related_events": 1
+  },
+  "interpretation": "Fonbet remained live at third-set tiebreak 5:1. The last saved PBP version available at 05:56:35 ended at tiebreak 3:0; the refresh job was running at capture, so the PBP feed had not yet caught up to the current Fonbet state. The worker heartbeat was healthy and this event was not counted overdue while actively running.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

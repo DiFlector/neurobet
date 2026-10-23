@@ -1,0 +1,42 @@
+{
+  "restart_requested_at": "2026-10-21T22:21:03Z",
+  "worker_healthy_after_restart_at": "2026-10-21T22:22:24Z",
+  "scope": "Only flashscore-worker was restarted while two real participant refresh attempts were active; no database rows were edited by the verifier.",
+  "before": [
+    {
+      "participant_id": "a15f9710-b71d-476b-93c4-e2b629b0879e",
+      "attempt_token": "c6b0f4e8-e10f-4b62-bf26-74cba89cab5d",
+      "status": "running",
+      "lease_until": "2026-10-21T22:26:49.466691+00:00",
+      "stage": "loading_history",
+      "checkpoint_pages": 0
+    },
+    {
+      "participant_id": "21d62222-c4be-4b5b-92fa-3a8d4795c8ef",
+      "attempt_token": "8dbca610-c094-4fea-87c7-658b0aad523d",
+      "status": "running",
+      "lease_until": "2026-10-21T22:26:59.598545+00:00",
+      "stage": "loading_history",
+      "checkpoint_pages": 0
+    }
+  ],
+  "after": [
+    {
+      "participant_id": "a15f9710-b71d-476b-93c4-e2b629b0879e",
+      "status": "completed",
+      "completed_at": "2026-10-21T22:27:13.565651+00:00",
+      "profile_sync_status": "available",
+      "history_match_count": 92,
+      "worker_log": "Flashscore profile imported player=I3LPdkik matches_added=76 facts_added=95 complete=True"
+    },
+    {
+      "participant_id": "21d62222-c4be-4b5b-92fa-3a8d4795c8ef",
+      "new_attempt_token": "6fbd91b0-5a19-4c8f-a659-fc5f70ffa945",
+      "first_reclaimed_at": "2026-10-21T22:27:14.431070+00:00",
+      "terminal_state": "retry",
+      "last_error": "PROFILE_TIMEOUT_PROCESS_TERMINATED",
+      "checkpoint_pages": 0
+    }
+  ],
+  "conclusion": "The restarted worker became healthy and recovered durable jobs after original leases expired; one completed, and one was reclaimed under a new token then safely moved to retry after process timeout. Both attempts had zero saved page checkpoints before restart, so this does not prove continuation from a non-empty checkpoint or successful recovery of every active browser attempt."
+}

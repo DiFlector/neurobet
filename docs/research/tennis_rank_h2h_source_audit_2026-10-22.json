@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-10-21T23:16:00Z",
+  "source": "Read-only PostgreSQL counts plus current ORM/importer inspection; label admission audit snapshot at 23:08 UTC",
+  "observed_counts": {
+    "tennis_player_profiles": {
+      "rows": 1668,
+      "canonical_player_id_present": 81,
+      "source_identities_flashscore_key": 553
+    },
+    "tennis_player_identity_links": {
+      "rows": 905,
+      "confirmed": 543,
+      "source_flashscore": 905
+    },
+    "ext_tennis_rankings": {
+      "rows": 2203912,
+      "distinct_tours": 1,
+      "distinct_source_player_ids": 11142
+    },
+    "ext_tennis_matches": {
+      "rows": 1153084,
+      "available_at_nonnull": 1153084,
+      "distinct_sources": 5
+    }
+  },
+  "source_contract_findings": {
+    "rankings_columns": [
+      "tour",
+      "ranking_date",
+      "source_player_id",
+      "rank",
+      "points"
+    ],
+    "rankings_have_available_at": false,
+    "ranking_import_source_time": null,
+    "archive_player_identity_to_fonbet_link": {
+      "confirmed_flashscore_identity_links": 543,
+      "profiles_with_mutable_archive_canonical_player_id": 81
+    },
+    "h2h_pit_join_verified": false,
+    "historical_match_available_at_present": true
+  },
+  "decision": "Do not add archive rank/H2H/opponent-adjusted values to odds-free features yet. Ranking date is not a source retrieval/availability timestamp, and archive source player IDs are not joined to Fonbet participants by an as-of-confirmed archive identity. Keep all such features explicitly unknown until timestamped ranking ingestion and append-only source identity evidence exist.",
+  "query_limitations": [
+    "Per-tour GROUP BY over 2.2M ranking rows hit a 10-second statement timeout under current I/O pressure; aggregate distinct-tour count completed in the earlier read-only census.",
+    "No data rows or identity links were changed."
+  ]
+}

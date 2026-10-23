@@ -1,0 +1,73 @@
+{
+  "observed_at_utc": "2026-10-22T16:29:09Z",
+  "scope": "read-only operational snapshot of Flashscore backlog and PostgreSQL resource usage",
+  "flashscore": {
+    "worker": {
+      "browser_processes_configured": 2,
+      "profile_concurrency": 2,
+      "cpu_percent_sample": 2.11,
+      "memory_mib_sample": 927.7,
+      "memory_limit_mib": 2048,
+      "pids_sample": 275
+    },
+    "point_refresh_jobs": {
+      "waiting_players": 2688,
+      "waiting_historical_match_not_indexed": 2507,
+      "waiting_source_player_ids_missing": 181,
+      "retry_unmatched": 128,
+      "queued": 86,
+      "completed": 4
+    },
+    "player_refresh_jobs": {
+      "queued": 598,
+      "retry_search_completed_no_match": 906,
+      "retry_preempted_for_current_event": 62,
+      "retry_profile_timeout_process_terminated": 20,
+      "failed_not_found": 186,
+      "failed_refresh_aborted": 184,
+      "completed": 353,
+      "waiting_confirmation": 11
+    },
+    "source_gate": {
+      "slot_limit": 2,
+      "active_requests_at_sample": 0,
+      "cooldown_active": false,
+      "success_count": 24691
+    },
+    "prior_capacity_evidence": {
+      "four_browser_trial_reached_near_worker_memory_limit_and_was_rolled_back": true,
+      "three_browser_trial_did_not_establish_fixed_cohort_throughput_gain": true
+    }
+  },
+  "postgres": {
+    "memory_mib_sample": 1219.6,
+    "memory_limit_mib": 2560,
+    "cpu_percent_sample": 28.81,
+    "cpu_limit_cores": 2,
+    "connections": 18,
+    "active_connections": 4,
+    "lock_waiters": 1,
+    "max_connections": 100,
+    "database_size_mib": 6499,
+    "cache_hit_percent_cumulative": 97.526,
+    "temp_files_cumulative": 25,
+    "temp_bytes_cumulative_mib": 215,
+    "deadlocks_cumulative": 0,
+    "checkpoint_timeout_seconds": 300,
+    "checkpoint_completion_target": 0.9,
+    "max_wal_size_mib": 1024,
+    "checkpoint_write_behavior": "timed checkpoints over five hours; cumulative write time is paced by completion_target and sync time is low; no checkpoint-request pressure observed"
+  },
+  "host": {
+    "ram_total_gib": 13,
+    "ram_available_gib": 4.0,
+    "swap_total_gib": 27,
+    "swap_used_gib": 4.3,
+    "filesystem_used_percent": 75
+  },
+  "conclusion": "PostgreSQL is not currently at its configured memory, CPU, connection, or disk limit. The large Flashscore backlog is primarily blocked on missing historical match indexing/player source IDs; the global source gate was idle at the sample. Adding browser slots is not supported by current evidence and has previously approached the worker memory limit without a fixed-cohort throughput result. No runtime configuration was changed.",
+  "training_started": false,
+  "candidate_evaluation_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

@@ -64,6 +64,7 @@ models/checkpoints/*
 
 # Docker volumes & persistent data local
 .docker-volumes/
+.codebase-memory/
 
 # Backups
 backups/*
@@ -77,5 +78,14 @@ nginx-master-readme.md
 # Keep per-run tennis training exports locally; commit only the currently reviewed full audit pair.
 docs/research/tennis_training_examples_*.jsonl
 !docs/research/tennis_training_examples_77d8510f68ef.jsonl
+!docs/research/tennis_training_examples_5a2030fa0069.jsonl
+!docs/research/tennis_training_examples_aac830cc28b5.jsonl
+!docs/research/tennis_serve_pit_runtime_smoke_2026-10-22.json
 docs/research/tennis_training_manifest_*.json
 !docs/research/tennis_training_manifest_2026-10-21_streaming_retry.json
+!docs/research/tennis_training_manifest_2026-10-22.json
+!docs/research/tennis_training_manifest_2354a27b8847.json
+!docs/research/tennis_pbp_source_review_2026-10-22.json
+
+!docs/research/tennis_pbp_source_review_2026-10-22_latest.json
+!docs/research/tennis_pbp_source_review_2026-10-22_latest_details.json

@@ -1,0 +1,95 @@
+{
+  "execution_id": "tennis-admission-2026-10-22T11:48:22Z",
+  "started_at": "2026-10-22T11:48:11Z",
+  "audit_cutoff": "2026-10-22T11:48:22.068068+00:00",
+  "finished_at": "2026-10-22T12:26:56.085175+00:00",
+  "duration_seconds": 2325,
+  "purpose": "Read-only current-data admission audit after new live point-history observations; no training or candidate evaluation.",
+  "execution": {
+    "container": "one-off Compose Neural container",
+    "container_id": "neurobet-neural-run-c4d90c131bc8",
+    "image_id": "sha256:87c4867dacb8abdb738ce40f51a9b82509be509103848a754fe475effe0d2ff8",
+    "command": "docker compose run -T --rm --no-deps -v /srv/neurobet:/checkout -w /checkout --entrypoint python neural -",
+    "audit_source_path": "scripts/research/tennis_label_audit.py",
+    "audit_source_sha256": "6e5138eeebe73d2228ce8f35f2913a696c5c4ecaa269396b5c26fed9ee5746a9",
+    "result_observation_source_path": "scripts/research/tennis_result_observation.py",
+    "result_observation_source_sha256": "6448713d2c56d32190599d07a0a632ddd7d4fd6d1455fa7d937c6ed08100d7d2",
+    "report_path": "docs/research/tennis_label_audit_20261022T1148Z.json",
+    "report_sha256": "d7952dd4874b8a13d41cffd3706e09391513e555f5031e7bef7ae22e30f91ae4",
+    "manifest_path": "docs/research/tennis_training_manifest_3e34b4c7eb7d.json",
+    "manifest_sha256": "6764a02c50f757e3e2cda619738f85cd62a7f61af100357578b33cb23a78cde5",
+    "manifest_dataset_digest": "3e34b4c7eb7d47945ac50269c45099ed4ba8fc0dc02a68fb0896f26e54067dd1",
+    "provenance_path": "docs/research/tennis_training_examples_735be4b2dbdf.jsonl",
+    "provenance_examples": 5062,
+    "provenance_sha256": "cd12ad648296a717bb9937e0673a0e6d5cec8e0c71197dee11cf7be650945ffa",
+    "regression_test_path": "tests/research/test_tennis_label_audit.py",
+    "regression_test_sha256": "02b14adfb626b91c7afda731adb0a414f8f0aca1296770130dbcb2df9f92f641",
+    "regression_test_result": "27 passed in 0.88s (previous focused run on the same source hashes)"
+  },
+  "admission": {
+    "status": "blocked",
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "odds_free_feature_availability_not_certified"
+    ],
+    "required_thresholds_unchanged": {
+      "initial_train_matches_per_target": 500,
+      "each_validation_window_matches_per_target": 100,
+      "holdout_matches_per_target": 200,
+      "both_classes": true,
+      "point_in_time_clean": true
+    },
+    "target_labelled_matches": {
+      "point": 48,
+      "game": 48,
+      "set": 47,
+      "match": 2533
+    },
+    "manifest_matches": 2518,
+    "development_matches": 2014,
+    "sealed_holdout_matches": 504,
+    "causal_train_matches_each_fold": {
+      "point": [0, 0, 0, 0],
+      "game": [0, 0, 0, 0],
+      "set": [0, 0, 0, 0],
+      "match": [0, 0, 0, 0]
+    },
+    "validation_labelled_matches_per_fold": {
+      "point": [4, 1, 2, 1],
+      "game": [4, 1, 2, 1],
+      "set": [4, 1, 2, 1],
+      "match": [202, 201, 201, 202]
+    },
+    "holdout_labelled_matches_per_target": {
+      "point": 15,
+      "game": 15,
+      "set": 15,
+      "match": 504
+    },
+    "temporal_precedence_passed": false,
+    "feature_pit_certified": false,
+    "feature_examples_checked": 5062,
+    "event_format_source_time_missing": 5062,
+    "result_time_sources": {
+      "fonbet_official_result_metadata": 2241,
+      "fonbet_exact_final_score_snapshot": 277,
+      "unavailable_and_excluded": 143
+    },
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "shadow_registered": false
+  },
+  "post_cutoff_collection": {
+    "observation_time": "2026-10-22T12:28Z",
+    "non_retrospective_source_matches": 27,
+    "non_retrospective_versions": 288,
+    "non_retrospective_point_states": 13614,
+    "latest_non_retrospective_available_at": "2026-10-22T12:14:26.119689+00:00",
+    "linked_matches_finished_after_audit_cutoff": 3,
+    "finished_with_confirmed_side_order": 2,
+    "note": "These results became available after the audit cutoff and are not part of the frozen manifest; include in a later audit after outcome evidence is validated."
+  }
+}

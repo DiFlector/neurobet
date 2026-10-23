@@ -124,6 +124,18 @@ class FonbetLiveTennisParser:
 
             tournament = card_data.get("competitionName") or card_data.get("tournament") or "Теннис. Live"
 
+            # Retain only an explicit, supported source value. Do not infer
+            # best-of from tournament, gender, score, or the current set.
+            raw_best_of = card_data.get("best_of")
+            try:
+                if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
+                    raise ValueError("non_integer_best_of")
+                best_of = int(raw_best_of) if not isinstance(raw_best_of, bool) else None
+            except (TypeError, ValueError, OverflowError):
+                best_of = None
+            if best_of not in (3, 5):
+                best_of = None
+
             # 3. Parse score
             score_raw = str(card_data.get("score") or card_data.get("comment") or card_data.get("score_str") or "")
             score_state = cls.parse_score_string(score_raw)
@@ -158,7 +170,7 @@ class FonbetLiveTennisParser:
                 if built is not None:
                     markets.append(built)
 
-            return {
+            normalized = {
                 "event_id": f"fonbet_{source_id}",
                 "source": "fonbet",
                 "source_event_id": source_id,
@@ -173,6 +185,9 @@ class FonbetLiveTennisParser:
                 "fonbet_clock": card_data.get("fonbet_clock"),
                 "fonbet_score": card_data.get("fonbet_score"),
             }
+            if best_of is not None:
+                normalized["best_of"] = best_of
+            return normalized
         except Exception as e:
             logger.warning("Error parsing individual event card: %s", e)
             return None
@@ -348,7 +363,7 @@ class FonbetLiveTennisParser:
             sport = sports.get(event.get("sportId")) or {}
             info = info_by_event.get(event.get("id")) or {}
             misc = misc_by_event.get(event.get("id")) or {}
-            cards.append({
+            card = {
                 "id": event.get("id"),
                 "place": "live",
                 "team1": event.get("team1"),
@@ -359,8 +374,53 @@ class FonbetLiveTennisParser:
                 "factors": factors_by_event.get(event.get("id"), []),
                 "set_markets": sets_by_parent.get(event.get("id"), []),
                 "fonbet_clock": cls._clock_from_line(event, info, misc),
-            })
-        return {"events": cards}
+            }
+            raw_best_of = event.get("best_of")
+            try:
+                if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
+                    raise ValueError("non_integer_best_of")
+                best_of = int(raw_best_of) if not isinstance(raw_best_of, bool) else None
+            except (TypeError, ValueError, OverflowError):
+                best_of = None
+            if best_of in (3, 5):
+                card["best_of"] = best_of
+            cards.append(card)
+
+        # Keep the original source records needed to audit the selected tennis
+        # events, while excluding unrelated and frequently changing feed sections.
+        # Every retained event and sport row is copied verbatim from the response.
+        selected_events = [
+            event for event in feed.get("events") or []
+            if isinstance(event, dict)
+            and (event.get("id") in parent_ids or event.get("parentId") in parent_ids)
+        ]
+
+        selected_sport_ids = {
+            event.get("sportId") for event in selected_events if event.get("sportId") is not None
+        }
+        pending_sport_ids = list(selected_sport_ids)
+        while pending_sport_ids:
+            sport = sports.get(pending_sport_ids.pop())
+            parent_id = sport.get("parentId") if sport else None
+            if parent_id is not None and parent_id not in selected_sport_ids:
+                selected_sport_ids.add(parent_id)
+                pending_sport_ids.append(parent_id)
+
+        version_keys = (
+            "fromVersion", "packetVersion", "catalogEventViewVersion",
+            "catalogTablesVersion", "factorsVersion", "independentFactorsVersion",
+            "sportBasicFactorsVersion", "sportBasicMarketsVersion",
+        )
+        source_payload = {
+            "capture_scope": "verbatim live tennis event/child rows and sport ancestors; dynamic score/odds feed sections omitted",
+            "feed_versions": {key: feed[key] for key in version_keys if key in feed},
+            "events": selected_events,
+            "sports": [
+                sport for sport in feed.get("sports") or []
+                if isinstance(sport, dict) and sport.get("id") in selected_sport_ids
+            ],
+        }
+        return {"events": cards, "_source_payload": source_payload}
 
     @staticmethod
     def _set_number(event: Dict[str, Any]) -> Optional[int]:

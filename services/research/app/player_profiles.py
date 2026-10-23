@@ -10,8 +10,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import and_, case, cast, literal, or_, select, text
-from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
+from sqlalchemy import and_, or_, select, text
+from db.identity import confirmed_source_player_id
 
 from tennis_adapter.normalizer import normalize_russian_player_name
 from tennis_adapter.player_metrics import aggregate_results, append_result, digest_metrics, metrics_as_of
@@ -26,6 +26,13 @@ def profile_refresh_timeout_seconds(stop_before_date, environ=None) -> int:
            if stop_before_date is not None else "FLASHSCORE_TENNIS_PROFILE_TIMEOUT_SECONDS")
     default = "120" if stop_before_date is not None else "300"
     return max(30, int(environ.get(key, default)))
+
+
+def advance_player_refresh_progress(progress: dict[str, Any] | None, stage: str, **fields) -> dict[str, Any]:
+    """Update job stage while retaining durable browser-page checkpoints."""
+    updated = dict(progress or {})
+    updated.update({"stage": stage, **fields})
+    return updated
 
 
 def _name_key(value: Optional[str]) -> str:
@@ -228,6 +235,9 @@ def seed_profile_from_archive(session, participant, profile) -> bool:
     profile.sync_error = "FLASHscore_REFRESH_PENDING"
     session.add(TennisPlayerMetricSnapshot(
         participant_id=participant.id,
+        source_player_id=confirmed_source_player_id(
+            session, participant.id, source="flashscore", as_of=now
+        ),
         metrics_version=profile.metrics_version,
         available_at=now,
         source_watermark=profile.source_watermark,
@@ -272,10 +282,11 @@ def enqueue_player_refresh(session, participant_id, reason: str):
             job.completed_at = now
             job.updated_at = now
         return job
-    table = TennisPlayerRefreshJob.__table__
-    active_lease = and_(table.c.status == "running", table.c.lease_until.is_not(None), table.c.lease_until > now)
-    session.execute(
-        pg_insert(TennisPlayerRefreshJob).values(
+    job = session.query(TennisPlayerRefreshJob).filter_by(
+        participant_id=participant_id
+    ).with_for_update().first()
+    if job is None:
+        job = TennisPlayerRefreshJob(
             participant_id=participant_id,
             status="queued",
             requested_reason=reason,
@@ -283,46 +294,47 @@ def enqueue_player_refresh(session, participant_id, reason: str):
             next_run_at=now,
             progress_json={"stage": "queued"},
             updated_at=now,
-        ).on_conflict_do_update(
-            index_elements=[table.c.participant_id],
-            set_={
-                "status": case((active_lease, "running"), else_="queued"),
-                "requested_reason": case((active_lease, table.c.requested_reason), else_=reason),
-                "requested_at": case((active_lease, table.c.requested_at), else_=now),
-                "next_run_at": case((active_lease, table.c.next_run_at), else_=now),
-                "last_error": case((active_lease, table.c.last_error), else_=None),
-                "progress_json": case(
-                    (active_lease, table.c.progress_json),
-                    else_=cast(literal('{"stage":"queued"}'), JSONB),
-                ),
-                "lease_until": case((active_lease, table.c.lease_until), else_=None),
-                "completed_at": case((active_lease, table.c.completed_at), else_=None),
-                "updated_at": now,
-            },
         )
-    )
-    return session.get(TennisPlayerRefreshJob, participant_id, with_for_update=True)
+        session.add(job)
+        return job
+
+    if job.status == "running" and job.lease_until is not None and job.lease_until > now:
+        job.updated_at = now
+        return job
+
+    job.status = "queued"
+    job.requested_reason = reason
+    job.requested_at = now
+    job.next_run_at = now
+    job.last_error = None
+    job.progress_json = advance_player_refresh_progress(job.progress_json, "queued")
+    job.lease_until = None
+    job.attempt_token = None
+    job.completed_at = None
+    job.updated_at = now
+    return job
 
 
 def _post_match_profile_refresh_due(profile, refresh_job, finished_at, now) -> bool:
-    """Whether player history predates a newly completed match and is refreshable."""
+    """Whether a player cache is missing or at least seven days old.
+
+    ``finished_at`` is retained for call compatibility; a new Fonbet result does
+    not make every participant profile immediately stale.
+    """
     if profile is None or not (profile.source_identities or {}).get("flashscore"):
         needs_refresh = True
     elif profile.last_success_at is None:
         needs_refresh = True
     else:
-        needs_refresh = profile.last_success_at <= now - timedelta(days=30)
-        if finished_at is not None and profile.last_success_at <= finished_at:
-            needs_refresh = True
+        needs_refresh = profile.last_success_at <= now - timedelta(days=7)
     if not needs_refresh:
         return False
     if refresh_job is None:
         return True
     if refresh_job.status == "retry":
-        return refresh_job.next_run_at <= now
+        return refresh_job.next_run_at is not None and refresh_job.next_run_at <= now
     if refresh_job.status in {"completed", "failed", "idle"}:
-        return (refresh_job.updated_at <= now - timedelta(days=30)
-                or (finished_at is not None and refresh_job.updated_at <= finished_at))
+        return refresh_job.updated_at is None or refresh_job.updated_at <= now - timedelta(days=7)
     return False
 
 
@@ -664,6 +676,9 @@ def persist_profile_facts(session, result, owner_participant_id=None) -> int:
         profile_row.metrics_available_at = now
         snapshot = TennisPlayerMetricSnapshot(
             participant_id=participant_id,
+            source_player_id=confirmed_source_player_id(
+                session, participant_id, source="flashscore", as_of=now
+            ),
             metrics_version=profile_row.metrics_version,
             available_at=now,
             source_watermark=profile_row.source_watermark,

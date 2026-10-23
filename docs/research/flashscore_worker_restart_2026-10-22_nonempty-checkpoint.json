@@ -1,0 +1,104 @@
+{
+  "captured_at": "2026-10-22T00:16:31.931169+00:00",
+  "scope": "Read-only pre-restart snapshot; only flashscore-worker will be recreated.",
+  "jobs": [
+    {
+      "participant_id": "cdcdebae-155d-481a-a87f-1d620237c2af",
+      "status": "running",
+      "attempts": 3,
+      "lease_until": "2026-10-22 00:14:52.988311+00",
+      "updated_at": "2026-10-22 00:09:52.988311+00",
+      "progress_json": {
+        "stage": "loading_history",
+        "profile_url": "https://www.flashscore.com/player/hou-chun-chien/GSzwoeuB/results/",
+        "resume_pages": 2,
+        "page_checkpoint": {
+          "pages": [
+            {
+              "page_index": 1,
+              "content_hash": "sha256:b4dd89dbbbf2706eb9797e78a5beba63357faa64cfcaaaa59086421823e54ae0",
+              "archived_path": "snapshots/research/2026-10-21/GSzwoeuB/b4dd89dbbbf2706eb9797e78a5beba63357faa64cfcaaaa59086421823e54ae0-062121071316-571bf656b6d5494e98455c3e9200deed.json",
+              "parser_version": "flashscore-tennis-player-v8"
+            },
+            {
+              "page_index": 2,
+              "content_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "archived_path": "snapshots/research/2026-10-21/GSzwoeuB/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855-062125450149-b92710a51ff5480e838fb8d4ea6195a1.json",
+              "parser_version": "flashscore-tennis-player-v8"
+            }
+          ],
+          "parser_version": "flashscore-tennis-player-v8"
+        }
+      }
+    },
+    {
+      "participant_id": "f0137f72-80a9-4db0-bfdf-d3cda33ff6a3",
+      "status": "running",
+      "attempts": 3,
+      "lease_until": "2026-10-22 00:14:52.199034+00",
+      "updated_at": "2026-10-22 00:09:52.199034+00",
+      "progress_json": {
+        "stage": "claimed",
+        "attempt": 3
+      }
+    }
+  ],
+  "worker_processes": [
+    "PID                 PPID                ELAPSED             STAT                COMMAND",
+    "2817263             2817207             06:15               Ssl                 python -m app.flashscore_worker",
+    "2817912             2817263             06:02               Sl                  /usr/local/lib/python3.12/site-packages/playwright/driver/node /usr/local/lib/python3.12/site-packages/playwright/driver/package/cli.js run-driver",
+    "2817913             2817263             06:02               Sl                  /usr/local/lib/python3.12/site-packages/playwright/driver/node /usr/local/lib/python3.12/site-packages/playwright/driver/package/cli.js run-driver",
+    "2818363             2817912             05:52               Ssl                 /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AvoidCorsURLLoaderRestartOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --proxy-server=http://172.26.0.1:17890 --proxy-bypass-list=<-loopback> --no-sandbox --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-NFd8zH --remote-debugging-pipe --no-startup-window",
+    "2818364             2817913             05:52               Ssl                 /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,AvoidCorsURLLoaderRestartOnRedirect,Translate,AutoDeElevate,OptimizationHints,NetworkTimeServiceQuerying,AimEnabled,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --proxy-server=http://172.26.0.1:17890 --proxy-bypass-list=<-loopback> --no-sandbox --disable-dev-shm-usage --user-data-dir=/tmp/playwright_chromiumdev_profile-LrYF1b --remote-debugging-pipe --no-startup-window",
+    "2818560             2818364             05:46               S                   /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=zygote --no-zygote-sandbox --no-sandbox --headless",
+    "2818561             2818363             05:46               S                   /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=zygote --no-zygote-sandbox --no-sandbox --headless",
+    "2818562             2818364             05:46               S                   /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=zygote --no-sandbox --headless",
+    "2818563             2818363             05:46               S                   /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=zygote --no-sandbox --headless",
+    "2819091             2818561             05:35               Sl                  /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=YAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAASAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,15616812502522079030,7461827105583207796,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,7814284578871465192,15188070441680400778,4 --trace-process-track-uuid=3190708988185955192",
+    "2819092             2818560             05:35               Sl                  /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=YAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAASAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,5010766005168460775,13411010635524872620,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,600336568073364875,10927359940851899387,4 --trace-process-track-uuid=3190708988185955192",
+    "2819119             2818364             05:33               Sl                  /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,5010766005168460775,13411010635524872620,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,600336568073364875,10927359940851899387,4 --trace-process-track-uuid=3190708989122997041",
+    "2819120             2818363             05:33               Sl                  /root/.cache/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,15616812502522079030,7461827105583207796,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,7814284578871465192,15188070441680400778,4 --trace-process-track-uuid=3190708989122997041",
+    "2822025             2817263             04:30               S                   /usr/local/bin/python -B -c from multiprocessing.resource_tracker import main;main(26)",
+    "2822027             2817263             04:30               S                   /usr/local/bin/python -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=29) --multiprocessing-fork",
+    "2822028             2817263             04:30               S                   /usr/local/bin/python -B -c from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=27, pipe_handle=37) --multiprocessing-fork"
+  ],
+  "worker_healthy": "healthy",
+  "verifier_database_writes": false,
+  "restart_requested_at": "2026-10-22T00:16:37Z",
+  "worker_healthy_after_restart_at": "2026-10-22T00:17:16Z",
+  "after_restart_on_old_image": [
+    {
+      "participant_id": "cdcdebae-155d-481a-a87f-1d620237c2af",
+      "status": "queued",
+      "attempts": 3,
+      "updated_at": "2026-10-22 00:16:47.881143+00",
+      "page_checkpoint_pages": 0,
+      "progress_json": {
+        "stage": "queued"
+      }
+    },
+    {
+      "participant_id": "f0137f72-80a9-4db0-bfdf-d3cda33ff6a3",
+      "status": "queued",
+      "attempts": 3,
+      "updated_at": "2026-10-22 00:16:47.854649+00",
+      "page_checkpoint_pages": 0,
+      "progress_json": {
+        "stage": "queued"
+      }
+    }
+  ],
+  "finding": "Restart recovery exposed a bug: the old dispatcher reset progress_json to {stage: claimed}, discarding persisted page checkpoints when reclaiming expired leases. No manual database writes were performed.",
+  "fix": {
+    "implementation": "_player_refresh_claim_progress merges stage/attempt into the existing progress_json and preserves page_checkpoint.",
+    "regression": "tests/research/test_tennis_player_dispatch_priority.py::test_reclaiming_player_job_preserves_nonempty_page_checkpoint",
+    "tests_passed": 5,
+    "image_digests": {
+      "research": "sha256:2f4b0c3a579810c1c817dac4151444bb6d5fb7049cf9241cf05f5e2f67cad3db",
+      "flashscore_worker": "sha256:953bff104a22fb400fc2a997700703120e8954543c484d4b9c969e2a211b0380"
+    },
+    "deployed_at": "2026-10-22T00:20:03Z",
+    "worker_healthy_after_deploy": true
+  },
+  "live_recovery_after_fix": "Pending a subsequent real profile retry with nonempty checkpoint; the previously observed two-page checkpoint was lost by the old image before the fix."
+}

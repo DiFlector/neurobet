@@ -1,0 +1,59 @@
+{
+  "generated_at_utc": "2026-10-22T14:29:54Z",
+  "scope": "Read-only runtime census after the 13:27:17Z admission cutoff and Flashscore played_at index rollout.",
+  "source": {
+    "point_history_versions": {
+      "non_retrospective": {
+        "source_matches": 31,
+        "versions": 346,
+        "point_states": 15896,
+        "latest_available_at_utc": "2026-10-22T13:45:44.787819Z"
+      },
+      "retrospective": {
+        "source_matches": 95,
+        "versions": 1241,
+        "point_states": 21806,
+        "latest_available_at_utc": "2026-10-22T14:28:24.626557Z"
+      },
+      "distinct_source_matches_across_both": 107,
+      "versions_total": 1587,
+      "point_states_total": 37702,
+      "source_keyed_refresh_jobs": 0
+    },
+    "point_refresh_queue": {
+      "waiting_players": 2675,
+      "waiting_players_reasons": {
+        "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED": 2484,
+        "PLAYER_SOURCE_IDS_MISSING": 191
+      },
+      "retry": 196,
+      "queued": 71,
+      "running": 1,
+      "completed": 3,
+      "finalized": 57,
+      "retry_unmatched_legacy": 128
+    },
+    "profile_refresh_queue": {
+      "queued": 637,
+      "retry": 997,
+      "running": 2,
+      "completed": 334,
+      "failed": 478,
+      "waiting_confirmation": 9,
+      "skipped": 84
+    }
+  },
+  "admission_impact": {
+    "latest_completed_audit_cutoff_utc": "2026-10-22T13:27:17.282295Z",
+    "new_versions_after_cutoff": 66,
+    "new_distinct_source_matches_after_cutoff": 2,
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "shadow_registered": false
+  },
+  "interpretation": [
+    "PBP documents continue to accumulate; the latest counts are a runtime census and have not been added to the frozen 13:27 manifest.",
+    "Most point-history work still waits for match indexing or source player identity, which browser slots do not resolve.",
+    "The date-range fallback now has a composite source/played_at index; two browser profile slots remain unchanged."
+  ]
+}

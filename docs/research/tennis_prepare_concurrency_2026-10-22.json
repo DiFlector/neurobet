@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-10-21T22:21:00Z",
+  "endpoint": "POST /api/tennis-history/prepare",
+  "execution": "Four independent Python processes, each constructing FastAPI TestClient and using the production PostgreSQL database; no app state shared between processes.",
+  "event_id": "711b6668-3d6b-45c9-a7bd-f23c6f11ef97",
+  "event_status": "interrupted",
+  "event_first_seen_at": "2026-10-21T07:02:10.966986+00:00",
+  "calls": 4,
+  "responses": {
+    "http_statuses": [
+      200,
+      200,
+      200,
+      200
+    ],
+    "ready_event_ids": [
+      "711b6668-3d6b-45c9-a7bd-f23c6f11ef97",
+      "711b6668-3d6b-45c9-a7bd-f23c6f11ef97",
+      "711b6668-3d6b-45c9-a7bd-f23c6f11ef97",
+      "711b6668-3d6b-45c9-a7bd-f23c6f11ef97"
+    ],
+    "all_players_ready": true
+  },
+  "participants": [
+    {
+      "participant_id": "45eb385c-db47-4c2b-9d7f-f92a1f91bdfa",
+      "name": "Ту Анита",
+      "status": "available",
+      "metrics_version": 1,
+      "last_attempt_at": "2026-10-21T10:15:26.693411+00:00",
+      "job_status_before_and_after": "completed",
+      "job_updated_at_before_and_after": "2026-10-21T10:15:39.767826+00:00"
+    },
+    {
+      "participant_id": "9c704b8f-72cb-479e-8c14-315608a9e51b",
+      "name": "Петрасова Д",
+      "status": "available",
+      "metrics_version": 2,
+      "last_attempt_at": "2026-10-21T11:50:24.316544+00:00",
+      "job_status_before_and_after": "completed",
+      "job_updated_at_before_and_after": "2026-10-21T11:50:35.311139+00:00"
+    }
+  ],
+  "mutation_check": {
+    "new_jobs": 0,
+    "profile_versions_changed": false,
+    "job_state_changed": false
+  },
+  "limitation": "This verifies concurrent independent-process API handler calls against the live database for a ready event. It does not verify concurrent refresh enqueue/coalescing for stale profiles, nor worker restart during an active browser attempt."
+}

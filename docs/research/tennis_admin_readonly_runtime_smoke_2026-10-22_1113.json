@@ -1,0 +1,35 @@
+{
+  "generated_at_utc": "2026-10-22T11:13:26Z",
+  "scope": "Read-only admin confirmation API smoke through TestClient in the running backend container against the deployed PostgreSQL database",
+  "auth_environment": "Test-only credentials were set in the one-shot child process; production secret values were not read or emitted.",
+  "production_admin_secret_keys_present": [
+    "ADMIN_USERNAME",
+    "ADMIN_PASSWORD_SHA256",
+    "ADMIN_SESSION_SECRET",
+    "ADMIN_COOKIE_SECURE",
+    "ADMIN_INTERNAL_TOKEN"
+  ],
+  "checks": {
+    "unauthenticated_confirmation_list": 401,
+    "test_login": 200,
+    "player_profile_confirmation_list_all": {
+      "status": 200,
+      "total": 433
+    },
+    "event_match_confirmation_list_all": {
+      "status": 200,
+      "total": 10
+    },
+    "test_logout": 200
+  },
+  "database_rows_before": {
+    "manual_confirmation_requests": 443,
+    "manual_confirmation_decisions": 436
+  },
+  "database_rows_after": {
+    "manual_confirmation_requests": 443,
+    "manual_confirmation_decisions": 436
+  },
+  "read_only_counts_unchanged": true,
+  "result": "Authentication and read access for both confirmation types passed. This does not test approve/reject writes, concurrent decisions, rejected-pair retry behavior, restart recovery, or as_of invariance."
+}

@@ -1,0 +1,108 @@
+{
+  "checked_at": "2026-10-21T23:44:19.961943+00:00",
+  "fonbet_event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+  "fonbet_source_event_id": "fonbet_69173294",
+  "fonbet_participants_a_b": [
+    "Нишимото С",
+    "Чаудхари В"
+  ],
+  "fonbet_state_at_2026_10_21T23_43Z": {
+    "status": "live",
+    "is_live": true,
+    "games_a_b": [
+      4,
+      3
+    ],
+    "observed_at": "2026-10-21T23:43:47.552628Z"
+  },
+  "flashscore_source_match_id": "nFpUNjLN",
+  "flashscore_url": "https://www.flashscore.com/match/tennis/chaudhari-vaidehi-zT0yq0KG/nishimoto-sera-Sz5NW6cC/summary/point-by-point/set-1/?mid=nFpUNjLN",
+  "api": {
+    "path": "/api/events/cb7ca562-272e-498d-a657-ddea74cae648/point-history?limit=2000&include_versions=true",
+    "versions_total": 5,
+    "latest_sequence_total": 27,
+    "confirmed_points": 27,
+    "incompleteness_reasons": [],
+    "collection_status": "retry"
+  },
+  "latest_source_document": {
+    "document_id": "40029a33-f037-4ab6-82bf-f924cfc59a3f",
+    "retrieved_at": "2026-10-21T23:34:26.506039+00:00",
+    "parsed_at": "2026-10-21T23:34:27.714833+00:00",
+    "available_at": "2026-10-21T23:34:27.739404+00:00",
+    "parser_version": "flashscore-point-history-v5",
+    "set_number": 1,
+    "complete": true,
+    "event_count": 27,
+    "gaps": [],
+    "last_game_score_source_order": [
+      4,
+      1
+    ]
+  },
+  "link": {
+    "status": "matched",
+    "confidence": 1,
+    "method": "live_match_anchor_external_player_ids",
+    "external_home_is_fonbet_a": null
+  },
+  "assessment": {
+    "nonempty_live_pbp_api_verified": true,
+    "fresh_live_score_alignment_verified": false,
+    "side_orientation_verified": false,
+    "use_for_training_labels": false,
+    "reasons": [
+      "27 PBP points and Fonbet score 4:1 align contemporaneously at 23:35 UTC",
+      "archived scoreboard DOM and confirmed profile identities prove source home maps to Fonbet A",
+      "the latest persisted link still has null orientation; a prior slug-order inference false is contradicted by the source DOM",
+      "later refresh at 23:37 failed with HTTP_404_MATCH_PAGE_UNAVAILABLE, so PBP remained at 4:1 while Fonbet advanced to 4:2"
+    ],
+    "fresh_live_score_alignment_verified_at_retrieval": true,
+    "source_side_orientation_verified_from_archived_dom": true,
+    "effective_link_orientation_persisted": false,
+    "training_label_eligible": false
+  },
+  "writes_performed": false,
+  "refresh_job": {
+    "status": "retry",
+    "attempts": 7,
+    "last_error": "HTTP_404_MATCH_PAGE_UNAVAILABLE",
+    "next_run_at": "2026-10-21T23:52:55.596541+00:00",
+    "observed_at": "2026-10-21T23:46:00+00:00"
+  },
+  "source_html_verification": {
+    "retrieved_at": "2026-10-21T23:34:26.506039+00:00",
+    "title": "NIS 0-0 CHA | Sera Nishimoto v Vaidehi Chaudhari 21/10/2026 | Tennis - Flashscore | Match",
+    "scoreboard_home": {
+      "name": "Nishimoto S.",
+      "flashscore_profile_id": "Sz5NW6cC",
+      "fonbet_participant": "Нишимото С",
+      "fonbet_side": "A",
+      "identity_status": "confirmed"
+    },
+    "scoreboard_away": {
+      "name": "Chaudhari V.",
+      "flashscore_profile_id": "zT0yq0KG",
+      "fonbet_participant": "Чаудхари В",
+      "fonbet_side": "B",
+      "identity_status": "confirmed"
+    },
+    "derived_external_home_is_fonbet_a": true,
+    "evidence_method": "archived Flashscore duelParticipant__home/away DOM profile IDs joined to confirmed Flashscore identity links",
+    "same_score_fonbet_snapshot": {
+      "observed_at": "2026-10-21T23:35:18.445966+00:00",
+      "games_a_b": [
+        4,
+        1
+      ]
+    },
+    "later_fonbet_snapshot": {
+      "observed_at": "2026-10-21T23:42:51.573973+00:00",
+      "games_a_b": [
+        4,
+        2
+      ]
+    },
+    "persisted_effective_link_at_sample": "matched with external_home_is_fonbet_a=null; an older auto-link had false inferred from URL slug order"
+  }
+}

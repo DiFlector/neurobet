@@ -6,6 +6,17 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: neurobet_postgres
     restart: unless-stopped
+    shm_size: 512m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - effective_cache_size=1536MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-neurobet}
       POSTGRES_USER: ${POSTGRES_USER:-neurobet}
@@ -24,7 +35,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2048M
+          memory: 2560M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neurobet} -d ${POSTGRES_DB:-neurobet}"]
       interval: 10s
@@ -109,6 +120,8 @@ services:
       - .env
     environment:
       TZ: ${TZ:-UTC}
+      FLASHSCORE_WORKER_BROWSER_PROCESSES: ${FLASHSCORE_WORKER_BROWSER_PROCESSES:-2}
+      FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY:-1}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8005}:8000"
     depends_on:
@@ -441,12 +454,13 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       FLASHSCORE_EXECUTOR_ENABLED: "true"
-      FLASHSCORE_DISCOVERY_SECONDS: ${FLASHSCORE_DISCOVERY_SECONDS:-15}
+      FLASHSCORE_DISCOVERY_SECONDS: ${FLASHSCORE_DISCOVERY_SECONDS:-5}
+      FLASHSCORE_PREPARATION_SECONDS: ${FLASHSCORE_PREPARATION_SECONDS:-60}
       FLASHSCORE_ARCHIVE_DISCOVERY_SECONDS: ${FLASHSCORE_ARCHIVE_DISCOVERY_SECONDS:-900}
       FLASHSCORE_TENNIS_POINT_POLL_SECONDS: ${FLASHSCORE_TENNIS_POINT_POLL_SECONDS:-30}
-      FLASHSCORE_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_TENNIS_POINT_CONCURRENCY:-2}
-      FLASHSCORE_TENNIS_PROFILE_CONCURRENCY: ${FLASHSCORE_TENNIS_PROFILE_CONCURRENCY:-2}
-      FLASHSCORE_BROWSER_PROCESSES: ${FLASHSCORE_BROWSER_PROCESSES:-2}
+      FLASHSCORE_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY:-1}
+      FLASHSCORE_TENNIS_PROFILE_CONCURRENCY: ${FLASHSCORE_WORKER_PROFILE_CONCURRENCY:-2}
+      FLASHSCORE_BROWSER_PROCESSES: ${FLASHSCORE_WORKER_BROWSER_PROCESSES:-2}
       FLASHSCORE_BROWSER_SLOT_DIR: /run/flashscore-browser-slots
       FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS: ${FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS:-300}
       FLASHSCORE_BROWSER_MAX_JOBS: ${FLASHSCORE_BROWSER_MAX_JOBS:-50}

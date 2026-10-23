@@ -1,0 +1,30 @@
+{
+  "observed_at_utc": "2026-10-22T05:30:04Z",
+  "source": "PostgreSQL read-only snapshot of tennis_player_refresh_jobs; flashscore-worker health from Docker",
+  "worker_health": "healthy",
+  "queue_counts": {
+    "completed": 324,
+    "failed": 521,
+    "queued": 524,
+    "retry": 1071,
+    "running": 2,
+    "skipped": 84,
+    "waiting_confirmation": 5
+  },
+  "oldest_requested_at_by_status": {
+    "queued": "2026-10-20T23:21:29.027403Z",
+    "retry": "2026-10-20T23:34:54.739323Z"
+  },
+  "currently_running": [
+    {"requested_reason": "historical_pbp_backfill", "attempts": 6, "requested_at": "2026-10-21T12:19:45.904246Z", "updated_at": "2026-10-22T05:29:16.517631Z", "lease_until": "2026-10-22T05:34:16.517631Z", "progress_stage": "claimed"},
+    {"requested_reason": "historical_pbp_backfill", "attempts": 2, "requested_at": "2026-10-21T15:31:35.666403Z", "updated_at": "2026-10-22T05:29:21.040340Z", "lease_until": "2026-10-22T05:34:21.040340Z", "progress_stage": "claimed"}
+  ],
+  "concurrent_prepare_probe_jobs": [
+    {"participant_id": "42b2d592-b7e2-4384-a442-ea526ef4c4a2", "status": "queued", "reason": "event_refresh", "attempts": 2, "requested_at": "2026-10-21T23:29:42.803179Z", "updated_at": "2026-10-21T23:29:42.803179Z"},
+    {"participant_id": "bbe45762-0587-4d6a-8524-82970454ac7d", "status": "queued", "reason": "event_refresh", "attempts": 6, "requested_at": "2026-10-21T23:29:48.247794Z", "updated_at": "2026-10-21T23:29:48.247794Z"}
+  ],
+  "admission_effect": "queue age and backlog are not cleared; worker recovery/completion for these prepared jobs remains an open gate",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

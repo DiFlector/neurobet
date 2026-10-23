@@ -82,6 +82,23 @@ def winners_from_score_text(text: Any) -> Dict[str, str]:
     return winners
 
 
+def merge_event_metadata(existing: Any, incoming: Any, observed_at: datetime) -> Dict[str, Any]:
+    """Merge event metadata while preserving first-observed match-format time."""
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    values = dict(incoming) if isinstance(incoming, dict) else {}
+    values.pop("best_of_available_at", None)
+    previous_best_of = merged.get("best_of")
+    previous_available_at = merged.get("best_of_available_at")
+    new_best_of = values.get("best_of")
+    merged.update(values)
+    if new_best_of in (3, 5):
+        if new_best_of != previous_best_of or not previous_available_at:
+            merged["best_of_available_at"] = observed_at.isoformat()
+        else:
+            merged["best_of_available_at"] = previous_available_at
+    return merged
+
+
 class TennisSportAdapter:
     """
     Tennis Sport Adapter for Neurobet.
@@ -111,6 +128,15 @@ class TennisSportAdapter:
         source_id = str(raw_payload.get("source_event_id") or raw_payload.get("id") or "unknown")
         raw_tournament = raw_payload.get("tournament") or raw_payload.get("competitionName") or "Теннис. Live"
         surface = self.detect_surface(raw_tournament, raw_payload.get("metadata"))
+        raw_best_of = raw_payload.get("best_of")
+        try:
+            if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
+                raise ValueError("non_integer_best_of")
+            best_of = int(raw_best_of) if not isinstance(raw_best_of, bool) else None
+        except (TypeError, ValueError, OverflowError):
+            best_of = None
+        if best_of not in (3, 5):
+            best_of = None
 
         raw_a = raw_payload.get("participant_a") or raw_payload.get("team1") or "Игрок А"
         raw_b = raw_payload.get("participant_b") or raw_payload.get("team2") or "Игрок Б"
@@ -139,6 +165,13 @@ class TennisSportAdapter:
 
         event_id = raw_payload.get("event_id") or f"fonbet_tennis_{source_id}"
 
+        metadata = {
+            "surface": surface,
+            "raw_tournament": raw_tournament,
+        }
+        if best_of is not None:
+            metadata["best_of"] = best_of
+
         return Event(
             event_id=event_id,
             source="fonbet",
@@ -150,10 +183,7 @@ class TennisSportAdapter:
             scheduled_start=scheduled_dt,
             is_live=True,
             status="live",
-            metadata={
-                "surface": surface,
-                "raw_tournament": raw_tournament,
-            },
+            metadata=metadata,
         )
 
     def parse_state(self, raw_payload: Dict[str, Any]) -> EventState:

@@ -1,0 +1,578 @@
+{
+  "reviewed_at": "2026-10-22T08:16:25Z",
+  "reviewer": "Codex manual readback of archived Flashscore DOM rows and parser state sequences",
+  "network_used": false,
+  "database_written": false,
+  "parser_version_under_review": "flashscore-point-history-v5",
+  "source_artifacts": [
+    {
+      "path": "docs/research/tennis_pbp_source_review_2026-10-22_latest_details.json",
+      "sha256": "034203f006ef4874ceb8eafe72a0a621d88b2b132262c37299486c6fdfc10db5"
+    },
+    {
+      "path": "docs/research/tennis_pbp_manual_review_material_2026-10-21.json",
+      "sha256": "81a0d096d6b658ec3105453de35caf0c4eae4385d473126c3126abd81ddd9009"
+    }
+  ],
+  "scope": "20 unique completed Fonbet-linked Flashscore matches with nonempty archived PBP DOM rows; exact source rows and parsed event sequences are in source_artifacts[0].",
+  "summary": {
+    "matches_reviewed": 20,
+    "unique_source_matches": 20,
+    "dom_games_read": 162,
+    "point_states_read": 863,
+    "deuce_or_advantage_transitions": 154,
+    "source_tiebreak_rows": 14,
+    "parsed_tiebreak_points": 14,
+    "point_state_mismatches": 0,
+    "known_server_mismatches": 0,
+    "tiebreak_winner_mismatches": 0,
+    "matches_with_documented_gaps": 1
+  },
+  "manual_findings": [
+    "Across all reviewed games, source point states follow the parser states in order; game-result sentinels are not counted as observed point states.",
+    "Source server markers are often absent; those remain unknown. Wherever a source marker is present, reviewed side values agree with the parser.",
+    "The E9vF4SAD set-3 gaps remain explicit and are not filled or labelled.",
+    "WAlDxZFD tie-break source winner markers progress through 6-8 and agree with the parsed 6-7 set result."
+  ],
+  "correction_case": {
+    "source_match_id": "UXYqpB76",
+    "stored_document_parser_version": "flashscore-point-history-v3",
+    "source_document_id": "a870511c-1f78-4fd9-94f9-307354a7ca21",
+    "source_content_hash": "25b0a077a4efb1bb57adf7bdf07783ca4d38b2095d88f1d9a36daa486ba0bffe",
+    "source_dom_known_server_rows": [
+      {
+        "set": 2,
+        "game_score": [
+          1,
+          3
+        ],
+        "source_server": 0,
+        "reparsed_server": [
+          0
+        ]
+      }
+    ],
+    "review_result": "The archived v3 document is reparsed with the corrected logic; the sole source-marked server row is home/side 0 and the reparse also returns side 0. This is the correction check corresponding to the earlier persisted all-side-1 defect.",
+    "parser_version_under_review": "flashscore-point-history-v4"
+  },
+  "matches": [
+    {
+      "source_match_id": "U1v4wMZ7",
+      "fonbet_participants": [
+        "Ла Серна Х-м",
+        "Торрес Х-б"
+      ],
+      "official_final_score": "2:0 (6-4 6-2)",
+      "document_id": "f2d6ae9f-e68d-4e6e-802b-1b6a04a08f7b",
+      "content_hash": "5708644358ee32170ca1b75169ff09a39604535efeae82ab50ed3ed0065a6bf1",
+      "archived_path": "snapshots/research/2026-10-21/U1v4wMZ7/5708644358ee32170ca1b75169ff09a39604535efeae82ab50ed3ed0065a6bf1-213556475507-c223c188d26b42a9927c9256a7f5517b.json",
+      "source_url": "https://www.flashscore.com/match/tennis/la-serna-juan-manuel-OUerK0bc/torres-juan-bautista-p2teWfrT/summary/point-by-point/set-2/?mid=U1v4wMZ7",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 8,
+      "reviewed_point_states": 38,
+      "deuce_or_advantage_transitions": 4,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "rRgwzmTF",
+      "fonbet_participants": [
+        "Адкар В",
+        "Шкутова А"
+      ],
+      "official_final_score": "2:1 (6-4 4-6 6-0)",
+      "document_id": "77a5de84-6a26-484b-8ffe-2ffecbe6d130",
+      "content_hash": "4577915a8014080f397bf8d90fb43bcb0442ecd701c4191cb174239271d32afe",
+      "archived_path": "snapshots/research/2026-10-21/rRgwzmTF/4577915a8014080f397bf8d90fb43bcb0442ecd701c4191cb174239271d32afe-213537800416-d5cff11e0cce44b8a8cf19bdd74b4b3a.json",
+      "source_url": "https://www.flashscore.com/match/tennis/adkar-vaishnavi-riKJvzYF/shkutova-anna-O8EO0106/summary/point-by-point/set-3/?mid=rRgwzmTF",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 6,
+      "reviewed_point_states": 32,
+      "deuce_or_advantage_transitions": 4,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "E9vF4SAD",
+      "fonbet_participants": [
+        "Тамм К",
+        "Шепп А"
+      ],
+      "official_final_score": "2:1 (6-3 3-6 6-3)",
+      "document_id": "b0e45f6f-59b4-4abe-9853-1ab2be703d94",
+      "content_hash": "af3d469d246eb37f15404c0cfaabfddbc8f8ad06bfb7d984c32304f7ef1df847",
+      "archived_path": "snapshots/research/2026-10-21/E9vF4SAD/af3d469d246eb37f15404c0cfaabfddbc8f8ad06bfb7d984c32304f7ef1df847-201252606859-40c4e91d46e542e3863dde25e7bd03c1.json",
+      "source_url": "https://www.flashscore.com/match/tennis/shepp-anton-Ewcd2IBp/tamm-kristjan-xEMUcAZq/summary/point-by-point/set-3/?mid=E9vF4SAD",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 5,
+      "reviewed_point_states": 24,
+      "deuce_or_advantage_transitions": 2,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            1
+          ],
+          "reason": "point_sequence_missing"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            1
+          ],
+          "reason": "game_score_transition_missing_or_invalid"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            3
+          ],
+          "reason": "point_sequence_missing"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            3
+          ],
+          "reason": "game_score_transition_missing_or_invalid"
+        }
+      ],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Two set-3 game rows have no point sequence and no terminal marker; parser preserves explicit gaps; those rows are not usable as point labels. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "KY54BgIq",
+      "fonbet_participants": [
+        "Тран Д",
+        "Нишимура К"
+      ],
+      "official_final_score": "0:2 (3-6 1-6)",
+      "document_id": "a0b3a31d-e8d0-42b5-b600-b29ccd52dc04",
+      "content_hash": "4fd2a203f7a34915539a3737bafa5d33769bb86766408b9f0cdc416189348a3e",
+      "archived_path": "snapshots/research/2026-10-21/KY54BgIq/4fd2a203f7a34915539a3737bafa5d33769bb86766408b9f0cdc416189348a3e-200614718912-1789aa14b85a49e19cd0442f445d7420.json",
+      "source_url": "https://www.flashscore.com/match/tennis/nishimura-kayo-bifubkio/tran-demi-8xcf0Nds/summary/point-by-point/set-2/?mid=KY54BgIq",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 7,
+      "reviewed_point_states": 37,
+      "deuce_or_advantage_transitions": 6,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "nToZHvll",
+      "fonbet_participants": [
+        "Капурро-таборда М",
+        "Мандлик Э"
+      ],
+      "official_final_score": "1:2 (2-6 6-4 4-6)",
+      "document_id": "5c5c23fe-6d36-4879-9d89-b57be13e1acc",
+      "content_hash": "948a8f5da1d558b8ae9c9fbfb32c362fe7d53ff8fec28f6fe5542122c363ad15",
+      "archived_path": "snapshots/research/2026-10-21/nToZHvll/948a8f5da1d558b8ae9c9fbfb32c362fe7d53ff8fec28f6fe5542122c363ad15-200538201775-e9ce936d6b1e4a4d8bdc124a39f5146b.json",
+      "source_url": "https://www.flashscore.com/match/tennis/capurro-taborda-martina-dE1ru1Ek/mandlik-elizabeth-pYMHXRN6/summary/point-by-point/set-3/?mid=nToZHvll",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 10,
+      "reviewed_point_states": 54,
+      "deuce_or_advantage_transitions": 8,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "GnjQSadT",
+      "fonbet_participants": [
+        "Ван Импе А",
+        "Мунк-мортенсен Р"
+      ],
+      "official_final_score": "0:2 (4-6 1-6)",
+      "document_id": "7bc2c076-fe1f-4e72-8e69-6b279642a269",
+      "content_hash": "618234b9480d6b4e898884d21f1c29d35a7d1edb26455eb0d2691ef98aa115eb",
+      "archived_path": "snapshots/research/2026-10-21/GnjQSadT/618234b9480d6b4e898884d21f1c29d35a7d1edb26455eb0d2691ef98aa115eb-193720074388-b31611fc3b424bf3a817ddac9b835d62.json",
+      "source_url": "https://www.flashscore.com/match/tennis/munk-mortensen-rebecca-h8OdNuNd/van-impe-amelie-nJBj1cDB/summary/point-by-point/set-2/?mid=GnjQSadT",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 7,
+      "reviewed_point_states": 30,
+      "deuce_or_advantage_transitions": 0,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read consecutive game score and point-state rows; no missing segment or score reset was treated as a point. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "dzmkY9tp",
+      "fonbet_participants": [
+        "Пассаро Ф",
+        "Додиг М"
+      ],
+      "official_final_score": "2:1 (5-7 6-1 6-4)",
+      "document_id": "b30c5a0a-c434-458c-bbdc-ab71bba53bd6",
+      "content_hash": "8c372f64b8c225ec191e7bf17183a26e38ee8af9806b7a41dae728307258a0fd",
+      "archived_path": "snapshots/research/2026-10-21/dzmkY9tp/8c372f64b8c225ec191e7bf17183a26e38ee8af9806b7a41dae728307258a0fd-192855531071-f124cc440c3242d6b36d5b6f08b485b2.json",
+      "source_url": "https://www.flashscore.com/match/tennis/dodig-matej-2wbou5PR/passaro-francesco-6iHVMexn/summary/point-by-point/set-3/?mid=dzmkY9tp",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 10,
+      "reviewed_point_states": 50,
+      "deuce_or_advantage_transitions": 10,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "CGACvqGF",
+      "fonbet_participants": [
+        "Васа Э",
+        "Грибальдо М"
+      ],
+      "official_final_score": "1:2 (6-1 4-6 2-6)",
+      "document_id": "541a41b0-ffb1-4575-9e92-8b013ce92d06",
+      "content_hash": "5ddba926dfd96743a2da44622826d34947c67b8cb985cda1a47b53782f7949d6",
+      "archived_path": "snapshots/research/2026-10-21/CGACvqGF/5ddba926dfd96743a2da44622826d34947c67b8cb985cda1a47b53782f7949d6-192610597890-f3cc55279fbf4ca49cb3cd3bac570442.json",
+      "source_url": "https://www.flashscore.com/match/tennis/gribaldo-matteo-4Ip21SPN/vasa-eero-2eEQepaQ/summary/point-by-point/set-3/?mid=CGACvqGF",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 8,
+      "reviewed_point_states": 39,
+      "deuce_or_advantage_transitions": 2,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "fm0P43N6",
+      "fonbet_participants": [
+        "Ганесан А",
+        "Сингх К"
+      ],
+      "official_final_score": "0:2 (1-6 0-6)",
+      "document_id": "5fdc7349-7131-4dd0-a55f-93b0c75ff751",
+      "content_hash": "2b2324263e7be8c9401012dc4729e3afbd0447e2d9965486f0a25e6c0dc546ce",
+      "archived_path": "snapshots/research/2026-10-21/fm0P43N6/2b2324263e7be8c9401012dc4729e3afbd0447e2d9965486f0a25e6c0dc546ce-173611627055-64d5e28392f049b8a1a3386244eb07f5.json",
+      "source_url": "https://www.flashscore.com/match/tennis/ganesan-adhithya-jN8AWUp9/singh-karan-fRgO5Du3/summary/point-by-point/set-2/?mid=fm0P43N6",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 6,
+      "reviewed_point_states": 31,
+      "deuce_or_advantage_transitions": 8,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "hKHkMJSb",
+      "fonbet_participants": [
+        "Сингх К",
+        "Чанта Т"
+      ],
+      "official_final_score": "2:0 (7-6 6-2)",
+      "document_id": "b6414865-011e-4f3d-962a-043c9996a305",
+      "content_hash": "648394ee82a3f1ce0f0517882364fbd4173102f8cc0517ff2350acb090096e65",
+      "archived_path": "snapshots/research/2026-10-21/hKHkMJSb/648394ee82a3f1ce0f0517882364fbd4173102f8cc0517ff2350acb090096e65-135822051946-9a5605ce1e6b4a34b4b55855c84a8607.json",
+      "source_url": "https://www.flashscore.com/match/tennis/chanta-thanapet-pd5sYLNR/singh-karan-fRgO5Du3/summary/point-by-point/set-2/?mid=hKHkMJSb",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 8,
+      "reviewed_point_states": 33,
+      "deuce_or_advantage_transitions": 2,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "Ys5hDEVh",
+      "fonbet_participants": [
+        "Фомин С",
+        "Такахаши Юсукэ"
+      ],
+      "official_final_score": "2:0 (6-4 6-1)",
+      "document_id": "cef0f2bd-63f4-47f5-86a6-51428e330493",
+      "content_hash": "2d09b7d14d6f85d966a82802ebf29cdeefd56f480897fb3c1b5327f277049a87",
+      "archived_path": "snapshots/research/2026-10-21/Ys5hDEVh/2d09b7d14d6f85d966a82802ebf29cdeefd56f480897fb3c1b5327f277049a87-134301478103-14cec94685434f6cb89e15770b70f017.json",
+      "source_url": "https://www.flashscore.com/match/tennis/fomin-sergey-nsLeJUw8/takahashi-yusuke-2kYVdoCo/summary/point-by-point/set-2/?mid=Ys5hDEVh",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 7,
+      "reviewed_point_states": 39,
+      "deuce_or_advantage_transitions": 6,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "M3okbAoo",
+      "fonbet_participants": [
+        "Золотарева Р",
+        "Зелинская Д"
+      ],
+      "official_final_score": "2:1 (6-7 6-1 6-3)",
+      "document_id": "fc2a94bd-28fe-4803-ae07-4aea070d9938",
+      "content_hash": "96c6dcba9c3e54fbd80378f86672a4c4cf70da6976739aa9700c9457087221bc",
+      "archived_path": "snapshots/research/2026-10-21/M3okbAoo/96c6dcba9c3e54fbd80378f86672a4c4cf70da6976739aa9700c9457087221bc-132802948633-abdf28bb5b7648f192272fef22e9caee.json",
+      "source_url": "https://www.flashscore.com/match/tennis/zelinskaya-daria-rcwapmSp/zolotareva-rada-vcrGe2x9/summary/point-by-point/set-3/?mid=M3okbAoo",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 9,
+      "reviewed_point_states": 56,
+      "deuce_or_advantage_transitions": 16,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "KGIzzh5l",
+      "fonbet_participants": [
+        "Тран Д",
+        "Инисан Э"
+      ],
+      "official_final_score": "2:1 (3-6 6-4 6-3)",
+      "document_id": "6982aa3c-044c-490c-8e9a-6266a46f7a4a",
+      "content_hash": "7e3d8c67500a255b55d168f80dcbacc793be21742b04fe4ef22cc5b44ee5669e",
+      "archived_path": "snapshots/research/2026-10-21/KGIzzh5l/7e3d8c67500a255b55d168f80dcbacc793be21742b04fe4ef22cc5b44ee5669e-130929352562-3999373ef641499fad8d717e52d667cb.json",
+      "source_url": "https://www.flashscore.com/match/tennis/inisan-eleejah-44gErcLu/tran-demi-8xcf0Nds/summary/point-by-point/set-3/?mid=KGIzzh5l",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "reviewed_dom_games": 9,
+      "reviewed_point_states": 49,
+      "deuce_or_advantage_transitions": 10,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "vFxWU8MM",
+      "fonbet_participants": [
+        "Маннарино А",
+        "Андрей Рублев"
+      ],
+      "official_final_score": "2:1 (6-4 3-6 6-3)",
+      "document_id": "ea4328c2-92ea-406a-a34e-a6e5040b7b9b",
+      "content_hash": "35de9f2ee19609c57decc59ddf6f60ecbc26567ee45eac00da26bf20c8786e5a",
+      "archived_path": "snapshots/research/2026-10-21/vFxWU8MM/35de9f2ee19609c57decc59ddf6f60ecbc26567ee45eac00da26bf20c8786e5a-124710046415-19ee10089b89409daafb1199e747b91f.json",
+      "source_url": "https://www.flashscore.com/match/tennis/mannarino-adrian-fLOdtByM/rublev-andrey-AeAn4gP0/summary/point-by-point/set-3/?mid=vFxWU8MM",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 9,
+      "reviewed_point_states": 53,
+      "deuce_or_advantage_transitions": 12,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "zs0yGRyp",
+      "fonbet_participants": [
+        "Кумру А",
+        "Созаонова Н"
+      ],
+      "official_final_score": "2:0 (6-4 6-1)",
+      "document_id": "f9134e49-02f2-4a24-b092-aed9b34d8694",
+      "content_hash": "16cc69f226fd85312b711e55591ae3b75bfeeda667bbcc61e8e6150e19ae8ca6",
+      "archived_path": "snapshots/research/2026-10-21/zs0yGRyp/16cc69f226fd85312b711e55591ae3b75bfeeda667bbcc61e8e6150e19ae8ca6-121414905759-b0fdd89c00b64d7eb78684394eb55a6b.json",
+      "source_url": "https://www.flashscore.com/match/tennis/kumru-ada-l45T0hem/sozaonova-nina-fmNTwTeC/summary/point-by-point/set-2/?mid=zs0yGRyp",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 7,
+      "reviewed_point_states": 33,
+      "deuce_or_advantage_transitions": 2,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "hfOGBTiR",
+      "fonbet_participants": [
+        "Хан Л",
+        "Кацуми Н"
+      ],
+      "official_final_score": "1:2 (6-4 4-6 3-6)",
+      "document_id": "acb7b3ab-0817-4760-b238-5acf45bac226",
+      "content_hash": "fcda0ca6445eff1e1da8043eecc7b87bb878c760d7607763e1f5591d5840d188",
+      "archived_path": "snapshots/research/2026-10-21/hfOGBTiR/fcda0ca6445eff1e1da8043eecc7b87bb878c760d7607763e1f5591d5840d188-121222585387-489f82af332c4bd490bf92fe3f1417e4.json",
+      "source_url": "https://www.flashscore.com/match/tennis/katsumi-nanari-Iqielpp6/khan-laquisa-fB9nM7ur/summary/point-by-point/set-3/?mid=hfOGBTiR",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 9,
+      "reviewed_point_states": 52,
+      "deuce_or_advantage_transitions": 10,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "nJQUcQ7s",
+      "fonbet_participants": [
+        "Шевченко А",
+        "Хара-френд Дж-д"
+      ],
+      "official_final_score": "2:0 (6-0 6-4)",
+      "document_id": "387f0ab5-428c-45cd-aaba-8f75fafb4a20",
+      "content_hash": "f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134",
+      "archived_path": "snapshots/research/2026-10-21/nJQUcQ7s/f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134-091111040594-118bbb9107de415b979910143b565065.json",
+      "source_url": "https://www.flashscore.com/match/tennis/friend-jay-dylan-hara-IDWtGL8C/shevchenko-alexander-jTIB3FIA/summary/point-by-point/set-2/?mid=nJQUcQ7s",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 10,
+      "reviewed_point_states": 53,
+      "deuce_or_advantage_transitions": 12,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "WAlDxZFD",
+      "fonbet_participants": [
+        "Шин М",
+        "Такахаши Юсукэ"
+      ],
+      "official_final_score": "0:2 (4-6 6-7)",
+      "document_id": "6abf9dbe-3a2f-4795-89e6-9f7a5d662777",
+      "content_hash": "0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92",
+      "archived_path": "snapshots/research/2026-10-21/WAlDxZFD/0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92-085159614685-f3cfa2f1bab14a009822cd3a4692f3d5.json",
+      "source_url": "https://www.flashscore.com/match/tennis/shin-maxim-CjWkz3ft/takahashi-yusuke-2kYVdoCo/summary/point-by-point/set-2/?mid=WAlDxZFD",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 12,
+      "reviewed_point_states": 73,
+      "deuce_or_advantage_transitions": 20,
+      "source_tiebreak_rows": 14,
+      "parsed_tiebreak_points": 14,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read all ordinary game point-state rows and the tie-break sequence. Source marker advances 1-0 through 6-8; parser records the same progression and terminal set result 6-7. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "ltboIW4e",
+      "fonbet_participants": [
+        "Свитолина Э",
+        "Людмила Самсонова"
+      ],
+      "official_final_score": "2:1 (6-2 5-7 6-2)",
+      "document_id": "c1b5daf1-1512-4f33-b4dc-a27588404815",
+      "content_hash": "94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801",
+      "archived_path": "snapshots/research/2026-10-21/ltboIW4e/94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801-075320578143-ef66820c99d14097aa4fad2d874a4d5c.json",
+      "source_url": "https://www.flashscore.com/match/tennis/monfils-elina-jyngIesG/samsonova-liudmila-hIA4C9YT/summary/point-by-point/set-3/?mid=ltboIW4e",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 8,
+      "reviewed_point_states": 45,
+      "deuce_or_advantage_transitions": 8,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    },
+    {
+      "source_match_id": "2TkVRpXO",
+      "fonbet_participants": [
+        "Уррибарренс-рамирес И",
+        "Полинг К"
+      ],
+      "official_final_score": "2:0 (6-3 6-1)",
+      "document_id": "ffd6c536-055c-42aa-8750-2ef2868a726d",
+      "content_hash": "81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93",
+      "archived_path": "snapshots/research/2026-10-21/2TkVRpXO/81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93-072439666182-8ce109a147764e24b1977f46a37144ab.json",
+      "source_url": "https://www.flashscore.com/match/tennis/poling-karl-drTxoGEh/urribarrens-ramirez-iker-AyLbGoXa/summary/point-by-point/set-2/?mid=2TkVRpXO",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "reviewed_dom_games": 7,
+      "reviewed_point_states": 42,
+      "deuce_or_advantage_transitions": 12,
+      "source_tiebreak_rows": 0,
+      "parsed_tiebreak_points": 0,
+      "quality_gaps": [],
+      "point_state_mismatches": 0,
+      "known_server_mismatches": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "manual_readback": "Read point-state sequences through repeated deuce/advantage transitions; the server marker is kept only where present in the DOM. Source/parser state and known-server checks are consistent."
+    }
+  ],
+  "limitations": [
+    "This review reads archived DOM-extracted point and server rows alongside parsed states; it is not an independent third-party certification.",
+    "It validates historical source extraction, not live completeness, player identity correctness, or feature point-in-time availability.",
+    "Rows with unknown server, missing PBP, or unresolved side orientation stay unknown and are not training evidence."
+  ]
+}

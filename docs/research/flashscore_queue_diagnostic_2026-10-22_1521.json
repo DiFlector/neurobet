@@ -1,0 +1,78 @@
+{
+  "observed_at_utc": "2026-10-22T15:20:59.761539Z",
+  "scope": "read-only database queue and Docker resource snapshot after deploying the 3-browser worker budget",
+  "flashscore_worker": {
+    "healthy": true,
+    "browser_process_budget": 3,
+    "live_pbp_workers": 1,
+    "background_workers": 2,
+    "cpu_percent_of_one_core": 62.68,
+    "memory_usage_mib": 674.8,
+    "memory_limit_mib": 2048
+  },
+  "source_controller": {
+    "slot_limit": 2,
+    "active_requests": 0,
+    "waiting_requests": 0,
+    "success_count": 23534
+  },
+  "point_history_jobs": {
+    "statuses": {
+      "waiting_players": 2675,
+      "retry": 185,
+      "queued": 82,
+      "finalized": 61,
+      "completed": 3,
+      "running": 1
+    },
+    "waiting_players_reasons": {
+      "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED": 2507,
+      "PLAYER_SOURCE_IDS_MISSING": 169
+    },
+    "retry_reasons_top": {
+      "unmatched": 128,
+      "PLAYER_SOURCE_IDS_MISSING": 30,
+      "point_history_tab_missing": 15
+    }
+  },
+  "player_refresh_jobs": {
+    "statuses": {
+      "retry": 973,
+      "queued": 675,
+      "failed": 477,
+      "completed": 322,
+      "skipped": 84,
+      "waiting_confirmation": 9,
+      "running": 2
+    },
+    "retry_reasons_top": {
+      "SEARCH_COMPLETED_NO_MATCH": 867,
+      "PREEMPTED_FOR_CURRENT_EVENT": 44,
+      "PROFILE_TIMEOUT_PROCESS_TERMINATED": 26,
+      "PROFILE_TIMEOUT": 10
+    },
+    "failed_reasons_top": {
+      "not_found": 186,
+      "REFRESH_ABORTED": 182,
+      "source_unavailable": 97
+    }
+  },
+  "postgres": {
+    "healthy": true,
+    "cpu_percent_of_one_core": 63.91,
+    "memory_usage_mib": 975.9,
+    "memory_limit_mib": 2560,
+    "active_queries": 2,
+    "wal_sync_waiters": 1,
+    "wal_write_waiters": 0
+  },
+  "other_near_memory_limits": {
+    "redis_percent": 99.98,
+    "collector_percent": 95.89
+  },
+  "interpretation": "Most point-history backlog is waiting for match indexing or player source IDs, while the global source request slots were idle in this sample. The additional browser worker cannot resolve those waiting identities by itself. This snapshot is too short to establish a throughput change; keep the 30-minute comparison open.",
+  "training_started": false,
+  "candidate_evaluation_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

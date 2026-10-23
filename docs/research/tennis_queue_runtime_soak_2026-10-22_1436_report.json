@@ -1,0 +1,97 @@
+{
+  "generated_at_utc": "2026-10-22T15:08:30.690295Z",
+  "scope": "30-minute read-only runtime soak of the Flashscore PBP/profile queues and live-PBP lane.",
+  "window": {
+    "started_at_utc": "2026-10-22T14:36:33.327838Z",
+    "ended_at_utc": "2026-10-22T15:08:07.222144Z",
+    "elapsed_seconds": 1894,
+    "samples": 31
+  },
+  "metrics": {
+    "live_events_last_2m": {
+      "start": 35,
+      "end": 35,
+      "delta": 0
+    },
+    "confirmed_live_links": {
+      "start": 0,
+      "end": 2,
+      "delta": 2
+    },
+    "oldest_live_point_job_age_sec": {
+      "start": 7722,
+      "end": 9616
+    },
+    "point_job_statuses": {
+      "start": {
+        "completed": 4,
+        "finalized": 57,
+        "queued": 40,
+        "running": 1,
+        "retry": 225,
+        "waiting_players": 2676
+      },
+      "end": {
+        "completed": 3,
+        "finalized": 61,
+        "queued": 43,
+        "waiting_players": 2678,
+        "retry": 222
+      }
+    },
+    "oldest_waiting_players_updated_at": {
+      "start": "2026-10-20T20:55:27.795583+00:00",
+      "end": "2026-10-20T20:55:27.795583+00:00"
+    },
+    "profile_job_statuses": {
+      "start": {
+        "failed": 477,
+        "queued": 635,
+        "running": 2,
+        "skipped": 84,
+        "waiting_confirmation": 9,
+        "completed": 335,
+        "retry": 1000
+      },
+      "end": {
+        "completed": 337,
+        "failed": 477,
+        "queued": 651,
+        "retry": 982,
+        "running": 2,
+        "skipped": 84,
+        "waiting_confirmation": 9
+      }
+    },
+    "point_history": {
+      "versions": {
+        "start": 1596,
+        "end": 1652,
+        "delta": 56
+      },
+      "source_matches": {
+        "start": 107,
+        "end": 113,
+        "delta": 6
+      },
+      "nonretrospective_versions": {
+        "start": 346,
+        "end": 361,
+        "delta": 15
+      },
+      "nonretrospective_matches": {
+        "start": 31,
+        "end": 33,
+        "delta": 2
+      },
+      "latest_available": {
+        "start": "2026-10-22T14:36:22.303486+00:00",
+        "end": "2026-10-22T15:08:06.789395+00:00"
+      }
+    }
+  },
+  "interpretation": "PBP collection advanced by 56 versions and six distinct source matches, including two distinct matches with non-retrospective versions. Live confirmed PBP links rose from 0 to 2. The waiting_players backlog did not drain (2676 to 2678); most blocked records continue waiting for historical match indexing or source player IDs. Repeated versions were not counted as new matches.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

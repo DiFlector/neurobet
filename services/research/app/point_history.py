@@ -4,7 +4,7 @@ import asyncio, hashlib, json, logging, re, time, threading
 from datetime import datetime, timezone, timedelta
 import os
 from contextlib import nullcontext
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from tennis_adapter.point_history import PARSER_VERSION, parse_point_history_html
 from .domain_filter import DomainFilter
@@ -13,6 +13,138 @@ from .storage import ResearchStorage
 log = logging.getLogger("research.point_history")
 _LIVE_MATCH_CACHE_LOCK = threading.Lock()
 _LIVE_MATCH_CACHE: dict[str, object] = {"expires": 0.0, "links": []}
+
+
+def _point_history_feed_url(source_match_id: str) -> str:
+    """Build Flashscore's compact point-by-point feed URL for tennis project 2."""
+    source_match_id = str(source_match_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9]{5,32}", source_match_id):
+        raise ValueError("Invalid Flashscore match id")
+    return f"https://global.flashscore.ninja/2/x/feed/df_mh_2_{source_match_id}"
+
+
+def _feed_fields(segment: str) -> dict[str, str]:
+    fields = {}
+    for cell in segment.split("¬"):
+        code, separator, value = cell.partition("÷")
+        if separator and code:
+            fields[code] = value
+    return fields
+
+
+def _feed_set_number(title: str) -> int | None:
+    match = re.search(r"(?:set|сет)\s*(\d+)|(\d+)\s*(?:set|сет)", title, re.I)
+    return int(match.group(1) or match.group(2)) if match else None
+
+
+def _parse_point_history_feed(payload: str) -> dict:
+    """Parse Flashscore's match-history text feed into the shared PBP event shape."""
+    from tennis_adapter.point_history import infer_point_winner
+
+    events, gaps, sets_seen = [], [], set()
+    current_set = None
+    signature = None
+    previous_game_score: dict[int, list[int]] = {}
+    tiebreak_score: dict[int, list[int]] = {}
+    for segment in (part for part in payload.split("~") if part):
+        fields = _feed_fields(segment)
+        if "A1" in fields:
+            signature = fields["A1"]
+        if "HA" in fields:
+            current_set = _feed_set_number(fields["HA"])
+            if current_set is not None:
+                sets_seen.add(current_set)
+        if current_set is None or "HC" not in fields or "HE" not in fields:
+            continue
+        try:
+            game_score = [int(fields["HC"]), int(fields["HE"])]
+        except (TypeError, ValueError):
+            gaps.append({"reason": "invalid_game_score", "fields": {k: fields.get(k) for k in ("HC", "HE")}})
+            continue
+        before_games = previous_game_score.get(current_set, [0, 0])
+        changed_games = [i for i in (0, 1) if game_score[i] == before_games[i] + 1 and game_score[1-i] == before_games[1-i]]
+        completed_game_side = changed_games[0] if len(changed_games) == 1 else None
+        server_code = fields.get("HG") or fields.get("HN")
+        server = {"1": 0, "2": 1}.get(server_code)
+        raw_points = fields.get("HL", "")
+        point_states = []
+        for raw_point in raw_points.split(","):
+            point = raw_point.split("|", 1)[0].strip()
+            if not point:
+                continue
+            score = re.search(r"^\s*(\d+)\s*:\s*(\d+)\s*$", point)
+            if score and (game_score == [6, 6] or "HD" in fields or "HF" in fields):
+                point_states.append((int(score.group(1)), int(score.group(2))))
+                continue
+            from tennis_adapter.point_history import _point_pair
+            parsed = _point_pair(point)
+            if parsed:
+                point_states.append(parsed)
+            else:
+                gaps.append({"set": current_set, "game_score": game_score, "reason": "unrecognized_feed_point"})
+
+        tie_break = bool(point_states and isinstance(point_states[0][0], int))
+        if tie_break:
+            before = tiebreak_score.get(current_set, [0, 0])
+            for point_index, after_tuple in enumerate(point_states):
+                after = list(after_tuple)
+                changed = [i for i in (0, 1) if after[i] == before[i] + 1 and after[1-i] == before[1-i]]
+                winner = changed[0] if len(changed) == 1 else None
+                events.append({"set": current_set, "game_score": [6, 6], "point_index": point_index,
+                               "tie_break": True, "state_before": before, "state_after": after,
+                               "point_score": after, "server": server, "winner": winner,
+                               "confirmed": winner is not None, "retrospective": True,
+                               "quality": "confirmed" if winner is not None else "ambiguous"})
+                if winner is None:
+                    gaps.append({"set": current_set, "tie_break_score": after, "reason": "invalid_or_unanchored_tiebreak_transition"})
+                before = after
+            tiebreak_score[current_set] = before
+            if max(before) >= 7 and abs(before[0] - before[1]) >= 2:
+                winner = 0 if before[0] > before[1] else 1
+                set_score = [7, 6] if winner == 0 else [6, 7]
+                events.append({"set": current_set, "game_score": set_score, "point_index": None,
+                               "state_before": before, "state_after": {"set_result": set_score},
+                               "point_score": None, "server": server, "winner": winner,
+                               "confirmed": True, "tie_break": True, "retrospective": True,
+                               "quality": "terminal_from_tiebreak_result"})
+        else:
+            before = ("0", "0")
+            for point_index, after in enumerate(point_states):
+                winner = infer_point_winner(before, after)
+                events.append({"set": current_set, "game_score": game_score, "point_index": point_index,
+                               "state_before": list(before), "state_after": list(after),
+                               "point_score": list(after), "server": server, "winner": winner,
+                               "confirmed": winner is not None, "retrospective": True,
+                               "quality": "confirmed" if winner is not None else "ambiguous"})
+                before = after
+            winner_code = fields.get("HK")
+            if point_states and winner_code in {"1", "2"}:
+                possible = []
+                for side in (0, 1):
+                    if before[side] == "AD" or (before[side] == "40" and before[1-side] in {"0", "15", "30"}):
+                        possible.append(side)
+                reported_winner = {"1": 0, "2": 1}.get(winner_code)
+                if (len(possible) == 1 and completed_game_side == possible[0]
+                        and reported_winner == possible[0]):
+                    events.append({"set": current_set, "game_score": game_score,
+                                   "point_index": len(point_states), "state_before": list(before),
+                                   "state_after": {"game_result": game_score}, "point_score": None,
+                                   "server": server, "winner": possible[0], "confirmed": True,
+                                   "retrospective": True, "quality": "terminal_from_game_result"})
+                else:
+                    gaps.append({"set": current_set, "game_score": game_score, "reason": "ambiguous_terminal_point"})
+            elif not point_states and winner_code in {"1", "2"}:
+                gaps.append({"set": current_set, "game_score": game_score, "reason": "point_sequence_missing"})
+            previous_game_score[current_set] = game_score
+
+    if not sets_seen:
+        gaps.append({"reason": "point_by_point_feed_missing"})
+    quality = {"event_count": len(events), "confirmed_points": sum(
+        bool(event["confirmed"]) and event.get("quality") in {"confirmed", "terminal_from_game_result"}
+        for event in events), "ambiguous_points": sum(not event["confirmed"] for event in events),
+        "gaps": gaps, "complete": bool(events) and not gaps, "set_numbers": sorted(sets_seen),
+        "feed_signature": signature}
+    return {"parser_version": PARSER_VERSION, "events": events, "sets": sorted(sets_seen), "quality": quality}
 
 
 def _browser_launch_options() -> dict:
@@ -75,7 +207,44 @@ def _confirmed_link_page(link, player_a_id: str, player_b_id: str):
     canonical_allowed, _ = DomainFilter.is_allowed(canonical)
     if not canonical_allowed:
         return None
-    return canonical, pos_a < pos_b
+    # The order of player IDs in the match URL is not authoritative home/away
+    # evidence. Flashscore may order URL slugs differently from the scoreboard
+    # participants. Only retain side orientation from an explicit manual
+    # confirmation; imported source observations resolve it from source IDs.
+    orientation = evidence.get("external_home_is_fonbet_a")
+    if evidence.get("resolution") != "manual_confirmation" or not isinstance(orientation, bool):
+        orientation = None
+    return canonical, orientation
+
+
+def _source_dom_side_orientation(document_html: str, participant_a_id: str, participant_b_id: str):
+    """Resolve Flashscore home/away only from its scoreboard DOM and confirmed profile IDs."""
+    if not document_html or not participant_a_id or not participant_b_id:
+        return None
+    try:
+        from lxml import html as lxml_html
+        tree = lxml_html.fromstring(document_html)
+    except Exception:
+        return None
+
+    def profile_id(side: str):
+        hrefs = tree.xpath(
+            f'//*[contains(concat(" ", normalize-space(@class), " "), " duelParticipant__{side} ")]'
+            '//a[contains(@href, "/player/")]/@href'
+        )
+        ids = set()
+        for href in hrefs:
+            match = re.search(r"/player/[^/]+/([A-Za-z0-9]+)/?$", urlparse(href).path)
+            if match:
+                ids.add(match.group(1))
+        return next(iter(ids)) if len(ids) == 1 else None
+
+    home_id, away_id = profile_id("home"), profile_id("away")
+    if home_id == participant_a_id and away_id == participant_b_id:
+        return True
+    if home_id == participant_b_id and away_id == participant_a_id:
+        return False
+    return None
 
 
 def _point_by_point_set_url(page_url: str, source_match_id: str, set_no: int) -> str:
@@ -408,10 +577,51 @@ def _persist_live_match_confirmations(event_uuid, attempt_token, event_names, ca
         session.commit()
     return persisted
 
-def fetch_point_documents(summary_url: str, fetcher=None, delay_seconds: float = 1.0, source_access=None):
+def fetch_point_documents(
+    summary_url: str,
+    fetcher=None,
+    delay_seconds: float = 1.0,
+    source_access=None,
+    *,
+    skip_browser_when_feed_empty: bool = False,
+):
     allowed, reason = DomainFilter.is_allowed(summary_url)
     if not allowed:
         return [], f"URL_REJECTED:{reason}"
+    fallback_reason = None
+    if fetcher is None:
+        mid = re.search(r"[?&]mid=([A-Za-z0-9]{5,32})(?:&|$)", summary_url)
+        if mid:
+            from .tennis_flashscore import _profile_http_get
+            feed_url = _point_history_feed_url(mid.group(1))
+            status, body, final_url, error = _profile_http_get(
+                feed_url, source_access=source_access, feed=True,
+            )
+            if status in (403, 429):
+                from .main import _record_flashscore_throttle
+                _record_flashscore_throttle()
+                return [], f"HTTP_{status}_BLOCKED"
+            if status == 200 and not error:
+                parsed = _parse_point_history_feed(body)
+                if parsed.get("events"):
+                    quality = parsed.get("quality") or {}
+                    return [{
+                        "set": None,
+                        "url": final_url,
+                        "raw_feed": body,
+                        "html": "",
+                        "parsed": parsed,
+                        "retrieved_at": datetime.now(timezone.utc),
+                        "http_status": status,
+                        "fetch_transport": "http_feed",
+                        "set_tab_confirmed": bool(parsed.get("sets")),
+                        "collection_status": "complete" if quality.get("complete") else "partial",
+                    }], "complete" if quality.get("complete") else "partial"
+                if skip_browser_when_feed_empty:
+                    return [], "HTTP_200_NO_PUBLISHED_HISTORY"
+                fallback_reason = "HTTP_200_FEED_WITHOUT_USABLE_HISTORY"
+            else:
+                fallback_reason = error or f"HTTP_{status}_FEED_UNAVAILABLE"
     access = source_access or nullcontext
     output = []
     from .browser_pool import flashscore_chromium
@@ -562,7 +772,132 @@ def fetch_point_documents(summary_url: str, fetcher=None, delay_seconds: float =
         for item in output:
             item["set_tab_confirmed"] = tabs_confirmed
             item["collection_status"] = "complete" if incomplete_reason is None else incomplete_reason
+            item["fetch_transport"] = "browser"
+            item["fallback_reason"] = fallback_reason
         return output, "complete" if output and incomplete_reason is None else (incomplete_reason or "unavailable")
+
+
+def _source_match_summary_url(source_match_id: str, source_url: str) -> str | None:
+    """Validate and canonicalize a Flashscore match URL for source-only PBP work."""
+    source_match_id = str(source_match_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9]{5,32}", source_match_id):
+        return None
+    allowed, _ = DomainFilter.is_allowed(source_url or "")
+    if not allowed:
+        return None
+    parsed = urlparse(source_url)
+    if "/match/tennis/" not in parsed.path:
+        return None
+    if parse_qs(parsed.query).get("mid") != [source_match_id]:
+        return None
+    path = re.sub(r"/(?:summary|point-by-point)(?:/.*)?$", "", parsed.path).rstrip("/")
+    canonical = f"{parsed.scheme}://{parsed.netloc}{path}/summary/?{urlencode({'mid': source_match_id})}"
+    canonical_allowed, _ = DomainFilter.is_allowed(canonical)
+    return canonical if canonical_allowed else None
+
+
+def collect_source_point_history(
+    source_match_id: str,
+    source_url: str,
+    attempt_token: str | None = None,
+    source_access=None,
+) -> dict:
+    """Archive PBP against Flashscore identity without requiring a Fonbet link."""
+    from db.connection import SessionLocal
+    from db.models import TennisPointDocument, TennisPointHistoryVersion, TennisPointSourceRefreshJob
+
+    summary_url = _source_match_summary_url(source_match_id, source_url)
+    if not summary_url:
+        return {"status": "rejected", "reason": "SOURCE_MATCH_URL_INVALID", "source_match_id": source_match_id}
+
+    def lease_is_current(session) -> bool:
+        if not attempt_token:
+            return True
+        return session.query(TennisPointSourceRefreshJob.source_match_id).filter_by(
+            source_match_id=source_match_id, attempt_token=attempt_token, status="running"
+        ).filter(TennisPointSourceRefreshJob.lease_until > datetime.now(timezone.utc)).with_for_update().first() is not None
+
+    with SessionLocal() as session:
+        if not lease_is_current(session):
+            return {"status": "lease_lost", "source_match_id": source_match_id}
+
+    docs, collection_status = fetch_point_documents(summary_url, source_access=source_access)
+    if not docs:
+        return {"status": collection_status, "source_match_id": source_match_id, "documents_saved": 0}
+
+    storage = ResearchStorage()
+    saved = 0
+    confirmed_points = 0
+    gaps = []
+    complete = collection_status == "complete"
+    for doc in docs:
+        raw_content = doc.get("raw_feed") if doc.get("raw_feed") is not None else doc.get("html", "")
+        raw_hash = hashlib.sha256(raw_content.encode()).hexdigest()
+        retrieved_at = doc["retrieved_at"]
+        quality = {
+            **((doc.get("parsed") or {}).get("quality") or {}),
+            "set_number": doc.get("set"),
+            "set_tab_confirmed": doc.get("set_tab_confirmed"),
+            "collection_status": doc.get("collection_status"),
+            "fetch_status": doc.get("fetch_status"),
+            "fetch_transport": doc.get("fetch_transport", "browser"),
+            "fallback_reason": doc.get("fallback_reason"),
+            "fonbet_link_status": "unlinked_at_retrieval",
+        }
+        parsed = doc.get("parsed") or parse_point_history_html(doc.get("html", ""))
+        quality = {**(parsed.get("quality") or {}), **quality}
+        if not parsed.get("events"):
+            quality.setdefault("gaps", []).append("HISTORY_EMPTY_OR_UNRECOGNIZED")
+        if quality.get("complete") is not True:
+            complete = False
+        with SessionLocal() as session:
+            if not lease_is_current(session):
+                return {"status": "lease_lost", "source_match_id": source_match_id, "documents_saved": saved}
+        archive_payload = {
+            "source": "flashscore", "url": doc["url"], "source_match_id": source_match_id,
+            "retrieved_at": retrieved_at.isoformat(), "http_status": doc.get("http_status"),
+            "fetch_status": doc.get("fetch_status"), "fetch_transport": doc.get("fetch_transport", "browser"),
+            "parser_version": PARSER_VERSION, "retrospective": True,
+            "fonbet_link_status": "unlinked_at_retrieval",
+        }
+        archive_payload["raw_feed" if doc.get("raw_feed") is not None else "html"] = raw_content
+        archived = storage.archive_document(source_match_id, raw_hash, archive_payload)
+        if not archived:
+            return {"status": "archive_failed", "source_match_id": source_match_id, "documents_saved": saved}
+        parsed_at = datetime.now(timezone.utc)
+        with SessionLocal() as session:
+            if not lease_is_current(session):
+                return {"status": "lease_lost", "source_match_id": source_match_id, "documents_saved": saved}
+            latest = session.query(TennisPointDocument).filter_by(
+                source="flashscore", source_match_id=source_match_id, source_url=doc["url"]
+            ).order_by(TennisPointDocument.retrieved_at.desc(), TennisPointDocument.id.desc()).first()
+            if latest and latest.content_hash == raw_hash and latest.parser_version == PARSER_VERSION:
+                continue
+            document = TennisPointDocument(
+                source_match_id=source_match_id, source_url=doc["url"], content_hash=raw_hash,
+                archived_path=archived, parser_version=PARSER_VERSION, retrieved_at=retrieved_at,
+                parsed_at=parsed_at, available_at=parsed_at, availability_status="known",
+                retrospective=True, parse_status="complete" if quality.get("complete") else "partial",
+                quality_json=quality,
+            )
+            session.add(document)
+            session.flush()
+            events = [{**item, "retrospective": True} for item in parsed.get("events", [])]
+            session.add(TennisPointHistoryVersion(
+                document_id=document.id, source_match_id=source_match_id, fonbet_event_id=None,
+                parser_version=PARSER_VERSION, retrieved_at=retrieved_at, parsed_at=parsed_at,
+                available_at=parsed_at, availability_status="known", events_json=events,
+                quality_json=quality, retrospective=True,
+            ))
+            session.commit()
+            saved += 1
+        confirmed_points += int(quality.get("confirmed_points", 0) or 0)
+        gaps.extend(quality.get("gaps") or [])
+    return {
+        "status": "available" if complete else "partial", "source_match_id": source_match_id,
+        "documents_saved": saved, "confirmed_points": confirmed_points, "retrospective": True,
+        "fonbet_link_status": "unlinked_at_retrieval", "gaps": gaps,
+    }
 
 def collect_event_point_history(event_id: str, attempt_token: str | None = None, source_access=None) -> dict:
     from db.connection import SessionLocal
@@ -570,6 +905,7 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
     import uuid
     now = datetime.now(timezone.utc)
     event_uuid = uuid.UUID(str(event_id))
+    side_orientation_source = None
     with SessionLocal() as session:
         if attempt_token and session.query(TennisPointRefreshJob).filter_by(
             event_id=event_uuid, attempt_token=attempt_token, status="running"
@@ -625,6 +961,7 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
         flashscore_b = str((profile_b.source_identities or {}).get("flashscore") or "") if profile_b else ""
         league_name = league.name if league else ""
         source_side_orientation = {}
+        source_side_orientation_source = {}
         def player_match(row):
             if row.home_name.strip().endswith("/") or row.away_name.strip().endswith("/"):
                 return False
@@ -640,6 +977,11 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             participants_ok = orientation is not None
             if participants_ok:
                 source_side_orientation[row.source_match_id] = orientation
+                source_side_orientation_source[row.source_match_id] = (
+                    "flashscore_match_observation_player_ids"
+                    if row.home_player_id and row.away_player_id
+                    else "flashscore_match_observation_names"
+                )
             if not participants_ok: return False
             if league_name:
                 if not row.tournament:
@@ -668,6 +1010,7 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             source_match_id, url = match.source_match_id, _match_page_url(match)
             link_method = "prior_manual_or_confirmed_link" if source_match_id in linked_source_ids else "external_player_ids_tournament_and_start_window"
             external_home_is_a = source_side_orientation.get(source_match_id)
+            side_orientation_source = source_side_orientation_source.get(source_match_id)
         else:
             confirmed_link_pages = []
             for link in confirmed_links:
@@ -678,10 +1021,17 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                 link, url, external_home_is_a = confirmed_link_pages[0]
                 source_match_id = str(link.source_match_id)
                 source_side_orientation[source_match_id] = external_home_is_a
-                link_method = "confirmed_link_source_url_without_history_import"
+                evidence = link.evidence_json or {}
+                if evidence.get("resolution") == "manual_confirmation" and isinstance(external_home_is_a, bool):
+                    link_method = "manual_confirmed_source_link"
+                    side_orientation_source = "explicit_manual_confirmation"
+                else:
+                    link_method = "confirmed_link_source_url_without_history_import"
+                    side_orientation_source = None
             else:
                 source_match_id, url = "", None
                 link_method, external_home_is_a = "live_match_anchor_external_player_ids", None
+                side_orientation_source = None
     if not url and flashscore_a and flashscore_b:
         discovered = _discover_live_match(flashscore_a, flashscore_b, source_access=source_access,
                                           excluded_match_ids=rejected_source_ids)
@@ -698,8 +1048,21 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                 return {"status": "ambiguous", "candidate_count": len(normalized["candidates"])}
     if not url:
         return {"status": "unmatched", "reason": "FLASHSCORE_MATCH_LINK_NOT_FOUND" if flashscore_a and flashscore_b else "PLAYER_SOURCE_IDS_MISSING"}
-    docs, status = fetch_point_documents(url, source_access=source_access)
+    docs, status = fetch_point_documents(
+        url,
+        source_access=source_access,
+        # A just-started live match may have a valid HTTP response before its
+        # first point is published. Retry the feed later instead of opening a
+        # browser page that cannot add point history yet.
+        skip_browser_when_feed_empty=is_live,
+    )
     if not docs: return {"status": status, "source_match_id": source_match_id}
+    if external_home_is_a is None:
+        for doc in docs:
+            external_home_is_a = _source_dom_side_orientation(doc.get("html", ""), flashscore_a, flashscore_b)
+            if external_home_is_a is not None:
+                side_orientation_source = "flashscore_scoreboard_dom_confirmed_profile_ids"
+                break
     storage = ResearchStorage(); saved = 0; confirmed = 0; gaps = []
     # Flashscore does not timestamp individual points. Keep availability at
     # document receipt; only classify the document as observed when a fresh,
@@ -708,20 +1071,27 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
     for doc in docs:
         retrospective = not _document_was_observed_live(event_uuid, doc["retrieved_at"])
         all_retrospective = all_retrospective and retrospective
-        raw_hash = hashlib.sha256(doc["html"].encode()).hexdigest()
-        archived = storage.archive_document(source_match_id, raw_hash, {"source": "flashscore", "url": doc["url"],
+        raw_content = doc.get("raw_feed") if doc.get("raw_feed") is not None else doc.get("html", "")
+        raw_hash = hashlib.sha256(raw_content.encode()).hexdigest()
+        archive_payload = {"source": "flashscore", "url": doc["url"],
             "source_match_id": source_match_id, "retrieved_at": doc["retrieved_at"].isoformat(),
             "http_status": doc.get("http_status"), "fetch_status": doc.get("fetch_status"),
-            "parser_version": PARSER_VERSION, "retrospective": retrospective, "html": doc["html"]})
+            "fetch_transport": doc.get("fetch_transport", "browser"),
+            "fallback_reason": doc.get("fallback_reason"),
+            "parser_version": PARSER_VERSION, "retrospective": retrospective}
+        archive_payload["raw_feed" if doc.get("raw_feed") is not None else "html"] = raw_content
+        archived = storage.archive_document(source_match_id, raw_hash, archive_payload)
         if not archived: return {"status": "archive_failed", "source_match_id": source_match_id}
         parsed_at = datetime.now(timezone.utc)
-        parsed = parse_point_history_html(doc["html"])
+        parsed = doc.get("parsed") or parse_point_history_html(doc.get("html", ""))
         quality = {
             **(parsed.get("quality") or {}),
             "set_number": doc.get("set"),
             "set_tab_confirmed": doc.get("set_tab_confirmed"),
             "collection_status": doc.get("collection_status"),
             "fetch_status": doc.get("fetch_status"),
+            "fetch_transport": doc.get("fetch_transport", "browser"),
+            "fallback_reason": doc.get("fallback_reason"),
         }
         if not parsed.get("events"):
             quality.setdefault("gaps", []).append("HISTORY_EMPTY_OR_UNRECOGNIZED")
@@ -748,7 +1118,8 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                 events_json=events, quality_json=quality, retrospective=retrospective))
             session.add(TennisPointMatchLink(source_match_id=source_match_id, fonbet_event_id=event_uuid,
                 status="matched", confidence=1.0, evidence_json={"method": link_method,
-                    "fonbet_participants": list(event_names), "external_home_is_fonbet_a": external_home_is_a},
+                    "fonbet_participants": list(event_names), "external_home_is_fonbet_a": external_home_is_a,
+                    "side_orientation_source": side_orientation_source},
                 available_at=datetime.now(timezone.utc)))
             session.commit(); saved += 1
         confirmed += quality["confirmed_points"]

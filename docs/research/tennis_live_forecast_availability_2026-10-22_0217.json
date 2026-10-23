@@ -1,0 +1,26 @@
+{
+  "observed_at": "2026-10-22T02:17:15.146Z",
+  "source": "Neurobet MCP live-events API; sport=tennis,status=live,limit=100",
+  "total_live_events": 21,
+  "returned_events": 21,
+  "events_with_forecast": 9,
+  "forecast_rows": 9,
+  "available": 0,
+  "unavailable": 9,
+  "reason_counts": {
+    "UNSUPPORTED_FORMAT": 9
+  },
+  "feature_versions": [
+    "tennis_odds_free_v1"
+  ],
+  "forecast_lag_seconds": {
+    "samples": 9,
+    "p50": 7.068,
+    "p95": 31.068,
+    "max": 31.068
+  },
+  "not_started_event_count": 0,
+  "holdout_quality_metrics_opened": false,
+  "interpretation": "The deployed contour records versioned odds-free forecasts and fails closed for every current live event with a forecast because match format is unsupported/unknown. No probability payload was available for these events. No prematch events were in scope.",
+  "no_bets_or_ledger_changes": true
+}

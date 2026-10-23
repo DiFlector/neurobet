@@ -1,0 +1,39 @@
+{
+  "sampled_at": "2026-10-22T04:35:19Z",
+  "source": "Redis read-only XLEN/XINFO/XPENDING/XRANGE checks via the neural runtime Redis URL",
+  "stream": "fonbet.raw",
+  "stream_length": 10000,
+  "consumer_group": "cg.event_processor",
+  "group_snapshot": {
+    "entries_read": 93987,
+    "lag": 0,
+    "pending": 82
+  },
+  "pending_range_snapshot": {
+    "pending": 81,
+    "missing_payloads": 15,
+    "min_pending_id": "1792001903115-0",
+    "max_pending_id": "1792613342046-0",
+    "missing_payload_ids": [
+      "1792001903115-0",
+      "1792007829507-0",
+      "1792048837156-0",
+      "1792049761020-0",
+      "1792506477639-0",
+      "1792511592215-0",
+      "1792511599071-0",
+      "1792511609585-0",
+      "1792511620579-0",
+      "1792511627469-0",
+      "1792512501530-0",
+      "1792513932263-0",
+      "1792513943212-0",
+      "1792521180351-0",
+      "1792532460037-0"
+    ]
+  },
+  "notes": [
+    "XINFO and XPENDING were captured in adjacent live reads; a consumer delivery changed the pending count from 82 to 81.",
+    "No message was claimed or acknowledged. Missing payload entries remain unrecoverable from the trimmed stream and need archived/idempotent replay with original collected_at."
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "captured_at_utc": "2026-10-22T13:06:00.799096Z",
+  "purpose": "Capture an active Flashscore browser attempt immediately before worker restart.",
+  "container": {
+    "service": "flashscore-worker",
+    "container_id": "82bc9cbaf47df770c67bdbf3f5833637ca7dabf91a5642bed06c68d7060d667c",
+    "image_id": "sha256:328adafc0e2f6c63424e1bc7bf90e8ce30ace94a3449f2e24c5ffd0a2fe63882",
+    "started_at_utc": "2026-10-22T10:01:17.805765249Z",
+    "health": "healthy"
+  },
+  "active_profile_refreshes": {
+    "running_count": 2,
+    "progress_stages": [
+      "claimed",
+      "loading_history"
+    ],
+    "attempts": [
+      5,
+      6
+    ],
+    "lease_seconds_remaining_at_capture": [
+      274,
+      297
+    ],
+    "participant_ids_recorded": false
+  },
+  "active_point_refreshes": 0,
+  "chromium_root_processes": 2,
+  "resource_snapshot": {
+    "cpu_percent": 23.26,
+    "memory": "965.6 MiB / 2 GiB"
+  },
+  "action": "restart flashscore-worker after capture",
+  "restart_completed_at_utc": "2026-10-22T13:06:26Z",
+  "post_restart_observation": {
+    "observed_at_utc": "2026-10-22T13:06:53.687706Z",
+    "worker_health": "healthy",
+    "active_profile_refreshes": 2,
+    "loading_history_job": {
+      "attempts": 5,
+      "progress_checkpoint_pages": 13,
+      "updated_at_utc": "2026-10-22T13:06:06.235323Z",
+      "lease_seconds_remaining": 253,
+      "note": "Persisted checkpoint timestamp predates worker restart; lease had not yet expired."
+    },
+    "chromium_root_processes": 0,
+    "recovery_status": "awaiting lease expiry and durable redispatch; not yet passed"
+  },
+  "recovery_observations": [
+    {
+      "observed_at_utc": "2026-10-22T13:11:17.902160Z",
+      "result": "expired running lease was recovered to durable queued state",
+      "status": "running_to_queued",
+      "requested_reason": "new_event",
+      "attempts": 5,
+      "progress_checkpoint_pages": 13,
+      "checkpoint_preserved": true,
+      "worker_health": "healthy",
+      "note": "The old five-minute lease expired after restart; checkpoint page count remained 13."
+    },
+    {
+      "observed_at_utc": "2026-10-22T13:15:06.653252Z",
+      "result": "target queued job not yet re-claimed",
+      "status": "queued",
+      "attempts": 5,
+      "progress_checkpoint_pages": 13,
+      "profile_sync_status": "running",
+      "pending_confirmation_count": 0,
+      "worker_health": "healthy",
+      "chromium_root_processes": 1,
+      "active_profile_refreshes": 1,
+      "completed_profile_imports_after_restart": "worker logs show continued dispatch/import completions; not attributed to the checkpoint job",
+      "acceptance": "partial; keep roadmap checkbox open until the same job is claimed and resumes from the checkpoint"
+    },
+    {
+      "observed_at_utc": "2026-10-22T13:23:30Z",
+      "result": "same target job remained queued after PostgreSQL maintenance restart",
+      "status": "queued",
+      "attempts": 5,
+      "resume_pages": 13,
+      "checkpoint_preserved": true,
+      "worker_health": "healthy",
+      "acceptance": "still partial; target has not been re-claimed, so restart recovery is not fully accepted"
+    },
+    {
+      "observed_at_utc": "2026-10-22T13:32:29Z",
+      "result": "same target job was reclaimed and completed from the preserved checkpoint",
+      "status": "completed",
+      "attempts": 6,
+      "preserved_checkpoint_pages": 13,
+      "profile_sync_status": "available",
+      "facts_added": 362,
+      "worker_health": "healthy",
+      "acceptance": "passed; durable lease recovery, checkpoint resume, and completion verified"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "captured_at_utc": "2026-10-22T05:50:39.188027+00:00",
+  "source": "deployed read-only Backend queue and per-event Flashscore research APIs",
+  "queue": {
+    "total": 61,
+    "statuses": {
+      "identity_confirmation_required": 1,
+      "queued": 22,
+      "waiting_players": 26,
+      "waiting_match": 1,
+      "retry": 5,
+      "completed": 2,
+      "running": 4
+    },
+    "eligible_matches": 14,
+    "prepared_players": 5,
+    "overdue_pbp": 0,
+    "documents_saved_last_hour": 44,
+    "confirmed_links_last_hour": 44,
+    "worker": {
+      "configured": true,
+      "healthy": true,
+      "last_heartbeat_at": "2026-10-22T05:50:35.475946+00:00",
+      "network_slots": 0,
+      "network_slots_limit": 2,
+      "cooldown_until": null
+    }
+  },
+  "pbp_count": 14,
+  "pbp_status_counts": {
+    "waiting_match": 1,
+    "waiting_players": 13
+  },
+  "oldest_pbp_wait_seconds": 13545,
+  "event_after_manual_identity_resolution": {
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "mode": "live",
+    "players": [
+      {
+        "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+        "name": "Ян Иди",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      },
+      {
+        "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+        "name": "Юань Чэнии",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      }
+    ],
+    "point_history": {
+      "status": "waiting_match",
+      "updated_at": "2026-10-22T05:49:36.368323+00:00",
+      "next_retry_at": "2026-10-22T05:59:36.368323+00:00",
+      "reason": "FLASHSCORE_MATCH_LINK_PENDING"
+    },
+    "match_lookup": {
+      "status": "running",
+      "updated_at": "2026-10-22T05:49:27.254060+00:00",
+      "next_retry_at": "2026-10-22T05:49:24.768703+00:00",
+      "source_match_id": null,
+      "reason": null
+    }
+  },
+  "manual_identity_review": "docs/research/tennis_manual_player_identity_review_2026-10-22_0544.json",
+  "manual_resolution_runtime": "docs/research/tennis_manual_profile_resolution_runtime_2026-10-22_0549.json",
+  "interpretation": "The two player identity links are confirmed and carry manual source evidence. Refresh jobs are queued; event match lookup is running and PBP has moved from waiting_players/PLAYER_SOURCE_IDS_MISSING to waiting_match/FLASHSCORE_MATCH_LINK_PENDING. A source_match_id and PBP document have not yet been acquired, so no PBP label is admitted.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

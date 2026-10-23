@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-10-22T02:58:37Z",
+  "scope": "trace explicit tennis match format from Fonbet live response through persistence and forecast input",
+  "live_forecast_snapshot": "tennis_live_forecast_availability_2026-10-22_0226.json",
+  "sampled_source_event_ids": ["69170715", "69171570", "69174125"],
+  "direct_fonbet_response": {
+    "endpoint": "https://line-lb51-w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1600",
+    "explicit_best_of_present": false,
+    "raw_event_fields": ["applicability", "id", "kind", "level", "name", "num", "place", "priority", "rootKind", "sortOrder", "sportId", "startTime", "team1", "team1Id", "team2", "team2Id", "tv"]
+  },
+  "existing_persistence": {
+    "events_metadata_json_sampled": 3,
+    "best_of_present": 0,
+    "observed_keys": ["raw_tournament", "surface", "set_winners"],
+    "raw_snapshots_table_rows": 0,
+    "collector_snapshot_behavior": "stores normalized event dictionaries after parse_events_feed; the exact upstream event object is not persisted"
+  },
+  "checkout_change": {
+    "collector": "pass through only an explicit supported top-level best_of of 3 or 5; do not infer from score, tournament or gender",
+    "sport_adapter": "copy explicit supported best_of into Event.metadata",
+    "pipeline": "merge event metadata and record best_of_available_at at first observation; preserve it for repeated same value; reset it for a changed value",
+    "forecast": "require explicit supported value and best_of_available_at <= calculation cutoff; missing/future timestamp remains UNSUPPORTED_FORMAT"
+  },
+  "verification": {
+    "collector_normalization_fixture_supported_unknown_fractional": "passed against current checkout",
+    "sport_adapter_and_first_seen_timestamp_fixture": "passed against current checkout in a temporary container overlay",
+    "forecast_point_in_time_fixture_supported_missing_future_fractional": "passed against current checkout",
+    "py_compile": "passed",
+    "git_diff_check": "passed"
+  },
+  "build_and_runtime": {
+    "worker_image_build": "success before the final fractional-value rejection refinement; current checkout behavior was separately re-tested in a temporary container overlay",
+    "worker_image_id": "sha256:85cc5016345ce8682fc96219673b54c054aed74cc36affa3a705fef0b6975f71",
+    "collector_image_build": "cancelled during layer export after Docker reported a missing build snapshot",
+    "production_rollout": false,
+    "runtime_health_at": "2026-10-22T02:58:37Z",
+    "runtime_health": "healthy",
+    "fonbet_raw_stream_pending": 81,
+    "training_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  },
+  "decision": "blocked_for_current_source_data: current sampled Fonbet live payloads do not explicitly expose best_of. The checked-in path preserves a future explicit value and rejects unknown or untimestamped values. The production contour has not been redeployed; Docker image export currently reports a missing BuildKit snapshot."
+}

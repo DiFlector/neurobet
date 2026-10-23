@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-10-21T23:16:00Z",
+  "event_id": "a3dac460-9af7-46a8-9b03-af60ac96e14f",
+  "endpoint": "GET /api/events/{event_id}/forecasts",
+  "checks": {
+    "page_0_limit": 50,
+    "page_50_limit": 50,
+    "page_0_total": 106,
+    "page_50_total": 106,
+    "same_page_repeat_identical": true,
+    "pages_disjoint_by_timestamp_and_state_digest": true,
+    "newest_first": true,
+    "model_name_filter": "tennis_score_baseline",
+    "model_filter_total": 106,
+    "returned_model_names": [
+      "tennis_score_baseline"
+    ],
+    "odds_price_market_fields_absent": true
+  },
+  "response_sha256": {
+    "fc_page0.json": "f1ca36b84a858202453c718b934c03d1cfcd242049802d3fce4955686e1743f4",
+    "fc_page0_repeat.json": "f1ca36b84a858202453c718b934c03d1cfcd242049802d3fce4955686e1743f4",
+    "fc_page1.json": "1ef84e4bbd83b8b178d3a8bafd5bcd4e86c0e8060fb06e7f51b79e1d8057a495",
+    "fc_model.json": "f924dbe04019748da652563c61f2e0fce405e09186a5164462bf449fa103b905"
+  },
+  "runtime_container": "neurobet_backend healthy"
+}

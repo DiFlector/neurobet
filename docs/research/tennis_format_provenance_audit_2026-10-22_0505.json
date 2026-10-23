@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-10-22T05:02:52Z",
+  "scope": "trace admissible live event format provenance for odds-free forecast",
+  "evidence": {
+    "fonbet_runtime_source_archive": {
+      "artifact": "docs/research/tennis_fonbet_source_archive_runtime_2026-10-22_0500.json",
+      "event_rows": 43,
+      "sport_rows": 11,
+      "raw_event_fields_in_sample": [
+        "applicability", "id", "kind", "level", "name", "num", "place", "priority", "rootKind", "sortOrder", "sportId", "startTime", "statisticsTypes", "team1", "team1Id", "team2", "team2Id", "tv"
+      ],
+      "nested_field_names_matching_best_set_format_series": [],
+      "explicit_best_of_values": 0
+    },
+    "independent_forecast_contract": {
+      "admission_audit": "scripts/research/tennis_label_audit.py:886-919",
+      "forecast_asof_guard": "services/neural/app/tennis_forecast.py:94-118",
+      "required_metadata": ["best_of", "best_of_available_at"],
+      "behavior_when_missing": "feature is uncertified; live forecast reports UNSUPPORTED_FORMAT",
+      "latest_audit": "docs/research/tennis_label_audit_2026-10-22_0421.json",
+      "examples_checked": 4379,
+      "event_format_observed_as_of_count": 0
+    },
+    "flashscore_history_format": {
+      "parser": "services/research/app/tennis_flashscore.py:685-713",
+      "database_column": "packages/db/src/db/models/external_tennis.py:32-45",
+      "method": "best_of is inferred from gender and tournament-name text; every other case defaults to 3",
+      "separate_best_of_source_provenance_column": false,
+      "admission_use": "not accepted as explicit Fonbet event format; no available_at for best_of distinct from whole imported match record"
+    }
+  },
+  "decision": "no admissible explicit live format source found; retain fail-closed format gate; do not promote Flashscore heuristic or schema default into event_format",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

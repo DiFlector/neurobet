@@ -1,0 +1,168 @@
+{
+  "acceptance": "not_accepted_as fully current point-by-point: side orientation is confirmed via saved Flashscore scoreboard DOM/profile IDs. PBP caught up from 53 to 146 events and now includes set 1 (6-4), set 2 (2-6), and set 3 through games 0-3. The latest PBP version was retrieved 2026-10-22T01:19:30.486286Z and available at 01:19:31.664966Z; its last ordinary point state was 15-40. Fonbet snapshots at 01:19:59 and 01:20:18 showed set 3 game score 0-3 and current point 30-40. PBP therefore still lacks later points from the active game; retain as source-observed history but do not call it synchronized to the live point.",
+  "collection_status": "completed",
+  "event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+  "followup_fonbet_current_score": {
+    "current_game_points": [
+      "30",
+      "40"
+    ],
+    "set1": [
+      6,
+      4
+    ],
+    "set2": [
+      2,
+      6
+    ],
+    "set3_games": [
+      0,
+      3
+    ]
+  },
+  "followup_fonbet_score_observed_at": "2026-10-22T01:20:18.996071+00:00",
+  "followup_observed_at": "2026-10-22T01:20:20Z",
+  "followup_pbp_as_of": "2026-10-22T01:20:05.798992+00:00",
+  "followup_pbp_set3_last_point_state": [
+    "15",
+    "40"
+  ],
+  "followup_pbp_total": 146,
+  "followup_pbp_versions_total": 13,
+  "fonbet_event_key": "fonbet_69173294",
+  "fonbet_snapshot": {
+    "current_game": {
+      "is_tiebreak": false,
+      "points_a": "30",
+      "points_b": "40",
+      "schema_version": "1.0.0",
+      "timestamp": "2026-10-22T01:19:03.479269Z"
+    },
+    "current_period": 3,
+    "event_id": "fonbet_69173294",
+    "is_break_point": true,
+    "match_clock_seconds": 8237,
+    "possession": null,
+    "quarters": [],
+    "schema_version": "1.0.0",
+    "server": "player_a",
+    "sets": [
+      {
+        "games_a": 6,
+        "games_b": 4,
+        "schema_version": "1.0.0",
+        "set_number": 1,
+        "timestamp": "2026-10-22T01:19:03.479253Z"
+      },
+      {
+        "games_a": 2,
+        "games_b": 6,
+        "schema_version": "1.0.0",
+        "set_number": 2,
+        "timestamp": "2026-10-22T01:19:03.479256Z"
+      }
+    ],
+    "sport_code": "tennis",
+    "stats": {
+      "aces_a": 0,
+      "aces_b": 0,
+      "break_points_saved_a": 0,
+      "break_points_saved_b": 0,
+      "double_faults_a": 0,
+      "double_faults_b": 0,
+      "first_serve_win_pct_a": 0.0,
+      "first_serve_win_pct_b": 0.0,
+      "match_clock": {
+        "base_seconds": 8237,
+        "label": "Перерыв",
+        "paused": true,
+        "running": false,
+        "updated_at_ms": 1792631837245
+      },
+      "set_lines": [
+        {
+          "detail": null,
+          "games_a": 6,
+          "games_b": 4,
+          "live": false
+        },
+        {
+          "detail": null,
+          "games_a": 2,
+          "games_b": 6,
+          "live": false
+        },
+        {
+          "detail": "30*-40",
+          "games_a": 0,
+          "games_b": 3,
+          "live": true
+        }
+      ],
+      "sets_a": 1,
+      "sets_b": 1
+    },
+    "timestamp": "2026-10-22T01:19:03.479276Z"
+  },
+  "incompleteness_reasons": [],
+  "label": "Нишимото С — Чаудхари В",
+  "last_error": null,
+  "link_evidence": {
+    "external_home_is_fonbet_a": true,
+    "fonbet_participants": [
+      "Нишимото С",
+      "Чаудхари В"
+    ],
+    "method": "live_match_anchor_external_player_ids",
+    "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids"
+  },
+  "observed_at": "2026-10-22T01:18:43Z",
+  "orientation_confirmed": true,
+  "orientation_evidence_available_at": "2026-10-22T01:19:31.665047+00:00",
+  "pbp_as_of": "2026-10-22T01:19:07.138920+00:00",
+  "pbp_freshness_seconds_at_read": 35.041168,
+  "pbp_total": 146,
+  "queue_job": {
+    "event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+    "id": "match:cb7ca562-272e-498d-a657-ddea74cae648",
+    "kind": "match_lookup",
+    "label": "Нишимото С — Чаудхари В",
+    "last_success_at": "2026-10-21T23:03:12.789618+00:00",
+    "mode": "live",
+    "next_retry_at": "2026-10-21T23:02:58.769857+00:00",
+    "player": null,
+    "priority": 1,
+    "reason": null,
+    "related_events": 1,
+    "status": "matched",
+    "wait_seconds": 8154
+  },
+  "set_coverage": {
+    "1": {
+      "events": 64,
+      "last_game_score": [
+        6,
+        4
+      ],
+      "last_state": {
+        "game_result": [
+          6,
+          4
+        ]
+      }
+    },
+    "2": {
+      "events": 36,
+      "last_game_score": [
+        2,
+        5
+      ],
+      "last_state": [
+        "30",
+        "40"
+      ]
+    }
+  },
+  "source_match_id": "nFpUNjLN",
+  "worker_rollout": "reserved live PBP executor deployed 2026-10-22T01:11:47Z"
+}

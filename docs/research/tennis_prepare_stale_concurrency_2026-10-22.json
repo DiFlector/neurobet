@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-10-21T23:28:00Z",
+  "source": "four separate Python processes POSTing /api/tennis-history/prepare to local Research endpoint; proxy bypassed for localhost",
+  "event_id": "686b02b2-cfa9-445a-a9b5-efecf05463f4",
+  "http_statuses": [
+    200,
+    200,
+    200,
+    200
+  ],
+  "elapsed_seconds": 1.194,
+  "participants": [
+    {
+      "participant_id": "42b2d592-b7e2-4384-a442-ea526ef4c4a2",
+      "name": "Rublev Andrey",
+      "last_success_at_before": "2026-10-20T22:41:24.471229+00:00",
+      "job_attempts_before": 2,
+      "job_attempts_after": 2,
+      "job_status_after": "queued",
+      "api_ready": false,
+      "api_status": "running"
+    },
+    {
+      "participant_id": "bbe45762-0587-4d6a-8524-82970454ac7d",
+      "name": "Tsitsipas Stefanos",
+      "last_success_at_before": "2026-10-20T22:41:42.167310+00:00",
+      "job_attempts_before": 6,
+      "job_attempts_after": 6,
+      "job_status_after": "queued",
+      "api_ready": false,
+      "api_status": "running"
+    }
+  ],
+  "checks": {
+    "parallel_processes": 4,
+    "duplicate_refresh_attempts": false,
+    "same_event_returned_on_all_requests": true,
+    "both_players_reported_not_ready_while_refresh_queued": true
+  },
+  "limitation": "This proves concurrent stale-profile preparation coalesces to one durable queued job per participant. It does not prove worker completion or recovery from a non-empty browser-page checkpoint."
+}

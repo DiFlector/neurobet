@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-10-21T23:31:10.695234+00:00",
+  "source": "GET /api/tennis-history/flashscore/queue?limit=200&include_completed=true, deployed backend, read-only",
+  "http_status": 200,
+  "total_jobs": 582,
+  "statuses": {
+    "matched": 25,
+    "queued": 8,
+    "waiting_players": 10,
+    "finalized": 37,
+    "retry": 7,
+    "completed": 493,
+    "running": 2
+  },
+  "eligible_matches": 6,
+  "prepared_players": 4,
+  "identity_confirmation_required": 0,
+  "overdue_pbp": 0,
+  "documents_saved_last_hour": 7,
+  "confirmed_links_last_hour": 8,
+  "worker": {
+    "configured": true,
+    "healthy": true,
+    "last_heartbeat_at": "2026-10-21T23:31:03.710101+00:00",
+    "network_slots": 0,
+    "network_slots_limit": 2,
+    "cooldown_until": null
+  },
+  "returned_items": 200
+}

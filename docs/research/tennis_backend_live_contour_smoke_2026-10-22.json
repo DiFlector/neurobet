@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-10-21T22:59:53.256952+00:00",
+  "backend_health": {
+    "http_status": 200,
+    "status": "healthy"
+  },
+  "strategy_replay": {
+    "http_status": 200,
+    "mode": "read_only_candidate_replay",
+    "forecast_count": 0,
+    "signal_count": 0,
+    "writes_bets": false,
+    "writes_bankroll": false
+  },
+  "forecast_history": {
+    "http_status": 200,
+    "event_id": "b822725f-30b2-46fc-ab97-d9dc3b90ce28",
+    "total": 1,
+    "rows_returned": 1,
+    "payload_contains_odds_or_price_fields": false
+  },
+  "ledger_counts_before": {
+    "bets": 1024,
+    "ledger_entries": 3478,
+    "model_bet_journal": 12205
+  },
+  "ledger_counts_after": {
+    "bets": 1024,
+    "ledger_entries": 3478,
+    "model_bet_journal": 12205
+  },
+  "ledger_counts_unchanged": true,
+  "result": "passed"
+}

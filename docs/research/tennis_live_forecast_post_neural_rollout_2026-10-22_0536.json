@@ -1,0 +1,52 @@
+{
+  "observed_at_utc": "2026-10-22T05:35:11Z",
+  "purpose": "Verify independent odds-free forecast persistence after deployed neural rollout. This is a runtime coverage check only; it does not inspect model quality or train.",
+  "neural_image_digest": "sha256:bf10f5d44183c315f879e2070eb2f12353285a622baeeaf3413a7a72f6a586c1",
+  "neural_started_at": "2026-10-22T04:04:32.200125435Z",
+  "query_cutoff": "2026-10-22T04:04:32Z",
+  "rows_after_rollout": [
+    {
+      "event_id": "a436f1aa-a25f-42c0-a9aa-13c9fbc7b4e4",
+      "observed_at": "2026-10-22 05:06:06.594436+00",
+      "model_name": "tennis_score_baseline",
+      "model_version": "tennis_v1.0.0",
+      "feature_version": "tennis_odds_free_v1",
+      "sequence_no": 1,
+      "calculated_at": "2026-10-22T05:06:59.747474Z",
+      "forecast_available": false,
+      "quality_reasons": [
+        "UNSUPPORTED_FORMAT"
+      ],
+      "best_of": null,
+      "best_of_available_at": null,
+      "forecast_json_md5": "2df2c2acbe9ec0a70870b7062696573e"
+    },
+    {
+      "event_id": "a6fe2eab-3441-4a8c-899d-5088b28ccbe0",
+      "observed_at": "2026-10-22 05:27:07.371246+00",
+      "model_name": "tennis_score_baseline",
+      "model_version": "tennis_v1.0.0",
+      "feature_version": "tennis_odds_free_v1",
+      "sequence_no": 1,
+      "calculated_at": "2026-10-22T05:27:27.320366Z",
+      "forecast_available": false,
+      "quality_reasons": [
+        "UNSUPPORTED_FORMAT"
+      ],
+      "best_of": null,
+      "best_of_available_at": null,
+      "forecast_json_md5": "2f3f51859be14409bfb58cae17285359"
+    }
+  ],
+  "summary": {
+    "count": 2,
+    "all_unavailable_for_unsupported_format": true,
+    "probabilities_emitted": false,
+    "best_of_source_value_present": false,
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  },
+  "interpretation": "Deployed neural persisted forecasts after restart. Both rows fail closed because source-timed match format is unavailable; no probabilities are emitted. This closes the post-rollout inference/persistence check only. Explicit format provenance and admission remain blocked."
+}

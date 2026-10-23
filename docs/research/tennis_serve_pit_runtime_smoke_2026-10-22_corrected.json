@@ -1,0 +1,84 @@
+{
+  "check": "historical serve feature availability cutoff",
+  "result": "passed",
+  "checks": [
+    {
+      "as_of": "2026-10-21T22:35:00+00:00",
+      "provenance": {
+        "a": {
+          "volume_known": false,
+          "sample_points": 0.0,
+          "freshness_days": null,
+          "source_event_at": null,
+          "available_at": null,
+          "sources": [],
+          "availability_provenance": [],
+          "source_confidence": null,
+          "retrospective": null,
+          "missingness": "no_eligible_serve_logs"
+        },
+        "b": {
+          "volume_known": false,
+          "sample_points": 0.0,
+          "freshness_days": null,
+          "source_event_at": null,
+          "available_at": null,
+          "sources": [],
+          "availability_provenance": [],
+          "source_confidence": null,
+          "retrospective": null,
+          "missingness": "no_eligible_serve_logs"
+        }
+      },
+      "sample_weights": {
+        "a": 0.0,
+        "b": 0.0
+      }
+    },
+    {
+      "as_of": "2026-10-21T22:36:00+00:00",
+      "provenance": {
+        "a": {
+          "volume_known": true,
+          "sample_points": 2119.0,
+          "freshness_days": 157,
+          "source_event_at": "2026-05-17T00:00:00+00:00",
+          "available_at": "2026-10-21T22:35:21.580348+00:00",
+          "sources": [
+            "charting"
+          ],
+          "availability_provenance": [
+            "legacy_corrected_at_migration"
+          ],
+          "source_confidence": [
+            "unknown"
+          ],
+          "retrospective": true,
+          "missingness": null
+        },
+        "b": {
+          "volume_known": true,
+          "sample_points": 4095.0,
+          "freshness_days": 42,
+          "source_event_at": "2026-09-09T00:00:00+00:00",
+          "available_at": "2026-10-21T22:35:21.580348+00:00",
+          "sources": [
+            "charting"
+          ],
+          "availability_provenance": [
+            "legacy_corrected_at_migration"
+          ],
+          "source_confidence": [
+            "unknown"
+          ],
+          "retrospective": true,
+          "missingness": null
+        }
+      },
+      "sample_weights": {
+        "a": 0.9636198271941792,
+        "b": 0.9808383233532935
+      }
+    }
+  ]
+}

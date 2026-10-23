@@ -1,0 +1,2438 @@
+{
+  "generated_at": "2026-10-21T22:17:29.819777+00:00",
+  "scope": "unique, confirmed Fonbet links with archived source HTML; newest retrievable document per source match",
+  "network_used": false,
+  "parser_version_under_review": "flashscore-point-history-v5",
+  "review_notes": [
+    "The archived HTML was read from object storage; this check made no network requests and wrote no database rows.",
+    "Source point-state rows were compared with parser point states game by game; active server markers and tie-break winner markers were independently read from the source DOM.",
+    "The v3 persisted output was wrong for server side: UXYqpB76 has a source-highlighted home server in its first game, while all 40 parsed point records in that document say side 1. MZ1H6Phf and fVArlUH0 show the same all-side-1 v3 pattern. Parser v4 was deployed and appended from archived HTML; the older v3 documents and their earlier as_of reads remain unchanged.",
+    "Ten of the 30 latest linked archives have no recognized point rows. They remain documented coverage gaps, not parser passes."
+  ],
+  "summary": {
+    "matches_reviewed": 50,
+    "matches_with_source_point_rows": 23,
+    "matches_with_compared_games": 23,
+    "compared_games": 180,
+    "compared_point_states": 940,
+    "point_state_mismatches": 0,
+    "server_mismatches": 0,
+    "deuce_or_advantage_events": 154,
+    "tiebreak_point_events": 14,
+    "terminal_game_events": 180,
+    "raw_tiebreak_rows": 14,
+    "tiebreak_winner_mismatches": 0,
+    "tiebreak_server_mismatches": 0,
+    "matches_with_gaps": 28
+  },
+  "matches": [
+    {
+      "source_match_id": "IRjLM3El",
+      "fonbet_event_id": "53171f52-13bd-4b13-890b-3d768a58a42c",
+      "fonbet_participants": [
+        "Балан С-в",
+        "Эбстер А-л"
+      ],
+      "official_final_score": "2:1 (6-2 6-7 6-0)",
+      "external_title": "BAL 2-1 EBS | Sara Victoria Balan v Anna Lena Ebster 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "a231b9aa-1e76-476c-b6ec-4186befb9131",
+      "content_hash": "697313eebef9b94ff6f34c1cef2e6c6e13b44e891c92f849987e1c92ff97080a",
+      "archived_path": "snapshots/research/2026-10-21/IRjLM3El/697313eebef9b94ff6f34c1cef2e6c6e13b44e891c92f849987e1c92ff97080a-220635655140-99c2f0b1361d486198a1e71c9e7f40d6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:06:35.577387+00:00",
+      "html_length": 1175263,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "0ItWvhAb",
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "fonbet_participants": [
+        "Огура К",
+        "Ватанабэ-эрикссон А"
+      ],
+      "official_final_score": "2:0 (6-4 6-2)",
+      "external_title": "OGU 2-0 WAT | Kosuke Ogura v Alexander Watanabe Eriksson 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "3fcd7cb3-43d0-49a4-83f4-c07d305494e9",
+      "content_hash": "0058a4f615a0f5a23d059a1607bb5f825790fcb5229dfd01e622ed1efde2a8ac",
+      "archived_path": "snapshots/research/2026-10-21/0ItWvhAb/0058a4f615a0f5a23d059a1607bb5f825790fcb5229dfd01e622ed1efde2a8ac-215634953085-d8096200d6b044c4ae2d7071cc47d039.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:56:34.847135+00:00",
+      "html_length": 1175040,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "nNliaWlm",
+      "fonbet_event_id": "6acda045-2487-4b40-a593-bed89ba20cdb",
+      "fonbet_participants": [
+        "Купарев А",
+        "Олимжанова С"
+      ],
+      "official_final_score": "2:1 (2-6 6-1 6-3)",
+      "external_title": "KUP 2-1 OLI | Anastasiya Kuparev v Sabrina Olimjanova 14/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "1a4b85e5-821d-4269-ac6e-bc7c0ce7291e",
+      "content_hash": "0736ab7cde79c1b40dc1ea3a5ab9be88b926fe46a656944bfab7bcea0d2a49ad",
+      "archived_path": "snapshots/research/2026-10-21/nNliaWlm/0736ab7cde79c1b40dc1ea3a5ab9be88b926fe46a656944bfab7bcea0d2a49ad-215426264397-9686913e85ee4c318d9234b36c22079f.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:54:26.205227+00:00",
+      "html_length": 1174758,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "bw8mYRzg",
+      "fonbet_event_id": "9c0effed-3cf0-457c-af72-2f28680d9e13",
+      "fonbet_participants": [
+        "Чанта А",
+        "Аписа В"
+      ],
+      "official_final_score": "0:2 (4-6 2-6)",
+      "external_title": "CHA 0-2 API | Aunchisa Chanta v Violet Apisah 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "c3caee12-60c1-4253-892a-db707cd80e0c",
+      "content_hash": "d7442506bbf0e621f25b324c23b3f78999d5b9f89ae5210cbb7afe9ce33a3be2",
+      "archived_path": "snapshots/research/2026-10-21/bw8mYRzg/d7442506bbf0e621f25b324c23b3f78999d5b9f89ae5210cbb7afe9ce33a3be2-215337322536-552db6094d88483582ddf8777425392e.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:53:37.173339+00:00",
+      "html_length": 1174754,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "SrNEpU7j",
+      "fonbet_event_id": "03c27fa9-7e8f-4d92-a02e-fb0ec6aad1b4",
+      "fonbet_participants": [
+        "Моуйльерон-сальво М",
+        "Холлендер Н"
+      ],
+      "official_final_score": "1:2 (2-6 6-2 4-6)",
+      "external_title": "MOU 1-2 HOL | Manuel Mouilleron Salvo v Nicolas Hollender 13/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "39641bc5-0aad-4720-9966-c905295009e8",
+      "content_hash": "dc6d0d5b8c8548c786cabbe27a206b8af860f3935d6f1b2995c102a2dc69754e",
+      "archived_path": "snapshots/research/2026-10-21/SrNEpU7j/dc6d0d5b8c8548c786cabbe27a206b8af860f3935d6f1b2995c102a2dc69754e-214533673086-c22e744ccced4e6ba6126f852d4fe698.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:45:33.581458+00:00",
+      "html_length": 972839,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "dI1TK15L",
+      "fonbet_event_id": "c2837af2-393c-4df9-a9be-00751a6b55e8",
+      "fonbet_participants": [
+        "Фонтес-даморим Ф",
+        "Де Ла Пена Б"
+      ],
+      "official_final_score": "0:2 (6-7 1-6)",
+      "external_title": "FON 0-2 DE | Francisco Fontes Damorim v Bautista De La Pena 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "95b48f24-82b7-4696-b9cf-af05c5edfedf",
+      "content_hash": "ac7f84af8ea2589eb0169c60e997ce0af39e9fbf2a8efe97ceb9c542f0584742",
+      "archived_path": "snapshots/research/2026-10-21/dI1TK15L/ac7f84af8ea2589eb0169c60e997ce0af39e9fbf2a8efe97ceb9c542f0584742-214429663638-a5822377b9bd4f72b8e6021ed64659ca.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:44:29.580476+00:00",
+      "html_length": 1175447,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "Ak5w4yJq",
+      "fonbet_event_id": "b40373e6-b5fe-4a81-ab3b-9a1ee7abbff8",
+      "fonbet_participants": [
+        "Сакамото П",
+        "Эскурра-иснарди Э-х"
+      ],
+      "official_final_score": "2:1 (6-3 6-7 6-1)",
+      "external_title": "SAK 2-1 ESC | Pedro Sakamoto v Hernando Jose Escurra Isnardi 17/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "6c2dc9b6-0032-4dbf-ae32-31e06c774e75",
+      "content_hash": "c0a2061257d3b0a41620007f1b1f69a16c06644f68e4fae732ca91b686c4bc57",
+      "archived_path": "snapshots/research/2026-10-21/Ak5w4yJq/c0a2061257d3b0a41620007f1b1f69a16c06644f68e4fae732ca91b686c4bc57-214254376647-d51babc8928b4d2abaa4f8c3f86e8eb5.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:42:54.261080+00:00",
+      "html_length": 1176414,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "U1v4wMZ7",
+      "fonbet_event_id": "60de2867-141b-44eb-abb4-8e03a4cf744a",
+      "fonbet_participants": [
+        "Ла Серна Х-м",
+        "Торрес Х-б"
+      ],
+      "official_final_score": "2:0 (6-4 6-2)",
+      "external_title": "LA 2-0 TOR | Juan Manuel La Serna v Juan Bautista Torres 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "f2d6ae9f-e68d-4e6e-802b-1b6a04a08f7b",
+      "content_hash": "5708644358ee32170ca1b75169ff09a39604535efeae82ab50ed3ed0065a6bf1",
+      "archived_path": "snapshots/research/2026-10-21/U1v4wMZ7/5708644358ee32170ca1b75169ff09a39604535efeae82ab50ed3ed0065a6bf1-213556475507-c223c188d26b42a9927c9256a7f5517b.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:35:56.183269+00:00",
+      "html_length": 1015612,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 38,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 4,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 46,
+        "confirmed_points": 46,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "rRgwzmTF",
+      "fonbet_event_id": "a2aeaf81-8bc1-431f-b3b4-eb29794e00f0",
+      "fonbet_participants": [
+        "Адкар В",
+        "Шкутова А"
+      ],
+      "official_final_score": "2:1 (6-4 4-6 6-0)",
+      "external_title": "ADK 2-1 SHK | Vaishnavi Adkar v Anna Shkutova 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "77a5de84-6a26-484b-8ffe-2ffecbe6d130",
+      "content_hash": "4577915a8014080f397bf8d90fb43bcb0442ecd701c4191cb174239271d32afe",
+      "archived_path": "snapshots/research/2026-10-21/rRgwzmTF/4577915a8014080f397bf8d90fb43bcb0442ecd701c4191cb174239271d32afe-213537800416-d5cff11e0cce44b8a8cf19bdd74b4b3a.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:35:36.694996+00:00",
+      "html_length": 1008788,
+      "raw_game_rows": 6,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 6,
+      "games_compared": 6,
+      "source_point_states_compared": 32,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 4,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 6,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 3,
+        "unknown": 3
+      },
+      "parser_quality": {
+        "event_count": 38,
+        "confirmed_points": 38,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "4dlglQzK",
+      "fonbet_event_id": "b2f57d39-4d4f-4a29-9e30-b2d5d9f43e12",
+      "fonbet_participants": [
+        "Диабате Э",
+        "Альхуссейн Абдель-азиз Л"
+      ],
+      "official_final_score": "0:2 (3-6 3-6)",
+      "external_title": "DIA 0-2 ALH | Emira Diabate v Aziz Lamis Alhussein Abdel 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "3663f6f7-93a2-48f0-94bc-1cb394fe9295",
+      "content_hash": "cc87a8747b5f71e2082bfb02ad819fa382c3c1ffd5a9dbee20e4aa93850a9791",
+      "archived_path": "snapshots/research/2026-10-21/4dlglQzK/cc87a8747b5f71e2082bfb02ad819fa382c3c1ffd5a9dbee20e4aa93850a9791-211538680453-e7142deeeb0e4411bba6e2b0f1ff7c22.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:15:38.556451+00:00",
+      "html_length": 967012,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "KUsbomdk",
+      "fonbet_event_id": "62401ec9-4785-4580-b89f-63fd5dd1bed7",
+      "fonbet_participants": [
+        "Росси Л",
+        "Петкович М"
+      ],
+      "official_final_score": "0:2 (6-7 2-6)",
+      "external_title": "ROS 0-2 PET | Leonardo Rossi v Mika Petkovic 16/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "09bbff53-5e14-4456-8698-2f14c96bef8b",
+      "content_hash": "51e15affc671ef0ebd5604088ac3ce58f544838eb46b7c8747384e78b82d4305",
+      "archived_path": "snapshots/research/2026-10-21/KUsbomdk/51e15affc671ef0ebd5604088ac3ce58f544838eb46b7c8747384e78b82d4305-203522203359-8786a29f0ce7403cb7abfc67a920739c.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:35:22.137460+00:00",
+      "html_length": 1173906,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "zN99tEHD",
+      "fonbet_event_id": "1226cc34-57b7-42e5-90f5-0bf77e570e68",
+      "fonbet_participants": [
+        "Зиатдинова А",
+        "Бойян И-с"
+      ],
+      "official_final_score": "0:2 (1-6 0-6)",
+      "external_title": "ZIA 0-2 BOI | Alisa Ziatdinova v Ioana-Stefania Boian 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "594f9f16-b749-4f5f-92a5-eb105817f630",
+      "content_hash": "77adfbae9f7ab454af18c5eb3ce2e6a4d98f840b0a3616a4817f57bd5450961e",
+      "archived_path": "snapshots/research/2026-10-21/zN99tEHD/77adfbae9f7ab454af18c5eb3ce2e6a4d98f840b0a3616a4817f57bd5450961e-202041447788-469b6fd016b449cf8d5bcd5198b86fe4.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:20:41.380262+00:00",
+      "html_length": 1172928,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "86W5fRIj",
+      "fonbet_event_id": "50d3001f-bec1-49cf-b971-2ccbec237783",
+      "fonbet_participants": [
+        "Осорио Х-с",
+        "Андраде Да Силва Л"
+      ],
+      "official_final_score": "0:2 (4-6 5-7)",
+      "external_title": "OSO 0-2 AND | Juan Sebastian Osorio v Lucas Andrade da Silva 18/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "7a1a4970-db35-488e-8367-bb3a44b44781",
+      "content_hash": "36e23ee1239ac9371b1af71ec1c0933d35da0f0ea74978078b175cf154f08a9b",
+      "archived_path": "snapshots/research/2026-10-21/86W5fRIj/36e23ee1239ac9371b1af71ec1c0933d35da0f0ea74978078b175cf154f08a9b-201447583157-b7dd2978373246609d10037bed1f3dbe.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:14:47.546340+00:00",
+      "html_length": 1175621,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "UXWDUTIt",
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "fonbet_participants": [
+        "Дерепаско Т",
+        "Тамм К"
+      ],
+      "official_final_score": "2:0 (7-5 7-6)",
+      "external_title": "DER 2-0 TAM | Timofei Derepasko v Kristjan Tamm 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "dd0555ea-a856-40a4-b72e-58406c37d121",
+      "content_hash": "8e7b8d0ab9b330974383934972ad7a1c3581bb6350e663f3489cbec92af0544d",
+      "archived_path": "snapshots/research/2026-10-21/UXWDUTIt/8e7b8d0ab9b330974383934972ad7a1c3581bb6350e663f3489cbec92af0544d-201442755136-cf4eac686b9d40d8a5e48fa7c386fb77.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:14:41.578658+00:00",
+      "html_length": 1148723,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "AoLdaDAm",
+      "fonbet_event_id": "95d4b2f5-677c-4915-be37-2fc8a1c820bd",
+      "fonbet_participants": [
+        "Альварадо-берроспи А-о",
+        "Маккормик Т"
+      ],
+      "official_final_score": "0:2 (6-7 6-7)",
+      "external_title": "ALV 0-2 MCC | Alberto Odiseo Alvarado Berrospi v Tristan McCormick 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "20f07dcf-d995-4759-adba-f0db142d6d3b",
+      "content_hash": "325057ddec3ff44274a3d0be35963f1703841d98ffb1d58d7f26e258d4b19262",
+      "archived_path": "snapshots/research/2026-10-21/AoLdaDAm/325057ddec3ff44274a3d0be35963f1703841d98ffb1d58d7f26e258d4b19262-201408956908-7249ac84e0234ec0ad5f0f12ec2bde5a.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:14:08.663956+00:00",
+      "html_length": 1174674,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "E9vF4SAD",
+      "fonbet_event_id": "d9a12b4a-2003-40a7-a2b2-52f589591de9",
+      "fonbet_participants": [
+        "Тамм К",
+        "Шепп А"
+      ],
+      "official_final_score": "2:1 (6-3 3-6 6-3)",
+      "external_title": "TAM 2-1 SHE | Kristjan Tamm v Anton Shepp 15/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "b0e45f6f-59b4-4abe-9853-1ab2be703d94",
+      "content_hash": "af3d469d246eb37f15404c0cfaabfddbc8f8ad06bfb7d984c32304f7ef1df847",
+      "archived_path": "snapshots/research/2026-10-21/E9vF4SAD/af3d469d246eb37f15404c0cfaabfddbc8f8ad06bfb7d984c32304f7ef1df847-201252606859-40c4e91d46e542e3863dde25e7bd03c1.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:12:51.399824+00:00",
+      "html_length": 1010136,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 5,
+      "games_compared": 5,
+      "source_point_states_compared": 24,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 2,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 5,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 4,
+        "unknown": 3
+      },
+      "parser_quality": {
+        "event_count": 29,
+        "confirmed_points": 28,
+        "ambiguous_points": 1,
+        "gaps": [
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              1
+            ],
+            "reason": "point_sequence_missing"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              1
+            ],
+            "reason": "game_score_transition_missing_or_invalid"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              3
+            ],
+            "reason": "point_sequence_missing"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              3
+            ],
+            "reason": "game_score_transition_missing_or_invalid"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "EBHaqkUH",
+      "fonbet_event_id": "5794dcfd-b5aa-42f0-a4bf-da0adbf6f9ad",
+      "fonbet_participants": [
+        "Климас Я",
+        "Петрович Андрея"
+      ],
+      "official_final_score": "2:1 (1-6 7-6 6-2)",
+      "external_title": null,
+      "external_home_is_fonbet_a": null,
+      "document_id": "9ee54f05-c536-4e83-b870-57ba118b20bb",
+      "content_hash": "7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b",
+      "archived_path": "snapshots/research/2026-10-21/EBHaqkUH/7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b-200845600096-b0c8981d0e0c4d958c13b06625d9e680.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:08:45.466938+00:00",
+      "html_length": 6256,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "KY54BgIq",
+      "fonbet_event_id": "02b09f41-12ff-4506-ba1f-4fd2d942eb59",
+      "fonbet_participants": [
+        "Тран Д",
+        "Нишимура К"
+      ],
+      "official_final_score": "0:2 (3-6 1-6)",
+      "external_title": "TRA 0-2 NIS | Demi Tran v Kayo Nishimura 13/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "a0b3a31d-e8d0-42b5-b600-b29ccd52dc04",
+      "content_hash": "4fd2a203f7a34915539a3737bafa5d33769bb86766408b9f0cdc416189348a3e",
+      "archived_path": "snapshots/research/2026-10-21/KY54BgIq/4fd2a203f7a34915539a3737bafa5d33769bb86766408b9f0cdc416189348a3e-200614718912-1789aa14b85a49e19cd0442f445d7420.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:06:13.252381+00:00",
+      "html_length": 986529,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 37,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 6,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 3,
+        "away": 0,
+        "unknown": 4
+      },
+      "parser_quality": {
+        "event_count": 44,
+        "confirmed_points": 44,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "nToZHvll",
+      "fonbet_event_id": "9b0c1f38-5e1a-45ca-9585-3fdeb0ead4d2",
+      "fonbet_participants": [
+        "Капурро-таборда М",
+        "Мандлик Э"
+      ],
+      "official_final_score": "1:2 (2-6 6-4 4-6)",
+      "external_title": "CAP 1-2 MAN | Martina Capurro Taborda v Elizabeth Mandlik 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "5c5c23fe-6d36-4879-9d89-b57be13e1acc",
+      "content_hash": "948a8f5da1d558b8ae9c9fbfb32c362fe7d53ff8fec28f6fe5542122c363ad15",
+      "archived_path": "snapshots/research/2026-10-21/nToZHvll/948a8f5da1d558b8ae9c9fbfb32c362fe7d53ff8fec28f6fe5542122c363ad15-200538201775-e9ce936d6b1e4a4d8bdc124a39f5146b.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T20:05:37.089799+00:00",
+      "html_length": 1018860,
+      "raw_game_rows": 10,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 10,
+      "games_compared": 10,
+      "source_point_states_compared": 54,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 8,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 10,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 2,
+        "away": 1,
+        "unknown": 7
+      },
+      "parser_quality": {
+        "event_count": 64,
+        "confirmed_points": 64,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "EsWDKc0c",
+      "fonbet_event_id": "18a27f24-c9e9-41e1-9000-719b6a0bfbaa",
+      "fonbet_participants": [
+        "Де Брессер Ф",
+        "Снигирева А"
+      ],
+      "official_final_score": "2:1 (5-7 6-2 7-5)",
+      "external_title": "DE 2-1 SNI | Fleur De Bresser v Anna Snigireva 14/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "a83cf378-141b-4138-953e-e532bf708258",
+      "content_hash": "adc91fd3233c539cee69bed4a9696909de53d66b580f53e338de322c05cb127c",
+      "archived_path": "snapshots/research/2026-10-21/EsWDKc0c/adc91fd3233c539cee69bed4a9696909de53d66b580f53e338de322c05cb127c-195926805514-eb689ab66ca5442d82a90aa64e9f7e21.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:59:26.474133+00:00",
+      "html_length": 1173168,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "0rANrMk1",
+      "fonbet_event_id": "70fbc6c9-1dee-4e5b-9614-6dcdbf0a88b7",
+      "fonbet_participants": [
+        "Хорвит М",
+        "Секеркова В"
+      ],
+      "official_final_score": "0:2 (2-6 3-6)",
+      "external_title": "HOR 0-2 SEK | Mia Horvit v Veronika Sekerkova 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "0876e9ee-3ff3-4cb7-995a-573d3b1c53fe",
+      "content_hash": "dfd6e9285bedbc6fff6e674efd5e335a78286c94a11ecf5229c0745dacc68e83",
+      "archived_path": "snapshots/research/2026-10-21/0rANrMk1/dfd6e9285bedbc6fff6e674efd5e335a78286c94a11ecf5229c0745dacc68e83-195239850725-71d0e204eb3041c3afc6ebaebd80f900.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:52:39.757922+00:00",
+      "html_length": 971418,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "AHDzd3aT",
+      "fonbet_event_id": "d4b3b20d-9ea2-4411-a432-cd5e1b0451bc",
+      "fonbet_participants": [
+        "Сантуш-гава К-л",
+        "Бруна Н"
+      ],
+      "official_final_score": "1:2 (6-4 3-6 6-7)",
+      "external_title": "SAN 1-2 BRU | Kaua Lorenzo Santos Gava v Nicolas Bruna 14/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "425223a0-6146-49ec-a0a2-9810df597c27",
+      "content_hash": "607b0787ae90761ef12d8eeb6e3dc786db18414281fd2a60837f901b888e6279",
+      "archived_path": "snapshots/research/2026-10-21/AHDzd3aT/607b0787ae90761ef12d8eeb6e3dc786db18414281fd2a60837f901b888e6279-194626070505-6cd3ff4fabb9413bbf22fe973d658e42.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:46:25.655555+00:00",
+      "html_length": 967458,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "QJn14fYN",
+      "fonbet_event_id": "220e9211-b022-451c-b0b3-c167d6a4e8fe",
+      "fonbet_participants": [
+        "Осорио Х-с",
+        "Маккормик Т"
+      ],
+      "official_final_score": "2:0 (6-3 7-5)",
+      "external_title": "OSO 2-0 MCC | Juan Sebastian Osorio v Tristan McCormick 16/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "9dfe1801-9d00-4a74-8a3a-72a4b6ab1603",
+      "content_hash": "4fa46f517db76ec943f231e1e2a1468d80c1a67d6807ab728af4fa3bf7eeb6a9",
+      "archived_path": "snapshots/research/2026-10-21/QJn14fYN/4fa46f517db76ec943f231e1e2a1468d80c1a67d6807ab728af4fa3bf7eeb6a9-194608951904-e47e8ae231ee416fa77ffaf2554df4e2.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:46:08.381091+00:00",
+      "html_length": 1175129,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "nHDiv2iT",
+      "fonbet_event_id": "41ebdf20-b4e4-4478-85e9-f2545a3474d9",
+      "fonbet_participants": [
+        "Танака Ю",
+        "Исомура К"
+      ],
+      "official_final_score": "2:1 (4-6 6-3 6-0)",
+      "external_title": "TAN 2-1 ISO | Yu Tanaka v Kokoro Isomura 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "2778b7d4-89da-4e38-a6c8-8d4149beb678",
+      "content_hash": "464b85bdec7d4e083d5ab16da247a0f6afb5ec95f9f1cd76a760cb2fbaf8658a",
+      "archived_path": "snapshots/research/2026-10-21/nHDiv2iT/464b85bdec7d4e083d5ab16da247a0f6afb5ec95f9f1cd76a760cb2fbaf8658a-194425400179-d7b1444e322a4cdb8f292a741b5adb8f.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:44:25.345381+00:00",
+      "html_length": 1173077,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "GnjQSadT",
+      "fonbet_event_id": "4d26596e-d621-4848-8018-9490c40723c1",
+      "fonbet_participants": [
+        "Ван Импе А",
+        "Мунк-мортенсен Р"
+      ],
+      "official_final_score": "0:2 (4-6 1-6)",
+      "external_title": "VAN 0-2 MUN | Amelie Van Impe v Rebecca Munk Mortensen 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "7bc2c076-fe1f-4e72-8e69-6b279642a269",
+      "content_hash": "618234b9480d6b4e898884d21f1c29d35a7d1edb26455eb0d2691ef98aa115eb",
+      "archived_path": "snapshots/research/2026-10-21/GnjQSadT/618234b9480d6b4e898884d21f1c29d35a7d1edb26455eb0d2691ef98aa115eb-193720074388-b31611fc3b424bf3a817ddac9b835d62.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:37:19.638650+00:00",
+      "html_length": 1190568,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 30,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 2,
+        "away": 0,
+        "unknown": 5
+      },
+      "parser_quality": {
+        "event_count": 37,
+        "confirmed_points": 37,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "dzmkY9tp",
+      "fonbet_event_id": "3aeee205-c03c-4986-8d7a-2dd15dd1079b",
+      "fonbet_participants": [
+        "Пассаро Ф",
+        "Додиг М"
+      ],
+      "official_final_score": "2:1 (5-7 6-1 6-4)",
+      "external_title": "PAS 2-1 DOD | Francesco Passaro v Matej Dodig 17/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "b30c5a0a-c434-458c-bbdc-ab71bba53bd6",
+      "content_hash": "8c372f64b8c225ec191e7bf17183a26e38ee8af9806b7a41dae728307258a0fd",
+      "archived_path": "snapshots/research/2026-10-21/dzmkY9tp/8c372f64b8c225ec191e7bf17183a26e38ee8af9806b7a41dae728307258a0fd-192855531071-f124cc440c3242d6b36d5b6f08b485b2.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:28:54.210951+00:00",
+      "html_length": 988818,
+      "raw_game_rows": 10,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 10,
+      "games_compared": 10,
+      "source_point_states_compared": 50,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 10,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 10,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 1,
+        "unknown": 9
+      },
+      "parser_quality": {
+        "event_count": 60,
+        "confirmed_points": 60,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "0KqNR9Dj",
+      "fonbet_event_id": "239681ef-96e4-48ac-9185-eaa9ee9df287",
+      "fonbet_participants": [
+        "Гарсия-патрон Канальс A",
+        "Паскуаль-монтальво И"
+      ],
+      "official_final_score": "0:2 (3-6 3-6)",
+      "external_title": "GAR 0-2 PAS | Ariadna Garcia-Patron Canals v Isabel Pascual Montalvo 19/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "fa20a641-4c22-46f7-af4e-92531a9fd088",
+      "content_hash": "d9d6bfa69e17ff33711c9425c96021a56fdad278b01f9e1c4415fb7e0b0ec09f",
+      "archived_path": "snapshots/research/2026-10-21/0KqNR9Dj/d9d6bfa69e17ff33711c9425c96021a56fdad278b01f9e1c4415fb7e0b0ec09f-192837347438-f2e556b6ea9240169c1f7bc026f5e0fc.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:28:37.256906+00:00",
+      "html_length": 1175650,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "S4OovBAC",
+      "fonbet_event_id": "b822725f-30b2-46fc-ab97-d9dc3b90ce28",
+      "fonbet_participants": [
+        "Стефанос Циципас",
+        "Кукушкин М"
+      ],
+      "official_final_score": "2:0 (6-1 6-2)",
+      "external_title": "TSI 2-0 KUK | Stefanos Tsitsipas v Mikhail Kukushkin 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "82ceb7b6-2f5a-47c2-95d8-99c78cf10b86",
+      "content_hash": "9ff6c09fbe080e91e55a82c26091e48c3bcb94ccb11dc4eb27dfa9086aaaf841",
+      "archived_path": "snapshots/research/2026-10-21/S4OovBAC/9ff6c09fbe080e91e55a82c26091e48c3bcb94ccb11dc4eb27dfa9086aaaf841-192624238496-82a65e77c9854182b3bb42c20adb48b5.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:25:56.746819+00:00",
+      "html_length": 996380,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "CGACvqGF",
+      "fonbet_event_id": "e69485ca-dadf-47d7-ba87-7e8104185cb2",
+      "fonbet_participants": [
+        "Васа Э",
+        "Грибальдо М"
+      ],
+      "official_final_score": "1:2 (6-1 4-6 2-6)",
+      "external_title": "VAS 1-2 GRI | Eero Vasa v Matteo Gribaldo 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "541a41b0-ffb1-4575-9e92-8b013ce92d06",
+      "content_hash": "5ddba926dfd96743a2da44622826d34947c67b8cb985cda1a47b53782f7949d6",
+      "archived_path": "snapshots/research/2026-10-21/CGACvqGF/5ddba926dfd96743a2da44622826d34947c67b8cb985cda1a47b53782f7949d6-192610597890-f3cc55279fbf4ca49cb3cd3bac570442.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:26:08.285504+00:00",
+      "html_length": 1011847,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 39,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 2,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 2,
+        "away": 0,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 47,
+        "confirmed_points": 47,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "EJFnl3Uq",
+      "fonbet_event_id": "a152b09d-a2c0-437b-810a-49e96712f15b",
+      "fonbet_participants": [
+        "Басель В",
+        "Сакамото П"
+      ],
+      "official_final_score": "0:2 (6-7 2-6)",
+      "external_title": null,
+      "external_home_is_fonbet_a": null,
+      "document_id": "ff3a6da3-1b5a-4239-b262-9a6985332edc",
+      "content_hash": "7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b",
+      "archived_path": "snapshots/research/2026-10-21/EJFnl3Uq/7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b-192038903758-8fafce77c1424146aeeab9c8bd236476.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:20:38.704822+00:00",
+      "html_length": 6256,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "YBhdE9Ti",
+      "fonbet_event_id": "afa86de2-375f-4465-a60b-1f28983b6dbb",
+      "fonbet_participants": [
+        "Соке Д",
+        "Пассола Б"
+      ],
+      "official_final_score": null,
+      "external_title": "SOK 0-0 PAS | Duru Soke v Berta Passola 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "b77a1ae7-5a48-413e-8a2b-24d9483a63ec",
+      "content_hash": "835e7a20fa2182d7c5cf40022607ccdb7a3c49fde84e202c215cb88b6d632c9a",
+      "archived_path": "snapshots/research/2026-10-21/YBhdE9Ti/835e7a20fa2182d7c5cf40022607ccdb7a3c49fde84e202c215cb88b6d632c9a-191321450054-422821791aaa499382b60b1a434e8f33.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T19:13:21.380133+00:00",
+      "html_length": 974864,
+      "raw_game_rows": 1,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 1,
+      "games_compared": 1,
+      "source_point_states_compared": 4,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 1,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 1,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 5,
+        "confirmed_points": 5,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "fm0P43N6",
+      "fonbet_event_id": "1f090d28-a094-4843-8389-3c0c6d4d0948",
+      "fonbet_participants": [
+        "Ганесан А",
+        "Сингх К"
+      ],
+      "official_final_score": "0:2 (1-6 0-6)",
+      "external_title": "GAN 0-2 SIN | Adhithya Ganesan v Karan Singh 16/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "5fdc7349-7131-4dd0-a55f-93b0c75ff751",
+      "content_hash": "2b2324263e7be8c9401012dc4729e3afbd0447e2d9965486f0a25e6c0dc546ce",
+      "archived_path": "snapshots/research/2026-10-21/fm0P43N6/2b2324263e7be8c9401012dc4729e3afbd0447e2d9965486f0a25e6c0dc546ce-173611627055-64d5e28392f049b8a1a3386244eb07f5.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T17:36:10.053414+00:00",
+      "html_length": 980075,
+      "raw_game_rows": 6,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 6,
+      "games_compared": 6,
+      "source_point_states_compared": 31,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 8,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 6,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 3,
+        "away": 0,
+        "unknown": 3
+      },
+      "parser_quality": {
+        "event_count": 37,
+        "confirmed_points": 37,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "KWE3dtuf",
+      "fonbet_event_id": "b68898c6-7ddf-48bd-8921-1470dd197144",
+      "fonbet_participants": [
+        "Аяла Л",
+        "Бернардес Б"
+      ],
+      "official_final_score": "2:1 (4-6 6-2 6-2)",
+      "external_title": null,
+      "external_home_is_fonbet_a": null,
+      "document_id": "a7ab76ad-4de3-4acb-899e-5f933f1e3619",
+      "content_hash": "7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b",
+      "archived_path": "snapshots/research/2026-10-21/KWE3dtuf/7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b-162053377369-a9496302ad434ccb9487fc17d132d7a6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T16:20:53.275079+00:00",
+      "html_length": 6256,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "pIAEXIYr",
+      "fonbet_event_id": "04524190-3dae-41b7-a357-42c0004f4fac",
+      "fonbet_participants": [
+        "Бартоне К",
+        "Ефремова А"
+      ],
+      "official_final_score": "2:0 (6-4 6-3)",
+      "external_title": null,
+      "external_home_is_fonbet_a": null,
+      "document_id": "9c78ff26-a17e-4fd9-9287-02ec440038cd",
+      "content_hash": "7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b",
+      "archived_path": "snapshots/research/2026-10-21/pIAEXIYr/7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b-143523305572-e0f24ec72f824c488d23267f258cc0f6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T14:35:22.714410+00:00",
+      "html_length": 6256,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "hKHkMJSb",
+      "fonbet_event_id": "ee9a4034-8376-4406-9829-33b69e208bbe",
+      "fonbet_participants": [
+        "Сингх К",
+        "Чанта Т"
+      ],
+      "official_final_score": "2:0 (7-6 6-2)",
+      "external_title": "SIN 2-0 CHA | Karan Singh v Thanapet Chanta 17/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "b6414865-011e-4f3d-962a-043c9996a305",
+      "content_hash": "648394ee82a3f1ce0f0517882364fbd4173102f8cc0517ff2350acb090096e65",
+      "archived_path": "snapshots/research/2026-10-21/hKHkMJSb/648394ee82a3f1ce0f0517882364fbd4173102f8cc0517ff2350acb090096e65-135822051946-9a5605ce1e6b4a34b4b55855c84a8607.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:58:20.452327+00:00",
+      "html_length": 1189595,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 33,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 2,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 41,
+        "confirmed_points": 41,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "Ys5hDEVh",
+      "fonbet_event_id": "c21046e9-8aba-42c5-a8fa-9115629c5c86",
+      "fonbet_participants": [
+        "Фомин С",
+        "Такахаши Юсукэ"
+      ],
+      "official_final_score": "2:0 (6-4 6-1)",
+      "external_title": "FOM 2-0 TAK | Sergey Fomin v Yusuke Takahashi 16/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "cef0f2bd-63f4-47f5-86a6-51428e330493",
+      "content_hash": "2d09b7d14d6f85d966a82802ebf29cdeefd56f480897fb3c1b5327f277049a87",
+      "archived_path": "snapshots/research/2026-10-21/Ys5hDEVh/2d09b7d14d6f85d966a82802ebf29cdeefd56f480897fb3c1b5327f277049a87-134301478103-14cec94685434f6cb89e15770b70f017.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:43:00.553296+00:00",
+      "html_length": 1010855,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 39,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 6,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 5
+      },
+      "parser_quality": {
+        "event_count": 46,
+        "confirmed_points": 46,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "d0zFZ3Fj",
+      "fonbet_event_id": "b0b059ec-7995-4940-a081-15069a7d097b",
+      "fonbet_participants": [
+        "Юнис Ф",
+        "Де Кром М"
+      ],
+      "official_final_score": null,
+      "external_title": null,
+      "external_home_is_fonbet_a": null,
+      "document_id": "b831c59f-5c90-4c3a-b6da-2bb2a06242bf",
+      "content_hash": "7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b",
+      "archived_path": "snapshots/research/2026-10-21/d0zFZ3Fj/7f190126ca04603daadaf596656884dee2754f7f7b0239c84828ca37933ab44b-132852973851-4d1882666a6f4173bd014fc9cf99a89c.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:28:52.956168+00:00",
+      "html_length": 6256,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "M3okbAoo",
+      "fonbet_event_id": "a4f90291-cfa2-425d-a6c7-ff3b0e65a0b8",
+      "fonbet_participants": [
+        "Золотарева Р",
+        "Зелинская Д"
+      ],
+      "official_final_score": "2:1 (6-7 6-1 6-3)",
+      "external_title": "ZOL 2-1 ZEL | Rada Zolotareva v Daria Zelinskaya 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "fc2a94bd-28fe-4803-ae07-4aea070d9938",
+      "content_hash": "96c6dcba9c3e54fbd80378f86672a4c4cf70da6976739aa9700c9457087221bc",
+      "archived_path": "snapshots/research/2026-10-21/M3okbAoo/96c6dcba9c3e54fbd80378f86672a4c4cf70da6976739aa9700c9457087221bc-132802948633-abdf28bb5b7648f192272fef22e9caee.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:28:01.679641+00:00",
+      "html_length": 1016255,
+      "raw_game_rows": 9,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 9,
+      "games_compared": 9,
+      "source_point_states_compared": 56,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 16,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 9,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 1,
+        "away": 2,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 65,
+        "confirmed_points": 64,
+        "ambiguous_points": 1,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "KGIzzh5l",
+      "fonbet_event_id": "0040689b-0757-4632-9512-4ac52ac46887",
+      "fonbet_participants": [
+        "Тран Д",
+        "Инисан Э"
+      ],
+      "official_final_score": "2:1 (3-6 6-4 6-3)",
+      "external_title": "TRA 2-1 INI | Demi Tran v Eleejah Inisan 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "6982aa3c-044c-490c-8e9a-6266a46f7a4a",
+      "content_hash": "7e3d8c67500a255b55d168f80dcbacc793be21742b04fe4ef22cc5b44ee5669e",
+      "archived_path": "snapshots/research/2026-10-21/KGIzzh5l/7e3d8c67500a255b55d168f80dcbacc793be21742b04fe4ef22cc5b44ee5669e-130929352562-3999373ef641499fad8d717e52d667cb.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:09:22.851571+00:00",
+      "html_length": 1016195,
+      "raw_game_rows": 9,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 9,
+      "games_compared": 9,
+      "source_point_states_compared": 49,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 10,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 9,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 2,
+        "away": 3,
+        "unknown": 4
+      },
+      "parser_quality": {
+        "event_count": 58,
+        "confirmed_points": 58,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "xbdqylLi",
+      "fonbet_event_id": "079e0a99-ba92-4c47-9941-306c556550a6",
+      "fonbet_participants": [
+        "Кройтор К",
+        "Дорофеева-рыбас Ф"
+      ],
+      "official_final_score": "0:2 (3-6 4-6)",
+      "external_title": "KRO 0-2 DOR | Kristina Kroitor v Felitsata Dorofeeva-Rybas 17/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "cdd06a43-0f67-42e2-85bd-7908ec9e16f5",
+      "content_hash": "18cc4fc8092f9289b824235b53bfe71afea2173b83da16a32b8a1e28f12fa3c5",
+      "archived_path": "snapshots/research/2026-10-21/xbdqylLi/18cc4fc8092f9289b824235b53bfe71afea2173b83da16a32b8a1e28f12fa3c5-130536066138-000dd24628934782b4aa689e7f7c642c.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T13:05:31.716075+00:00",
+      "html_length": 992748,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "vFxWU8MM",
+      "fonbet_event_id": "48a0e02f-667b-49f4-bb03-a5232dfc8de6",
+      "fonbet_participants": [
+        "Маннарино А",
+        "Андрей Рублев"
+      ],
+      "official_final_score": "2:1 (6-4 3-6 6-3)",
+      "external_title": "MAN 2-1 RUB | Adrian Mannarino v Andrey Rublev 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "ea4328c2-92ea-406a-a34e-a6e5040b7b9b",
+      "content_hash": "35de9f2ee19609c57decc59ddf6f60ecbc26567ee45eac00da26bf20c8786e5a",
+      "archived_path": "snapshots/research/2026-10-21/vFxWU8MM/35de9f2ee19609c57decc59ddf6f60ecbc26567ee45eac00da26bf20c8786e5a-124710046415-19ee10089b89409daafb1199e747b91f.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:47:08.914012+00:00",
+      "html_length": 1017610,
+      "raw_game_rows": 9,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 9,
+      "games_compared": 9,
+      "source_point_states_compared": 53,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 12,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 9,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 1,
+        "unknown": 8
+      },
+      "parser_quality": {
+        "event_count": 62,
+        "confirmed_points": 62,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "zs0yGRyp",
+      "fonbet_event_id": "ea440c49-fd7a-47ec-9bea-5cfc8f149d05",
+      "fonbet_participants": [
+        "Кумру А",
+        "Созаонова Н"
+      ],
+      "official_final_score": "2:0 (6-4 6-1)",
+      "external_title": "KUM 2-0 SOZ | Ada Kumru v Nina Sozaonova 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "f9134e49-02f2-4a24-b092-aed9b34d8694",
+      "content_hash": "16cc69f226fd85312b711e55591ae3b75bfeeda667bbcc61e8e6150e19ae8ca6",
+      "archived_path": "snapshots/research/2026-10-21/zs0yGRyp/16cc69f226fd85312b711e55591ae3b75bfeeda667bbcc61e8e6150e19ae8ca6-121414905759-b0fdd89c00b64d7eb78684394eb55a6b.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:14:14.093292+00:00",
+      "html_length": 1009664,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 33,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 2,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 5
+      },
+      "parser_quality": {
+        "event_count": 40,
+        "confirmed_points": 40,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "hfOGBTiR",
+      "fonbet_event_id": "b91d1d67-ae80-4445-baa6-1153711bf5b3",
+      "fonbet_participants": [
+        "Хан Л",
+        "Кацуми Н"
+      ],
+      "official_final_score": "1:2 (6-4 4-6 3-6)",
+      "external_title": "KHA 1-2 KAT | Laquisa Khan v Nanari Katsumi 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "acb7b3ab-0817-4760-b238-5acf45bac226",
+      "content_hash": "fcda0ca6445eff1e1da8043eecc7b87bb878c760d7607763e1f5591d5840d188",
+      "archived_path": "snapshots/research/2026-10-21/hfOGBTiR/fcda0ca6445eff1e1da8043eecc7b87bb878c760d7607763e1f5591d5840d188-121222585387-489f82af332c4bd490bf92fe3f1417e4.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T12:12:21.405850+00:00",
+      "html_length": 1013760,
+      "raw_game_rows": 9,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 9,
+      "games_compared": 9,
+      "source_point_states_compared": 52,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 10,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 9,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 1,
+        "away": 0,
+        "unknown": 8
+      },
+      "parser_quality": {
+        "event_count": 61,
+        "confirmed_points": 60,
+        "ambiguous_points": 1,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "vV6BKNOq",
+      "fonbet_event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "fonbet_participants": [
+        "Суксумрарн Т",
+        "Масабаяши Т"
+      ],
+      "official_final_score": "2:0 (7-5 6-4)",
+      "external_title": "SUK - MAS | Thantub Suksumrarn v Tomohiro Masabayashi LIVE 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": false,
+      "document_id": "625fc117-506f-4103-9895-ea41a6048b7c",
+      "content_hash": "51d84d740ea2db944e7e096acad3b32f339bc362a1a4c3bbc65c6e2f79ddc8f8",
+      "archived_path": "snapshots/research/2026-10-21/vV6BKNOq/51d84d740ea2db944e7e096acad3b32f339bc362a1a4c3bbc65c6e2f79ddc8f8-111817819421-2e1f6a7cb541419896f9b9fba22adbec.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T11:18:17.643658+00:00",
+      "html_length": 1189748,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      }
+    },
+    {
+      "source_match_id": "nJQUcQ7s",
+      "fonbet_event_id": "d4a9d283-2507-4706-9b0b-31174d007888",
+      "fonbet_participants": [
+        "Шевченко А",
+        "Хара-френд Дж-д"
+      ],
+      "official_final_score": "2:0 (6-0 6-4)",
+      "external_title": "SHE 2-0 HAR | Alexander Shevchenko v Jay Dylan Hara Friend 15/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "387f0ab5-428c-45cd-aaba-8f75fafb4a20",
+      "content_hash": "f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134",
+      "archived_path": "snapshots/research/2026-10-21/nJQUcQ7s/f1fc7cadc781aad2c78f5f56bcc28dad34cef1eba14c07a5c2b57dc586a88134-091111040594-118bbb9107de415b979910143b565065.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T09:11:10.776423+00:00",
+      "html_length": 1018188,
+      "raw_game_rows": 10,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 10,
+      "games_compared": 10,
+      "source_point_states_compared": 53,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 12,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 10,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 1,
+        "unknown": 9
+      },
+      "parser_quality": {
+        "event_count": 63,
+        "confirmed_points": 63,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "WAlDxZFD",
+      "fonbet_event_id": "f232c8b5-6fd2-429f-8e17-2d3e9fdee428",
+      "fonbet_participants": [
+        "Шин М",
+        "Такахаши Юсукэ"
+      ],
+      "official_final_score": "0:2 (4-6 6-7)",
+      "external_title": "SHI 0-2 TAK | Maxim Shin v Yusuke Takahashi 13/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "6abf9dbe-3a2f-4795-89e6-9f7a5d662777",
+      "content_hash": "0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92",
+      "archived_path": "snapshots/research/2026-10-21/WAlDxZFD/0d69359892517391835e8818ae4aa8731499212173d501910067b3342234eb92-085159614685-f3cfa2f1bab14a009822cd3a4692f3d5.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T08:51:59.230598+00:00",
+      "html_length": 1021188,
+      "raw_game_rows": 12,
+      "raw_tiebreak_rows": 14,
+      "raw_point_rows": 12,
+      "games_compared": 12,
+      "source_point_states_compared": 73,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 20,
+      "tiebreak_point_events": 14,
+      "terminal_game_events": 12,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [
+        {
+          "set": 2,
+          "score": [
+            1,
+            0
+          ],
+          "source_winner": 0,
+          "parsed_winner": 0,
+          "source_server": null,
+          "parsed_server": null
+        },
+        {
+          "set": 2,
+          "score": [
+            1,
+            1
+          ],
+          "source_winner": 1,
+          "parsed_winner": 1,
+          "source_server": null,
+          "parsed_server": null
+        },
+        {
+          "set": 2,
+          "score": [
+            1,
+            2
+          ],
+          "source_winner": 1,
+          "parsed_winner": 1,
+          "source_server": null,
+          "parsed_server": null
+        },
+        {
+          "set": 2,
+          "score": [
+            1,
+            3
+          ],
+          "source_winner": 1,
+          "parsed_winner": 1,
+          "source_server": 0,
+          "parsed_server": 0
+        },
+        {
+          "set": 2,
+          "score": [
+            6,
+            7
+          ],
+          "source_winner": 1,
+          "parsed_winner": 1,
+          "source_server": 0,
+          "parsed_server": 0
+        },
+        {
+          "set": 2,
+          "score": [
+            6,
+            8
+          ],
+          "source_winner": 1,
+          "parsed_winner": 1,
+          "source_server": null,
+          "parsed_server": null
+        }
+      ],
+      "source_server_sides": {
+        "home": 1,
+        "away": 1,
+        "unknown": 10
+      },
+      "parser_quality": {
+        "event_count": 100,
+        "confirmed_points": 99,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "ltboIW4e",
+      "fonbet_event_id": "5c7d53e0-0e33-4db4-829b-6d17c701942a",
+      "fonbet_participants": [
+        "Свитолина Э",
+        "Людмила Самсонова"
+      ],
+      "official_final_score": "2:1 (6-2 5-7 6-2)",
+      "external_title": "SVI 2-1 SAM | Elina Svitolina v Liudmila Samsonova 14/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "c1b5daf1-1512-4f33-b4dc-a27588404815",
+      "content_hash": "94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801",
+      "archived_path": "snapshots/research/2026-10-21/ltboIW4e/94c0d2cee03034efcffa469cf1cd6fd08b87451f2c97d488c70288f1de57e801-075320578143-ef66820c99d14097aa4fad2d874a4d5c.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:53:20.137146+00:00",
+      "html_length": 990445,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 45,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 8,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 2,
+        "away": 4,
+        "unknown": 2
+      },
+      "parser_quality": {
+        "event_count": 53,
+        "confirmed_points": 53,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "nqALMPsJ",
+      "fonbet_event_id": "2c56621c-be9f-4fbb-ab77-f4551b21a28a",
+      "fonbet_participants": [
+        "Дев С Д П",
+        "Папаркар А"
+      ],
+      "official_final_score": "2:0 (6-4 6-2)",
+      "external_title": "DEV 2-0 PAP | S D Prajwal Dev v Arnav Paparkar 15/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "0571a565-fa0f-4a6c-b9ee-721eecf2fb58",
+      "content_hash": "b4cb5b0ba2d924e59a8d535b403a98bea18fabc0c62242d3311e33de29a83b1e",
+      "archived_path": "snapshots/research/2026-10-21/nqALMPsJ/b4cb5b0ba2d924e59a8d535b403a98bea18fabc0c62242d3311e33de29a83b1e-073411619386-37f451ca74a24f2ab3e35e118d6a0242.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:34:09.688010+00:00",
+      "html_length": 984616,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 32,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 40,
+        "confirmed_points": 40,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "h4onFrXb",
+      "fonbet_event_id": "2abb4575-b303-41ab-a6e8-01fc9c27dccc",
+      "fonbet_participants": [
+        "Сасикумар М",
+        "Мацуда Рюки"
+      ],
+      "official_final_score": "0:2 (4-6 3-6)",
+      "external_title": "SAS 0-2 MAT | Mukund Sasikumar v Ryuki Matsuda 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "fd45e994-f141-4af0-9c36-ecf180ed067e",
+      "content_hash": "ef8465b514933504cffe4bb56a998a6bab73bd768a5f97956b70703c75fb9f2b",
+      "archived_path": "snapshots/research/2026-10-21/h4onFrXb/ef8465b514933504cffe4bb56a998a6bab73bd768a5f97956b70703c75fb9f2b-072502708691-89cf4a96484e4da3a44a59a152b628ab.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:25:02.448767+00:00",
+      "html_length": 988333,
+      "raw_game_rows": 9,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 9,
+      "games_compared": 9,
+      "source_point_states_compared": 41,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 9,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 3,
+        "away": 1,
+        "unknown": 5
+      },
+      "parser_quality": {
+        "event_count": 50,
+        "confirmed_points": 50,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    },
+    {
+      "source_match_id": "2TkVRpXO",
+      "fonbet_event_id": "8b048749-5115-4fe1-ad36-6b92392cffea",
+      "fonbet_participants": [
+        "Уррибарренс-рамирес И",
+        "Полинг К"
+      ],
+      "official_final_score": "2:0 (6-3 6-1)",
+      "external_title": "URR 2-0 POL | Iker Urribarrens Ramirez v Karl Poling 15/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "ffd6c536-055c-42aa-8750-2ef2868a726d",
+      "content_hash": "81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93",
+      "archived_path": "snapshots/research/2026-10-21/2TkVRpXO/81c4e6afcaa38c45b4c77732eb4833f078148732e43b41158b98e60f43d5bf93-072439666182-8ce109a147764e24b1977f46a37144ab.json",
+      "stored_parser_version": "flashscore-point-history-v4",
+      "retrieved_at": "2026-10-21T07:24:39.032554+00:00",
+      "html_length": 1190635,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 42,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 12,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 5
+      },
+      "parser_quality": {
+        "event_count": 49,
+        "confirmed_points": 49,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      }
+    }
+  ]
+}

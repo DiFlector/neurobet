@@ -1,0 +1,37 @@
+{
+  "observed_at_utc": "2026-10-22T05:39:53Z",
+  "source": "read-only Docker stats, host free, and pg_stat_activity snapshot",
+  "postgres_container_memory": "1.998 GiB / 2 GiB",
+  "postgres_cpu": "20.85%",
+  "host_memory": {
+    "total": "13 GiB",
+    "available": "3.4 GiB",
+    "swap_used": "5.9 GiB"
+  },
+  "database_activity": {
+    "states": {
+      "idle": 12,
+      "active_io_datafileread": 1,
+      "active_ipc_bufferio": 1,
+      "active_other": 1,
+      "idle_in_transaction": 1
+    },
+    "active_queries": [
+      {
+        "client": "172.25.0.6",
+        "age_seconds": 5,
+        "family": "event_state_snapshots SELECT"
+      },
+      {
+        "client": "172.25.0.6",
+        "age_seconds": 3,
+        "family": "event_state_snapshots SELECT"
+      }
+    ]
+  },
+  "decision": "Do not run the full multi-target admission audit at this capacity. Wait for PostgreSQL headroom or optimize the broad query under a controlled maintenance window. Current complete admission remains the 04:21 audit.",
+  "training_started": false,
+  "candidate_evaluation_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

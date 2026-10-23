@@ -1,0 +1,25 @@
+{
+  "generated_at_utc": "2026-10-22T14:37:32.616328Z",
+  "scope": "Read-only current event-format availability check for Phase 52. This inspects persisted collector-normalized event metadata, not raw source payloads.",
+  "freshness_rule": "live tennis events with last_seen_at within 2 minutes at query time",
+  "source": "public.events.metadata_json",
+  "result": "explicit_source_timed_format_absent",
+  "counts": {
+    "event_count": 36,
+    "events_with_best_of": 0,
+    "events_with_best_of_available_at": 0,
+    "events_with_event_format": 0,
+    "observed_at_latest": "2026-10-22T14:37:32.467485+00:00",
+    "field_names": [
+      "fonbet_official_result_observations",
+      "raw_tournament",
+      "set_winners",
+      "surface"
+    ]
+  },
+  "previous_raw_source_archive": "docs/research/tennis_fonbet_source_archive_runtime_2026-10-22_0500.json",
+  "interpretation": "No best_of, best_of_available_at, or event_format is present in these recently observed event metadata rows. This confirms the current collector output cannot certify format; it does not claim a complete current raw Fonbet schema audit.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

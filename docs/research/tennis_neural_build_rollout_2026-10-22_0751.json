@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-10-22T07:51:00Z",
+  "purpose": "Record bounded image-build attempts for the Neural point-in-time identity provenance rollout; no model training was started.",
+  "buildx": {
+    "command": "docker compose build neural",
+    "result": "cancelled_after_stalled_export",
+    "observed": "BuildKit reached exporting layers, then remained idle with no process I/O for over 3 minutes; command was stopped."
+  },
+  "classic_builder": {
+    "command": "DOCKER_BUILDKIT=0 docker compose build neural",
+    "result": "failed",
+    "error": "pip install failed with zipfile.BadZipFile: Bad CRC-32 for scipy/spatial/transform/_rotation_cy.cpython-312-x86_64-linux-gnu.so",
+    "observed": "Dependency installation selected current compatible versions including xgboost 3.4.1 and its CUDA runtime packages before failing while installing SciPy."
+  },
+  "runtime_after_attempts": {
+    "container": "neurobet_neural",
+    "health": "healthy",
+    "image": "sha256:bf10f5d44183c315f879e2070eb2f12353285a622baeeaf3413a7a72f6a586c1",
+    "status": "previous deployed image remains active; checkout identity provenance change is not deployed"
+  },
+  "safety": {
+    "database_migration_032_already_applied": true,
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_opened": false,
+    "shadow_registered": false
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-10-22T00:14:20.530996Z",
+  "runtime_scope": "deployed backend, read-only GET; repeated read-only PostgreSQL counters before and after",
+  "endpoint": "GET /api/tennis/odds-free/strategy-replay?confirm_positive_ev=false",
+  "http_status": 200,
+  "eligible_event_count": 10,
+  "live_event_count": 10,
+  "prematch_event_count": 0,
+  "forecast_count": 4,
+  "signal_count": 0,
+  "unavailable_forecasts": 4,
+  "writes_bets": false,
+  "writes_bankroll": false,
+  "database_counts_before": {
+    "bets": 1024,
+    "ledger_entries": 3478,
+    "model_bet_journal": 12207
+  },
+  "database_counts_after": {
+    "bets": 1024,
+    "ledger_entries": 3478,
+    "model_bet_journal": 12207
+  },
+  "counts_unchanged": true,
+  "limitation": "All four returned forecasts were unavailable; no live positive signal was produced. Candidate signal generation is covered by fixture tests."
+}

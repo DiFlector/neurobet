@@ -1,0 +1,75 @@
+{
+  "generated_at_utc": "2026-10-22T12:28:01Z",
+  "scope": "Read-only runtime census after the 11:48:22 UTC admission cutoff",
+  "source": {
+    "fonbet_tennis_events": {
+      "total": 3791,
+      "numeric_source_event_ids": 3450,
+      "explicit_best_of": 0,
+      "best_of_with_source_time": 0
+    },
+    "point_history_versions": {
+      "non_retrospective": {
+        "source_matches": 27,
+        "versions": 288,
+        "point_states": 13614,
+        "latest_available_at_utc": "2026-10-22T12:14:26.119689Z"
+      },
+      "retrospective": {
+        "source_matches": 88,
+        "versions": 1143,
+        "point_states": 20333,
+        "latest_available_at_utc": "2026-10-22T12:27:55.477511Z"
+      },
+      "distinct_source_matches_across_both": 100,
+      "versions_total": 1431,
+      "point_states_total": 33947
+    },
+    "source_keyed_refresh_jobs": 0,
+    "point_refresh_queue": {
+      "total": 2977,
+      "waiting_players": 2642,
+      "waiting_players_reasons": {
+        "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED": 2317,
+        "PLAYER_SOURCE_IDS_MISSING": 325
+      },
+      "retry": 198,
+      "queued": 76,
+      "finalized": 52,
+      "waiting_match": 4,
+      "completed": 3,
+      "running": 2,
+      "retry_unmatched_legacy": 128
+    },
+    "profile_refresh_queue": {
+      "queued": 562,
+      "retry": 1041,
+      "running": 2,
+      "completed": 361,
+      "failed": 483,
+      "waiting_confirmation": 8,
+      "skipped": 84,
+      "top_retry_reasons": {
+        "SEARCH_COMPLETED_NO_MATCH": 927,
+        "PREEMPTED_FOR_CURRENT_EVENT": 36,
+        "PROFILE_TIMEOUT_PROCESS_TERMINATED": 33,
+        "NO_ALTERNATIVE_PROFILE_DATA": 16
+      }
+    }
+  },
+  "admission_impact": {
+    "latest_completed_audit_cutoff_utc": "2026-10-22T11:48:22.068068Z",
+    "latest_completed_admission": "blocked",
+    "new_non_retrospective_source_matches_after_cutoff": 6,
+    "linked_matches_finished_after_cutoff": 3,
+    "finished_matches_with_confirmed_side_order": 2,
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "shadow_registered": false
+  },
+  "interpretation": [
+    "Observed and retrospective PBP coverage continue to grow, but the post-cutoff finished matches require another as-of validation pass before labels can enter a training manifest.",
+    "Fonbet still supplies no explicit or source-timestamped best_of field, so event_format PIT remains uncertified.",
+    "Most PBP jobs are waiting for historical match indexing or source player IDs; additional browser slots do not clear these waits."
+  ]
+}

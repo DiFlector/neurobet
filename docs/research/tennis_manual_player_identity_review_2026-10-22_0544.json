@@ -1,0 +1,53 @@
+{
+  "reviewed_at_utc": "2026-10-22T05:44:50Z",
+  "scope": "Manual resolution of the two profiles blocking live PBP for one current W35 Qian Daohu event.",
+  "fonbet_event": {
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "participants": [
+      {
+        "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+        "fonbet_name": "Ян Иди",
+        "search_status": "not_found",
+        "search_error": "SEARCH_COMPLETED_NO_MATCH",
+        "flashscore_player_id": "ziXD7L4M",
+        "flashscore_name": "Yidi Yang",
+        "flashscore_profile_url": "https://www.flashscore.com/player/yang-yidi/ziXD7L4M/",
+        "wta_player_id": "324323",
+        "wta_profile_url": "https://www.wtatennis.com/players/324323/yidi-yang/stats"
+      },
+      {
+        "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+        "fonbet_name": "Юань Чэнии",
+        "search_status": "not_found",
+        "search_error": "SEARCH_COMPLETED_NO_MATCH",
+        "flashscore_player_id": "rkpSzNfa",
+        "flashscore_name": "Chengyiyi Yuan",
+        "flashscore_profile_url": "https://www.flashscore.com/player/yuan-chengyiyi/rkpSzNfa/",
+        "wta_player_id": "324575",
+        "wta_profile_url": "https://www.wtatennis.com/players/324575/chengyiyi-yuan/stats"
+      }
+    ],
+    "blocked_point_history": {
+      "status": "waiting_players",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "oldest_wait_seconds": 12980
+    }
+  },
+  "source_evidence": {
+    "flashscore_head_to_head": "https://www.flashscore.co.za/match/tennis/yang-yidi-ziXD7L4M/yuan-chengyiyi-rkpSzNfa/",
+    "current_match_listing": "https://www.tennisbrain.com/predictions/?bookmaker=bet365",
+    "current_match_listing_observation": "22 Oct 2026 W35 Qian Daohu, Chengyiyi Yuan vs Yidi Yang",
+    "official_tournament_fact_sheet": "https://www.itftennis.com/en/tournament/w35-qian-daohu/chn/2026/w-itf-chn-2026-029/fact-sheet/",
+    "official_tournament_key": "W-ITF-CHN-2026-029",
+    "official_tournament_window": "19-25 Oct 2026; outdoor hard",
+    "official_wta_player_pages": [
+      "https://www.wtatennis.com/players/324323/yidi-yang/stats",
+      "https://www.wtatennis.com/players/324575/chengyiyi-yuan/stats"
+    ]
+  },
+  "decision": "Confirm both individual Flashscore identity mappings for this Fonbet event. Evidence converges on exact name transliteration, the exact Flashscore player names and IDs, an H2H page joining those two IDs, and official WTA records for both players. The independent current-match listing corroborates the event pairing; the official ITF fact sheet confirms the tournament identity and dates. No historical result label or feature is inferred from this identity decision.",
+  "confidence": "high for player identity; this does not by itself confirm that Flashscore has a complete PBP document for the current match.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

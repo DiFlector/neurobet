@@ -1,0 +1,83 @@
+{
+  "final_rollout_at": "2026-10-22T01:11:47Z",
+  "generated_at": "2026-10-22T01:42:20Z",
+  "observations": [
+    "61/61 queue API samples returned HTTP 200 and worker heartbeat was healthy in 61/61 samples.",
+    "overdue_pbp was 1 in 6 samples, maximum 1, and 0 in the final sample.",
+    "resource sampler completed 55/55 samples without errors and observed at most two Chromium roots; worker peak RSS from Docker samples was 1023 MiB.",
+    "rolling-hour documents_saved_last_hour increased 16 to 40 and confirmed_links_last_hour 16 to 42; these counters do not establish full import completeness.",
+    "one HTTP 429 occurred on a Livesport search request; the worker continued dispatching. No worker traceback or timeout was logged during the soak.",
+    "No forced I/O stall was injected."
+  ],
+  "outcome": "passed for 30-minute API/worker heartbeat and resource sampling; full-queue throughput, source import completeness and injected I/O stall remain unverified",
+  "prior_baseline": {
+    "resources": {
+      "first_sample_at": "2026-10-22T00:27:26.472553+00:00",
+      "flashscore_worker_memory_max_mib": null,
+      "last_sample_at": "2026-10-22T00:57:26.472546+00:00",
+      "max_chromium_roots": 2,
+      "path": "docs/research/flashscore_resources_2026-10-22_post-final-restart.jsonl",
+      "sample_count": 55,
+      "sampler_errors": 0,
+      "sha256": "1c668ca32e1f80273ea0f8114012f77eba0ae0102c949f0b77c31f23e99228ba"
+    },
+    "runtime": {
+      "confirmed_links_last_hour_start_end": [
+        25,
+        22
+      ],
+      "documents_saved_last_hour_start_end": [
+        25,
+        22
+      ],
+      "first_sample_at": "2026-10-22T00:27:26.491529+00:00",
+      "http_200": 61,
+      "last_sample_at": "2026-10-22T00:57:26.491519+00:00",
+      "latency_seconds": {
+        "max": 0.333,
+        "p50": 0.083,
+        "p95": 0.227
+      },
+      "overdue_pbp_max": 1,
+      "overdue_pbp_samples": 16,
+      "path": "docs/research/flashscore_soak_2026-10-22_post-final-restart.jsonl",
+      "sample_count": 61,
+      "sha256": "4122d6573069f4fd895d5e9abec94915bcd057460ab96be72d5732f2f3d5864c",
+      "worker_healthy": 58
+    }
+  },
+  "resource_soak": {
+    "first_sample_at": "2026-10-22T01:12:10.779862+00:00",
+    "flashscore_worker_memory_max_mib": 1529.9,
+    "last_sample_at": "2026-10-22T01:42:10.779832+00:00",
+    "max_chromium_roots": 2,
+    "path": "docs/research/flashscore_resources_2026-10-22_post-final-rollout.jsonl",
+    "sample_count": 55,
+    "sampler_errors": 0,
+    "sha256": "c68f9a8df5251380000d4bddc75460cd0aa81c6402aff0c29360da636e1318e1"
+  },
+  "runtime_soak": {
+    "confirmed_links_last_hour_start_end": [
+      16,
+      42
+    ],
+    "documents_saved_last_hour_start_end": [
+      16,
+      40
+    ],
+    "first_sample_at": "2026-10-22T01:12:08.443929+00:00",
+    "http_200": 61,
+    "last_sample_at": "2026-10-22T01:42:08.443837+00:00",
+    "latency_seconds": {
+      "max": 1.282,
+      "p50": 0.104,
+      "p95": 0.232
+    },
+    "overdue_pbp_max": 1,
+    "overdue_pbp_samples": 6,
+    "path": "docs/research/flashscore_soak_2026-10-22_post-final-rollout.jsonl",
+    "sample_count": 61,
+    "sha256": "f284cc78cbcf97249b361c3a23534e922f3b776c94b0e5d1c7efc96b15d9b954",
+    "worker_healthy": 61
+  }
+}

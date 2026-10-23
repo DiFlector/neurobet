@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0.0",
+  "captured_at_utc": "2026-10-22T09:42:52Z",
+  "source": "read-only PostgreSQL snapshot; no training or holdout quality evaluation",
+  "point_history_versions": {
+    "known_versions": 1161,
+    "source_matches": 85,
+    "retrospective_false": {
+      "source_matches": 20,
+      "fonbet_events": 20,
+      "versions": 159,
+      "parsed_point_states": 6051,
+      "first_available_at": "2026-10-21T14:28:46.519823+00:00",
+      "last_available_at": "2026-10-22T09:42:30.711325+00:00"
+    },
+    "retrospective_true": {
+      "source_matches": 75,
+      "fonbet_events": 75,
+      "versions": 1002,
+      "parsed_point_states": 17931
+    },
+    "note": "Counts overlap by match if a source match has versions of both kinds."
+  },
+  "format_provenance": {
+    "fonbet_tennis_events": 3713,
+    "explicit_best_of": 0,
+    "timestamped_best_of": 0,
+    "fallback_added": false
+  },
+  "queues": {
+    "tennis_point_refresh_jobs": {
+      "completed": 3,
+      "finalized": 43,
+      "queued": 94,
+      "retry": 175,
+      "running": 2,
+      "waiting_match": 4,
+      "waiting_players": 2597
+    },
+    "tennis_source_point_refresh_jobs": {},
+    "tennis_player_refresh_jobs": {
+      "completed": 349,
+      "failed": 498,
+      "queued": 510,
+      "retry": 1087,
+      "running": 2,
+      "skipped": 84,
+      "waiting_confirmation": 6
+    }
+  },
+  "admission": {
+    "last_full_audit": "docs/research/tennis_label_audit_2026-10-22_0808.json",
+    "status": "blocked",
+    "reasons_unchanged_by_this_snapshot": [
+      "event_format_source_time_missing",
+      "P/G/S_label_coverage_below_500"
+    ],
+    "training_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "reviewed_at": "2026-10-22T04:12:40Z",
+  "scope": "Three real Flashscore PBP links with versioned source times, compared with the latest Fonbet state snapshot available by each PBP retrieval time.",
+  "method": "Read-only Backend point-history API with include_versions=true plus PostgreSQL TennisPointMatchLink and EventStateSnapshot rows. Side mapping was accepted only where link evidence recorded live_match_anchor_external_player_ids and flashscore_scoreboard_dom_confirmed_profile_ids.",
+  "matches": [
+    {
+      "fonbet_source_event_id": "69170724",
+      "fonbet_event_id": "ff85e36b-d643-443b-bfd3-745063a539de",
+      "participants": ["Кацуми Н", "Сато Хикару"],
+      "fonbet_final_score": "0:2 (1-6 5-7)",
+      "flashscore_source_match_id": "nJKHrCv0",
+      "link": {
+        "status": "matched",
+        "confidence": 1.0,
+        "method": "live_match_anchor_external_player_ids",
+        "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids",
+        "external_home_is_fonbet_a": true
+      },
+      "fonbet_snapshot_as_of_pbp_retrieval": {
+        "observed_at": "2026-10-22T03:52:53.120430+00:00",
+        "status": "live",
+        "score": "0-2 (1-6, 5-7)"
+      },
+      "pbp": {
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "availability_status": "known",
+        "versions": [
+          {"set": 1, "confirmed_points": 60, "retrieved_at": "2026-10-22T03:53:35.780621+00:00", "available_at": "2026-10-22T03:53:43.797666+00:00", "complete": true, "gaps": []},
+          {"set": 2, "confirmed_points": 77, "retrieved_at": "2026-10-22T03:53:42.898620+00:00", "available_at": "2026-10-22T03:53:44.561835+00:00", "complete": true, "gaps": []}
+        ],
+        "sequence_total": 137,
+        "terminal_set_scores_in_fonbet_a_b_order": {"1": [1, 6], "2": [5, 7]}
+      },
+      "comparison": "Both PBP set scores exactly match the saved Fonbet score. This sample contains a full, non-retrospective two-set sequence."
+    },
+    {
+      "fonbet_source_event_id": "69170713",
+      "fonbet_event_id": "b7901c6c-aca1-4dcf-83ab-4eb592c775a7",
+      "participants": ["Мушика Мио", "Сема Э"],
+      "fonbet_final_score": "2:0 (6-1 6-2)",
+      "flashscore_source_match_id": "vRxPtj9C",
+      "link": {
+        "status": "matched",
+        "confidence": 1.0,
+        "method": "live_match_anchor_external_player_ids",
+        "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids",
+        "external_home_is_fonbet_a": true
+      },
+      "fonbet_snapshot_as_of_pbp_retrieval": {
+        "observed_at": "2026-10-22T02:00:12.470237+00:00",
+        "status": "live",
+        "score": "0-0 (4-1)",
+        "current_game": ["15", "00"]
+      },
+      "pbp": {
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "availability_status": "known",
+        "set": 1,
+        "confirmed_points": 30,
+        "retrieved_at": "2026-10-22T02:00:21.309177+00:00",
+        "available_at": "2026-10-22T02:00:21.683640+00:00",
+        "complete_document": true,
+        "terminal_games_score": [4, 1],
+        "gaps": []
+      },
+      "comparison": "The PBP ends at 4-1, matching Fonbet at retrieval time; the match later ended 6-1 in this set. This is a live partial-set observation, not a complete match tape."
+    },
+    {
+      "fonbet_source_event_id": "69173294",
+      "fonbet_event_id": "cb7ca562-272e-498d-a657-ddea74cae648",
+      "participants": ["Нишимото С", "Чаудхари В"],
+      "fonbet_final_score": "1:2 (6-4 2-6 0-6)",
+      "flashscore_source_match_id": "nFpUNjLN",
+      "link": {
+        "status": "matched",
+        "confidence": 1.0,
+        "method": "live_match_anchor_external_player_ids",
+        "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids",
+        "external_home_is_fonbet_a": true
+      },
+      "fonbet_snapshot_as_of_pbp_retrieval": {
+        "observed_at": "2026-10-22T01:21:18.002775+00:00",
+        "status": "live",
+        "score": "1-1 (6-4, 2-6, 0-3*)",
+        "current_game": ["30", "40"]
+      },
+      "pbp": {
+        "parser_version": "flashscore-point-history-v5",
+        "retrospective": false,
+        "availability_status": "known",
+        "set_confirmed_points": {"1": 64, "2": 59, "3": 23},
+        "retrieved_at": "2026-10-22T01:22:23.447851+00:00",
+        "available_at": "2026-10-22T01:22:24.463259+00:00",
+        "sequence_total": 146,
+        "terminal_set_scores_in_fonbet_a_b_order": {"1": [6, 4], "2": [2, 6], "3": [0, 3]},
+        "gaps": [],
+        "navigation_timeout_versions": 1
+      },
+      "comparison": "PBP set scores match the live Fonbet snapshot through 0-3 in set 3. Earlier complete set 2 data remains available despite a later navigation timeout. The source tape is a partial live match, not the eventual 0-6 completion of set 3."
+    }
+  ],
+  "conclusion": "All three links are source-timed, non-retrospective, confidence-1 matched links with DOM-confirmed side orientation; point sequences align with Fonbet at the observed live scores. One sample contains a full match, one a partial set, and one a partial deciding set with a navigation timeout. This technical review does not replace the required manual 20-match review or independent vendor certification."
+}

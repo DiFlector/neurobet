@@ -1,0 +1,47 @@
+{
+  "captured_at": "2026-10-22T03:58:04Z",
+  "rollout": {
+    "collector_image": "sha256:48376118b0c3690016c6d17599531076d5d0e2800f03042a09aa4bb4bfaaf572",
+    "collector_health": "healthy",
+    "worker_image": "sha256:78ec320b0397b16dddc7d4340bebc2adbeedb1326535e3efe3308f63658b9278",
+    "worker_health": "healthy",
+    "neural_image": "sha256:bf10f5d44183c315f879e2070eb2f12353285a622baeeaf3413a7a72f6a586c1",
+    "neural_health": "healthy",
+    "neural_has_current_checkout": true,
+    "neural_forecast_source_sha256": "5d55462e51b80bd05b37ba1d95d5bee8be3405f7d1d4888dce607b66ba5108ce",
+    "isolated_pit_smoke": "PASS"
+  },
+  "fresh_message_check": {
+    "stream_id": "1792641434412-0",
+    "collected_at": "2026-10-22T03:57:13.567457+00:00",
+    "snapshot_events": 21,
+    "db_upserted_events": 21,
+    "explicit_best_of_in_snapshot": 0,
+    "db_best_of_values": 0,
+    "db_best_of_available_at_values": 0,
+    "stream_consumer_group_last_delivered": "1792641434412-0"
+  },
+  "stream_retention_check": {
+    "stream_length": 10000,
+    "entries_added_total": 93741,
+    "oldest_retained_id": "1792532563256-0",
+    "event_processor_pending": 81,
+    "pending_min_id": "1792001903115-0",
+    "pending_max_id": "1792613342046-0",
+    "pending_entries_without_payload": 15,
+    "pending_entries_without_payload_action": "left_unacknowledged"
+  },
+  "post_neural_rollout": {
+    "health": "healthy",
+    "live_events": 20,
+    "point_history_status_counts": {"waiting_players": 13, "not_queued": 4, "completed": 2, "retry": 1},
+    "both_player_profiles_available": 0,
+    "latest_forecast_calculated_at": "2026-10-22T04:00:55.548296Z",
+    "latest_forecast_reason": "UNSUPPORTED_FORMAT",
+    "latest_forecast_predates_neural_start": true,
+    "training_jobs_group_pending": 0,
+    "training_jobs_group_lag": 0,
+    "training_started_after_restart": false
+  },
+  "interpretation": "Collector and worker process fresh snapshots successfully. The current Fonbet source payloads do not provide explicit best_of, so no format timestamp is created. Neural now runs the current PIT code and is healthy; the isolated cutoff smoke passed. No live odds-free forecast was regenerated after restart because no live event had both player profiles available. Redis stream maxlen trimming has left 15 orphan pending entries; the 81 pending entries were not claimed or acknowledged. No training job was available or started."
+}

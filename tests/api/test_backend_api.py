@@ -24,7 +24,7 @@ from db.models.predictions import MLPrediction
 from db.models.research import WebResearchRun, WebEvidence, WebDocument
 from db.models.betting import VirtualAccount, LedgerEntry, Bet, BetProposal, BetSettlement
 from db.models.ml_registry import ModelVersion, TrainingRun
-from app.main import app, _is_overdue_live_pbp
+from app.main import app, _flashscore_queue_timing, _is_overdue_live_pbp
 
 client = TestClient(app)
 
@@ -40,6 +40,26 @@ def test_overdue_live_pbp_counts_only_due_runnable_jobs_with_confirmed_source():
     assert not _is_overdue_live_pbp({**base, "next_retry_at": (now + timedelta(seconds=1)).isoformat()}, {"evt"}, now)
 
 
+def test_flashscore_queue_timing_tracks_current_attempt_and_due_wait_separately():
+    now = datetime.now(timezone.utc)
+    running = _flashscore_queue_timing(
+        status="running", now=now, enqueued_at=now - timedelta(hours=20),
+        next_run_at=now, attempt_started_at=now - timedelta(minutes=3),
+        lease_until=now + timedelta(minutes=2),
+    )
+    assert running["wait_seconds"] is None
+    assert 179 <= running["attempt_seconds"] <= 181
+    assert running["lease_expired"] is False
+
+    waiting_retry = _flashscore_queue_timing(
+        status="retry", now=now, enqueued_at=now - timedelta(hours=20),
+        next_run_at=now + timedelta(minutes=4), attempt_started_at=None,
+        lease_until=None,
+    )
+    assert waiting_retry["wait_seconds"] is None
+    assert 239 <= waiting_retry["retry_in_seconds"] <= 241
+
+
 def test_flashscore_queue_api_returns_bounded_operational_projection():
     response = client.get("/api/tennis-history/flashscore/queue?limit=3&offset=0")
     assert response.status_code == 200
@@ -52,7 +72,17 @@ def test_flashscore_queue_api_returns_bounded_operational_projection():
     for item in payload["items"]:
         assert item["kind"] in {"pbp", "match_lookup", "player_history", "full_archive"}
         assert "attempt_token" not in item
-        assert "lease_until" not in item
+        if item["status"] == "running":
+            assert "attempt_seconds" in item
+            assert "lease_until" in item
+        assert "last_activity_at" in item
+
+
+def test_flashscore_queue_hides_terminal_jobs_unless_history_is_requested():
+    response = client.get("/api/tennis-history/flashscore/queue?limit=200&offset=0")
+    assert response.status_code == 200
+    terminal_statuses = {"completed", "finalized", "skipped", "superseded", "matched"}
+    assert not any(item["status"] in terminal_statuses for item in response.json()["items"])
 
 
 def _ensure_sport(session):

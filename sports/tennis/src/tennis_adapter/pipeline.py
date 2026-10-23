@@ -17,7 +17,7 @@ from db.models import (
     OddsChangeEvent as DBOddsChangeEvent,
     Participant,
 )
-from .adapter import TennisSportAdapter, closed_set_winners, final_set_winners
+from .adapter import TennisSportAdapter, closed_set_winners, final_set_winners, merge_event_metadata
 from .normalizer import normalize_russian_player_name
 
 logger = logging.getLogger("tennis.pipeline")
@@ -204,8 +204,10 @@ class TennisPipeline:
             DBEvent.source_event_id == event_contract.source_event_id,
         )
         db_event = session.execute(stmt).scalar_one_or_none()
+        incoming_metadata = dict(event_contract.metadata or {})
 
         if db_event is None:
+            initial_metadata = merge_event_metadata({}, incoming_metadata, now)
             db_event = DBEvent(
                 source=event_contract.source,
                 source_event_id=event_contract.source_event_id,
@@ -224,7 +226,7 @@ class TennisPipeline:
                     None,
                     now,
                 ),
-                metadata_json=event_contract.metadata,
+                metadata_json=initial_metadata,
             )
             session.add(db_event)
             session.flush()  # Generates db_event.id UUID
@@ -270,6 +272,10 @@ class TennisPipeline:
                 db_event.current_score,
                 now,
             )
+            if incoming_metadata:
+                db_event.metadata_json = merge_event_metadata(
+                    db_event.metadata_json, incoming_metadata, now
+                )
             link_match_participants(session, db_event)
             session.flush()
             logger.debug("Updated existing DBEvent: %s", db_event.id)

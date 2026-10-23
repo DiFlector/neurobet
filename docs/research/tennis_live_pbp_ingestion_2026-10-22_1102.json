@@ -1,0 +1,65 @@
+{
+  "generated_at_utc": "2026-10-22T11:02:52Z",
+  "scope": "Read-only runtime census after the 10:26 UTC admission-audit cutoff",
+  "source": {
+    "tennis_events": {
+      "total": 3758,
+      "status_counts": {
+        "finished": 3360,
+        "live": 183,
+        "prematch": 182,
+        "interrupted": 29,
+        "cancelled": 4
+      },
+      "explicit_best_of": 0,
+      "best_of_with_source_time": 0
+    },
+    "point_history_versions": {
+      "non_retrospective": {
+        "source_matches": 23,
+        "versions": 211,
+        "point_states": 9024,
+        "latest_available_at_utc": "2026-10-22T10:56:25.984111Z"
+      },
+      "retrospective": {
+        "source_matches": 77,
+        "versions": 1052,
+        "point_states": 18546,
+        "latest_available_at_utc": "2026-10-22T10:57:57.983660Z"
+      },
+      "distinct_source_matches_across_both": 88,
+      "versions_total": 1263,
+      "point_states_total": 27570
+    },
+    "point_source_refresh_jobs": {
+      "total": 0
+    },
+    "point_refresh_queue": {
+      "total": 2951,
+      "waiting_players": 2628,
+      "retry": 212,
+      "queued": 61,
+      "finalized": 44,
+      "completed": 3,
+      "waiting_match": 3
+    }
+  },
+  "admission_impact": {
+    "new_non_retrospective_source_matches_since_1004_utc": 1,
+    "new_non_retrospective_versions_since_1004_utc": 44,
+    "new_non_retrospective_point_states_since_1004_utc": 2707,
+    "new_events_are_finally_labelled": false,
+    "format_pit_examples_added": 0,
+    "latest_completed_audit_cutoff_utc": "2026-10-22T10:26:58.053244Z",
+    "latest_completed_admission": "blocked",
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "shadow_registered": false
+  },
+  "interpretation": [
+    "Live and retrospective point-history coverage grew, but these new point versions are not new final match labels.",
+    "The current Fonbet event corpus still has no explicit or source-timestamped best_of field.",
+    "Most durable PBP jobs remain blocked in waiting_players or retry; adding browser concurrency does not resolve missing player identity/source links.",
+    "The 10:26 UTC read-only admission is the latest complete manifest; later PBP rows became available after its fixed audit cutoff and contain no new final labels."
+  ]
+}

@@ -1,0 +1,5998 @@
+{
+  "generated_at": "2026-10-21T22:48:41.296837+00:00",
+  "scope": "unique, confirmed Fonbet links with archived source HTML; newest retrievable document per source match",
+  "network_used": false,
+  "parser_version_under_review": "flashscore-point-history-v5",
+  "review_notes": [
+    "The archived HTML was read from object storage; this check made no network requests and wrote no database rows.",
+    "Source point-state rows were compared with parser point states game by game; active server markers and tie-break winner markers were independently read from the source DOM.",
+    "The v3 persisted output was wrong for server side: UXYqpB76 has a source-highlighted home server in its first game, while all 40 parsed point records in that document say side 1. MZ1H6Phf and fVArlUH0 show the same all-side-1 v3 pattern. Parser v4 was deployed and appended from archived HTML; the older v3 documents and their earlier as_of reads remain unchanged.",
+    "Ten of the 30 latest linked archives have no recognized point rows. They remain documented coverage gaps, not parser passes."
+  ],
+  "summary": {
+    "matches_reviewed": 20,
+    "matches_with_source_point_rows": 4,
+    "matches_with_compared_games": 4,
+    "compared_games": 26,
+    "compared_point_states": 137,
+    "point_state_mismatches": 0,
+    "server_mismatches": 0,
+    "deuce_or_advantage_events": 24,
+    "tiebreak_point_events": 0,
+    "terminal_game_events": 26,
+    "raw_tiebreak_rows": 0,
+    "tiebreak_winner_mismatches": 0,
+    "tiebreak_server_mismatches": 0,
+    "matches_with_gaps": 17
+  },
+  "matches": [
+    {
+      "source_match_id": "S4OovBAC",
+      "fonbet_event_id": "b822725f-30b2-46fc-ab97-d9dc3b90ce28",
+      "fonbet_participants": [
+        "Стефанос Циципас",
+        "Кукушкин М"
+      ],
+      "official_final_score": "2:0 (6-1 6-2)",
+      "external_title": "TSI 2-0 KUK | Stefanos Tsitsipas v Mikhail Kukushkin 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "81272969-c429-43d7-ae03-b18842f94109",
+      "content_hash": "1bc659be34f4b6eb7db21ddbedd7c966a0e357f5bd1966e0968800fd108e1716",
+      "archived_path": "snapshots/research/2026-10-21/S4OovBAC/1bc659be34f4b6eb7db21ddbedd7c966a0e357f5bd1966e0968800fd108e1716-222953785519-5d5fed734a4d49ebb5d3775e44b59166.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:29:53.408633+00:00",
+      "html_length": 1015732,
+      "raw_game_rows": 8,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 8,
+      "games_compared": 8,
+      "source_point_states_compared": 44,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 12,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 8,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 2,
+        "unknown": 6
+      },
+      "parser_quality": {
+        "event_count": 52,
+        "confirmed_points": 52,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/kukushkin-mikhail-OSUB7Jy0/tsitsipas-stefanos-hb6oWfc6/summary/point-by-point/set-2/?mid=S4OovBAC",
+      "source_game_rows": [
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            0
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            0
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "30",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "40",
+              "30"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            1
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ],
+            [
+              "40",
+              "30"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ]
+          ],
+          "game_result_present": true
+        }
+      ],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": [
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": {
+            "game_result": [
+              2,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            2,
+            1
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              2,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            3,
+            1
+          ],
+          "point_index": 7,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              3,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            4,
+            1
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": {
+            "game_result": [
+              4,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": {
+            "game_result": [
+              5,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 7,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 8,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 9,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 10,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 11,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 12,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 13,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 14,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            5,
+            2
+          ],
+          "point_index": 15,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": {
+            "game_result": [
+              5,
+              2
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            6,
+            2
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": {
+            "game_result": [
+              6,
+              2
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        }
+      ]
+    },
+    {
+      "source_match_id": "Ak5w4yJq",
+      "fonbet_event_id": "b40373e6-b5fe-4a81-ab3b-9a1ee7abbff8",
+      "fonbet_participants": [
+        "Сакамото П",
+        "Эскурра-иснарди Э-х"
+      ],
+      "official_final_score": "2:1 (6-3 6-7 6-1)",
+      "external_title": "SAK 2-1 ESC | Pedro Sakamoto v Hernando Jose Escurra Isnardi 17/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "c75cc65d-d267-434c-9130-89d78abb8ee0",
+      "content_hash": "d49ce3dc91df12043ceadfdc8fe8c0ba5e10bad6e987c9900dafc4c6a2e91f16",
+      "archived_path": "snapshots/research/2026-10-21/Ak5w4yJq/d49ce3dc91df12043ceadfdc8fe8c0ba5e10bad6e987c9900dafc4c6a2e91f16-222944110144-38930a0795fc417ea7a5e73d6af61dcd.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:29:43.895468+00:00",
+      "html_length": 1176854,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/escurra-isnardi-hernando-jose-WAxpLHzl/sakamoto-pedro-E9z4tGK2/?mid=Ak5w4yJq",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "rRgwzmTF",
+      "fonbet_event_id": "a2aeaf81-8bc1-431f-b3b4-eb29794e00f0",
+      "fonbet_participants": [
+        "Адкар В",
+        "Шкутова А"
+      ],
+      "official_final_score": "2:1 (6-4 4-6 6-0)",
+      "external_title": "ADK 2-1 SHK | Vaishnavi Adkar v Anna Shkutova 21/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": null,
+      "document_id": "a2920d00-f284-4118-9ea7-79ba6c29a1b1",
+      "content_hash": "42d8458d4856c23a24552b6c30f4f26eef943c6bed0bae2424efc0a6be176cb9",
+      "archived_path": "snapshots/research/2026-10-21/rRgwzmTF/42d8458d4856c23a24552b6c30f4f26eef943c6bed0bae2424efc0a6be176cb9-222750645463-2c81cea870f044fe9de77c4073fedc0a.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:27:50.300549+00:00",
+      "html_length": 1189532,
+      "raw_game_rows": 6,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 6,
+      "games_compared": 6,
+      "source_point_states_compared": 32,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 4,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 6,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 3,
+        "unknown": 3
+      },
+      "parser_quality": {
+        "event_count": 38,
+        "confirmed_points": 38,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/adkar-vaishnavi-riKJvzYF/shkutova-anna-O8EO0106/summary/point-by-point/set-3/?mid=rRgwzmTF",
+      "source_game_rows": [
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "30",
+              "40"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "40",
+              "30"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ],
+            [
+              "40",
+              "30"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "40",
+              "30"
+            ]
+          ],
+          "game_result_present": true
+        }
+      ],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": [
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            2,
+            0
+          ],
+          "point_index": 7,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              2,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            0
+          ],
+          "point_index": 7,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              3,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": {
+            "game_result": [
+              4,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            0
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": {
+            "game_result": [
+              5,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            0
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": {
+            "game_result": [
+              6,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        }
+      ]
+    },
+    {
+      "source_match_id": "4dlglQzK",
+      "fonbet_event_id": "b2f57d39-4d4f-4a29-9e30-b2d5d9f43e12",
+      "fonbet_participants": [
+        "Диабате Э",
+        "Альхуссейн Абдель-азиз Л"
+      ],
+      "official_final_score": "0:2 (3-6 3-6)",
+      "external_title": "DIA 0-2 ALH | Emira Diabate v Aziz Lamis Alhussein Abdel 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "ff6188a1-3c2a-4f23-93bf-26503c00d6bd",
+      "content_hash": "dbae4a9e39efc7c8b6caf3af7053fde8cced566c2ed8c85327d53dc53487bf95",
+      "archived_path": "snapshots/research/2026-10-21/4dlglQzK/dbae4a9e39efc7c8b6caf3af7053fde8cced566c2ed8c85327d53dc53487bf95-222725790010-69bda4fb564445efbc6ade6da05c88c7.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:27:25.704658+00:00",
+      "html_length": 962942,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/alhussein-abdel-aziz-lamis-CvDob5Zt/diabate-emira-n33i8SAk/?mid=4dlglQzK",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "KUsbomdk",
+      "fonbet_event_id": "62401ec9-4785-4580-b89f-63fd5dd1bed7",
+      "fonbet_participants": [
+        "Росси Л",
+        "Петкович М"
+      ],
+      "official_final_score": "0:2 (6-7 2-6)",
+      "external_title": "ROS 0-2 PET | Leonardo Rossi v Mika Petkovic 16/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "fb40ca3f-ffec-4353-9aa0-01729be65093",
+      "content_hash": "0f31d4393d5ed659d19b7e318b606565765e686276031e53a7f259b6532e7709",
+      "archived_path": "snapshots/research/2026-10-21/KUsbomdk/0f31d4393d5ed659d19b7e318b606565765e686276031e53a7f259b6532e7709-222603253483-e37709fcd0614b72a83a0d87549b0758.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:26:03.112008+00:00",
+      "html_length": 1174855,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/petkovic-mika-jFlzjsv5/rossi-leonardo-zqf7fP42/?mid=KUsbomdk",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "zN99tEHD",
+      "fonbet_event_id": "1226cc34-57b7-42e5-90f5-0bf77e570e68",
+      "fonbet_participants": [
+        "Зиатдинова А",
+        "Бойян И-с"
+      ],
+      "official_final_score": "0:2 (1-6 0-6)",
+      "external_title": "ZIA 0-2 BOI | Alisa Ziatdinova v Ioana-Stefania Boian 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "16c86a60-bcc2-4a2e-b7da-7a2a3953aa3f",
+      "content_hash": "d8d4236975e00aac5fec69b249c625da67a4ebe2d8ad3dee19e0de9ab11fe062",
+      "archived_path": "snapshots/research/2026-10-21/zN99tEHD/d8d4236975e00aac5fec69b249c625da67a4ebe2d8ad3dee19e0de9ab11fe062-222540277115-86e34f53bea64575887b4921b89cf2c6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:25:39.988081+00:00",
+      "html_length": 1173873,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/ioana-stefania-boian-fu1nbQel/ziatdinova-alisa-lSc1V6Ni/?mid=zN99tEHD",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "UXWDUTIt",
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "fonbet_participants": [
+        "Дерепаско Т",
+        "Тамм К"
+      ],
+      "official_final_score": "2:0 (7-5 7-6)",
+      "external_title": "DER 2-0 TAM | Timofei Derepasko v Kristjan Tamm 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "e8b255e5-1540-4338-89fc-abb0ff1ef4b1",
+      "content_hash": "bb0902fdbf17d1570eddb17b52b4ca7c642686b8f7f3ab70416b7a34c5b96636",
+      "archived_path": "snapshots/research/2026-10-21/UXWDUTIt/bb0902fdbf17d1570eddb17b52b4ca7c642686b8f7f3ab70416b7a34c5b96636-222528027630-1b97c3bc389c4a5384b3ff602a2d0596.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:25:27.891656+00:00",
+      "html_length": 1174137,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/derepasko-timofei-Obmq8P5i/tamm-kristjan-xEMUcAZq/?mid=UXWDUTIt",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "E9vF4SAD",
+      "fonbet_event_id": "d9a12b4a-2003-40a7-a2b2-52f589591de9",
+      "fonbet_participants": [
+        "Тамм К",
+        "Шепп А"
+      ],
+      "official_final_score": "2:1 (6-3 3-6 6-3)",
+      "external_title": "TAM 2-1 SHE | Kristjan Tamm v Anton Shepp 15/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "9bb7e412-12f2-4556-b905-45dfddfd626d",
+      "content_hash": "d612cc79b34e6dec6affc96be1361aa697ce55a0adcd5d11113bc2bd57f365ad",
+      "archived_path": "snapshots/research/2026-10-21/E9vF4SAD/d612cc79b34e6dec6affc96be1361aa697ce55a0adcd5d11113bc2bd57f365ad-222500389515-8da1502c2d8640948fb110e8d53b4a8e.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:25:00.083602+00:00",
+      "html_length": 1011585,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 5,
+      "games_compared": 5,
+      "source_point_states_compared": 24,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 2,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 5,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 4,
+        "unknown": 3
+      },
+      "parser_quality": {
+        "event_count": 29,
+        "confirmed_points": 28,
+        "ambiguous_points": 1,
+        "gaps": [
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              1
+            ],
+            "reason": "point_sequence_missing"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              1
+            ],
+            "reason": "game_score_transition_missing_or_invalid"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              3
+            ],
+            "reason": "point_sequence_missing"
+          },
+          {
+            "set": 3,
+            "game_score": [
+              3,
+              3
+            ],
+            "reason": "game_score_transition_missing_or_invalid"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/shepp-anton-Ewcd2IBp/tamm-kristjan-xEMUcAZq/summary/point-by-point/set-3/?mid=E9vF4SAD",
+      "source_game_rows": [
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "40",
+              "30"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "30",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            1
+          ],
+          "server": 1,
+          "point_states": [],
+          "game_result_present": false
+        },
+        {
+          "set": 3,
+          "game_score": [
+            3,
+            3
+          ],
+          "server": null,
+          "point_states": [],
+          "game_result_present": false
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "30",
+              "0"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "40",
+              "30"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ],
+            [
+              "40",
+              "15"
+            ],
+            [
+              "40",
+              "30"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            3
+          ],
+          "server": 1,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ]
+          ],
+          "game_result_present": true
+        }
+      ],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": [
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            0
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              0
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            1,
+            1
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 1,
+          "winner": null,
+          "tie_break": null,
+          "confirmed": false,
+          "quality": "ambiguous"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 1,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            4,
+            3
+          ],
+          "point_index": 6,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              4,
+              3
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": 1,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            5,
+            3
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": {
+            "game_result": [
+              5,
+              3
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            3
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            3
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            3
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 3,
+          "game_score": [
+            6,
+            3
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": {
+            "game_result": [
+              6,
+              3
+            ]
+          },
+          "point_score": null,
+          "server": 1,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        }
+      ]
+    },
+    {
+      "source_match_id": "86W5fRIj",
+      "fonbet_event_id": "50d3001f-bec1-49cf-b971-2ccbec237783",
+      "fonbet_participants": [
+        "Осорио Х-с",
+        "Андраде Да Силва Л"
+      ],
+      "official_final_score": "0:2 (4-6 5-7)",
+      "external_title": "OSO 0-2 AND | Juan Sebastian Osorio v Lucas Andrade da Silva 18/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "8baeb84e-96a9-4839-8008-2e6cfeb2e236",
+      "content_hash": "ce520692514bfd87131782ab4f8e660034eddcd8a944718e1722b4125c7a7eb8",
+      "archived_path": "snapshots/research/2026-10-21/86W5fRIj/ce520692514bfd87131782ab4f8e660034eddcd8a944718e1722b4125c7a7eb8-222444382604-1fba4b4d1e6946ef9c838ccff237aa2b.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:24:44.193633+00:00",
+      "html_length": 1176596,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/andrade-da-silva-lucas-junia1km/osorio-juan-sebastian-2LR9Hnu3/?mid=86W5fRIj",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "AoLdaDAm",
+      "fonbet_event_id": "95d4b2f5-677c-4915-be37-2fc8a1c820bd",
+      "fonbet_participants": [
+        "Альварадо-берроспи А-о",
+        "Маккормик Т"
+      ],
+      "official_final_score": "0:2 (6-7 6-7)",
+      "external_title": "ALV 0-2 MCC | Alberto Odiseo Alvarado Berrospi v Tristan McCormick 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "c15fbb4c-3a3c-4a02-b35e-3dff24361976",
+      "content_hash": "01451983c1541a25b717993b24157f854249f984fb008223b41b37cf6c4cfef5",
+      "archived_path": "snapshots/research/2026-10-21/AoLdaDAm/01451983c1541a25b717993b24157f854249f984fb008223b41b37cf6c4cfef5-222408069042-d07a23dd1a8b429abbf0074d9c39dcb6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:24:07.883284+00:00",
+      "html_length": 1175653,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/alvarado-berrospi-alberto-odiseo-p4m664jH/mccormick-tristan-vFQc2kkD/?mid=AoLdaDAm",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "KY54BgIq",
+      "fonbet_event_id": "02b09f41-12ff-4506-ba1f-4fd2d942eb59",
+      "fonbet_participants": [
+        "Тран Д",
+        "Нишимура К"
+      ],
+      "official_final_score": "0:2 (3-6 1-6)",
+      "external_title": "TRA 0-2 NIS | Demi Tran v Kayo Nishimura 13/10/2026 | Tennis - Flashscore | Match",
+      "external_home_is_fonbet_a": true,
+      "document_id": "292d6bb6-8f0e-4ac3-86a7-b4ba03b58d8b",
+      "content_hash": "5ad929bd9f7bb71af53c8ac6cf7583e57ff6cb915696cdd637aba50f91012c62",
+      "archived_path": "snapshots/research/2026-10-21/KY54BgIq/5ad929bd9f7bb71af53c8ac6cf7583e57ff6cb915696cdd637aba50f91012c62-222311850771-b67569b9318f400ca9f2a59383a01261.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:23:10.469466+00:00",
+      "html_length": 1190478,
+      "raw_game_rows": 7,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 7,
+      "games_compared": 7,
+      "source_point_states_compared": 37,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 6,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 7,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 3,
+        "away": 0,
+        "unknown": 4
+      },
+      "parser_quality": {
+        "event_count": 44,
+        "confirmed_points": 44,
+        "ambiguous_points": 0,
+        "gaps": [],
+        "complete": true
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/nishimura-kayo-bifubkio/tran-demi-8xcf0Nds/summary/point-by-point/set-2/?mid=KY54BgIq",
+      "source_game_rows": [
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "server": 0,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "30",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "30",
+              "30"
+            ],
+            [
+              "30",
+              "40"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "AD",
+              "40"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "40",
+              "0"
+            ],
+            [
+              "40",
+              "15"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "0",
+              "30"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "15",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "server": 0,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "15",
+              "15"
+            ],
+            [
+              "15",
+              "30"
+            ],
+            [
+              "15",
+              "40"
+            ],
+            [
+              "30",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            5
+          ],
+          "server": null,
+          "point_states": [
+            [
+              "0",
+              "15"
+            ],
+            [
+              "0",
+              "30"
+            ],
+            [
+              "0",
+              "40"
+            ]
+          ],
+          "game_result_present": true
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "server": 0,
+          "point_states": [
+            [
+              "15",
+              "0"
+            ],
+            [
+              "30",
+              "0"
+            ],
+            [
+              "30",
+              "15"
+            ],
+            [
+              "40",
+              "15"
+            ],
+            [
+              "40",
+              "30"
+            ],
+            [
+              "40",
+              "40"
+            ],
+            [
+              "40",
+              "AD"
+            ]
+          ],
+          "game_result_present": true
+        }
+      ],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": [
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            1
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              0,
+              1
+            ]
+          },
+          "point_score": null,
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "30",
+            "30"
+          ],
+          "point_score": [
+            "30",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 4,
+          "state_before": [
+            "30",
+            "30"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "AD",
+            "40"
+          ],
+          "point_score": [
+            "AD",
+            "40"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 7,
+          "state_before": [
+            "AD",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 8,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            0,
+            2
+          ],
+          "point_index": 9,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": {
+            "game_result": [
+              0,
+              2
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "0"
+          ],
+          "point_score": [
+            "40",
+            "0"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "point_index": 3,
+          "state_before": [
+            "40",
+            "0"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            2
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              2
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "0",
+            "30"
+          ],
+          "point_score": [
+            "0",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "point_index": 2,
+          "state_before": [
+            "0",
+            "30"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": null,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "15",
+            "40"
+          ],
+          "point_score": [
+            "15",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            3
+          ],
+          "point_index": 4,
+          "state_before": [
+            "15",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              3
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "15"
+          ],
+          "point_score": [
+            "15",
+            "15"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 2,
+          "state_before": [
+            "15",
+            "15"
+          ],
+          "state_after": [
+            "15",
+            "30"
+          ],
+          "point_score": [
+            "15",
+            "30"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 3,
+          "state_before": [
+            "15",
+            "30"
+          ],
+          "state_after": [
+            "15",
+            "40"
+          ],
+          "point_score": [
+            "15",
+            "40"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 4,
+          "state_before": [
+            "15",
+            "40"
+          ],
+          "state_after": [
+            "30",
+            "40"
+          ],
+          "point_score": [
+            "30",
+            "40"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            4
+          ],
+          "point_index": 5,
+          "state_before": [
+            "30",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              4
+            ]
+          },
+          "point_score": null,
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            5
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "0",
+            "15"
+          ],
+          "point_score": [
+            "0",
+            "15"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            5
+          ],
+          "point_index": 1,
+          "state_before": [
+            "0",
+            "15"
+          ],
+          "state_after": [
+            "0",
+            "30"
+          ],
+          "point_score": [
+            "0",
+            "30"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            5
+          ],
+          "point_index": 2,
+          "state_before": [
+            "0",
+            "30"
+          ],
+          "state_after": [
+            "0",
+            "40"
+          ],
+          "point_score": [
+            "0",
+            "40"
+          ],
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            5
+          ],
+          "point_index": 3,
+          "state_before": [
+            "0",
+            "40"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              5
+            ]
+          },
+          "point_score": null,
+          "server": null,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 0,
+          "state_before": [
+            "0",
+            "0"
+          ],
+          "state_after": [
+            "15",
+            "0"
+          ],
+          "point_score": [
+            "15",
+            "0"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 1,
+          "state_before": [
+            "15",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "0"
+          ],
+          "point_score": [
+            "30",
+            "0"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 2,
+          "state_before": [
+            "30",
+            "0"
+          ],
+          "state_after": [
+            "30",
+            "15"
+          ],
+          "point_score": [
+            "30",
+            "15"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 3,
+          "state_before": [
+            "30",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "15"
+          ],
+          "point_score": [
+            "40",
+            "15"
+          ],
+          "server": 0,
+          "winner": 0,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 4,
+          "state_before": [
+            "40",
+            "15"
+          ],
+          "state_after": [
+            "40",
+            "30"
+          ],
+          "point_score": [
+            "40",
+            "30"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 5,
+          "state_before": [
+            "40",
+            "30"
+          ],
+          "state_after": [
+            "40",
+            "40"
+          ],
+          "point_score": [
+            "40",
+            "40"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 6,
+          "state_before": [
+            "40",
+            "40"
+          ],
+          "state_after": [
+            "40",
+            "AD"
+          ],
+          "point_score": [
+            "40",
+            "AD"
+          ],
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "confirmed"
+        },
+        {
+          "set": 2,
+          "game_score": [
+            1,
+            6
+          ],
+          "point_index": 7,
+          "state_before": [
+            "40",
+            "AD"
+          ],
+          "state_after": {
+            "game_result": [
+              1,
+              6
+            ]
+          },
+          "point_score": null,
+          "server": 0,
+          "winner": 1,
+          "tie_break": null,
+          "confirmed": true,
+          "quality": "terminal_from_game_result"
+        }
+      ]
+    },
+    {
+      "source_match_id": "EsWDKc0c",
+      "fonbet_event_id": "18a27f24-c9e9-41e1-9000-719b6a0bfbaa",
+      "fonbet_participants": [
+        "Де Брессер Ф",
+        "Снигирева А"
+      ],
+      "official_final_score": "2:1 (5-7 6-2 7-5)",
+      "external_title": "DE 2-1 SNI | Fleur De Bresser v Anna Snigireva 14/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "42037657-d4cd-4920-8414-7240122a69da",
+      "content_hash": "cf7882ad0d98f3a4f8a49ed01a9bd0fad486122ba4bea324128abe66640bd584",
+      "archived_path": "snapshots/research/2026-10-21/EsWDKc0c/cf7882ad0d98f3a4f8a49ed01a9bd0fad486122ba4bea324128abe66640bd584-222114450168-f6c7c403aaf047deb10da28157398d61.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:21:14.391810+00:00",
+      "html_length": 1174225,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/de-bresser-fleur-QsMOv71N/snigireva-anna-fZJYRjGU/?mid=EsWDKc0c",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "AHDzd3aT",
+      "fonbet_event_id": "d4b3b20d-9ea2-4411-a432-cd5e1b0451bc",
+      "fonbet_participants": [
+        "Сантуш-гава К-л",
+        "Бруна Н"
+      ],
+      "official_final_score": "1:2 (6-4 3-6 6-7)",
+      "external_title": "Kaua Lorenzo Santos Gava v Nicolas Bruna 14/10/2026 | Tennis - Flashscore",
+      "external_home_is_fonbet_a": true,
+      "document_id": "88f524ee-d9d4-44a3-8d81-ef1dfcecf761",
+      "content_hash": "cc451b505c4cfbc8bc162d1f7ed63e20c9dd770a347e7b2eaf0db57f227ca5e9",
+      "archived_path": "snapshots/research/2026-10-21/AHDzd3aT/cc451b505c4cfbc8bc162d1f7ed63e20c9dd770a347e7b2eaf0db57f227ca5e9-222058895536-af8dd0504ca84de188fb09640e8f8fa5.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:20:58.853185+00:00",
+      "html_length": 910223,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/bruna-nicolas-hEIDkKoL/santos-gava-kaua-lorenzo-GMXt7Ge9/summary/?mid=AHDzd3aT",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "0rANrMk1",
+      "fonbet_event_id": "70fbc6c9-1dee-4e5b-9614-6dcdbf0a88b7",
+      "fonbet_participants": [
+        "Хорвит М",
+        "Секеркова В"
+      ],
+      "official_final_score": "0:2 (2-6 3-6)",
+      "external_title": "HOR 0-2 SEK | Mia Horvit v Veronika Sekerkova 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "d045a720-e6e8-4d2e-9aba-42f593544fea",
+      "content_hash": "7ca672c5a191654637c08c6a6e2c8af8a71ed4d3017232f5c324ca93286a5740",
+      "archived_path": "snapshots/research/2026-10-21/0rANrMk1/7ca672c5a191654637c08c6a6e2c8af8a71ed4d3017232f5c324ca93286a5740-221959165356-7ad8d3235fd94b92b9c049eb52f43b54.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:19:59.050828+00:00",
+      "html_length": 968983,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/horvit-mia-n1RWDQBk/sekerkova-veronika-MHB7ucU8/?mid=0rANrMk1",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "QJn14fYN",
+      "fonbet_event_id": "220e9211-b022-451c-b0b3-c167d6a4e8fe",
+      "fonbet_participants": [
+        "Осорио Х-с",
+        "Маккормик Т"
+      ],
+      "official_final_score": "2:0 (6-3 7-5)",
+      "external_title": "OSO 2-0 MCC | Juan Sebastian Osorio v Tristan McCormick 16/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "4c9dff51-0b51-4fc8-af59-fec19a0a6864",
+      "content_hash": "6cbef33354928732e6b962f11c317dfd49c4bda43f5d9b0c2c822b8f48a4fdf5",
+      "archived_path": "snapshots/research/2026-10-21/QJn14fYN/6cbef33354928732e6b962f11c317dfd49c4bda43f5d9b0c2c822b8f48a4fdf5-221930537602-4bb819fc502f412196447b39e72101aa.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:19:30.472562+00:00",
+      "html_length": 1176050,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/mccormick-tristan-vFQc2kkD/osorio-juan-sebastian-2LR9Hnu3/?mid=QJn14fYN",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "nHDiv2iT",
+      "fonbet_event_id": "41ebdf20-b4e4-4478-85e9-f2545a3474d9",
+      "fonbet_participants": [
+        "Танака Ю",
+        "Исомура К"
+      ],
+      "official_final_score": "2:1 (4-6 6-3 6-0)",
+      "external_title": "TAN 2-1 ISO | Yu Tanaka v Kokoro Isomura 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "9bae4197-9fa8-47cd-bb62-0439c6e86fb3",
+      "content_hash": "84cd2e5a66814d126afae01981baac19cef3f0bfd75ce1186c40ede5576511c3",
+      "archived_path": "snapshots/research/2026-10-21/nHDiv2iT/84cd2e5a66814d126afae01981baac19cef3f0bfd75ce1186c40ede5576511c3-221919695163-9c5718eb15c742d9906ad971fff94d64.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:19:19.656706+00:00",
+      "html_length": 1174052,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/isomura-kokoro-YXvdyprk/tanaka-yu-dp1vImw7/?mid=nHDiv2iT",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "IRjLM3El",
+      "fonbet_event_id": "53171f52-13bd-4b13-890b-3d768a58a42c",
+      "fonbet_participants": [
+        "Балан С-в",
+        "Эбстер А-л"
+      ],
+      "official_final_score": "2:1 (6-2 6-7 6-0)",
+      "external_title": "BAL 2-1 EBS | Sara Victoria Balan v Anna Lena Ebster 15/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "a231b9aa-1e76-476c-b6ec-4186befb9131",
+      "content_hash": "697313eebef9b94ff6f34c1cef2e6c6e13b44e891c92f849987e1c92ff97080a",
+      "archived_path": "snapshots/research/2026-10-21/IRjLM3El/697313eebef9b94ff6f34c1cef2e6c6e13b44e891c92f849987e1c92ff97080a-220635655140-99c2f0b1361d486198a1e71c9e7f40d6.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T22:06:35.577387+00:00",
+      "html_length": 1175263,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/balan-sara-victoria-dbf60MlR/ebster-anna-lena-hAcRqvG3/?mid=IRjLM3El",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "0ItWvhAb",
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "fonbet_participants": [
+        "Огура К",
+        "Ватанабэ-эрикссон А"
+      ],
+      "official_final_score": "2:0 (6-4 6-2)",
+      "external_title": "OGU 2-0 WAT | Kosuke Ogura v Alexander Watanabe Eriksson 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "3fcd7cb3-43d0-49a4-83f4-c07d305494e9",
+      "content_hash": "0058a4f615a0f5a23d059a1607bb5f825790fcb5229dfd01e622ed1efde2a8ac",
+      "archived_path": "snapshots/research/2026-10-21/0ItWvhAb/0058a4f615a0f5a23d059a1607bb5f825790fcb5229dfd01e622ed1efde2a8ac-215634953085-d8096200d6b044c4ae2d7071cc47d039.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:56:34.847135+00:00",
+      "html_length": 1175040,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/ogura-kousuke-MZkM9lMr/watanabe-eriksson-alexander-QPprMeN7/?mid=0ItWvhAb",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "nNliaWlm",
+      "fonbet_event_id": "6acda045-2487-4b40-a593-bed89ba20cdb",
+      "fonbet_participants": [
+        "Купарев А",
+        "Олимжанова С"
+      ],
+      "official_final_score": "2:1 (2-6 6-1 6-3)",
+      "external_title": "KUP 2-1 OLI | Anastasiya Kuparev v Sabrina Olimjanova 14/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "1a4b85e5-821d-4269-ac6e-bc7c0ce7291e",
+      "content_hash": "0736ab7cde79c1b40dc1ea3a5ab9be88b926fe46a656944bfab7bcea0d2a49ad",
+      "archived_path": "snapshots/research/2026-10-21/nNliaWlm/0736ab7cde79c1b40dc1ea3a5ab9be88b926fe46a656944bfab7bcea0d2a49ad-215426264397-9686913e85ee4c318d9234b36c22079f.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:54:26.205227+00:00",
+      "html_length": 1174758,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/anastasiya-kuparev-67YCc7Q2/olimjanova-sabrina-0OneHIPd/?mid=nNliaWlm",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    },
+    {
+      "source_match_id": "bw8mYRzg",
+      "fonbet_event_id": "9c0effed-3cf0-457c-af72-2f28680d9e13",
+      "fonbet_participants": [
+        "Чанта А",
+        "Аписа В"
+      ],
+      "official_final_score": "0:2 (4-6 2-6)",
+      "external_title": "CHA 0-2 API | Aunchisa Chanta v Violet Apisah 21/10/2026 | Tennis - Flashscore | Summary",
+      "external_home_is_fonbet_a": true,
+      "document_id": "c3caee12-60c1-4253-892a-db707cd80e0c",
+      "content_hash": "d7442506bbf0e621f25b324c23b3f78999d5b9f89ae5210cbb7afe9ce33a3be2",
+      "archived_path": "snapshots/research/2026-10-21/bw8mYRzg/d7442506bbf0e621f25b324c23b3f78999d5b9f89ae5210cbb7afe9ce33a3be2-215337322536-552db6094d88483582ddf8777425392e.json",
+      "stored_parser_version": "flashscore-point-history-v5",
+      "retrieved_at": "2026-10-21T21:53:37.173339+00:00",
+      "html_length": 1174754,
+      "raw_game_rows": 0,
+      "raw_tiebreak_rows": 0,
+      "raw_point_rows": 0,
+      "games_compared": 0,
+      "source_point_states_compared": 0,
+      "point_state_mismatches": 0,
+      "point_mismatch_games": [],
+      "server_mismatches": 0,
+      "server_mismatch_games": [],
+      "deuce_or_advantage_events": 0,
+      "tiebreak_point_events": 0,
+      "terminal_game_events": 0,
+      "tiebreak_winner_mismatches": 0,
+      "tiebreak_server_mismatches": 0,
+      "tiebreak_sample": [],
+      "source_server_sides": {
+        "home": 0,
+        "away": 0,
+        "unknown": 0
+      },
+      "parser_quality": {
+        "event_count": 0,
+        "confirmed_points": 0,
+        "ambiguous_points": 0,
+        "gaps": [
+          {
+            "reason": "point_by_point_markup_missing"
+          }
+        ],
+        "complete": false
+      },
+      "source_url": "https://www.flashscore.com/match/tennis/apisah-violet-dzTd41W7/chanta-aunchisa-vu6u9eYC/?mid=bw8mYRzg",
+      "source_game_rows": [],
+      "source_tiebreak_rows": [],
+      "parsed_point_events": []
+    }
+  ]
+}

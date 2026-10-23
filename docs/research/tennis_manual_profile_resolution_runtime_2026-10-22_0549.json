@@ -1,0 +1,127 @@
+{
+  "observed_at_utc": "2026-10-22T05:49:36.368323+00:00",
+  "verified_at_utc": "2026-10-22T05:49:27.254060+00:00",
+  "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+  "manual_identity_review": "docs/research/tennis_manual_player_identity_review_2026-10-22_0544.json",
+  "profile_identity_links": [
+    {
+      "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+      "source_player_id": "ziXD7L4M",
+      "status": "confirmed",
+      "available_at": "2026-10-22T05:49:20.078076+00:00",
+      "evidence_json": {
+        "method": "manual_confirmation",
+        "profile_url": "https://www.flashscore.com/player/yang-yidi/ziXD7L4M/",
+        "candidate_name": "Yidi Yang",
+        "manual_evidence": {
+          "basis": "Exact transliterated name and source profile; WTA official player record and Flashscore H2H joins both exact profile IDs; current W35 Qian Daohu listing corroborates the pair. This confirms player identity only, not PBP completeness or a result label.",
+          "decision": "manual_confirm",
+          "reviewed_at": "2026-10-22T05:49:18.142232+00:00",
+          "wta_player_id": "324323",
+          "fonbet_event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+          "wta_profile_url": "https://www.wtatennis.com/players/324323/yidi-yang/stats",
+          "participant_name": "Ян Иди",
+          "official_tournament_url": "https://www.itftennis.com/en/tournament/w35-qian-daohu/chn/2026/w-itf-chn-2026-029/fact-sheet/",
+          "current_match_listing_url": "https://www.tennisbrain.com/predictions/?bookmaker=bet365",
+          "flashscore_head_to_head_url": "https://www.flashscore.co.za/match/tennis/yang-yidi-ziXD7L4M/yuan-chengyiyi-rkpSzNfa/"
+        },
+        "participant_name": "Ян Иди"
+      },
+      "refresh_job_status": "queued",
+      "refresh_job_reason": "manual_identity_resolution",
+      "refresh_job_attempts": 3
+    },
+    {
+      "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+      "source_player_id": "rkpSzNfa",
+      "status": "confirmed",
+      "available_at": "2026-10-22T05:49:20.622035+00:00",
+      "evidence_json": {
+        "method": "manual_confirmation",
+        "profile_url": "https://www.flashscore.com/player/yuan-chengyiyi/rkpSzNfa/",
+        "candidate_name": "Chengyiyi Yuan",
+        "manual_evidence": {
+          "basis": "Exact transliterated name and source profile; WTA official player record and Flashscore H2H joins both exact profile IDs; current W35 Qian Daohu listing corroborates the pair. This confirms player identity only, not PBP completeness or a result label.",
+          "decision": "manual_confirm",
+          "reviewed_at": "2026-10-22T05:49:18.142232+00:00",
+          "wta_player_id": "324575",
+          "fonbet_event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+          "wta_profile_url": "https://www.wtatennis.com/players/324575/chengyiyi-yuan/stats",
+          "participant_name": "Юань Чэнии",
+          "official_tournament_url": "https://www.itftennis.com/en/tournament/w35-qian-daohu/chn/2026/w-itf-chn-2026-029/fact-sheet/",
+          "current_match_listing_url": "https://www.tennisbrain.com/predictions/?bookmaker=bet365",
+          "flashscore_head_to_head_url": "https://www.flashscore.co.za/match/tennis/yang-yidi-ziXD7L4M/yuan-chengyiyi-rkpSzNfa/"
+        },
+        "participant_name": "Юань Чэнии"
+      },
+      "refresh_job_status": "queued",
+      "refresh_job_reason": "manual_identity_resolution",
+      "refresh_job_attempts": 6
+    }
+  ],
+  "profile_api": [
+    {
+      "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+      "canonical_player_id": null,
+      "source_identities": {
+        "flashscore": "ziXD7L4M"
+      },
+      "profile_url": "https://www.flashscore.com/player/yang-yidi/ziXD7L4M/",
+      "status": "running",
+      "metrics_version": 0,
+      "refresh_job": null
+    },
+    {
+      "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+      "canonical_player_id": null,
+      "source_identities": {
+        "flashscore": "rkpSzNfa"
+      },
+      "profile_url": "https://www.flashscore.com/player/yuan-chengyiyi/rkpSzNfa/",
+      "status": "running",
+      "metrics_version": 0,
+      "refresh_job": null
+    }
+  ],
+  "event_api": {
+    "event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "mode": "live",
+    "players": [
+      {
+        "participant_id": "63905f58-2567-4b48-aff7-984c24a9ff7f",
+        "name": "Ян Иди",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      },
+      {
+        "participant_id": "e6b41855-3fac-456f-a700-3352f4886aea",
+        "name": "Юань Чэнии",
+        "status": "running",
+        "metrics_version": 0,
+        "last_success_at": null,
+        "job_status": "queued",
+        "reason": null
+      }
+    ],
+    "point_history": {
+      "status": "waiting_match",
+      "updated_at": "2026-10-22T05:49:36.368323+00:00",
+      "next_retry_at": "2026-10-22T05:59:36.368323+00:00",
+      "reason": "FLASHSCORE_MATCH_LINK_PENDING"
+    },
+    "match_lookup": {
+      "status": "running",
+      "updated_at": "2026-10-22T05:49:27.254060+00:00",
+      "next_retry_at": "2026-10-22T05:49:24.768703+00:00",
+      "source_match_id": null,
+      "reason": null
+    }
+  },
+  "interpretation": "Two source-timed identity links were appended through the protected manual resolve API; the provenance URLs and decision are present in each link evidence_json. Both profile refreshes are queued as manual_identity_resolution. The match lookup was requeued, but point history remains waiting_players until the refreshed profiles are available; no PBP document or label was fabricated.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

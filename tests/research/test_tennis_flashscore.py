@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import asyncio
 import hashlib
@@ -23,6 +23,8 @@ from app.tennis_flashscore import (
     _browser_launch_options,
     _profile_country_id,
     _profile_feed_page_url,
+    _profile_initial_feed_from_html,
+    is_compatible_profile_parser_version,
     _is_doubles_result,
     is_doubles_player_display,
     _advertised_singles_count_matches,
@@ -82,8 +84,10 @@ from app.point_history import (
     _confirmed_link_page, _discover_live_match, _external_home_is_fonbet_a, _external_match_state,
     _match_page_url, _match_url_has_player_ids,
     _normalize_live_match_discovery,
+    _source_match_summary_url,
     _open_point_history_entry, _point_by_point_index_url,
     _point_by_point_set_tabs, _point_by_point_set_url, _preferred_point_history_url,
+    _parse_point_history_feed, _point_history_feed_url, fetch_point_documents,
 )
 
 
@@ -106,6 +110,17 @@ def test_live_match_discovery_ambiguity_is_not_treated_as_a_match_record():
     assert matched["status"] == "matched"
     assert matched["source_match_id"] == "matchc"
     assert _normalize_live_match_discovery({"status": "ambiguous", "candidates": [{}]})["status"] == "unmatched"
+
+
+def test_source_only_pbp_url_requires_allowed_tennis_match_and_exact_source_id():
+    url = "https://www.flashscore.com/match/tennis/player-a-id/player-b-id/point-by-point/set-1/?mid=AbCd123"
+    assert _source_match_summary_url("AbCd123", url) == (
+        "https://www.flashscore.com/match/tennis/player-a-id/player-b-id/summary/?mid=AbCd123"
+    )
+    assert _source_match_summary_url("Other123", url) is None
+    assert _source_match_summary_url(
+        "AbCd123", "https://example.com/match/tennis/player-a-id/player-b-id/?mid=AbCd123"
+    ) is None
 
 
 def test_live_match_discovery_collapses_duplicate_board_links_for_same_fixture():
@@ -442,6 +457,8 @@ def test_profile_count_compares_advertised_singles_not_all_feed_events():
     singles = {f"singles-{n}" for n in range(45)}
     assert _advertised_singles_count_matches(45, singles)
     assert not _advertised_singles_count_matches(59, singles)
+    assert not _advertised_singles_count_matches(None, singles)
+    assert _advertised_singles_count_matches(0, set())
     assert _is_doubles_result(
         {"CX": "Player A.", "AF": "Player B."},
         {"ZA": "MIXED DOUBLES: US Open", "ZAF": "Mixed Doubles"},
@@ -454,6 +471,150 @@ def test_profile_count_compares_advertised_singles_not_all_feed_events():
         {"CX": "Player A.", "AF": "Player B."},
         {"ZA": "WTA - Singles: US Open", "ZAF": "WTA - Singles"},
     )
+
+
+def test_server_rendered_profile_feed_and_zero_count_are_read_without_browser():
+    html = '''<script>
+      cjs.initialFeeds["summary-results_s"] = {
+        data: `SA÷2¬~AA÷match001¬PX÷player01¬CA÷39¬PY÷other001¬CB÷51`,
+        allEventsCount: 1,
+      };
+      cjs.initialFeeds["summary-results_m"] = { data: ``, allEventsCount: 0, };
+    </script>'''
+    feed, count = _profile_initial_feed_from_html(html)
+    assert feed == "SA÷2¬~AA÷match001¬PX÷player01¬CA÷39¬PY÷other001¬CB÷51"
+    assert count == 1
+
+    zero_html = '''<script>cjs.initialFeeds["summary-results_s"] = {
+      data: ``, allEventsCount: 0,
+    };</script>'''
+    assert _profile_initial_feed_from_html(zero_html) == ("", 0)
+
+
+@pytest.mark.parametrize(("advertised_count", "expected_complete", "expected_gap"), [(1, True, 0), (2, False, 1)])
+def test_http_profile_archive_does_not_start_browser(monkeypatch, advertised_count, expected_complete, expected_gap):
+    feed = (
+        "SA÷2¬~ZA÷ATP MEN'S SINGLES: Rome, clay¬ZAF÷ATP Men Singles¬ZK÷Rome"
+        "¬ZL÷/tennis/atp-singles/rome/¬~AA÷match001¬AD÷1780000000"
+        "¬CX÷Player One¬PX÷player01¬CA÷39¬AF÷Player Two¬PY÷other001¬CB÷51"
+        "¬AG÷2¬AH÷0¬BA÷6¬BB÷4¬BC÷7¬BD÷6"
+    )
+    profile_html = (
+        '<script>cjs.initialFeeds["summary-results_s"] = {'
+        f'data: `{feed}`, allEventsCount: {advertised_count},}};</script>'
+    )
+    requested = []
+
+    def fake_get(url, _source_access=None, *, feed=False):
+        requested.append(url)
+        if not feed:
+            return 200, profile_html, url, None
+        if "_0_1_en_1" in url:
+            return 200, feed_payload, url, None
+        return 200, "", url, None
+
+    feed_payload = feed
+    monkeypatch.setattr("app.tennis_flashscore._profile_http_get", fake_get)
+    importer = FlashscoreTennisImporter(storage=SimpleNamespace())
+    monkeypatch.setattr(
+        importer, "_fetch_rendered_profile_with_browser",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Chromium should not start")),
+    )
+
+    html, status, payloads, _name, complete, documents = importer._fetch_rendered_profile(
+        "https://www.flashscore.com/player/player-one/player01/results/"
+    )
+    assert status == "OK"
+    assert html == profile_html
+    assert complete is expected_complete
+    assert len(payloads) == 2
+    assert documents[-1]["pagination_reason"] == (
+        "source_terminal_empty_response_confirmed" if expected_complete else
+        "source_terminal_empty_response_count_mismatch_confirmed"
+    )
+    assert documents[-1]["fetch_transport"] == "http"
+    assert documents[-1]["count_gap"] == expected_gap
+    assert len(requested) == 4  # profile, page zero, and two terminal probes
+
+
+def test_profile_http_block_does_not_trigger_chromium_fallback(monkeypatch):
+    monkeypatch.setattr(
+        "app.tennis_flashscore._profile_http_get",
+        lambda *args, **kwargs: (429, "", args[0], None),
+    )
+    importer = FlashscoreTennisImporter(storage=SimpleNamespace())
+    monkeypatch.setattr(
+        importer, "_fetch_rendered_profile_with_browser",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Do not retry a source block in Chromium")),
+    )
+    result = importer._fetch_rendered_profile(
+        "https://www.flashscore.com/player/player-one/player01/results/"
+    )
+    assert result[1] == "HTTP_429_ANTI_BOT_BLOCKED"
+    assert result[-1][0]["fetch_transport"] == "http"
+    assert result[-1][0]["fallback_reason"] is None
+
+
+def test_http_captcha_diagnostic_records_transport_without_browser_fallback(monkeypatch):
+    monkeypatch.setattr(
+        "app.tennis_flashscore._profile_http_get",
+        lambda *args, **kwargs: (200, "<html>verify you are human</html>", args[0], None),
+    )
+    importer = FlashscoreTennisImporter(storage=SimpleNamespace())
+    monkeypatch.setattr(
+        importer, "_fetch_rendered_profile_with_browser",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Do not retry a CAPTCHA in Chromium")),
+    )
+    result = importer._fetch_rendered_profile(
+        "https://www.flashscore.com/player/player-one/player01/results/"
+    )
+    assert result[1] == "CAPTCHA_CHALLENGE_ABORTED"
+    assert result[-1][0]["fetch_transport"] == "http"
+    assert result[-1][0]["fallback_reason"] == "HTTP_200_ANTIBOT_CHALLENGE"
+
+
+def test_profile_http_get_handles_httpx_response_without_permanent_redirect_property(monkeypatch):
+    class Response:
+        status_code = 200
+        headers = {}
+        content = b"ok"
+        text = "ok"
+        url = "https://www.flashscore.com/player/player-one/player01/results/"
+        is_redirect = False
+
+    class Client:
+        def get(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr("app.tennis_flashscore._get_profile_page_http_client", Client)
+    monkeypatch.setattr("app.tennis_flashscore.time.sleep", lambda *_args: None)
+
+    from app.tennis_flashscore import _profile_http_get
+
+    assert _profile_http_get(Response.url) == (200, "ok", Response.url, None)
+
+
+def test_profile_http_shell_uses_one_browser_fallback_and_records_reason(monkeypatch):
+    monkeypatch.setattr(
+        "app.tennis_flashscore._profile_http_get",
+        lambda *args, **kwargs: (200, "<html><body>shell</body></html>", args[0], None),
+    )
+    importer = FlashscoreTennisImporter(storage=SimpleNamespace())
+    callback_documents = []
+
+    def fallback(*args, page_callback=None, **kwargs):
+        page_callback({"page_index": 1, "html": "feed", "response_status": 200})
+        return "rendered", "OK", ["feed"], "Player One", False, [{"page_index": 1}]
+
+    monkeypatch.setattr(importer, "_fetch_rendered_profile_with_browser", fallback)
+    result = importer._fetch_rendered_profile(
+        "https://www.flashscore.com/player/player-one/player01/results/",
+        page_callback=callback_documents.append,
+    )
+    assert result[0] == "rendered"
+    assert callback_documents[0]["fetch_transport"] == "chromium_fallback"
+    assert callback_documents[0]["fallback_reason"] == "HTTP_200_INITIAL_FEED_MISSING"
+    assert result[-1][0]["fetch_transport"] == "chromium_fallback"
 
 
 def test_profile_parser_accepts_prior_version_archive_documents_for_reparse():
@@ -477,6 +638,8 @@ def test_profile_parser_accepts_prior_version_archive_documents_for_reparse():
         "content_hash": "sha256:" + __import__("hashlib").sha256(b"payload").hexdigest(),
     }
     assert importer._load_resume_documents("jNyZsXZe", [page])
+    assert is_compatible_profile_parser_version("flashscore-tennis-player-v8")
+    assert not is_compatible_profile_parser_version("unrelated-parser-v8")
 
 
 def test_atp_wta_categories_determine_gender_and_major_match_format():
@@ -816,8 +979,52 @@ def test_confirmed_live_link_can_drive_pbp_before_profile_match_import():
     assert resolved == (
         "https://www.flashscore.com/match/tennis/masabayashi-tomohiro-23AG6J1b/"
         "suksumrarn-thantub-tW8olIAn/summary/?mid=vV6BKNOq",
-        False,
+        None,
     )
+
+
+def test_confirmed_link_does_not_treat_player_slug_order_as_side_evidence():
+    link = SimpleNamespace(
+        source_match_id="nFpUNjLN",
+        evidence_json={
+            "source_url": "https://www.flashscore.com/match/tennis/chaudhari-vaidehi-zT0yq0KG/"
+            "nishimoto-sera-Sz5NW6cC/summary/point-by-point/set-1/?mid=nFpUNjLN",
+        },
+    )
+
+    resolved = _confirmed_link_page(link, "Sz5NW6cC", "zT0yq0KG")
+
+    assert resolved == (
+        "https://www.flashscore.com/match/tennis/chaudhari-vaidehi-zT0yq0KG/"
+        "nishimoto-sera-Sz5NW6cC/summary/?mid=nFpUNjLN",
+        None,
+    )
+
+
+def test_confirmed_link_preserves_explicit_manual_side_orientation():
+    link = SimpleNamespace(
+        source_match_id="match-1",
+        evidence_json={
+            "resolution": "manual_confirmation",
+            "external_home_is_fonbet_a": True,
+            "source_url": "https://www.flashscore.com/match/tennis/player-b-b/player-a-a/?mid=match-1",
+        },
+    )
+
+    assert _confirmed_link_page(link, "player-a", "player-b")[1] is True
+
+
+def test_source_dom_side_orientation_uses_home_away_profile_ids_not_url_slug_order():
+    from app.point_history import _source_dom_side_orientation
+
+    source_html = """
+    <div class="duelParticipant__home"><a href="/player/nishimoto-sera/Sz5NW6cC/">Nishimoto S.</a></div>
+    <div class="duelParticipant__away"><a href="/player/chaudhari-vaidehi/zT0yq0KG/">Chaudhari V.</a></div>
+    """
+
+    assert _source_dom_side_orientation(source_html, "Sz5NW6cC", "zT0yq0KG") is True
+    assert _source_dom_side_orientation(source_html, "zT0yq0KG", "Sz5NW6cC") is False
+    assert _source_dom_side_orientation(source_html, "unconfirmed-a", "unconfirmed-b") is None
 
 
 def test_confirmed_live_link_rejects_untrusted_or_wrong_player_urls():
@@ -859,7 +1066,7 @@ def test_direct_pbp_navigation_timeout_falls_back_to_confirmed_summary_url():
     ]
 
 
-def test_finished_match_refreshes_player_history_that_predates_the_result():
+def test_finished_match_does_not_refresh_a_fresh_player_profile_per_event():
     now = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
     finished_at = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)
     profile = SimpleNamespace(
@@ -870,7 +1077,18 @@ def test_finished_match_refreshes_player_history_that_predates_the_result():
         status="completed", updated_at=datetime(2026, 10, 21, 9, 5, tzinfo=timezone.utc),
     )
 
-    assert _post_match_profile_refresh_due(profile, previous_job, finished_at, now)
+    assert not _post_match_profile_refresh_due(profile, previous_job, finished_at, now)
+
+
+def test_player_profile_refresh_becomes_due_after_seven_days():
+    now = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
+    profile = SimpleNamespace(
+        source_identities={"flashscore": "player-id"},
+        last_success_at=now - timedelta(days=7, seconds=1),
+    )
+    completed_job = SimpleNamespace(status="completed", updated_at=now - timedelta(days=7))
+
+    assert _post_match_profile_refresh_due(profile, completed_job, None, now)
 
 
 def test_post_finish_profile_refresh_is_not_requeued_for_same_result():
@@ -897,6 +1115,109 @@ def test_point_by_point_url_removes_redirected_query_before_appending_tab():
     assert _point_by_point_index_url(
         "https://www.flashscore.com.ua/match/tennis/player-a/player-b/?mid=match-123", "match-123"
     ) == "https://www.flashscore.com.ua/match/tennis/player-a/player-b/summary/point-by-point/?mid=match-123"
+
+
+def test_point_history_feed_url_uses_compact_tennis_http_feed():
+    assert _point_history_feed_url("A5F0BCMP") == (
+        "https://global.flashscore.ninja/2/x/feed/df_mh_2_A5F0BCMP"
+    )
+    with pytest.raises(ValueError):
+        _point_history_feed_url("../../untrusted")
+
+
+def test_point_history_feed_parser_retains_points_games_and_server():
+    feed = (
+        "HA÷Set 1¬HB÷Point by point - Set 1"
+        "~HC÷0¬HE÷1¬HG÷2¬HK÷2¬HL÷0:15, 15:15, 15:30, 15:40, 30:40"
+        "~HC÷1¬HE÷1¬HG÷1¬HK÷1¬HL÷15:0, 15:15, 30:15, 40:15"
+    )
+
+    parsed = _parse_point_history_feed(feed)
+
+    assert parsed["sets"] == [1]
+    assert parsed["quality"]["complete"] is True
+    assert parsed["quality"]["confirmed_points"] == 11
+    assert parsed["events"][0]["winner"] == 1
+    assert parsed["events"][0]["server"] == 1
+    assert parsed["events"][-1]["quality"] == "terminal_from_game_result"
+    assert parsed["events"][-1]["winner"] == 0
+
+
+def test_point_history_feed_parser_retains_tiebreak_sequence_and_set_result():
+    feed = (
+        "HA÷Set 1¬HB÷Point by point - Set 1"
+        "~HC÷6¬HE÷6¬HG÷2¬HK÷1¬HL÷1:0, 2:0, 2:1, 3:1, 4:1, 5:1, 6:1, 7:1"
+    )
+
+    parsed = _parse_point_history_feed(feed)
+
+    assert parsed["quality"]["complete"] is True
+    assert parsed["events"][-1]["quality"] == "terminal_from_tiebreak_result"
+    assert parsed["events"][-1]["state_after"] == {"set_result": [7, 6]}
+
+
+def test_point_history_fetch_uses_http_feed_and_returns_cumulative_payload(monkeypatch):
+    from app import tennis_flashscore
+    feed = "A1÷signature-1¬HA÷Set 1¬HB÷Point by point - Set 1~HC÷0¬HE÷1¬HG÷2¬HK÷2¬HL÷0:15, 15:15, 15:30, 15:40, 30:40"
+    calls = []
+
+    def http_get(url, source_access=None, *, feed=False):
+        calls.append((url, feed))
+        return 200, feed_payload, url, None
+
+    feed_payload = feed
+    monkeypatch.setattr(tennis_flashscore, "_profile_http_get", http_get)
+
+    docs, status = fetch_point_documents(
+        "https://www.flashscore.com/match/tennis/a/b/summary/?mid=A5F0BCMP"
+    )
+
+    assert status == "complete"
+    assert calls == [(_point_history_feed_url("A5F0BCMP"), True)]
+    assert docs[0]["fetch_transport"] == "http_feed"
+    assert docs[0]["parsed"]["quality"]["feed_signature"] == "signature-1"
+    assert docs[0]["parsed"]["events"]
+
+
+def test_live_point_history_waits_for_first_http_points_without_opening_browser(monkeypatch):
+    from app import tennis_flashscore
+    from app.browser_pool import flashscore_chromium
+    calls = []
+
+    def http_get(url, source_access=None, *, feed=False):
+        calls.append((url, feed))
+        return 200, "A1÷signature-1¬HA÷Set 1", url, None
+
+    monkeypatch.setattr(tennis_flashscore, "_profile_http_get", http_get)
+    monkeypatch.setattr(
+        flashscore_chromium,
+        "context",
+        lambda *_args, **_kwargs: pytest.fail("live empty feed must not open a browser"),
+    )
+
+    docs, status = fetch_point_documents(
+        "https://www.flashscore.com/match/tennis/a/b/summary/?mid=A5F0BCMP",
+        skip_browser_when_feed_empty=True,
+    )
+
+    assert docs == []
+    assert status == "HTTP_200_NO_PUBLISHED_HISTORY"
+    assert calls == [(_point_history_feed_url("A5F0BCMP"), True)]
+
+
+def test_point_history_http_throttle_does_not_fall_back_to_browser(monkeypatch):
+    from app import main, tennis_flashscore
+    throttles = []
+    monkeypatch.setattr(tennis_flashscore, "_profile_http_get", lambda *_args, **_kwargs: (429, "", "", None))
+    monkeypatch.setattr(main, "_record_flashscore_throttle", lambda: throttles.append(True))
+
+    docs, status = fetch_point_documents(
+        "https://www.flashscore.com/match/tennis/a/b/summary/?mid=A5F0BCMP"
+    )
+
+    assert docs == []
+    assert status == "HTTP_429_BLOCKED"
+    assert throttles == [True]
 
 
 def test_point_history_opens_direct_index_when_confirmed_source_match_id_exists():

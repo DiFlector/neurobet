@@ -1,0 +1,755 @@
+{
+  "observed_at_utc": "2026-10-22T15:40:00Z",
+  "scope": "Read-only inspection of the latest 50 collector source-payload objects archived to S3 and referenced by fonbet.raw",
+  "sample_count": 50,
+  "source_event_rows": 3079,
+  "collected_at_range": [
+    "2026-10-22T15:30:31.913812+00:00",
+    "2026-10-22T15:38:15.229690+00:00"
+  ],
+  "event_field_keys": [
+    [
+      "id",
+      3079
+    ],
+    [
+      "sortOrder",
+      3079
+    ],
+    [
+      "level",
+      3079
+    ],
+    [
+      "num",
+      3079
+    ],
+    [
+      "sportId",
+      3079
+    ],
+    [
+      "kind",
+      3079
+    ],
+    [
+      "rootKind",
+      3079
+    ],
+    [
+      "team1Id",
+      3079
+    ],
+    [
+      "team2Id",
+      3079
+    ],
+    [
+      "name",
+      3079
+    ],
+    [
+      "startTime",
+      3079
+    ],
+    [
+      "place",
+      3079
+    ],
+    [
+      "priority",
+      3079
+    ],
+    [
+      "parentId",
+      1684
+    ],
+    [
+      "substituteRootEvent",
+      1410
+    ],
+    [
+      "team1",
+      1395
+    ],
+    [
+      "team2",
+      1395
+    ],
+    [
+      "tv",
+      1395
+    ],
+    [
+      "statisticsTypes",
+      406
+    ],
+    [
+      "applicability",
+      150
+    ]
+  ],
+  "format_related_field_counts": [],
+  "explicit_best_of_rows": 0,
+  "explicit_best_of_values": {},
+  "finding": "No explicit match-format or best_of field appeared in any inspected Fonbet source event. The raw upstream objects can prove the fields were absent in these observations; format remains unknown, and no gender/tournament/score inference is admissible.",
+  "objects": [
+    {
+      "stream_id": "1792683496516-0",
+      "collected_at": "2026-10-22T15:38:15.229690+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/42e7/42e76cf47f92665fb30bc1328d38383c020bcf433e564eb31cc1a9faa206133e.json",
+      "payload_hash": "sha256:42e76cf47f92665fb30bc1328d38383c020bcf433e564eb31cc1a9faa206133e",
+      "source_event_rows": 55,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683488412-0",
+      "collected_at": "2026-10-22T15:38:07.758971+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/cb55/cb558984765a134100c2b302ade2208d0432e8d1683f388ec3c97428e3552edb.json",
+      "payload_hash": "sha256:cb558984765a134100c2b302ade2208d0432e8d1683f388ec3c97428e3552edb",
+      "source_event_rows": 55,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683480528-0",
+      "collected_at": "2026-10-22T15:37:59.760799+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/2c4f/2c4f5826c8bf9341b1a0bfc6c6df11000c222d56c3bd598e6bd88086d5436c78.json",
+      "payload_hash": "sha256:2c4f5826c8bf9341b1a0bfc6c6df11000c222d56c3bd598e6bd88086d5436c78",
+      "source_event_rows": 55,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683473731-0",
+      "collected_at": "2026-10-22T15:37:52.810873+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/db99/db992c8482db1cbe900fe5441f60c8cc725a2fd93f0a11cd7eb480408d632a52.json",
+      "payload_hash": "sha256:db992c8482db1cbe900fe5441f60c8cc725a2fd93f0a11cd7eb480408d632a52",
+      "source_event_rows": 55,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683466110-0",
+      "collected_at": "2026-10-22T15:37:43.863735+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/6eec/6eec223e4a32ebb9bd7ce233c86a521385da12518e32d96b80b833b1006728a8.json",
+      "payload_hash": "sha256:6eec223e4a32ebb9bd7ce233c86a521385da12518e32d96b80b833b1006728a8",
+      "source_event_rows": 56,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683457435-0",
+      "collected_at": "2026-10-22T15:37:35.888668+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/7175/7175f0f58d37425f66b1d15a3eb09476d59b79e14eb1d6ff9fcb735029d75e2e.json",
+      "payload_hash": "sha256:7175f0f58d37425f66b1d15a3eb09476d59b79e14eb1d6ff9fcb735029d75e2e",
+      "source_event_rows": 56,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683448469-0",
+      "collected_at": "2026-10-22T15:37:26.982628+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/d8a1/d8a13edef84797552fc138968ac1f2962bc45dc7e833973455602f469f435a59.json",
+      "payload_hash": "sha256:d8a13edef84797552fc138968ac1f2962bc45dc7e833973455602f469f435a59",
+      "source_event_rows": 56,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683439156-0",
+      "collected_at": "2026-10-22T15:37:18.221439+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/7192/7192d2338d1b3a85b92ff088e00023e60088ae11ca4cd953a56888579e24ab81.json",
+      "payload_hash": "sha256:7192d2338d1b3a85b92ff088e00023e60088ae11ca4cd953a56888579e24ab81",
+      "source_event_rows": 57,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683428844-0",
+      "collected_at": "2026-10-22T15:37:08.068056+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/17e4/17e42499f548ad43edb9d3d8271323651865598eceb9448813a850af96b17aa0.json",
+      "payload_hash": "sha256:17e42499f548ad43edb9d3d8271323651865598eceb9448813a850af96b17aa0",
+      "source_event_rows": 57,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683421946-0",
+      "collected_at": "2026-10-22T15:37:01.291758+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/8af1/8af16274b86bad08d71dabeb25290a6e461b0bf6be54aa14be93038240f6cc46.json",
+      "payload_hash": "sha256:8af16274b86bad08d71dabeb25290a6e461b0bf6be54aa14be93038240f6cc46",
+      "source_event_rows": 58,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683415570-0",
+      "collected_at": "2026-10-22T15:36:54.218157+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/f7cd/f7cdde61ea8d8b38e743e1303de076d3bfd98a40398fd71c01086a190d047e9a.json",
+      "payload_hash": "sha256:f7cdde61ea8d8b38e743e1303de076d3bfd98a40398fd71c01086a190d047e9a",
+      "source_event_rows": 58,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683406594-0",
+      "collected_at": "2026-10-22T15:36:45.976909+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/f2e5/f2e565a49d19a315e25d70b3451e9b544ab8b3d41e2674641af41af2edb7db20.json",
+      "payload_hash": "sha256:f2e565a49d19a315e25d70b3451e9b544ab8b3d41e2674641af41af2edb7db20",
+      "source_event_rows": 58,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683397238-0",
+      "collected_at": "2026-10-22T15:36:35.930345+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/ddee/ddeec0a0d098c327823b2bd800dd92139d1380b24370343b2a326b70afe789cf.json",
+      "payload_hash": "sha256:ddeec0a0d098c327823b2bd800dd92139d1380b24370343b2a326b70afe789cf",
+      "source_event_rows": 58,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683388400-0",
+      "collected_at": "2026-10-22T15:36:27.463386+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/14d1/14d10331b2e18538e48b754974a2c4cab5f06dd6c81d494fe5057c762e237eff.json",
+      "payload_hash": "sha256:14d10331b2e18538e48b754974a2c4cab5f06dd6c81d494fe5057c762e237eff",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683380157-0",
+      "collected_at": "2026-10-22T15:36:18.842370+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/8c12/8c12dccb324b4ccc4bd7e6b3fd53fe5e948ab25b735c3d981d2a0b2890068379.json",
+      "payload_hash": "sha256:8c12dccb324b4ccc4bd7e6b3fd53fe5e948ab25b735c3d981d2a0b2890068379",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683370413-0",
+      "collected_at": "2026-10-22T15:36:09.734472+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/ba7a/ba7ae5149d4bbad1f3729008bb8c9737c1179516263ae8f10da2d09035f608cf.json",
+      "payload_hash": "sha256:ba7ae5149d4bbad1f3729008bb8c9737c1179516263ae8f10da2d09035f608cf",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683358999-0",
+      "collected_at": "2026-10-22T15:35:57.681873+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/1e1d/1e1d53426035e3d853809362fa631f36f446cd149d94cfca382680fef83c3f22.json",
+      "payload_hash": "sha256:1e1d53426035e3d853809362fa631f36f446cd149d94cfca382680fef83c3f22",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683350459-0",
+      "collected_at": "2026-10-22T15:35:48.639099+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/3ff0/3ff01952d317a960d126931fe5bd17f7635d50d7d974f1a7b2b773868ed0e7b5.json",
+      "payload_hash": "sha256:3ff01952d317a960d126931fe5bd17f7635d50d7d974f1a7b2b773868ed0e7b5",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683339398-0",
+      "collected_at": "2026-10-22T15:35:38.714108+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/e8af/e8af4d387e226d8bd444031b4ad742dc08d79d6c494d12d8541f30bfe005f82d.json",
+      "payload_hash": "sha256:e8af4d387e226d8bd444031b4ad742dc08d79d6c494d12d8541f30bfe005f82d",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683329142-0",
+      "collected_at": "2026-10-22T15:35:20.248550+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/c14e/c14e1625b1526073a7fd2fd6ca1c715799ea8c492e7cc7a5f6d4ac4e065cd719.json",
+      "payload_hash": "sha256:c14e1625b1526073a7fd2fd6ca1c715799ea8c492e7cc7a5f6d4ac4e065cd719",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683291843-0",
+      "collected_at": "2026-10-22T15:34:49.029603+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/fcf4/fcf41338f71486d1b97325194063a770af73c7736a496f5e63003630a3069fc6.json",
+      "payload_hash": "sha256:fcf41338f71486d1b97325194063a770af73c7736a496f5e63003630a3069fc6",
+      "source_event_rows": 59,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683280689-0",
+      "collected_at": "2026-10-22T15:34:40.039874+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/b8d6/b8d6dfae7964133b32e3abe37b26adb721ebde3bf1aa9da04f8b42c4e55c9c91.json",
+      "payload_hash": "sha256:b8d6dfae7964133b32e3abe37b26adb721ebde3bf1aa9da04f8b42c4e55c9c91",
+      "source_event_rows": 59,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683270521-0",
+      "collected_at": "2026-10-22T15:34:28.991584+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/c5ed/c5edaf3760978b3308a0e31bad5bd07acdf9360662d644379483dc6d68c1a9fb.json",
+      "payload_hash": "sha256:c5edaf3760978b3308a0e31bad5bd07acdf9360662d644379483dc6d68c1a9fb",
+      "source_event_rows": 59,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683263877-0",
+      "collected_at": "2026-10-22T15:34:22.730308+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/a1d6/a1d6ce36fe2cc8b016772b86207071fd21bc79dde1bb75754048007313602b94.json",
+      "payload_hash": "sha256:a1d6ce36fe2cc8b016772b86207071fd21bc79dde1bb75754048007313602b94",
+      "source_event_rows": 60,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683257658-0",
+      "collected_at": "2026-10-22T15:34:16.230291+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/82cb/82cb88be6c62e44549e9e9ba5ba6f50e64c6bf2162f1bd05710d292ed9526b55.json",
+      "payload_hash": "sha256:82cb88be6c62e44549e9e9ba5ba6f50e64c6bf2162f1bd05710d292ed9526b55",
+      "source_event_rows": 60,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683250005-0",
+      "collected_at": "2026-10-22T15:34:09.107240+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/927a/927ac509dac95bd20e266e2a96ad842121643dcb8b45e3a4b85483472a834284.json",
+      "payload_hash": "sha256:927ac509dac95bd20e266e2a96ad842121643dcb8b45e3a4b85483472a834284",
+      "source_event_rows": 60,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683239744-0",
+      "collected_at": "2026-10-22T15:33:58.652976+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/22a0/22a0667ce254de63cac23c2e3d2c1b44790198b85535377f92748e78bcca96ce.json",
+      "payload_hash": "sha256:22a0667ce254de63cac23c2e3d2c1b44790198b85535377f92748e78bcca96ce",
+      "source_event_rows": 60,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683229046-0",
+      "collected_at": "2026-10-22T15:33:47.849939+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/d2cb/d2cb88d7847d5511042b044d0812c4f899677ce5477035cd07a1e5dc92a0fe67.json",
+      "payload_hash": "sha256:d2cb88d7847d5511042b044d0812c4f899677ce5477035cd07a1e5dc92a0fe67",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683220098-0",
+      "collected_at": "2026-10-22T15:33:39.391318+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/e1cb/e1cbe6c8130b25160ae18bee29bc5325d47c9317438a4695e18e0dcd08da48d4.json",
+      "payload_hash": "sha256:e1cbe6c8130b25160ae18bee29bc5325d47c9317438a4695e18e0dcd08da48d4",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683210283-0",
+      "collected_at": "2026-10-22T15:33:29.095966+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/4c07/4c07337a5aa1ef409cf0222b153b2e3bbc1178e656be110eb58f203cbe3dcf3e.json",
+      "payload_hash": "sha256:4c07337a5aa1ef409cf0222b153b2e3bbc1178e656be110eb58f203cbe3dcf3e",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683203229-0",
+      "collected_at": "2026-10-22T15:33:22.370834+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/30bc/30bcbabe362f78fbcef91243f53979afb51926f0e98a545e8fc8c89d03e39fa4.json",
+      "payload_hash": "sha256:30bcbabe362f78fbcef91243f53979afb51926f0e98a545e8fc8c89d03e39fa4",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683194065-0",
+      "collected_at": "2026-10-22T15:33:13.141017+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/b8d2/b8d294fe9f28b88997b3a1b9fac9ef9f155dec435dc4ccc9453247dbacb44380.json",
+      "payload_hash": "sha256:b8d294fe9f28b88997b3a1b9fac9ef9f155dec435dc4ccc9453247dbacb44380",
+      "source_event_rows": 61,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683186449-0",
+      "collected_at": "2026-10-22T15:33:03.630518+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/9ffe/9ffeef9f73d08ab1548519820f1c8b5a2d221468eb203d5e56d6a5dda643a247.json",
+      "payload_hash": "sha256:9ffeef9f73d08ab1548519820f1c8b5a2d221468eb203d5e56d6a5dda643a247",
+      "source_event_rows": 62,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683175007-0",
+      "collected_at": "2026-10-22T15:32:54.065064+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/7b60/7b60200d4347f4c5860ceb9fe944d3e53b02962a654680ac6223e4fe9bb1220b.json",
+      "payload_hash": "sha256:7b60200d4347f4c5860ceb9fe944d3e53b02962a654680ac6223e4fe9bb1220b",
+      "source_event_rows": 63,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683165927-0",
+      "collected_at": "2026-10-22T15:32:44.042473+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/8499/849905347fdee85e0497a82aeae0b6c09400e923847048f9d42ea1be30324fab.json",
+      "payload_hash": "sha256:849905347fdee85e0497a82aeae0b6c09400e923847048f9d42ea1be30324fab",
+      "source_event_rows": 63,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683154411-0",
+      "collected_at": "2026-10-22T15:32:32.577572+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/e6fa/e6faf23a3ce6a3db6fd1abe611bbf834b25a5964631afb312ee9aaa48fd626bd.json",
+      "payload_hash": "sha256:e6faf23a3ce6a3db6fd1abe611bbf834b25a5964631afb312ee9aaa48fd626bd",
+      "source_event_rows": 65,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683146829-0",
+      "collected_at": "2026-10-22T15:32:25.786667+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/f534/f53408a6f6377e18e2f739bd03761bf8df6d2ed3d287004c515aa14a7e6c33cc.json",
+      "payload_hash": "sha256:f53408a6f6377e18e2f739bd03761bf8df6d2ed3d287004c515aa14a7e6c33cc",
+      "source_event_rows": 66,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683137859-0",
+      "collected_at": "2026-10-22T15:32:16.841957+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/acb0/acb06f417c5b5052552299a743b17d3f0c5d666f61b338652be7d9a872a066fe.json",
+      "payload_hash": "sha256:acb06f417c5b5052552299a743b17d3f0c5d666f61b338652be7d9a872a066fe",
+      "source_event_rows": 66,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683129898-0",
+      "collected_at": "2026-10-22T15:32:08.708936+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/f278/f278d06daf803c28f4a907e9ff57456e30bcc5b77427cac35fbd1b4690b66856.json",
+      "payload_hash": "sha256:f278d06daf803c28f4a907e9ff57456e30bcc5b77427cac35fbd1b4690b66856",
+      "source_event_rows": 66,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683120180-0",
+      "collected_at": "2026-10-22T15:31:58.432485+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/350c/350ce260ccb9572c01dd527e16239d2abd54e18eaf37f4810c2882f4b8b664f3.json",
+      "payload_hash": "sha256:350ce260ccb9572c01dd527e16239d2abd54e18eaf37f4810c2882f4b8b664f3",
+      "source_event_rows": 67,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683112999-0",
+      "collected_at": "2026-10-22T15:31:51.543739+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/f14c/f14c4fee37ab822288d49dbb8e0e64dd6c2e191e277d1e121108e81e5439060b.json",
+      "payload_hash": "sha256:f14c4fee37ab822288d49dbb8e0e64dd6c2e191e277d1e121108e81e5439060b",
+      "source_event_rows": 67,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683103572-0",
+      "collected_at": "2026-10-22T15:31:41.090913+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/4086/40868be7f50742f5dd2782d4aaf2e159e93be3e1212c2f1ae257efe3260a6e9c.json",
+      "payload_hash": "sha256:40868be7f50742f5dd2782d4aaf2e159e93be3e1212c2f1ae257efe3260a6e9c",
+      "source_event_rows": 67,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683095474-0",
+      "collected_at": "2026-10-22T15:31:33.082237+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/a464/a4641a9c51ec5f12b3bb23ab11dfa98d95db791bc42dc7241600563617920b7a.json",
+      "payload_hash": "sha256:a4641a9c51ec5f12b3bb23ab11dfa98d95db791bc42dc7241600563617920b7a",
+      "source_event_rows": 67,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683086757-0",
+      "collected_at": "2026-10-22T15:31:26.050746+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/82c3/82c3dd3224aae9dd317cec850a1eaccdc0c3c17860b9c31a1a20018b125fee84.json",
+      "payload_hash": "sha256:82c3dd3224aae9dd317cec850a1eaccdc0c3c17860b9c31a1a20018b125fee84",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683076421-0",
+      "collected_at": "2026-10-22T15:31:15.550517+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/a806/a806176e61e6d5267055079f003388f8f625e3779d6e860f5aa4a327377aabda.json",
+      "payload_hash": "sha256:a806176e61e6d5267055079f003388f8f625e3779d6e860f5aa4a327377aabda",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683070028-0",
+      "collected_at": "2026-10-22T15:31:09.223597+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/0cc1/0cc1c5580e2e26743ffe5a9511f28971659f43d0d001620e342e53b21de626b6.json",
+      "payload_hash": "sha256:0cc1c5580e2e26743ffe5a9511f28971659f43d0d001620e342e53b21de626b6",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683059274-0",
+      "collected_at": "2026-10-22T15:30:58.671289+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/1843/1843239c4ef627e42cdd6911c566291f33d06d6d4d7fe4c9c1b0a06410eb8526.json",
+      "payload_hash": "sha256:1843239c4ef627e42cdd6911c566291f33d06d6d4d7fe4c9c1b0a06410eb8526",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683050138-0",
+      "collected_at": "2026-10-22T15:30:49.459530+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/cdd1/cdd1bfc22b614fc5223794018a6a1d859556d7f1170dcc73069c45e95443954b.json",
+      "payload_hash": "sha256:cdd1bfc22b614fc5223794018a6a1d859556d7f1170dcc73069c45e95443954b",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683043141-0",
+      "collected_at": "2026-10-22T15:30:42.516135+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/09da/09da5f545e54cb505f7fd75d8ac58ddc94657f243bbb7e121d9e0bce2fd47d25.json",
+      "payload_hash": "sha256:09da5f545e54cb505f7fd75d8ac58ddc94657f243bbb7e121d9e0bce2fd47d25",
+      "source_event_rows": 68,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    },
+    {
+      "stream_id": "1792683032976-0",
+      "collected_at": "2026-10-22T15:30:31.913812+00:00",
+      "s3_key": "fonbet/tennis/2026-10-22/2071/2071f5d3f6a294c592b7663173ae194fd46b27162703d0f961d03ed56fbaec6e.json",
+      "payload_hash": "sha256:2071f5d3f6a294c592b7663173ae194fd46b27162703d0f961d03ed56fbaec6e",
+      "source_event_rows": 69,
+      "root_keys": [
+        "capture_scope",
+        "events",
+        "feed_versions",
+        "sports"
+      ]
+    }
+  ],
+  "database_projection_snapshot": {
+    "observed_at_utc": "2026-10-22T15:40:00Z",
+    "tennis_events": 3847,
+    "with_best_of": 0,
+    "with_best_of_available_at": 0,
+    "query_scope": "events rows with sport_code=tennis; metadata_json key presence"
+  }
+}

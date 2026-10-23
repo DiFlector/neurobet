@@ -33,6 +33,8 @@ logger = logging.getLogger("research.tennis_flashscore")
 
 _profile_http_client = None
 _profile_http_client_lock = threading.Lock()
+_profile_page_http_client = None
+_profile_page_http_client_lock = threading.Lock()
 
 
 def _run_browser_awaitable(awaitable):
@@ -92,20 +94,92 @@ def _get_profile_http_client():
     return _profile_http_client
 
 
+def _get_profile_page_http_client():
+    """Reuse a bounded HTML/feed HTTP pool without starting Chromium."""
+    global _profile_page_http_client
+    if _profile_page_http_client is None:
+        with _profile_page_http_client_lock:
+            if _profile_page_http_client is None:
+                import httpx
+
+                _profile_page_http_client = httpx.Client(
+                    timeout=httpx.Timeout(25.0, connect=10.0),
+                    follow_redirects=False,
+                    headers={
+                        "User-Agent": SandboxedFetcher.USER_AGENT,
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
+                    },
+                    limits=httpx.Limits(
+                        max_connections=2,
+                        max_keepalive_connections=2,
+                        keepalive_expiry=30.0,
+                    ),
+                )
+    return _profile_page_http_client
+
+
+def _profile_http_get(url: str, source_access=None, *, feed: bool = False) -> tuple[int, str, str, Optional[str]]:
+    """Fetch one allowlisted Flashscore page/feed with a source slot per GET."""
+    from contextlib import nullcontext
+    import httpx
+
+    allowlist = {"flashscore.ninja"} if feed else None
+    current_url = url
+    for redirect_no in range(6):
+        allowed, reason = DomainFilter.is_allowed(current_url, allowlist=allowlist)
+        if not allowed:
+            return 0, "", current_url, f"REDIRECT_REJECTED:{reason}"
+        headers = ({
+            "Accept": "text/plain,*/*;q=0.9",
+            "Referer": FLASHSCORE_TENNIS_HOME_URL,
+            "x-fsign": os.getenv("FLASHSCORE_X_FSIGN", "SW9D1eZo"),
+        } if feed else {"Referer": FLASHSCORE_TENNIS_HOME_URL})
+        try:
+            if source_access is None:
+                time.sleep(max(2.0, float(os.getenv("FLASHSCORE_TENNIS_REQUEST_DELAY_SECONDS", "2.0"))))
+            with (source_access or nullcontext)():
+                response = _get_profile_page_http_client().get(current_url, headers=headers)
+        except httpx.TimeoutException as exc:
+            return 0, "", current_url, f"TimeoutError:{str(exc)[:180]}"
+        except httpx.HTTPError as exc:
+            return 0, "", current_url, f"{type(exc).__name__}:{str(exc)[:180]}"
+
+        # httpx Response exposes is_redirect across supported versions; the
+        # separate is_permanent_redirect property belongs to other clients.
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if not location or redirect_no >= 5:
+                return response.status_code, "", current_url, "REDIRECT_LIMIT_EXCEEDED"
+            current_url = urljoin(current_url, location)
+            continue
+        if len(response.content) > 5 * 1024 * 1024:
+            return response.status_code, "", current_url, "PROFILE_PAGE_TOO_LARGE"
+        return response.status_code, response.text, str(response.url), None
+    return 0, "", current_url, "REDIRECT_LIMIT_EXCEEDED"
+
+
 def _close_profile_http_client() -> None:
-    global _profile_http_client
+    global _profile_http_client, _profile_page_http_client
     with _profile_http_client_lock:
         client, _profile_http_client = _profile_http_client, None
+    with _profile_page_http_client_lock:
+        page_client, _profile_page_http_client = _profile_page_http_client, None
     if client is not None:
         try:
             client.close()
         except Exception:
             logger.debug("Could not close Flashscore search HTTP pool", exc_info=True)
+    if page_client is not None:
+        try:
+            page_client.close()
+        except Exception:
+            logger.debug("Could not close Flashscore profile HTTP pool", exc_info=True)
 
 
 atexit.register(_close_profile_http_client)
 
-PARSER_VERSION = "flashscore-tennis-player-v8"
+PARSER_VERSION = "flashscore-tennis-player-v9"
 FLASHSCORE_TENNIS_HOME_URL = "https://www.flashscore.com/tennis/"
 _CONFIRMED_TERMINAL_REASONS = {
     "source_terminal_empty_response_confirmed",
@@ -113,9 +187,19 @@ _CONFIRMED_TERMINAL_REASONS = {
 }
 _PROFILE_ID_RE = re.compile(r"/player/[^/]+/([A-Za-z0-9]+)/")
 _PROFILE_PARSER_VERSION_RE = re.compile(r"^flashscore-tennis-player-v\d+$")
+
+
+def is_compatible_profile_parser_version(value: str | None) -> bool:
+    """Archived page payloads remain reusable across parser revisions."""
+    return bool(_PROFILE_PARSER_VERSION_RE.fullmatch(str(value or "")))
 _FEED_RE = re.compile(
-    r'cjs\.initialFeeds\[\s*["\']results_s["\']\s*\]\s*=\s*'
+    r'cjs\.initialFeeds\[\s*["\'](?:summary-)?results_s["\']\s*\]\s*=\s*'
     r"\{\s*data:\s*`(.*?)`\s*(?:,\s*(?:change|\w+)\s*:|\})",
+    re.DOTALL,
+)
+_FEED_ASSIGNMENT_RE = re.compile(
+    r'cjs\.initialFeeds\[\s*["\'](?:summary-)?results_s["\']\s*\]\s*=\s*'
+    r"\{\s*data:\s*`(.*?)`\s*,\s*allEventsCount\s*:\s*(\d+)\s*,?\s*\}",
     re.DOTALL,
 )
 _SET_KEYS = (("BA", "BB"), ("BC", "BD"), ("BE", "BF"), ("BG", "BH"), ("BI", "BJ"))
@@ -331,6 +415,7 @@ def _search_flashscore_player_endpoint(
     answered: set[str] = set()
     failed: set[str] = set()
     parse_failed: set[str] = set()
+    candidate_counts = {"player_rows": 0, "valid_candidates": 0, "name_rejected": 0}
     try:
         client = _get_profile_http_client()
         for search_query in search_queries:
@@ -365,6 +450,19 @@ def _search_flashscore_player_endpoint(
                 continue
 
             answered.add(query_key)
+            player_rows = [
+                row for row in payload if isinstance(row, dict)
+                and str((row.get("type") or {}).get("id")) == "3"
+                and str((row.get("sport") or {}).get("id")) == "2"
+            ]
+            candidate_counts["player_rows"] += len(player_rows)
+            for row in player_rows:
+                source_id, slug, candidate_name = str(row.get("id") or ""), str(row.get("url") or ""), str(row.get("name") or "").strip()
+                if (re.fullmatch(r"[A-Za-z0-9]{8}", source_id) and
+                        re.fullmatch(r"[A-Za-z0-9-]{1,96}", slug) and candidate_name):
+                    candidate_counts["valid_candidates"] += 1
+                    if not _player_name_matches(player_name, candidate_name):
+                        candidate_counts["name_rejected"] += 1
             for candidate in _profile_candidates_from_search_payload(payload, player_name):
                 source_id = candidate["source_player_id"]
                 if source_id not in excluded_source_ids:
@@ -372,7 +470,8 @@ def _search_flashscore_player_endpoint(
             if len(candidates) == 1:
                 found = next(iter(candidates.values()))
                 return {"status": "matched", "profile_url": found["profile_url"],
-                        "candidate": found, "candidates": [found]}
+                        "candidate": found, "candidates": [found],
+                        "diagnostics": dict(candidate_counts)}
 
     except Exception as exc:
         logger.info("Flashscore profile endpoint unavailable for %s: %s",
@@ -386,9 +485,15 @@ def _search_flashscore_player_endpoint(
     found = list(candidates.values())
     if len(found) == 1:
         return {"status": "matched", "profile_url": found[0]["profile_url"],
-                "candidate": found[0], "candidates": found}
+                "candidate": found[0], "candidates": found,
+                "diagnostics": dict(candidate_counts)}
+    no_match_reason = (
+        "SEARCH_CANDIDATES_REJECTED_BY_NAME"
+        if not found and candidate_counts["name_rejected"] else
+        "MULTIPLE_PROFILE_CANDIDATES" if found else "SEARCH_COMPLETED_NO_MATCH"
+    )
     return {"status": "ambiguous" if found else "not_found", "candidates": found[:10],
-            "reason": "MULTIPLE_PROFILE_CANDIDATES" if found else "SEARCH_COMPLETED_NO_MATCH"}
+            "reason": no_match_reason, "diagnostics": dict(candidate_counts)}
 
 
 def _player_name_matches(query_name: str, candidate_name: str) -> bool:
@@ -554,6 +659,8 @@ class ScrapeResult:
     reason: Optional[str] = None
     archived_path: Optional[str] = None
     archived_page_paths: tuple[str, ...] = ()
+    fetch_transport: Optional[str] = None
+    fallback_reason: Optional[str] = None
 
 
 def _integer(value: Optional[str]) -> Optional[int]:
@@ -565,6 +672,14 @@ def _integer(value: Optional[str]) -> Optional[int]:
 def _feed_payloads(html: str) -> list[str]:
     """Return results feeds found in the document (Flashscore may split by tab)."""
     return [match.group(1).replace("\\`", "`") for match in _FEED_RE.finditer(html)]
+
+
+def _profile_initial_feed_from_html(html: str) -> tuple[Optional[str], Optional[int]]:
+    """Read the server-rendered singles feed and its advertised count."""
+    match = _FEED_ASSIGNMENT_RE.search(html or "")
+    if match is None:
+        return None, None
+    return match.group(1).replace("\\`", "`"), int(match.group(2))
 
 
 def _match_urls_from_profile_html(document: str, base_url: str) -> dict[str, str]:
@@ -661,7 +776,7 @@ def is_doubles_player_display(name: str) -> bool:
 
 def _advertised_singles_count_matches(advertised_count: Optional[int], singles_ids: set[str]) -> bool:
     """The profile's allEventsCount excludes doubles present in paged feed bodies."""
-    return advertised_count is None or int(advertised_count) == len(singles_ids)
+    return advertised_count is not None and int(advertised_count) == len(singles_ids)
 
 
 def _page_has_pagination_progress(page_index: int, new_match_ids: set[str]) -> bool:
@@ -738,14 +853,6 @@ def _set_winner(home: int, away: int) -> Optional[str]:
     if not complete:
         return None
     return "home" if home > away else "away"
-
-
-def _is_doubles_result(fields: dict[str, str], context: dict[str, str]) -> bool:
-    """This archive currently feeds singles features; never mix team results into player form."""
-    competition = " ".join((context.get("ZA", ""), context.get("ZAF", ""), context.get("ZL", "")))
-    if _DOUBLES.search(competition):
-        return True
-    return "/" in fields.get("CX", "") or "/" in fields.get("AF", "")
 
 
 def _parse_match_with_reason(fields: dict[str, str], context: dict[str, str]) -> tuple[Optional[FlashscoreMatch], Optional[str]]:
@@ -1000,6 +1107,9 @@ class FlashscoreTennisImporter:
                 "advertised_event_count": page_document.get("advertised_event_count"),
                 "observed_unique_event_count": page_document.get("observed_unique_event_count"),
                 "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
+                "count_gap": page_document.get("count_gap"),
+                "fetch_transport": page_document.get("fetch_transport"),
+                "fallback_reason": page_document.get("fallback_reason"),
                 "result_feeds": page_document.get("result_feeds", []), "html": page_html,
             })
             page_document["archived_path"] = path
@@ -1013,6 +1123,9 @@ class FlashscoreTennisImporter:
                                 "advertised_event_count": page_document.get("advertised_event_count"),
                                 "observed_unique_event_count": page_document.get("observed_unique_event_count"),
                                 "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
+                                "count_gap": page_document.get("count_gap"),
+                                "fetch_transport": page_document.get("fetch_transport"),
+                                "fallback_reason": page_document.get("fallback_reason"),
                                 "pagination_reason": page_document.get("pagination_reason"),
                                 "terminal_probe_count": page_document.get("terminal_probe_count", 0),
                                 "terminal_probe_status": page_document.get("terminal_probe_status"),
@@ -1037,7 +1150,13 @@ class FlashscoreTennisImporter:
                 source_status = "blocked"
             else:
                 source_status = "unavailable"
-            return ScrapeResult(status=source_status, url=url, retrieved_at=retrieved_at, content_hash=None, reason=status)
+            diagnostics = page_documents[-1] if page_documents else {}
+            return ScrapeResult(
+                status=source_status, url=url, retrieved_at=retrieved_at,
+                content_hash=None, reason=status,
+                fetch_transport=diagnostics.get("fetch_transport"),
+                fallback_reason=diagnostics.get("fallback_reason"),
+            )
         content_hash = "sha256:" + hashlib.sha256(html.encode("utf-8")).hexdigest()
         history_scope = ("overlap" if pagination_complete and stop_before_date else
                          "full_accessible" if pagination_complete else "partial")
@@ -1064,6 +1183,9 @@ class FlashscoreTennisImporter:
                 "advertised_event_count": page_documents[-1].get("advertised_event_count") if page_documents else None,
                 "observed_unique_event_count": page_documents[-1].get("observed_unique_event_count") if page_documents else None,
                 "observed_unique_singles_event_count": page_documents[-1].get("observed_unique_singles_event_count") if page_documents else None,
+                "count_gap": page_documents[-1].get("count_gap") if page_documents else None,
+                "fetch_transport": page_documents[-1].get("fetch_transport") if page_documents else None,
+                "fallback_reason": page_documents[-1].get("fallback_reason") if page_documents else None,
                 "html": html,
             },
         )
@@ -1088,6 +1210,9 @@ class FlashscoreTennisImporter:
                     "advertised_event_count": page_document.get("advertised_event_count"),
                     "observed_unique_event_count": page_document.get("observed_unique_event_count"),
                     "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
+                    "count_gap": page_document.get("count_gap"),
+                    "fetch_transport": page_document.get("fetch_transport"),
+                    "fallback_reason": page_document.get("fallback_reason"),
                     "pagination_reason": page_document.get("pagination_reason"),
                     "terminal_probe_count": page_document.get("terminal_probe_count", 0),
                     "terminal_probe_status": page_document.get("terminal_probe_status"),
@@ -1145,6 +1270,9 @@ class FlashscoreTennisImporter:
                     if not profile.pagination_complete else None),
             archived_path=archived_path,
             archived_page_paths=tuple(archived_page_paths),
+            fetch_transport=(page_documents[-1].get("fetch_transport") if page_documents else
+                             "http" if status.startswith("PROFILE_HTTP") else None),
+            fallback_reason=(page_documents[-1].get("fallback_reason") if page_documents else None),
         )
 
     def _load_resume_documents(self, profile_id: str, resume_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1200,6 +1328,314 @@ class FlashscoreTennisImporter:
 
     def _fetch_rendered_profile(self, url: str, stop_before_date: datetime | None = None, page_callback=None,
                                 resume_documents=None, source_access=None) -> tuple[Optional[str], str, list[str], Optional[str], bool, list[dict[str, Any]]]:
+        """Fetch profile results over HTTP, using Chromium only for a JS shell."""
+        _validate_profile_url(url)
+        status, profile_html, final_url, error = _profile_http_get(url, source_access)
+        def http_failure(reason: str, *, fallback_reason: str | None = None):
+            return None, reason, [], None, False, [{
+                "diagnostic_only": True,
+                "response_status": status,
+                "fetch_transport": "http",
+                "fallback_reason": fallback_reason,
+                "pagination_reason": reason,
+            }]
+
+        if status in (403, 429):
+            return http_failure(f"HTTP_{status}_ANTI_BOT_BLOCKED")
+        if status != 200:
+            return http_failure(f"PROFILE_HTTP_FETCH_FAILED:{error or f'HTTP_{status}'}")
+        allowed, redirect_reason = DomainFilter.is_allowed(final_url)
+        if not allowed:
+            return http_failure(f"REDIRECT_REJECTED:{redirect_reason}")
+
+        initial_feed, expected_count = _profile_initial_feed_from_html(profile_html)
+        player_match = _PROFILE_ID_RE.search(urlparse(url).path)
+        player_id = player_match.group(1) if player_match else ""
+        feed_usable = (
+            initial_feed is not None and
+            _profile_country_id(initial_feed, player_id) is not None
+        )
+        if not feed_usable and expected_count != 0:
+            if any(token in profile_html.casefold() for token in (
+                "captcha", "verify you are human", "checking your browser",
+                "just a moment...", "attention required | cloudflare",
+            )):
+                return http_failure("CAPTCHA_CHALLENGE_ABORTED", fallback_reason="HTTP_200_ANTIBOT_CHALLENGE")
+            # A successful HTML response with no usable server feed can be a
+            # JavaScript shell. Retry that case once through the existing
+            # rendered path; anti-bot and network errors never reach here.
+            fallback_reason = "HTTP_200_INITIAL_FEED_MISSING" if initial_feed is None else "HTTP_200_INITIAL_FEED_UNUSABLE"
+            def fallback_page_callback(document):
+                document["fetch_transport"] = "chromium_fallback"
+                document["fallback_reason"] = fallback_reason
+                if page_callback:
+                    page_callback(document)
+
+            result = self._fetch_rendered_profile_with_browser(
+                url, stop_before_date=stop_before_date,
+                page_callback=fallback_page_callback if page_callback else None,
+                resume_documents=resume_documents, source_access=source_access,
+            )
+            _html, _status, _feeds, _name, _complete, documents = result
+            for document in documents:
+                document.setdefault("fetch_transport", "chromium_fallback")
+                document.setdefault("fallback_reason", fallback_reason)
+            if _html is None and not documents:
+                documents.append({
+                    "diagnostic_only": True,
+                    "fetch_transport": "chromium_fallback",
+                    "fallback_reason": fallback_reason,
+                    "pagination_reason": _status,
+                })
+                result = (*result[:5], documents)
+            return result
+
+        return self._fetch_profile_http_archive(
+            url, profile_html, initial_feed, expected_count,
+            stop_before_date=stop_before_date, page_callback=page_callback,
+            resume_documents=resume_documents, source_access=source_access,
+            final_url=final_url,
+        )
+
+    def _fetch_profile_http_archive(self, url: str, profile_html: str, initial_feed: str,
+                                    expected_count: int | None, stop_before_date=None,
+                                    page_callback=None, resume_documents=None,
+                                    source_access=None, final_url=None):
+        """Walk archived player feeds with HTTP requests and no browser lock."""
+        player_match = _PROFILE_ID_RE.search(urlparse(url).path)
+        player_id = player_match.group(1) if player_match else ""
+        initial_rows, _ = _feed_records(initial_feed)
+        known_match_ids = {fields["AA"] for fields, _ in initial_rows if fields.get("AA")}
+        known_singles_match_ids = {
+            fields["AA"] for fields, context in initial_rows
+            if fields.get("AA") and not _is_doubles_result(fields, context)
+        }
+        country_id = _profile_country_id(initial_feed, player_id)
+        if country_id is None:
+            return None, "PLAYER_COUNTRY_CODE_UNRESOLVED", [], None, False, []
+
+        feeds = [initial_feed] if initial_feed else []
+        documents: list[dict[str, Any]] = []
+        saved_pages = list(resume_documents or [])
+        cutoff_epoch = int(stop_before_date.timestamp()) if stop_before_date else None
+        pagination_complete = False
+        pagination_reason = "page_limit_reached"
+        overlap_reached = False
+        paged_data_received = False
+        initial_dates = [int(value) for value in re.findall(r"(?:^|[¬~])AD÷(\d+)", initial_feed)]
+        if cutoff_epoch and any(value < cutoff_epoch for value in initial_dates):
+            overlap_reached = True
+            pagination_reason = "30_day_overlap_reached"
+
+        def archive_page(page_index, feed_url, body, response_status=200, page_reason=None,
+                         terminal_probe_count=0, terminal_probe_status=None,
+                         terminal_probe_error=None, response_error=None, reset_checkpoint=False):
+            rows = _feed_records(body)[0] if body and body != "0" else []
+            ids = sorted({fields["AA"] for fields, _ in rows if fields.get("AA")})
+            known_match_ids.update(ids)
+            known_singles_match_ids.update(
+                fields["AA"] for fields, context in rows
+                if fields.get("AA") and not _is_doubles_result(fields, context)
+            )
+            if body and body != "0":
+                feeds.append(body)
+            count_gap = (expected_count - len(known_singles_match_ids)
+                         if expected_count is not None else None)
+            document = {
+                "page_index": page_index,
+                "source_url": feed_url,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                "html": body,
+                "result_feeds": [body] if body else [],
+                "match_ids": ids,
+                "advertised_event_count": expected_count,
+                "observed_unique_event_count": len(known_match_ids),
+                "observed_unique_singles_event_count": len(known_singles_match_ids),
+                "count_gap": count_gap,
+                "response_status": response_status,
+                "response_error": response_error,
+                "pagination_reason": page_reason,
+                "terminal_probe_count": terminal_probe_count,
+                "terminal_probe_status": terminal_probe_status,
+                "terminal_probe_error": terminal_probe_error,
+                "reset_checkpoint": reset_checkpoint,
+                "fetch_transport": "http",
+                "fallback_reason": None,
+            }
+            if page_callback:
+                page_callback(document)
+            documents.append(document)
+
+        max_pages = min(120, max(40, ((int(expected_count or 0) + 34) // 35) + 20))
+
+        def request_feed_page(feed_url):
+            last_status, last_body, last_error = 0, "", None
+            for request_attempt in range(3):
+                last_status, last_body, _final, last_error = _profile_http_get(
+                    feed_url, source_access, feed=True
+                )
+                if last_status == 200 or last_status in (403, 429):
+                    return last_status, last_body.strip(), last_error
+                if last_error and ("FLASHSCORE_SOURCE_LOCK_TIMEOUT" in last_error or
+                                   "FLASHSCORE_SOURCE_REQUEST_EXPIRED" in last_error):
+                    return 0, "", last_error
+                if request_attempt < 2:
+                    time.sleep((request_attempt + 1) * 2)
+            return last_status, last_body.strip(), last_error
+
+        if not overlap_reached:
+            for feed_page in range(max_pages):
+                feed_url = _profile_feed_page_url(player_id, country_id, feed_page)
+                if (feed_page > 0 and saved_pages and feed_page < len(saved_pages) and
+                        saved_pages[feed_page].get("url") != feed_url):
+                    saved_pages = []
+                if feed_page > 0 and saved_pages and feed_page < len(saved_pages):
+                    saved = saved_pages[feed_page]
+                    body = str(saved.get("html") or "")
+                    ids = set(saved.get("match_ids") or [])
+                    known_match_ids.update(ids)
+                    if body and body != "0":
+                        saved_rows, _ = _feed_records(body)
+                        known_singles_match_ids.update(
+                            fields["AA"] for fields, context in saved_rows
+                            if fields.get("AA") and not _is_doubles_result(fields, context)
+                        )
+                        feeds.append(body)
+                        paged_data_received = True
+                    document = {
+                        "page_index": feed_page + 1,
+                        "source_url": saved.get("url"),
+                        "retrieved_at": saved.get("retrieved_at"),
+                        "html": body,
+                        "result_feeds": saved.get("result_feeds") or [],
+                        "match_ids": sorted(ids),
+                        "response_status": saved.get("response_status", 200),
+                        "pagination_reason": saved.get("pagination_reason"),
+                        "terminal_probe_count": saved.get("terminal_probe_count", 0),
+                        "terminal_probe_status": saved.get("terminal_probe_status"),
+                        "terminal_probe_error": saved.get("terminal_probe_error"),
+                        "advertised_event_count": saved.get("advertised_event_count"),
+                        "observed_unique_event_count": len(known_match_ids),
+                        "observed_unique_singles_event_count": len(known_singles_match_ids),
+                        "fetch_transport": "http",
+                        "fallback_reason": None,
+                        "archived_path": saved.get("archived_path"),
+                    }
+                    documents.append(document)
+                    if body in ("", "0"):
+                        terminal_confirmed = int(saved.get("terminal_probe_count") or 0) >= 2
+                        count_matches = _advertised_singles_count_matches(expected_count, known_singles_match_ids)
+                        pagination_complete = terminal_confirmed and count_matches
+                        pagination_reason = (
+                            "source_terminal_empty_response_confirmed" if pagination_complete else
+                            "source_terminal_empty_response_count_mismatch_confirmed" if terminal_confirmed else
+                            "source_terminal_empty_unconfirmed"
+                        )
+                        break
+                    continue
+
+                allowed, _ = DomainFilter.is_allowed(feed_url, allowlist={"flashscore.ninja"})
+                if not allowed:
+                    pagination_reason = "pagination_response_domain_rejected"
+                    break
+                response_status, body, response_error = request_feed_page(feed_url)
+                if response_status in (403, 429):
+                    archive_page(feed_page + 1, feed_url, body, response_status,
+                                 f"HTTP_{response_status}_ANTI_BOT_BLOCKED", response_error=response_error)
+                    pagination_reason = f"HTTP_{response_status}_ANTI_BOT_BLOCKED"
+                    break
+                if response_status != 200:
+                    pagination_reason = _profile_page_failure_reason(response_status, response_error)
+                    archive_page(feed_page + 1, feed_url, response_error or body, 0,
+                                 pagination_reason, response_error=response_error)
+                    break
+                if body in ("", "0"):
+                    probe_status, probe_body, probe_error = request_feed_page(feed_url)
+                    terminal_probe_count = int(probe_status == 200 and probe_body in ("", "0")) + 1
+                    if probe_status == 200 and probe_body not in ("", "0"):
+                        body = probe_body
+                        paged_data_received = True
+                    else:
+                        count_matches = _advertised_singles_count_matches(
+                            expected_count, known_singles_match_ids
+                        )
+                        reason = (
+                            "empty_response_before_first_page_data"
+                            if feed_page == 0 and not paged_data_received and
+                            (expected_count is not None or bool(known_match_ids)) else
+                            "source_terminal_empty_response_confirmed"
+                            if terminal_probe_count == 2 and count_matches else
+                            "source_terminal_empty_response_count_mismatch_confirmed"
+                            if terminal_probe_count == 2 else
+                            "source_terminal_empty_unconfirmed"
+                        )
+                        archive_page(feed_page + 1, feed_url, body,
+                                     response_status if response_status == 200 else 0, reason,
+                                     terminal_probe_count=terminal_probe_count,
+                                     terminal_probe_status=probe_status,
+                                     terminal_probe_error=probe_error,
+                                     response_error=response_error)
+                        if reason == "source_terminal_empty_response_confirmed":
+                            pagination_complete = True
+                        pagination_reason = reason
+                        break
+
+                rows = _feed_records(body)[0]
+                response_ids = {fields.get("AA") for fields, _ in rows if fields.get("AA")}
+                if not response_ids:
+                    archive_page(feed_page + 1, feed_url, body, response_status,
+                                 "pagination_unsupported_response")
+                    pagination_reason = "pagination_unsupported_response"
+                    break
+                paged_data_received = True
+                reset_checkpoint = False
+                if feed_page == 0 and saved_pages:
+                    saved_first = str(saved_pages[0].get("html") or "")
+                    if body != saved_first:
+                        saved_pages = []
+                        reset_checkpoint = True
+                new_ids = response_ids - known_match_ids
+                archive_page(feed_page + 1, feed_url, body, response_status,
+                             "page_loaded", reset_checkpoint=reset_checkpoint)
+                if not _page_has_pagination_progress(feed_page, new_ids):
+                    pagination_reason = "pagination_response_no_new_match_ids"
+                    break
+                pagination_reason = "page_loaded"
+                if cutoff_epoch:
+                    response_dates = [int(value) for value in re.findall(r"(?:^|[¬~])AD÷(\d+)", body)]
+                    if any(value < cutoff_epoch for value in response_dates):
+                        overlap_reached = True
+                        pagination_reason = "30_day_overlap_reached"
+                        break
+            else:
+                pagination_reason = "page_limit_reached"
+        else:
+            pagination_complete = True
+
+        if any(token in profile_html.casefold() for token in (
+            "captcha", "verify you are human", "checking your browser",
+            "just a moment...", "attention required | cloudflare",
+        )):
+            return None, "CAPTCHA_CHALLENGE_ABORTED", [], None, False, []
+        if documents:
+            documents[-1]["pagination_reason"] = pagination_reason
+            documents[-1]["advertised_event_count"] = expected_count
+            documents[-1]["observed_unique_event_count"] = len(known_match_ids)
+            documents[-1]["observed_unique_singles_event_count"] = len(known_singles_match_ids)
+            documents[-1]["count_gap"] = (expected_count - len(known_singles_match_ids)
+                                           if expected_count is not None else None)
+        name_match = re.search(r'"participantName"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', profile_html)
+        name = None
+        if name_match:
+            try:
+                name = json.loads('"' + name_match.group(1) + '"')
+            except json.JSONDecodeError:
+                name = name_match.group(1)
+        return (profile_html, "OK", feeds or _feed_payloads(profile_html), name,
+                pagination_complete or overlap_reached, documents)
+
+    def _fetch_rendered_profile_with_browser(self, url: str, stop_before_date: datetime | None = None, page_callback=None,
+                                resume_documents=None, source_access=None) -> tuple[Optional[str], str, list[str], Optional[str], bool, list[dict[str, Any]]]:
         """Load the public profile and walk its current paged results feed.
 
         The profile's visible button currently calls a retired ``..._s`` feed
@@ -1230,16 +1666,21 @@ class FlashscoreTennisImporter:
                             return "", [], f"REDIRECT_REJECTED:{redirect_reason}", False, []
                         try:
                             await page.wait_for_function(
-                                "() => Boolean(window.cjs?.initialFeeds?.['results_s']?.data)", timeout=10000
+                                "() => { const f = window.cjs?.initialFeeds?.['results_s'] || "
+                                "window.cjs?.initialFeeds?.['summary-results_s']; "
+                                "return Boolean(f && typeof f.data === 'string'); }", timeout=10000
                             )
                         except Exception:
                             return "", [], "RESULTS_SECTION_NOT_LOADED", False, []
                         initial = await page.evaluate("""() => {
-                          const feed = window.cjs?.initialFeeds?.['results_s'];
-                          return feed ? {data: feed.data || '', allEventsCount: Number(feed.allEventsCount) || null,
+                          const feed = window.cjs?.initialFeeds?.['results_s'] ||
+                            window.cjs?.initialFeeds?.['summary-results_s'];
+                          const count = Number(feed?.allEventsCount);
+                          return feed ? {data: typeof feed.data === 'string' ? feed.data : '',
+                            allEventsCount: Number.isFinite(count) ? count : null,
                             name: window.teamPageEnvironment?.participantName || null} : null;
                         }""")
-                        if not initial or not initial.get("data"):
+                        if not initial or initial.get("data") is None:
                             return "", [], "RESULTS_SECTION_NOT_LOADED", False, []
                         initial_feed = str(initial["data"])
                         player_match = _PROFILE_ID_RE.search(urlparse(url).path)
@@ -1295,6 +1736,8 @@ class FlashscoreTennisImporter:
                                 "advertised_event_count": expected_count,
                                 "observed_unique_event_count": len(known_match_ids),
                                 "observed_unique_singles_event_count": len(known_singles_match_ids),
+                                "count_gap": (expected_count - len(known_singles_match_ids)
+                                              if expected_count is not None else None),
                                 "response_status": response_status,
                                 "pagination_reason": page_reason,
                                 "terminal_probe_count": terminal_probe_count,
@@ -1513,6 +1956,10 @@ class FlashscoreTennisImporter:
                             page_documents[-1]["advertised_event_count"] = expected_count
                             page_documents[-1]["observed_unique_event_count"] = len(known_match_ids)
                             page_documents[-1]["observed_unique_singles_event_count"] = len(known_singles_match_ids)
+                            page_documents[-1]["count_gap"] = (
+                                expected_count - len(known_singles_match_ids)
+                                if expected_count is not None else None
+                            )
                         page_html = await page.content()
                         name = initial.get("name") or await page.evaluate(
                             "window.teamPageEnvironment?.participantName || null"
@@ -1561,6 +2008,8 @@ class FlashscoreTennisImporter:
                 "url": result.url,
                 "status": result.status,
                 "reason": result.reason,
+                "fetch_transport": result.fetch_transport,
+                "fallback_reason": result.fallback_reason,
                 "player_id": result.profile.source_player_id if result.profile else None,
                 "matches_parsed": len(result.profile.matches) if result.profile else 0,
                 "matches_imported": imported,

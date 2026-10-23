@@ -2373,6 +2373,75 @@ def get_tennis_policy() -> Dict[str, Any]:
     return load_tennis_policy().as_dict()
 
 
+@app.get("/api/tennis/odds-free/strategy-replay")
+def get_odds_free_tennis_strategy_replay(
+    confirm_positive_ev: bool = False,
+) -> Dict[str, Any]:
+    """Read-only EV replay for all live and the next six hours of prematch tennis."""
+    from tennis_adapter.odds_free_replay import (
+        PREMATCH_HORIZON_HOURS, odds_free_event_filters, replay_odds_free_forecasts,
+    )
+    from tennis_adapter.policy import load_tennis_policy
+
+    if not SessionLocal or not Event or not TennisForecastSnapshot or not OddsSnapshot:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=6)
+    with SessionLocal() as session:
+        events = session.query(Event).filter(
+            *odds_free_event_filters(Event, now),
+        ).order_by(Event.is_live.desc(), Event.scheduled_start_at.asc()).all()
+        event_ids = [event.id for event in events]
+        if not event_ids:
+            report = replay_odds_free_forecasts([], [], policy=load_tennis_policy(),
+                                                confirm_positive_ev=confirm_positive_ev)
+            return {**report, "generated_at": now.isoformat(), "eligible_event_count": 0,
+                    "live_event_count": 0, "prematch_event_count": 0,
+                    "prematch_horizon_hours": PREMATCH_HORIZON_HOURS}
+        forecast_rows = session.query(TennisForecastSnapshot).filter(
+            TennisForecastSnapshot.event_id.in_(event_ids),
+            TennisForecastSnapshot.observed_at >= since,
+        ).order_by(TennisForecastSnapshot.event_id, TennisForecastSnapshot.model_name,
+                   TennisForecastSnapshot.model_version, TennisForecastSnapshot.observed_at,
+                   TennisForecastSnapshot.id).all()
+        forecast_event_ids = list({row.event_id for row in forecast_rows})
+        odds_rows = session.query(OddsSnapshot).filter(
+            OddsSnapshot.event_id.in_(forecast_event_ids), OddsSnapshot.observed_at >= since,
+        ).order_by(OddsSnapshot.event_id, OddsSnapshot.observed_at, OddsSnapshot.id).all() if forecast_event_ids else []
+        forecasts_by_event: dict[str, list[dict]] = {}
+        for snapshot in forecast_rows:
+            row = dict(snapshot.forecast_json or {})
+            row.update({
+                "forecast_id": str(snapshot.id), "event_id": str(snapshot.event_id),
+                "model_name": snapshot.model_name, "model_version": snapshot.model_version,
+                "observed_at": snapshot.observed_at.isoformat(),
+            })
+            forecasts_by_event.setdefault(str(snapshot.event_id), []).append(row)
+        odds_by_event: dict[str, list[dict]] = {}
+        for snapshot in odds_rows:
+            odds_by_event.setdefault(str(snapshot.event_id), []).append({
+                "event_id": str(snapshot.event_id), "market_type": snapshot.market_type,
+                "line_value": snapshot.line_value,
+                "outcome": snapshot.outcome, "odds": float(snapshot.odds),
+                "status": snapshot.status, "observed_at": snapshot.observed_at.isoformat(),
+            })
+        flattened_forecasts = [row for rows in forecasts_by_event.values() for row in rows]
+        flattened_odds = [row for rows in odds_by_event.values() for row in rows]
+        report = replay_odds_free_forecasts(
+            flattened_forecasts, flattened_odds, policy=load_tennis_policy(),
+            confirm_positive_ev=confirm_positive_ev,
+        )
+        return {
+            **report,
+            "generated_at": now.isoformat(),
+            "eligible_event_count": len(events),
+            "live_event_count": sum(bool(event.is_live or event.status == "live") for event in events),
+            "prematch_event_count": sum(not bool(event.is_live or event.status == "live") for event in events),
+            "prematch_horizon_hours": PREMATCH_HORIZON_HOURS,
+            "history_horizon_hours": 6,
+        }
+
+
 @app.post("/api/backtests/run")
 def trigger_backtest_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Queue a historical replay of ACTIVE/SHADOW checkpoints. Production bets are not created."""
@@ -3234,6 +3303,34 @@ def _is_overdue_live_pbp(row: Dict[str, Any], confirmed_event_ids: set[str], now
     return due_at <= now
 
 
+def _flashscore_queue_timing(*, status: str, now: datetime, enqueued_at: datetime | None,
+                             next_run_at: datetime | None, attempt_started_at: datetime | None,
+                             lease_until: datetime | None) -> Dict[str, Any]:
+    """Return status-aware wait, attempt, and lease values for the queue UI."""
+    def aware(value):
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    due = aware(next_run_at)
+    enqueued = aware(enqueued_at)
+    started = aware(attempt_started_at)
+    lease = aware(lease_until)
+    runnable = status in {"queued", "retry"} and (due is None or due <= now)
+    waiting_since = due if status == "retry" else enqueued
+    return {
+        "wait_seconds": max(0, int((now - waiting_since).total_seconds()))
+            if runnable and waiting_since else None,
+        "attempt_seconds": max(0, int((now - started).total_seconds()))
+            if status == "running" and started else None,
+        "attempt_started_at": started.isoformat() if started else None,
+        "retry_in_seconds": max(0, int((due - now).total_seconds()))
+            if status in {"retry", "queued"} and due and due > now else None,
+        "lease_until": lease.isoformat() if lease else None,
+        "lease_expired": bool(status == "running" and (lease is None or lease <= now)),
+    }
+
+
 @app.get("/api/tennis-history/flashscore/queue")
 def get_flashscore_research_queue(
     limit: int = Query(50, ge=1, le=200),
@@ -3270,7 +3367,13 @@ def get_flashscore_research_queue(
         rows: list[dict[str, Any]] = []
 
         terminal_point_statuses = ("completed", "finalized", "skipped", "superseded")
-        point_scope = [TennisPointRefreshJob.event_id.in_(event_ids)]
+        # The queue is an operational view.  A live event can retain a finished
+        # PBP job, but it must not make that job appear as pending work unless
+        # the caller explicitly asks for the recent completion history.
+        point_scope = [and_(
+            TennisPointRefreshJob.event_id.in_(event_ids),
+            ~TennisPointRefreshJob.status.in_(terminal_point_statuses),
+        )]
         if include_completed:
             point_scope.append(and_(TennisPointRefreshJob.status.in_(terminal_point_statuses),
                                     TennisPointRefreshJob.updated_at >= now - timedelta(hours=24)))
@@ -3288,12 +3391,21 @@ def get_flashscore_research_queue(
             rows.append({"id": f"pbp:{job.event_id}", "event_id": str(job.event_id),
                 "label": f"{event.participant_a_name} — {event.participant_b_name}", "player": None,
                 "kind": "pbp", "status": job.status, "priority": 0 if event.is_live else 10,
-                "mode": event_mode, "wait_seconds": max(0, int((now - job.last_requested_at).total_seconds())),
+                "mode": event_mode, **_flashscore_queue_timing(status=job.status, now=now,
+                    enqueued_at=job.last_requested_at, next_run_at=job.next_run_at,
+                    attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
+                    lease_until=job.lease_until),
+                "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": job.updated_at.isoformat() if job.status in {"completed", "finalized"} else None,
-                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
+                "next_retry_at": job.next_run_at.isoformat(),
+                "reason": None if job.status == "running" else job.last_error,
+                "last_error": job.last_error, "related_events": 1})
 
         terminal_match_statuses = ("matched", "waiting_confirmation")
-        match_scope = [TennisMatchLookupJob.event_id.in_(event_ids)]
+        match_scope = [and_(
+            TennisMatchLookupJob.event_id.in_(event_ids),
+            ~TennisMatchLookupJob.status.in_(terminal_match_statuses),
+        )]
         if include_completed:
             match_scope.append(and_(TennisMatchLookupJob.status.in_(terminal_match_statuses),
                                     TennisMatchLookupJob.updated_at >= now - timedelta(hours=24)))
@@ -3311,11 +3423,20 @@ def get_flashscore_research_queue(
                 "label": f"{event.participant_a_name} — {event.participant_b_name}", "player": None,
                 "kind": "match_lookup", "status": job.status, "priority": 1 if event.is_live else 11,
                 "mode": "live" if event.is_live else "prematch",
-                "wait_seconds": max(0, int((now - job.updated_at).total_seconds())),
+                **_flashscore_queue_timing(status=job.status, now=now,
+                    enqueued_at=job.updated_at, next_run_at=job.next_run_at,
+                    attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
+                    lease_until=job.lease_until),
+                "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": job.updated_at.isoformat() if job.status == "matched" else None,
-                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 1})
+                "next_retry_at": job.next_run_at.isoformat(),
+                "reason": None if job.status == "running" else job.last_error,
+                "last_error": job.last_error, "related_events": 1})
 
-        player_scope = [Participant.id.in_(active_participant_ids)]
+        player_scope = [and_(
+            Participant.id.in_(active_participant_ids),
+            TennisPlayerRefreshJob.status != "completed",
+        )]
         if include_completed:
             player_scope.append(and_(TennisPlayerRefreshJob.status == "completed",
                                      TennisPlayerRefreshJob.updated_at >= now - timedelta(hours=24)))
@@ -3338,11 +3459,16 @@ def get_flashscore_research_queue(
                 "related_event_ids": [str(event.id) for event in associated],
                 "label": " · ".join(dict.fromkeys(f"{e.participant_a_name} — {e.participant_b_name}" for e in associated[:3])) or participant.canonical_name,
                 "player": participant.canonical_name, "kind": "player_history", "status": display_status,
-                "priority": 10, "mode": "live" if any(e.is_live for e in associated) else "prematch",
-                "wait_seconds": max(0, int((now - job.requested_at).total_seconds())),
+                "priority": 30, "mode": "live" if any(e.is_live for e in associated) else "prematch",
+                **_flashscore_queue_timing(status=job.status, now=now,
+                    enqueued_at=job.requested_at, next_run_at=job.next_run_at,
+                    attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
+                    lease_until=job.lease_until),
+                "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": profile.last_success_at.isoformat() if profile and profile.last_success_at else None,
                 "next_retry_at": job.next_run_at.isoformat() if job.status in {"retry", "queued"} else None,
-                "reason": job.last_error, "related_events": len(associated)})
+                "reason": None if job.status == "running" else job.last_error,
+                "last_error": job.last_error, "related_events": len(associated)})
 
         imports = session.query(FlashscoreImportJob).order_by(FlashscoreImportJob.updated_at.desc()).limit(200).all()
         for job in imports:
@@ -3350,9 +3476,15 @@ def get_flashscore_research_queue(
                 continue
             rows.append({"id": f"archive:{job.id}", "event_id": None, "label": ", ".join(job.profile_urls or [])[:180],
                 "player": None, "kind": "full_archive", "status": job.status, "priority": 20,
-                "mode": "archive", "wait_seconds": max(0, int((now - job.created_at).total_seconds())),
+                "mode": "archive", **_flashscore_queue_timing(status=job.status, now=now,
+                    enqueued_at=job.created_at, next_run_at=job.next_run_at,
+                    attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
+                    lease_until=job.lease_until),
+                "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": job.updated_at.isoformat() if job.status == "completed" else None,
-                "next_retry_at": job.next_run_at.isoformat(), "reason": job.last_error, "related_events": 0})
+                "next_retry_at": job.next_run_at.isoformat(),
+                "reason": None if job.status == "running" else job.last_error,
+                "last_error": job.last_error, "related_events": 0})
 
         summary_statuses = {name: sum(1 for row in rows if row["status"] == name) for name in {row["status"] for row in rows}}
         identity_confirmation = sum(1 for row in rows if row["status"] == "identity_confirmation_required")
@@ -3409,6 +3541,59 @@ def get_flashscore_research_queue(
             # Queue visibility still works when the worker-control migration has
             # not yet been deployed; the empty control status remains explicit.
             worker_state["configured"] = False
+        browser_budget = int(os.getenv(
+            "FLASHSCORE_WORKER_BROWSER_PROCESSES",
+            os.getenv("FLASHSCORE_BROWSER_PROCESSES", "2"),
+        ))
+        browser_budget = max(1, min(4, browser_budget))
+        live_capacity = max(1, min(browser_budget - 1,
+            int(os.getenv("FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY", "1"))))
+        current_capacity = 1 if browser_budget > live_capacity else 0
+        backlog_capacity = max(0, browser_budget - live_capacity - current_capacity)
+        lane_profiles_current = session.query(func.count(TennisPlayerRefreshJob.participant_id)).filter(
+            TennisPlayerRefreshJob.participant_id.in_(active_participant_ids or {uuid.UUID(int=0)}),
+            TennisPlayerRefreshJob.status == "running",
+            TennisPlayerRefreshJob.lease_until > now,
+        ).scalar() or 0
+        lane_match_search = session.query(func.count(TennisMatchLookupJob.event_id)).filter(
+            TennisMatchLookupJob.event_id.in_(event_ids or {uuid.UUID(int=0)}),
+            TennisMatchLookupJob.status == "running",
+            TennisMatchLookupJob.lease_until > now,
+        ).scalar() or 0
+        lane_live_pbp = session.query(func.count(TennisPointRefreshJob.event_id)).filter(
+            TennisPointRefreshJob.event_id.in_(
+                [e.id for e in event_rows if e.is_live] or {uuid.UUID(int=0)}
+            ),
+            TennisPointRefreshJob.status == "running",
+            TennisPointRefreshJob.lease_until > now,
+        ).scalar() or 0
+        from db.models import TennisPointSourceRefreshJob
+        lane_source_pbp = session.query(func.count(TennisPointSourceRefreshJob.source_match_id)).filter(
+            TennisPointSourceRefreshJob.status == "running",
+            TennisPointSourceRefreshJob.lease_until > now,
+        ).scalar() or 0
+        lane_archives = session.query(func.count(FlashscoreImportJob.id)).filter(
+            FlashscoreImportJob.status == "running",
+            FlashscoreImportJob.lease_until > now,
+        ).scalar() or 0
+        lane_profiles_background_query = session.query(func.count(TennisPlayerRefreshJob.participant_id)).filter(
+            TennisPlayerRefreshJob.status == "running",
+            TennisPlayerRefreshJob.lease_until > now,
+        )
+        if active_participant_ids:
+            lane_profiles_background_query = lane_profiles_background_query.filter(
+                ~TennisPlayerRefreshJob.participant_id.in_(active_participant_ids)
+            )
+        lane_profiles_background = lane_profiles_background_query.scalar() or 0
+        worker_state["browser_lanes"] = {
+            "total": browser_budget,
+            "live_pbp": {"capacity": live_capacity, "active": int(lane_live_pbp)},
+            "current_matches": {"capacity": current_capacity,
+                                "active": int(lane_profiles_current + lane_match_search)},
+            "backlog": {"capacity": backlog_capacity,
+                        "active": int(lane_source_pbp + lane_archives + lane_profiles_background),
+                        "shared_with_current": backlog_capacity == 0},
+        }
         return {"items": page, "total": total, "limit": limit, "offset": offset,
             "generated_at": now.isoformat(), "eligible_matches": len(eligible_ids),
             "prepared_players": int(profiles_ready or 0), "statuses": summary_statuses,

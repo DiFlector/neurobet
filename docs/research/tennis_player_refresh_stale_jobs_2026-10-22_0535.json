@@ -1,0 +1,46 @@
+{
+  "observed_at_utc": "2026-10-22T05:35:11Z",
+  "worker_health": "healthy",
+  "resources": {
+    "neurobet_postgres": {
+      "memory": "1.968GiB / 2GiB",
+      "cpu": "38.53%"
+    },
+    "neurobet_flashscore_worker": {
+      "memory": "690.5MiB / 2GiB",
+      "cpu": "44.92%"
+    }
+  },
+  "prepared_jobs": [
+    {
+      "participant_id": "42b2d592-b7e2-4384-a442-ea526ef4c4a2",
+      "status": "queued",
+      "attempts": 2,
+      "requested_at": "2026-10-21 23:29:42.803179+00",
+      "updated_at": "2026-10-21 23:29:42.803179+00",
+      "lease_until": null,
+      "last_error": null,
+      "progress": {
+        "stage": "queued"
+      },
+      "completed_at": null
+    },
+    {
+      "participant_id": "bbe45762-0587-4d6a-8524-82970454ac7d",
+      "status": "queued",
+      "attempts": 6,
+      "requested_at": "2026-10-21 23:29:48.247794+00",
+      "updated_at": "2026-10-21 23:29:48.247794+00",
+      "lease_until": null,
+      "last_error": null,
+      "progress": {
+        "stage": "queued"
+      },
+      "completed_at": null
+    }
+  ],
+  "interpretation": "Both previously prepared event_refresh jobs remain queued with unchanged updated_at and no lease or error, despite worker healthy. Recovery/completion is not proven; do not manually mutate queue state during high DB load.",
+  "training_started": false,
+  "holdout_quality_metrics_opened": false,
+  "shadow_registered": false
+}

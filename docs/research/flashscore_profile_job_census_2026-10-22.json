@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-10-21T22:29:57Z",
+  "source": "Read-only GROUP BY status,last_error over current TennisPlayerRefreshJob table.",
+  "counts": {
+    "completed": 304,
+    "queued": 606,
+    "running": 2,
+    "skipped_DOUBLES_NOT_SUPPORTED": 84,
+    "failed": {
+      "not_found": 218,
+      "REFRESH_ABORTED": 179,
+      "source_unavailable": 119,
+      "TimeoutError": 11,
+      "HISTORY_PAGINATION_INCOMPLETE": 2,
+      "TIMEOUT": 1
+    },
+    "retry": {
+      "SEARCH_COMPLETED_NO_MATCH": 929,
+      "PROFILE_TIMEOUT_PROCESS_TERMINATED": 23,
+      "NO_ALTERNATIVE_PROFILE_DATA": 14,
+      "SEARCH_HTTP_ERROR": 12,
+      "PROFILE_TIMEOUT": 12,
+      "PREEMPTED_FOR_CURRENT_EVENT": 6,
+      "HISTORY_PAGINATION_INCOMPLETE": 3,
+      "RESULTS_SECTION_NOT_LOADED": 3,
+      "HTTP_502_PROFILE_UNAVAILABLE": 2,
+      "BROWSER_FETCH_FAILED:RuntimeError": 1
+    }
+  },
+  "code_interpretation": {
+    "SEARCH_COMPLETED_NO_MATCH": "Search completed without a profile match; retry is scheduled after six hours.",
+    "NO_ALTERNATIVE_PROFILE_DATA": "No profile match after previously rejected source IDs were excluded.",
+    "PROFILE_TIMEOUT_PROCESS_TERMINATED": "Browser child exceeded its configured deadline or lost the lease and was terminated; bounded exponential retry.",
+    "HISTORY_PAGINATION_INCOMPLETE": "Profile page was parsed but terminal pagination proof was missing; data stays partial/stale and is retried.",
+    "RESULTS_SECTION_NOT_LOADED": "Profile results section did not load.",
+    "SEARCH_HTTP_ERROR": "Profile search endpoint returned an HTTP error.",
+    "PREEMPTED_FOR_CURRENT_EVENT": "Archive/profile refresh was preempted to free capacity for a current event.",
+    "REFRESH_ABORTED": "Default failure sentinel before all refresh stages complete; this value alone does not identify root cause.",
+    "not_found": "Confirmed profile-not-found terminal result.",
+    "source_unavailable": "Source/transport unavailable; grouping is coarse because the stored code does not preserve every underlying exception."
+  },
+  "operational_decision": "No bulk retry/reset applied. Keep waiting-confirmation, source failures, process timeouts, and incomplete pagination separated; inspect age and linked worker logs before changing retry policy.",
+  "limitations": [
+    "This is a point-in-time census, not a per-job forensic root-cause audit.",
+    "It does not prove queue completion or Chromium recovery.",
+    "One new PROFILE_TIMEOUT_PROCESS_TERMINATED retry from the restart acceptance is included."
+  ]
+}

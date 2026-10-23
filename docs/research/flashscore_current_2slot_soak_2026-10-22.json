@@ -1,0 +1,94 @@
+{
+  "generated_at_utc": "2026-10-22T11:45:34Z",
+  "configuration": {
+    "browser_processes": 2,
+    "worker_cpu_quota_vcpu": 1.5,
+    "worker_memory_limit": "2 GiB",
+    "global_network_slot_limit": 2,
+    "global_network_start_spacing_seconds": 2
+  },
+  "runtime_api_soak": {
+    "duration_minutes": 30,
+    "samples": 61,
+    "sampler_errors": 0,
+    "http_200": 61,
+    "worker_healthy_samples": 61,
+    "api_latency_seconds": {
+      "p50": 0.13,
+      "p95": 0.29,
+      "max": 1.422
+    },
+    "overdue_pbp_max": 1,
+    "network_slots_in_use_max": 1,
+    "network_slot_limit": 2,
+    "eligible_matches_start_end": [40, 41],
+    "rolling_hour_documents_saved_start_end": [107, 126],
+    "rolling_hour_confirmed_links_start_end": [109, 127]
+  },
+  "resource_soak": {
+    "samples": 55,
+    "sampler_errors": 0,
+    "chromium_roots_max": 2,
+    "flashscore_worker_cpu_percent": {
+      "median": 86.8,
+      "p95": 151.16,
+      "max": 160.29,
+      "quota_percent_equivalent": 150
+    },
+    "flashscore_worker_memory_peak": "1.403 GiB / 2 GiB",
+    "research_memory_peak": "326 MiB / 1.5 GiB"
+  },
+  "postgres_snapshot": {
+    "observed_at_utc": "2026-10-22T11:45:34Z",
+    "memory": "992.8 MiB / 2.5 GiB",
+    "cpu_percent": 20.26,
+    "connections": 24,
+    "active_connections": 1,
+    "max_connections": 100,
+    "lock_waiters": 0,
+    "cache_hit_percent": 98.25,
+    "database_size": "6308 MB"
+  },
+  "nearer_container_memory_limits": {
+    "redis": "497.3 MiB / 512 MiB",
+    "collector": "485.5 MiB / 512 MiB"
+  },
+  "queue_census_after_soak": {
+    "point_refresh_jobs": {
+      "waiting_players": 2635,
+      "retry": 211,
+      "queued": 59,
+      "finalized": 48,
+      "waiting_match": 5,
+      "completed": 3,
+      "running": 2
+    },
+    "diagnostic_reference": "docs/research/flashscore_queue_diagnostic_2026-10-22_1103.json",
+    "primary_waiting_players_reasons": {
+      "historical_match_not_indexed": 2322,
+      "source_player_ids_missing": 306
+    }
+  },
+  "interpretation": [
+    "The queue API and worker stayed available during the 30-minute subset soak. This establishes runtime health and API latency for the current eligible subset; changing eligible match counts mean it is not a fixed-cohort throughput test.",
+    "Rolling-hour document and confirmed-link counts increased, but they do not prove profile-job throughput or full historical import completeness.",
+    "The shared source network gate used at most one of two slots during the soak. Most PBP queue rows wait for match indexing or player source IDs, so more network/browser slots do not resolve the dominant waiting state.",
+    "Flashscore CPU had bursts around its 1.5-vCPU quota, while median CPU was lower. The four-browser trial previously reached 1.553 GiB / 2 GiB and was rolled back; this soak does not justify raising slots.",
+    "PostgreSQL remained below its configured memory, CPU, connection, and lock limits. Redis and Collector are closer to their memory caps."
+  ],
+  "raw_samples": {
+    "runtime": {
+      "path": "docs/research/flashscore_runtime_soak_2026-10-22_current-2slots.jsonl",
+      "sha256": "4ceba309156a2a4392d74df23b057545faba895991ca60edf826a3ec970d63cd"
+    },
+    "resources": {
+      "path": "docs/research/flashscore_resource_soak_2026-10-22_current-2slots.jsonl",
+      "sha256": "e6d23861a41afd77abcbf6a2ae9f01c94330188da5c36ebbf3f2eadffb35f3cd"
+    }
+  },
+  "changes_made": false,
+  "remaining_gates": [
+    "Paired profile throughput and timeout-rate comparison at identical eligible fixed cohort",
+    "Full archive import completeness and failure recovery"
+  ]
+}

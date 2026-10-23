@@ -53,7 +53,9 @@ ON CONFLICT (tour, ranking_date, source_player_id) DO NOTHING
 """
 INSERT_SERVE = """
 INSERT INTO ext_tennis_serve_logs (
-    id, source, source_match_id, player_name, available_at, surface, serve_points, serve_points_won
+    id, source, source_match_id, player_name, source_event_at, available_at,
+    availability_provenance, source_confidence, retrospective,
+    surface, serve_points, serve_points_won
 ) VALUES %s
 ON CONFLICT (source, source_match_id, player_name) DO NOTHING
 """
@@ -535,6 +537,7 @@ def import_rankings(flush_ranks):
 
 def import_charting():
     logs = []
+    ingested_at = datetime.now(timezone.utc)
     root = DATA / "charting"
     for gender, match_name, serve_name in (
         ("m", "charting-m-matches.csv", "charting-m-stats-ServeBasics.csv"),
@@ -549,7 +552,7 @@ def import_charting():
                 parsed = from_yyyymmdd(row.get("Date"), end_of_week=False)
                 if parsed is None:
                     continue
-                dates[row.get("match_id")] = (parsed[1], surface_of(row.get("Surface")))
+                dates[row.get("match_id")] = (parsed[0], surface_of(row.get("Surface")))
         serve_path = root / serve_name
         if not serve_path.exists():
             continue
@@ -573,6 +576,10 @@ def import_charting():
                     str(row["match_id"])[:160],
                     row["player"][:255],
                     meta[0],
+                    ingested_at,
+                    "database_ingest_time",
+                    "source_reported",
+                    True,
                     meta[1],
                     points,
                     won,

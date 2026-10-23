@@ -1,0 +1,162 @@
+{
+  "execution_id": "tennis-admission-2026-10-22T12:36:04Z",
+  "started_at": "2026-10-22T12:36:04.989988+00:00",
+  "audit_cutoff": "2026-10-22T12:36:04.989988+00:00",
+  "finished_at": "2026-10-22T13:02:57.104228+00:00",
+  "duration_seconds": 1612.114,
+  "purpose": "Read-only current-data admission audit after new confirmed PBP outcomes; no training or candidate evaluation.",
+  "execution": {
+    "container": "one-off Compose Neural container",
+    "container_id": "neurobet-neural-run-94903680d218",
+    "image_id": "sha256:87c4867dacb8abdb738ce40f51a9b82509be509103848a754fe475effe0d2ff8",
+    "command": "docker compose run -T --rm --no-deps -v /srv/neurobet:/checkout -w /checkout --entrypoint python neural -c build_report()",
+    "audit_source_path": "scripts/research/tennis_label_audit.py",
+    "audit_source_sha256": "6e5138eeebe73d2228ce8f35f2913a696c5c4ecaa269396b5c26fed9ee5746a9",
+    "result_observation_source_path": "scripts/research/tennis_result_observation.py",
+    "result_observation_source_sha256": "6448713d2c56d32190599d07a0a632ddd7d4fd6d1455fa7d937c6ed08100d7d2",
+    "report_path": "docs/research/tennis_label_audit_20261022T1302Z.json",
+    "report_sha256": "585ff3941635bf56b942cca9c32a711295e9784f1cb6988829554d286ff85033",
+    "manifest_path": "docs/research/tennis_training_manifest_9ad6021b5092.json",
+    "manifest_sha256": "4f8aebb2ca251881ba32f13b74c431c263489dda5a148fc133ecedcd847f27ed",
+    "manifest_dataset_digest": "9ad6021b509224b5ba71ed0e6c210e3ba992044e50dc3fa2c3f29c3382995f77",
+    "provenance_path": "docs/research/tennis_training_examples_7ee3b5acfcb4.jsonl",
+    "provenance_examples": 5372,
+    "provenance_sha256": "7ff646063bdf96f945c9e0e1bcc273c4d720fd85097f1e0c60c048a4196067c0"
+  },
+  "admission": {
+    "status": "blocked",
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "odds_free_feature_availability_not_certified"
+    ],
+    "required_thresholds_unchanged": {
+      "initial_train_matches": 500,
+      "each_validation_window_matches": 100,
+      "holdout_matches": 200,
+      "both_classes": true,
+      "point_in_time_clean": true
+    },
+    "target_labelled_matches": {
+      "point": 51,
+      "game": 51,
+      "set": 51,
+      "match": 2554
+    },
+    "source_observed_examples": {
+      "point": 389,
+      "game": 68,
+      "set": 6,
+      "match": 0
+    },
+    "effective_causal_train_matches_each_fold": {
+      "point": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "game": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "set": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "match": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "validation_labelled_matches_per_fold": {
+      "point": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "game": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "set": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "match": [
+        203,
+        203,
+        204,
+        203
+      ]
+    },
+    "validation_both_classes_per_fold": {
+      "point": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "game": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "set": [
+        true,
+        true,
+        false,
+        false
+      ],
+      "match": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "holdout_labelled_matches_per_target": {
+      "point": 17,
+      "game": 17,
+      "set": 17,
+      "match": 508
+    },
+    "holdout_both_classes_per_target": {
+      "point": true,
+      "game": true,
+      "set": true,
+      "match": true
+    },
+    "temporal_precedence_passed": {
+      "point": false,
+      "game": false,
+      "set": false,
+      "match": false
+    },
+    "feature_pit_certified": false,
+    "feature_examples_checked": 5372,
+    "event_format_source_time_missing": 5372,
+    "result_time_sources": {
+      "fonbet_official_result_metadata": 2262,
+      "fonbet_exact_final_score_snapshot": 277,
+      "unavailable": 143
+    },
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "shadow_registered": false
+  }
+}

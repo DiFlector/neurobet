@@ -1,0 +1,98 @@
+{
+  "generated_at_utc": "2026-10-22T16:32:00Z",
+  "scope": "Read-only source, category, and durable-queue census; no manifest or labels were modified.",
+  "source": {
+    "point_history_versions": {
+      "non_retrospective": {
+        "source_matches": 34,
+        "versions": 401,
+        "point_states": 17821,
+        "latest_available_at_utc": "2026-10-22T16:30:51.153118Z"
+      },
+      "retrospective": {
+        "source_matches": 103,
+        "versions": 1367,
+        "point_states": 23711,
+        "latest_available_at_utc": "2026-10-22T16:31:30.081415Z"
+      },
+      "distinct_source_matches_across_both": 117,
+      "versions_total": 1768,
+      "point_states_total": 41532,
+      "documents": {
+        "total": 1768,
+        "complete": 651,
+        "partial": 1117
+      },
+      "confirmed_match_links": {
+        "rows": 1605,
+        "distinct_fonbet_events": 120,
+        "ambiguous_rows": 20,
+        "manual_rows": 8
+      },
+      "source_keyed_refresh_jobs": 0
+    },
+    "fonbet_format_coverage": {
+      "tennis_events": 3862,
+      "explicit_best_of": 0,
+      "explicit_best_of_available_at": 0,
+      "explicit_event_format": 0
+    },
+    "external_history_categories": {
+      "total_rows": 99160,
+      "itf_female": 25181,
+      "itf_male": 23094,
+      "junior_unknown_gender": 23,
+      "unknown_level_and_gender": 1582,
+      "category_accuracy_sample_reviewed": false
+    }
+  },
+  "point_refresh_queue": {
+    "waiting_players": 2688,
+    "waiting_players_reasons": {
+      "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED": 2507,
+      "PLAYER_SOURCE_IDS_MISSING": 181
+    },
+    "retry_unmatched_legacy": 128,
+    "queued": 92,
+    "running": 1,
+    "completed": 3,
+    "finalized": 64,
+    "retry": 173
+  },
+  "profile_refresh_queue": {
+    "queued": 596,
+    "retry_search_completed_no_match": 904,
+    "retry_preempted_for_current_event": 62,
+    "retry_profile_timeout_process_terminated": 20,
+    "running": 2,
+    "completed": 353,
+    "failed_refresh_aborted": 187,
+    "failed_not_found": 186,
+    "failed_source_unavailable": 95,
+    "waiting_confirmation": 12,
+    "skipped_doubles": 84,
+    "retry": 1015,
+    "failed_total": 480
+  },
+  "admission_impact": {
+    "latest_completed_audit_cutoff_utc": "2026-10-22T15:39:52.074048Z",
+    "new_versions_after_audit_cutoff": 71,
+    "new_distinct_source_matches_after_audit_cutoff": 1,
+    "holdout_quality_metrics_opened": false,
+    "training_started": false,
+    "shadow_registered": false
+  },
+  "interpretation": [
+    "PBP collection continues, but the latest census covers 117 distinct source matches, below the roadmap target of hundreds; only 34 source matches have non-retrospective versions.",
+    "Most durable point-history jobs still wait for historical match indexing or participant source IDs.",
+    "The live Fonbet payloads still contain no explicit source-time match format; forecast admission remains fail-closed.",
+    "External history contains explicit ITF rows and 23 junior rows, but category accuracy has not been checked against source documents.",
+    "This runtime census is not a refreshed training manifest or admission audit; previously sealed holdout data and quality metrics were not opened."
+  ],
+  "category_coverage_in_latest_admission_audit": {
+    "unknown": 1932,
+    "fonbet_competition_name": 771,
+    "flashscore_match_archive": 79,
+    "source": "tennis_label_audit_20261022T1540Z.json"
+  }
+}

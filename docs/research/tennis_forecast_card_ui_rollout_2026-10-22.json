@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-10-21T23:26:20Z",
+  "production_build": "passed (docker compose build frontend, Next.js 16.4.0, TypeScript included)",
+  "typecheck": "passed (node:20-alpine, tsc --noEmit)",
+  "deployed_image_id": "sha256:8da594a563839c7c64d3d42fe15098aeb5d7bed19dc496a58049e2fb6a539085",
+  "container_health": "healthy",
+  "dashboard_route": "GET /diflector/neurobet returned 200 after canonical trailing-slash redirect",
+  "dashboard_html_bytes": 49924,
+  "dashboard_html_sha256": "b932f3067526341da661215b9ed8b187d6b8a0efa8adb97b14abae9459eacbc9",
+  "forecast_card_asset": "/_next/static/chunks/1gc2lj9426-tf.js",
+  "verified_labels": [
+    "Линии:",
+    "изменение:",
+    "Счёт:",
+    "Качество"
+  ],
+  "rendered_browser_screenshot": "not captured; deployed bundle/content and route verified"
+}

@@ -1,0 +1,36 @@
+{
+  "execution_id": "tennis-admission-2026-10-22T08:08:45Z",
+  "generated_at": "2026-10-22T08:08:45.305416+00:00",
+  "status": "blocked",
+  "read_only_audit": true,
+  "execution": {
+    "container": "ephemeral neurobet-neural-run-e86eac105cd4",
+    "image": "neurobet-neural:latest",
+    "command": "docker compose run --rm --no-deps with checkout mounted; import tennis_label_audit.build_report and JSON serialize",
+    "audit_source_path": "scripts/research/tennis_label_audit.py",
+    "audit_source_sha256": "73616799805191f0f973b97f58d0ad8bc29a72ad5295ddc1557431d8b51c120c",
+    "result_observation_source_path": "scripts/research/tennis_result_observation.py",
+    "result_observation_source_sha256": "6448713d2c56d32190599d07a0a632ddd7d4fd6d1455fa7d937c6ed08100d7d2",
+    "training_started": false,
+    "candidate_evaluation_started": false,
+    "holdout_quality_metrics_opened": false,
+    "shadow_registered": false
+  },
+  "outputs": {
+    "report": {
+      "path": "docs/research/tennis_label_audit_2026-10-22_0808.json",
+      "sha256": "3a44d7d986f37f88fe274fc9e54503f8f20d679da8466fdf27530fa6dc85f7c3"
+    },
+    "manifest": {
+      "path": "docs/research/tennis_training_manifest_8ad4cb858bd2.json",
+      "dataset_digest": "8ad4cb858bd26ee5c80aa870411051841045a7151726793de53b88e10e4ad209",
+      "sha256": "9737372860dee249249b24f914ba04d3da96426630cd6ab1de135a1365fe6bb2"
+    },
+    "examples_provenance": {
+      "path": "docs/research/tennis_training_examples_6859aa39a3ab.jsonl",
+      "logical_digest": "6859aa39a3ab10ba1e92a6533a0939227c406ae2ac2b4d3d0718592dfe2e5bcf",
+      "sha256": "0812fe9d774ec1ab2a3341a77800663e717b8c0fb355ee7424343ff444ab936b",
+      "examples": 4664
+    }
+  }
+}

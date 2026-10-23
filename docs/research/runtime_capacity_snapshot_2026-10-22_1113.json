@@ -1,0 +1,66 @@
+{
+  "observed_at_utc": "2026-10-22T11:13:53Z",
+  "scope": "Point-in-time read-only Docker, PostgreSQL and Flashscore queue capacity snapshot",
+  "containers": {
+    "postgres": {
+      "memory": "1.313 GiB / 2.5 GiB",
+      "cpu": "54.88%",
+      "database_size": "6278 MB",
+      "shared_buffer_cache_hit_percent": 97.94,
+      "connections": 24,
+      "active_connections": 3,
+      "max_connections": 100,
+      "lock_waiters_at_sample": 1,
+      "followup_blocked_backends": 0
+    },
+    "flashscore_worker": {
+      "memory": "1.092 GiB / 2 GiB",
+      "cpu": "148.50%",
+      "cpu_quota": "1.5 vCPU",
+      "processes": 286,
+      "browser_processes_configured": 2
+    },
+    "redis": {
+      "memory": "505.6 MiB / 512 MiB",
+      "cpu": "0.36%"
+    },
+    "collector": {
+      "memory": "485.8 MiB / 512 MiB",
+      "cpu": "0.10%"
+    }
+  },
+  "flashscore_source_gate": {
+    "network_slot_limit": 2,
+    "network_slots_in_use": 0,
+    "cooldown_active": false,
+    "minimum_start_spacing_seconds": 2
+  },
+  "queue_census_reference": {
+    "observed_at_utc": "2026-10-22T11:03:54Z",
+    "point_refresh_jobs": 2952,
+    "waiting_players": 2628,
+    "waiting_players_reason_historical_match_not_indexed": 2322,
+    "waiting_players_reason_source_player_ids_missing": 306,
+    "retry": 218,
+    "running": 1
+  },
+  "prior_capacity_trial": {
+    "artifact": "docs/research/flashscore_capacity_trial_2026-10-22_0956.json",
+    "four_browser_processes_trial_peak": "1.553 GiB / 2 GiB",
+    "four_browser_processes_trial_peak_cpu": "149.92% of 1.5 vCPU",
+    "outcome": "aborted_resource_threshold; restored two browser processes; no sustained throughput improvement proven"
+  },
+  "interpretation": [
+    "PostgreSQL is below its memory and connection limits. Its cache hit ratio is 97.94%; the point-in-time CPU sample is below its two-vCPU quota. No persistent lock wait was observed on follow-up.",
+    "Flashscore worker CPU is at its 1.5-vCPU quota in this sample. Increasing browser processes adds pressure on a saturated CPU quota and the prior four-process trial approached the worker memory threshold.",
+    "Most current PBP jobs are waiting for source identity or historical match indexing, not for a browser slot. The network slot gate was idle at this sample.",
+    "Redis and collector are closer to their memory caps than PostgreSQL and merit separate monitoring."
+  ],
+  "changes_made": false,
+  "limitations": [
+    "This is a point-in-time snapshot, not a sustained CPU or latency profile.",
+    "A transient lock waiter was visible in the first query, but a follow-up query found no blocked backend; lock contention is not established.",
+    "This report does not identify top PostgreSQL statements; pg_stat_statements is not installed.",
+    "Live Chromium root-process count was not available from this sample."
+  ]
+}

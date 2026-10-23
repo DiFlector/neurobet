@@ -1,0 +1,156 @@
+{
+  "generated_at": "2026-10-22T02:17:49.662140+00:00",
+  "source": "Read-only grouped census of tennis_point_refresh_jobs by status and last_error; this is the whole durable table, not only currently eligible live events.",
+  "total_jobs": 2824,
+  "status_totals": {
+    "completed": 3,
+    "finalized": 38,
+    "queued": 84,
+    "retry": 181,
+    "waiting_match": 1,
+    "waiting_players": 2517
+  },
+  "groups": [
+    {
+      "status": "completed",
+      "reason": "<none>",
+      "jobs": 3,
+      "oldest_update": "2026-10-20 03:57:30.105049+00:00",
+      "newest_update": "2026-10-20 04:35:44.450286+00:00",
+      "due_now": 3
+    },
+    {
+      "status": "finalized",
+      "reason": "FINALIZED",
+      "jobs": 38,
+      "oldest_update": "2026-10-20 15:07:35.859520+00:00",
+      "newest_update": "2026-10-21 22:29:53.879359+00:00",
+      "due_now": 38
+    },
+    {
+      "status": "queued",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "jobs": 61,
+      "oldest_update": "2026-10-22 01:34:08.548997+00:00",
+      "newest_update": "2026-10-22 02:02:14.478513+00:00",
+      "due_now": 61
+    },
+    {
+      "status": "queued",
+      "reason": "point_history_tab_missing",
+      "jobs": 14,
+      "oldest_update": "2026-10-22 01:41:58.950998+00:00",
+      "newest_update": "2026-10-22 02:00:54.781309+00:00",
+      "due_now": 14
+    },
+    {
+      "status": "queued",
+      "reason": "<none>",
+      "jobs": 4,
+      "oldest_update": "2026-10-22 02:11:57.136716+00:00",
+      "newest_update": "2026-10-22 02:11:57.136716+00:00",
+      "due_now": 4
+    },
+    {
+      "status": "queued",
+      "reason": "FLASHSCORE_MATCH_LINK_NOT_FOUND",
+      "jobs": 4,
+      "oldest_update": "2026-10-22 01:40:42.189891+00:00",
+      "newest_update": "2026-10-22 01:52:35.378705+00:00",
+      "due_now": 4
+    },
+    {
+      "status": "queued",
+      "reason": "complete",
+      "jobs": 1,
+      "oldest_update": "2026-10-22 02:02:13.588640+00:00",
+      "newest_update": "2026-10-22 02:02:13.588640+00:00",
+      "due_now": 1
+    },
+    {
+      "status": "retry",
+      "reason": "unmatched",
+      "jobs": 128,
+      "oldest_update": "2026-10-20 18:48:31.078502+00:00",
+      "newest_update": "2026-10-20 20:18:52.170070+00:00",
+      "due_now": 128
+    },
+    {
+      "status": "retry",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "jobs": 38,
+      "oldest_update": "2026-10-22 02:03:02.132626+00:00",
+      "newest_update": "2026-10-22 02:17:36.108901+00:00",
+      "due_now": 0
+    },
+    {
+      "status": "retry",
+      "reason": "point_history_tab_missing",
+      "jobs": 7,
+      "oldest_update": "2026-10-22 02:02:59.778326+00:00",
+      "newest_update": "2026-10-22 02:17:11.392316+00:00",
+      "due_now": 0
+    },
+    {
+      "status": "retry",
+      "reason": "FLASHSCORE_MATCH_LINK_NOT_FOUND",
+      "jobs": 5,
+      "oldest_update": "2026-10-21 14:00:51.540938+00:00",
+      "newest_update": "2026-10-22 02:05:12.724976+00:00",
+      "due_now": 2
+    },
+    {
+      "status": "retry",
+      "reason": "complete",
+      "jobs": 1,
+      "oldest_update": "2026-10-22 02:06:07.926076+00:00",
+      "newest_update": "2026-10-22 02:06:07.926076+00:00",
+      "due_now": 0
+    },
+    {
+      "status": "retry",
+      "reason": "POINT_BY_POINT_NAVIGATION_TimeoutError",
+      "jobs": 1,
+      "oldest_update": "2026-10-22 02:03:47.906769+00:00",
+      "newest_update": "2026-10-22 02:03:47.906769+00:00",
+      "due_now": 0
+    },
+    {
+      "status": "retry",
+      "reason": "SET_1_NAVIGATION_TimeoutError",
+      "jobs": 1,
+      "oldest_update": "2026-10-22 02:14:04.850446+00:00",
+      "newest_update": "2026-10-22 02:14:04.850446+00:00",
+      "due_now": 0
+    },
+    {
+      "status": "waiting_match",
+      "reason": "FLASHSCORE_MATCH_LINK_PENDING",
+      "jobs": 1,
+      "oldest_update": "2026-10-22 00:21:07.409274+00:00",
+      "newest_update": "2026-10-22 00:21:07.409274+00:00",
+      "due_now": 1
+    },
+    {
+      "status": "waiting_players",
+      "reason": "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED",
+      "jobs": 2322,
+      "oldest_update": "2026-10-21 11:12:05.032959+00:00",
+      "newest_update": "2026-10-22 02:11:57.136716+00:00",
+      "due_now": 2140
+    },
+    {
+      "status": "waiting_players",
+      "reason": "PLAYER_SOURCE_IDS_MISSING",
+      "jobs": 195,
+      "oldest_update": "2026-10-20 20:55:27.795583+00:00",
+      "newest_update": "2026-10-22 02:10:29.626124+00:00",
+      "due_now": 193
+    }
+  ],
+  "interpretation": {
+    "waiting_players": "2,517 durable jobs depend on profile preparation or source player IDs; this is historical backlog, not live-event count.",
+    "retry": "Retry records are preserved with next_run_at and reason; no bulk reset was performed.",
+    "manual_confirmation": "No candidate links were accepted or rejected by this census."
+  }
+}
