@@ -38,12 +38,15 @@ def _point_worker_limit(browser_limit: int) -> int:
 
 
 def _create_worker_executors(browser_limit: int):
-    """Reserve live, current-match, and backlog lanes within the browser budget."""
+    """Keep one current and one backlog job slot alongside protected live PBP.
+
+    Player history is HTTP-first, so its task concurrency is not the same as
+    the shared Chromium process budget. Browser fallback still uses the shared
+    browser pool and cannot exceed that independent limit.
+    """
     point_workers = _point_worker_limit(browser_limit)
-    background_workers = max(1, int(browser_limit) - point_workers)
     current = ThreadPoolExecutor(max_workers=1, thread_name_prefix="flashscore-current-browser")
-    backlog = (ThreadPoolExecutor(max_workers=1, thread_name_prefix="flashscore-backlog-browser")
-               if background_workers >= 2 else current)
+    backlog = ThreadPoolExecutor(max_workers=1, thread_name_prefix="flashscore-backlog-browser")
     point = ThreadPoolExecutor(max_workers=point_workers, thread_name_prefix="flashscore-live-point")
     control = ThreadPoolExecutor(max_workers=2, thread_name_prefix="flashscore-control")
     return current, backlog, point, control
@@ -126,10 +129,19 @@ async def _prepare_events(control_executor=None) -> int:
 def _schedule_due_imports(executor=None) -> int:
     from db.connection import SessionLocal
     from db.models import FlashscoreImportJob
+    from .main import (
+        _flashscore_source_paused,
+        _park_stale_persistent_transport_imports,
+        _resume_expired_captcha_imports,
+    )
 
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
-        ids = [row[0] for row in (session.query(FlashscoreImportJob.id)
+        _park_stale_persistent_transport_imports(session, now)
+        _resume_expired_captcha_imports(session, now)
+        source_paused = _flashscore_source_paused(session, now=now)
+        session.commit()
+        ids = [] if source_paused else [row[0] for row in (session.query(FlashscoreImportJob.id)
             .filter(FlashscoreImportJob.next_run_at <= now)
             .filter((FlashscoreImportJob.status == "queued") |
                     ((FlashscoreImportJob.status == "running") & (FlashscoreImportJob.lease_until <= now)))
@@ -147,14 +159,21 @@ def _schedule_due_imports(executor=None) -> int:
 
 
 async def _dispatch_current_work(executor) -> tuple[dict, dict]:
-    """Run ready match lookups on the current lane; profiles stay background work."""
-    from .flashscore_executor_context import current_executor, executor_busy
+    """Prioritize ready match lookup, then use the lane for current players."""
+    from .flashscore_executor_context import current_executor, executor_busy, profile_scope
     if executor_busy(executor):
         return {}, {}
     executor_token = current_executor.set(executor)
     try:
         match_search = await research.dispatch_tennis_match_search(limit=1)
-        return {}, match_search
+        if match_search.get("claimed_count") or match_search.get("active_count"):
+            return {}, match_search
+        scope_token = profile_scope.set("current")
+        try:
+            players = await research.dispatch_tennis_player_refresh_jobs(limit=1)
+        finally:
+            profile_scope.reset(scope_token)
+        return players, match_search
     finally:
         current_executor.reset(executor_token)
 
@@ -186,7 +205,7 @@ async def _dispatch_bulk_category(category: str, executor, control_executor) -> 
         executor_token = current_executor.set(executor)
         # Current and background participant refreshes are both lower priority
         # than match search, live PBP, source PBP, and archive page fetches.
-        scope_token = profile_scope.set("any")
+        scope_token = profile_scope.set("background")
         try:
             result = await research.dispatch_tennis_player_refresh_jobs(limit=1)
         finally:
@@ -214,16 +233,15 @@ async def main() -> None:
     logger.info("Dedicated Flashscore executor started")
     browser_limit = _browser_process_limit()
     loop = asyncio.get_running_loop()
-    # Keep one of the configured Chromium slots available for live PBP. Profile
-    # refresh and archive import share the remaining browser lane; their long
-    # fetches must not occupy the thread that dispatches current match history.
+    # Profile history has two independently scheduled task slots: current
+    # participants and background participants. HTTP-first fetches can overlap;
+    # Chromium fallback remains bounded by the shared browser pool.
     current_executor, backlog_executor, point_executor, control_executor = _create_worker_executors(browser_limit)
     loop.set_default_executor(current_executor)
     separate_backlog_lane = backlog_executor is not current_executor
     logger.info(
-        "Flashscore browser budget: %d total (%d live PBP, %d current, %d backlog)",
+        "Flashscore executor lanes: %d browser processes (%d live PBP); 1 current + 1 backlog task slot",
         browser_limit, _point_worker_limit(browser_limit),
-        1, int(separate_backlog_lane),
     )
     heartbeat_thread = threading.Thread(
         target=_heartbeat_loop, name="flashscore-executor-heartbeat", daemon=True
@@ -270,10 +288,11 @@ async def main() -> None:
                 archive = await research.dispatch_tennis_archive_backfill(limit=4)
                 logger.info("Historical PBP backfill: %s", archive)
 
-            if (not SOURCE_TASKS and now_mono - last_import_enqueued >= import_interval
+            if (not SOURCE_TASKS and research.config.flashscore_static_profile_archive_enabled
+                    and now_mono - last_import_enqueued >= import_interval
                     and research.config.flashscore_tennis_profile_urls):
                 last_import_enqueued = now_mono
-                await research.import_flashscore_tennis_history()
+                await research.import_flashscore_tennis_history(automatic=True)
 
             players, match_search = await _dispatch_current_work(current_executor)
             bulk_category, bulk_claimed = (None, False)

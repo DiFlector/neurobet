@@ -21,6 +21,17 @@ from tennis_adapter.external_names import choose_link, fold, initial_matches, su
 OVERRIDES = ROOT / "sports" / "tennis" / "data" / "fonbet_name_overrides.csv"
 
 
+def canonical_match_dates_query() -> str:
+    """Return only survivor matches when building player activity windows."""
+    return """
+        SELECT winner_player_id::text, played_at FROM ext_tennis_canonical_matches
+        WHERE winner_player_id IS NOT NULL AND duplicate_of_id IS NULL
+        UNION ALL
+        SELECT loser_player_id::text, played_at FROM ext_tennis_canonical_matches
+        WHERE loser_player_id IS NOT NULL AND duplicate_of_id IS NULL
+    """
+
+
 def load_env() -> None:
     env_path = ROOT / ".env"
     if not env_path.exists():
@@ -116,15 +127,7 @@ def main() -> None:
         surnames[surname].add((initial or "", gender or "unknown"))
     if not players:
         raise SystemExit("Канонические игроки пусты. Сначала запустите build_canonical_tennis.py.")
-    cursor.execute(
-        """
-        SELECT winner_player_id::text, played_at FROM ext_tennis_canonical_matches
-        WHERE winner_player_id IS NOT NULL
-        UNION ALL
-        SELECT loser_player_id::text, played_at FROM ext_tennis_canonical_matches
-        WHERE loser_player_id IS NOT NULL
-        """
-    )
+    cursor.execute(canonical_match_dates_query())
     dates = defaultdict(set)
     for player_id, played in cursor.fetchall():
         moment = played if played.tzinfo else played.replace(tzinfo=timezone.utc)

@@ -24,6 +24,8 @@ import {
   fetchSchedulerQueue,
   fetchSchedulerStats,
   fetchFlashscoreQueue,
+  retryBlockedFlashscoreJob,
+  fetchTennisSourceStatus,
   fetchEventDetails,
   fetchTennisPolicy,
   resetSimulationApi,
@@ -42,6 +44,7 @@ import {
   QueueItem,
   QueueStats,
   FlashscoreQueueData,
+  TennisSourceStatusData,
   EventDetailData,
 } from "@/lib/types";
 import { getSportNameRu } from "@/lib/formatters";
@@ -50,6 +53,7 @@ type FlashscoreQueueParams = {
   limit: number;
   offset: number;
   include_completed: boolean;
+  include_parked?: boolean;
   kind?: string;
   status?: string;
   mode?: string;
@@ -63,6 +67,7 @@ function flashscoreQueueCacheKey(params: FlashscoreQueueParams): string {
     limit: params.limit,
     offset: params.offset,
     include_completed: params.include_completed,
+    include_parked: params.include_parked ?? false,
     kind: params.kind || "",
     status: params.status || "",
     mode: params.mode || "",
@@ -116,14 +121,15 @@ export default function DashboardPage() {
   const [queue, setQueue] = React.useState<QueueItem[]>([]);
   const [queueStats, setQueueStats] = React.useState<QueueStats | null>(null);
   const [flashscoreQueue, setFlashscoreQueue] = React.useState<FlashscoreQueueData | null>(null);
+  const [tennisSourceStatus, setTennisSourceStatus] = React.useState<TennisSourceStatusData | null>(null);
   const [flashscoreQueueStale, setFlashscoreQueueStale] = React.useState(false);
   const [flashscoreQueueOffset, setFlashscoreQueueOffset] = React.useState(0);
   const [flashscoreIncludeCompleted, setFlashscoreIncludeCompleted] = React.useState(false);
-  const [flashscoreFilters, setFlashscoreFilters] = React.useState<{ kind?: string; status?: string; mode?: string; search?: string }>({});
+  const [flashscoreFilters, setFlashscoreFilters] = React.useState<{ kind?: string; status?: string; mode?: string; search?: string; include_parked?: boolean }>({});
   const flashscoreQueueQueryKeyRef = React.useRef<string | null>(null);
   const flashscoreQueueRequestRef = React.useRef(0);
   const flashscoreQueueInFlightKeyRef = React.useRef<string | null>(null);
-  const handleFlashscoreFiltersChange = React.useCallback((filters: { kind?: string; status?: string; mode?: string; search?: string }) => {
+  const handleFlashscoreFiltersChange = React.useCallback((filters: { kind?: string; status?: string; mode?: string; search?: string; include_parked?: boolean }) => {
     setFlashscoreQueueOffset(0);
     setFlashscoreFilters(filters);
   }, []);
@@ -156,6 +162,15 @@ export default function DashboardPage() {
       }
     }
   }, []);
+
+  const handleRetryBlockedFlashscoreJob = React.useCallback(async (kind: "full_archive" | "player_history", itemId: string) => {
+    const ok = await retryBlockedFlashscoreJob(kind, itemId);
+    if (ok) {
+      await refreshFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset,
+        include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
+    }
+    return ok;
+  }, [refreshFlashscoreQueue, flashscoreQueueOffset, flashscoreIncludeCompleted, flashscoreFilters]);
 
   const [selectedEventData, setSelectedEventData] = React.useState<EventDetailData | null>(null);
   const [modalOpen, setModalOpen] = React.useState<boolean>(false);
@@ -214,12 +229,14 @@ export default function DashboardPage() {
         setModels(mList);
         setTrainingRuns(tList);
       } else if (activeTab === "scheduler") {
-        const [qList, qSt] = await Promise.all([
+        const [qList, qSt, sourceStatus] = await Promise.all([
           fetchSchedulerQueue(),
           fetchSchedulerStats(),
+          fetchTennisSourceStatus(),
         ]);
         setQueue(qList);
         if (qSt) setQueueStats(qSt);
+        if (sourceStatus) setTennisSourceStatus(sourceStatus);
         await refreshFlashscoreQueue({ limit: 50, offset: flashscoreQueueOffset, include_completed: flashscoreIncludeCompleted, ...flashscoreFilters });
       }
     } catch (err) {
@@ -492,7 +509,7 @@ export default function DashboardPage() {
 
           {/* Tab 5: Scheduler Priority Queue */}
           <TabsContent value="scheduler" className="mt-0 focus-visible:outline-none">
-            <QueueTab queue={queue} stats={queueStats} flashscore={flashscoreQueue} flashscoreStale={flashscoreQueueStale} loading={loading} onSelectEvent={handleInspectEvent} onFlashscoreOffsetChange={setFlashscoreQueueOffset} onFlashscoreFiltersChange={handleFlashscoreFiltersChange} includeCompleted={flashscoreIncludeCompleted} onIncludeCompletedChange={(value) => { setFlashscoreQueueOffset(0); setFlashscoreIncludeCompleted(value); }} />
+            <QueueTab queue={queue} stats={queueStats} flashscore={flashscoreQueue} sourceStatus={tennisSourceStatus} flashscoreStale={flashscoreQueueStale} loading={loading} onSelectEvent={handleInspectEvent} onFlashscoreOffsetChange={setFlashscoreQueueOffset} onFlashscoreFiltersChange={handleFlashscoreFiltersChange} onRetryBlockedFlashscoreJob={handleRetryBlockedFlashscoreJob} includeCompleted={flashscoreIncludeCompleted} onIncludeCompletedChange={(value) => { setFlashscoreQueueOffset(0); setFlashscoreIncludeCompleted(value); }} />
           </TabsContent>
         </Tabs>
       </main>

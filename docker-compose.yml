@@ -122,6 +122,18 @@ services:
       TZ: ${TZ:-UTC}
       FLASHSCORE_WORKER_BROWSER_PROCESSES: ${FLASHSCORE_WORKER_BROWSER_PROCESSES:-2}
       FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY: ${FLASHSCORE_WORKER_TENNIS_POINT_CONCURRENCY:-1}
+      FLASHSCORE_WORKER_PROFILE_CONCURRENCY: ${FLASHSCORE_WORKER_PROFILE_CONCURRENCY:-2}
+      TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_ABSTRACT_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_ABSTRACT_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_API_TENNIS_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_MY_LIFE_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_TENNIS_MY_LIFE_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_API_TENNIS_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_API_TENNIS_POINT_BY_POINT_ENABLED:-true}
+      TENNIS_SOURCE_MATCH_CHARTING_PROJECT_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_MATCH_CHARTING_PROJECT_POINT_BY_POINT_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_POINT_BY_POINT_ENABLED:-true}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8005}:8000"
     depends_on:
@@ -379,6 +391,34 @@ services:
       retries: 3
       start_period: 2s
 
+  research-browser:
+    build:
+      context: .
+      dockerfile: services/research/browser.Dockerfile
+    image: neurobet-research-browser
+    container_name: neurobet_research_browser
+    restart: unless-stopped
+    init: true
+    command: ["playwright", "run-server", "--port", "3000", "--host", "0.0.0.0"]
+    ipc: host
+    shm_size: 1gb
+    environment:
+      HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+    networks:
+      - neurobet-public
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'const n=require(\"net\").connect(3000,\"127.0.0.1\",()=>{n.end();process.exit(0)});n.on(\"error\",()=>process.exit(1))'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   research:
     build:
       context: .
@@ -401,12 +441,24 @@ services:
       FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS: ${FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS:-300}
       FLASHSCORE_BROWSER_MAX_JOBS: ${FLASHSCORE_BROWSER_MAX_JOBS:-50}
       FLASHSCORE_BROWSER_MAX_AGE_SECONDS: ${FLASHSCORE_BROWSER_MAX_AGE_SECONDS:-900}
+      PLAYWRIGHT_WS_ENDPOINT: ws://research-browser:3000/
       FLASHSCORE_EXECUTOR_ENABLED: "true"
+      TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_ABSTRACT_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_ABSTRACT_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_API_TENNIS_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_MATCH_HISTORY_ENABLED:-true}
+      TENNIS_SOURCE_TENNIS_MY_LIFE_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_TENNIS_MY_LIFE_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_API_TENNIS_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_SERVE_STATISTICS_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_SERVE_STATISTICS_ENABLED:-true}
+      TENNIS_SOURCE_API_TENNIS_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_API_TENNIS_POINT_BY_POINT_ENABLED:-true}
+      TENNIS_SOURCE_MATCH_CHARTING_PROJECT_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_MATCH_CHARTING_PROJECT_POINT_BY_POINT_ENABLED:-true}
+      TENNIS_SOURCE_FLASHSCORE_POINT_BY_POINT_ENABLED: ${TENNIS_SOURCE_FLASHSCORE_POINT_BY_POINT_ENABLED:-true}
       RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager
-      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser
       POSTGRES_HOST: postgres
       POSTGRES_INTERNAL_PORT: "5432"
     depends_on:
@@ -415,6 +467,8 @@ services:
       searxng:
         condition: service_started
       research-proxy-relay:
+        condition: service_healthy
+      research-browser:
         condition: service_healthy
     networks:
       - neurobet-public
@@ -465,17 +519,20 @@ services:
       FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS: ${FLASHSCORE_BROWSER_SLOT_WAIT_SECONDS:-300}
       FLASHSCORE_BROWSER_MAX_JOBS: ${FLASHSCORE_BROWSER_MAX_JOBS:-50}
       FLASHSCORE_BROWSER_MAX_AGE_SECONDS: ${FLASHSCORE_BROWSER_MAX_AGE_SECONDS:-900}
+      PLAYWRIGHT_WS_ENDPOINT: ws://research-browser:3000/
       RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager
-      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser
       POSTGRES_HOST: postgres
       POSTGRES_INTERNAL_PORT: "5432"
     depends_on:
       postgres:
         condition: service_healthy
       research-proxy-relay:
+        condition: service_healthy
+      research-browser:
         condition: service_healthy
     networks:
       - neurobet-public
@@ -502,6 +559,55 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  external-tennis-sources:
+    build:
+      context: .
+      dockerfile: services/research/Dockerfile
+    container_name: neurobet_external_tennis_sources
+    restart: unless-stopped
+    command: ["python", "-m", "app.external_tennis_sources"]
+    env_file:
+      - .env
+    environment:
+      TZ: UTC
+      API_TENNIS_DAILY_BUDGET: ${API_TENNIS_DAILY_BUDGET:-6000}
+      API_TENNIS_MIN_FREE_GB: ${API_TENNIS_MIN_FREE_GB:-20}
+      API_TENNIS_OFFLINE_BATCHES_PER_TICK: ${API_TENNIS_OFFLINE_BATCHES_PER_TICK:-5}
+      TENNIS_EXPLORER_PROFILE_DAILY_BUDGET: ${TENNIS_EXPLORER_PROFILE_DAILY_BUDGET:-20}
+      POSTGRES_HOST: postgres
+      POSTGRES_INTERNAL_PORT: "5432"
+      MINIO_HOST: minio
+      RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,backend,research,flashscore-worker
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,backend,research,flashscore-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      research-proxy-relay:
+        condition: service_healthy
+    networks:
+      - neurobet-public
+      - neurobet-internal
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time,sys; sys.exit(0 if os.path.exists('/tmp/healthy') and time.time()-os.path.getmtime('/tmp/healthy') < 90 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ============================================================================
   # Core Platform: Streams Worker

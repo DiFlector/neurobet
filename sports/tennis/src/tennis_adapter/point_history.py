@@ -6,7 +6,7 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
-PARSER_VERSION = "flashscore-point-history-v6"
+PARSER_VERSION = "flashscore-point-history-v7"
 
 
 def is_authoritative_point_history_version(events: Any, quality: Any) -> bool:

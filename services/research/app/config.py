@@ -26,6 +26,11 @@ class ResearchConfig:
             for value in os.getenv("FLASHSCORE_TENNIS_PROFILE_URLS", "").split(",")
             if value.strip()
         ]
+        # Static profile batches are not a substitute for coverage-driven
+        # refreshes. Keep them off unless an operator explicitly opts in.
+        self.flashscore_static_profile_archive_enabled: bool = os.getenv(
+            "FLASHSCORE_STATIC_PROFILE_ARCHIVE_ENABLED", "false"
+        ).strip().casefold() in {"1", "true", "yes", "on"}
         self.flashscore_tennis_request_delay_seconds: float = max(
             2.0, float(os.getenv("FLASHSCORE_TENNIS_REQUEST_DELAY_SECONDS", "2.0"))
         )

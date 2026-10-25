@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "services" / "neural"))
 
 from tennis_adapter.external_names import surname_and_initial  # noqa: E402
 from app.compare.canonical import (  # noqa: E402
-    SACKMANN_SOURCES,
+    PLAYER_ID_SOURCES,
     RawMatch,
     cluster_matches,
     coarse_level,
@@ -67,6 +67,16 @@ def _utc(moment):
     return moment.astimezone(timezone.utc)
 
 
+def is_singles_match(source: str, winner_name: str, loser_name: str, source_stats=None) -> bool:
+    """Keep doubles archived raw, but out of singles projections."""
+    event_type = str((source_stats or {}).get("event_type") or "")
+    return (
+        "/" not in (winner_name or "")
+        and "/" not in (loser_name or "")
+        and "double" not in event_type.casefold()
+    )
+
+
 def load_matches(connection) -> list:
     cursor = connection.cursor(name="canonical_matches")
     cursor.itersize = 10000
@@ -75,12 +85,14 @@ def load_matches(connection) -> list:
         SELECT source, source_match_id, played_at, available_at, tour_level, tournament, surface,
                best_of, round_name, gender, winner_name, loser_name, winner_player_id, loser_player_id,
                winner_rank, loser_rank, score, odds_winner, odds_loser, serve_won_winner, serve_won_loser,
-               return_won_winner, return_won_loser
+               return_won_winner, return_won_loser, stats
         FROM ext_tennis_matches
         """
     )
     rows = []
     for item in cursor:
+        if not is_singles_match(item[0], item[10], item[11], item[23]):
+            continue
         rows.append(
             RawMatch(
                 source=item[0],
@@ -165,7 +177,7 @@ def build_players(matches: list, people: dict) -> dict:
                 record["names"].add(name)
             if match.gender in ("m", "w"):
                 record["gender"] = match.gender
-            if source in SACKMANN_SOURCES and player_id:
+            if source in PLAYER_ID_SOURCES and player_id:
                 record["source_ids"][source] = str(player_id)
                 meta = people.get((source, str(player_id)))
                 if meta:
@@ -202,10 +214,11 @@ def identity_of(name: str, player_id, source: str, gender: str) -> str:
     """
     key = side_key(name)
     initial = key.split("|", 1)[1] if "|" in key else ""
-    token = gender if gender in ("m", "w") else "unknown"
+    normalized_gender = str(gender or "").strip().casefold()
+    token = {"m": "m", "male": "m", "man": "m", "w": "w", "female": "w", "woman": "w"}.get(normalized_gender, "unknown")
     if key and initial:
         return f"name:{key}:{token}"
-    if source in SACKMANN_SOURCES and player_id:
+    if source in PLAYER_ID_SOURCES and player_id:
         return f"id:{player_id}"
     if key:
         return f"name:{key}:{token}"
@@ -214,7 +227,7 @@ def identity_of(name: str, player_id, source: str, gender: str) -> str:
 
 def preferred_level(members) -> str:
     for member in members:
-        if member.source in SACKMANN_SOURCES:
+        if member.source in PLAYER_ID_SOURCES:
             return coarse_level(member.tour_level)
     return coarse_level(members[0].tour_level)
 
@@ -225,6 +238,90 @@ def preferred_text(members, field: str) -> str:
             if member.source == source and getattr(member, field):
                 return getattr(member, field)
     return getattr(members[0], field) or ""
+
+
+def preserve_existing_match_ids(match_rows: list, existing_rows: list) -> list:
+    """Keep survivor IDs stable without treating retained duplicates as owners.
+
+    ``existing_rows`` contains ``(id, canonical_key, sources[, duplicate_of_id])``.
+    Duplicate rows retain their original history for provenance, but their
+    merged source aliases belong to the survivor and must not claim a rebuilt
+    match a second time.
+    """
+    aliases: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    for existing in existing_rows:
+        canonical_id, canonical_key, sources = existing[:3]
+        duplicate_of_id = existing[3] if len(existing) > 3 else None
+        if duplicate_of_id is not None:
+            continue
+        if isinstance(sources, str):
+            try:
+                sources = json.loads(sources)
+            except ValueError:
+                sources = []
+        for source_match in sources or []:
+            if isinstance(source_match, str) and ":" in source_match:
+                aliases[source_match].add((str(canonical_id), canonical_key))
+
+    preserved = []
+    used_existing_ids: set[str] = set()
+    for row in match_rows:
+        stats = row[25]
+        if hasattr(stats, "adapted"):
+            stats = stats.adapted
+        source_parts = (stats or {}).get("sources", [])
+        matches_by_id = {alias for part in source_parts for alias in aliases.get(part, set())}
+        if len(matches_by_id) == 1 and next(iter(matches_by_id))[0] not in used_existing_ids:
+            canonical_id, canonical_key = next(iter(matches_by_id))
+            row = (canonical_id, canonical_key, *row[2:])
+            used_existing_ids.add(canonical_id)
+        preserved.append(row)
+    return preserved
+
+
+def preserve_existing_player_ids(players: dict, existing_rows: list) -> dict:
+    """Retain canonical player IDs when a source ID has one prior owner.
+
+    Name-based reconstruction remains deterministic, but aliases are stronger
+    evidence when a new source is added. Conflicting old owners are left
+    unresolved instead of merging identities.
+    """
+    aliases: dict[str, set[str]] = defaultdict(set)
+    for canonical_id, source_ids in existing_rows:
+        if isinstance(source_ids, str):
+            try:
+                source_ids = json.loads(source_ids)
+            except ValueError:
+                source_ids = {}
+        for source, source_id in (source_ids or {}).items():
+            if source_id:
+                aliases[f"{source}:{source_id}"].add(str(canonical_id))
+
+    current_owners: dict[str, set[str]] = defaultdict(set)
+    for identity, player in players.items():
+        for source, source_id in (player.get("source_ids") or {}).items():
+            if source_id:
+                current_owners[f"{source}:{source_id}"].add(identity)
+
+    source_priority = {"sackmann_sqlite": 0, "tml": 1, "api_tennis": 2, "tennis_explorer": 3}
+    used_ids: set[str] = set()
+    for identity, player in players.items():
+        source_ids = player.get("source_ids") or {}
+        candidates_by_priority: dict[int, set[str]] = defaultdict(set)
+        for source, source_id in source_ids.items():
+            if not source_id or current_owners.get(f"{source}:{source_id}") != {identity}:
+                continue
+            for canonical_id in aliases.get(f"{source}:{source_id}", set()):
+                candidates_by_priority[source_priority.get(source, 10)].add(canonical_id)
+        candidates = next((ids for _, ids in sorted(candidates_by_priority.items()) if ids), set())
+        if len(candidates) != 1:
+            continue
+        canonical_id = next(iter(candidates))
+        if canonical_id in used_ids:
+            continue
+        player["id"] = canonical_id
+        used_ids.add(canonical_id)
+    return players
 
 
 def main() -> None:
@@ -333,14 +430,33 @@ def main() -> None:
             )
         )
     cursor = connection.cursor()
-    print("writing tables", flush=True)
-    cursor.execute("TRUNCATE ext_tennis_canonical_matches, ext_tennis_canonical_players")
+    print("writing tables incrementally", flush=True)
+    cursor.execute("SELECT id, source_ids FROM ext_tennis_canonical_players")
+    players = preserve_existing_player_ids(players, cursor.fetchall())
+    # A source can add an observation to a match already represented in the
+    # canonical table. Reuse the previous canonical ID whenever one of the
+    # group's source match IDs is already recorded in stats.sources. A full
+    # rebuild used to TRUNCATE these tables, invalidating profile references
+    # and snapshots that point at canonical players/matches.
+    cursor.execute(
+        "SELECT id, canonical_key, stats->'sources', duplicate_of_id "
+        "FROM ext_tennis_canonical_matches"
+    )
+    match_rows = preserve_existing_match_ids(match_rows, cursor.fetchall())
     execute_values(
         cursor,
         """
         INSERT INTO ext_tennis_canonical_players (
             id, display_name, gender, hand, ioc, surname_key, initial, source_ids
         ) VALUES %s
+        ON CONFLICT (id) DO UPDATE SET
+            display_name=excluded.display_name,
+            gender=CASE WHEN excluded.gender <> 'unknown' THEN excluded.gender ELSE ext_tennis_canonical_players.gender END,
+            hand=coalesce(excluded.hand,ext_tennis_canonical_players.hand),
+            ioc=coalesce(excluded.ioc,ext_tennis_canonical_players.ioc),
+            surname_key=excluded.surname_key,
+            initial=excluded.initial,
+            source_ids=ext_tennis_canonical_players.source_ids || excluded.source_ids
         """,
         player_rows,
         page_size=1000,
@@ -354,9 +470,66 @@ def main() -> None:
             winner_rank, loser_rank, score, odds_winner, odds_loser, serve_won_winner, serve_won_loser,
             return_won_winner, return_won_loser, odds_source, stats_source, stats
         ) VALUES %s
+        ON CONFLICT (canonical_key) DO UPDATE SET
+            played_at=excluded.played_at,
+            available_at=least(ext_tennis_canonical_matches.available_at,excluded.available_at),
+            tour_level=excluded.tour_level,
+            tournament=coalesce(nullif(excluded.tournament,''),ext_tennis_canonical_matches.tournament),
+            surface=CASE WHEN excluded.surface <> 'unknown' THEN excluded.surface ELSE ext_tennis_canonical_matches.surface END,
+            best_of=excluded.best_of,
+            round_name=coalesce(nullif(excluded.round_name,''),ext_tennis_canonical_matches.round_name),
+            gender=CASE WHEN excluded.gender <> 'unknown' THEN excluded.gender ELSE ext_tennis_canonical_matches.gender END,
+            winner_name=excluded.winner_name,
+            loser_name=excluded.loser_name,
+            winner_player_id=coalesce(ext_tennis_canonical_matches.winner_player_id,excluded.winner_player_id),
+            loser_player_id=coalesce(ext_tennis_canonical_matches.loser_player_id,excluded.loser_player_id),
+            winner_rank=coalesce(excluded.winner_rank,ext_tennis_canonical_matches.winner_rank),
+            loser_rank=coalesce(excluded.loser_rank,ext_tennis_canonical_matches.loser_rank),
+            score=CASE WHEN excluded.score <> '' THEN excluded.score ELSE ext_tennis_canonical_matches.score END,
+            odds_winner=coalesce(excluded.odds_winner,ext_tennis_canonical_matches.odds_winner),
+            odds_loser=coalesce(excluded.odds_loser,ext_tennis_canonical_matches.odds_loser),
+            serve_won_winner=coalesce(excluded.serve_won_winner,ext_tennis_canonical_matches.serve_won_winner),
+            serve_won_loser=coalesce(excluded.serve_won_loser,ext_tennis_canonical_matches.serve_won_loser),
+            return_won_winner=coalesce(excluded.return_won_winner,ext_tennis_canonical_matches.return_won_winner),
+            return_won_loser=coalesce(excluded.return_won_loser,ext_tennis_canonical_matches.return_won_loser),
+            odds_source=coalesce(excluded.odds_source,ext_tennis_canonical_matches.odds_source),
+            stats_source=coalesce(excluded.stats_source,ext_tennis_canonical_matches.stats_source),
+            stats=ext_tennis_canonical_matches.stats || excluded.stats
+        WHERE ext_tennis_canonical_matches.duplicate_of_id IS NULL
         """,
         match_rows,
         page_size=1000,
+    )
+    # Record which fetched TML partitions this canonical projection actually
+    # contains. Player preparation uses this checkpoint to distinguish fresh
+    # source availability from data that has merely been downloaded.
+    source_year = datetime.now(timezone.utc).year
+    partitions = [f"season_{source_year}_atp", f"season_{source_year}_wta",
+                  f"season_{source_year}_challenger"]
+    cursor.execute(
+        "SELECT state_key, state_json FROM external_tennis_source_state "
+        "WHERE source='tennis_my_life' AND state_key = ANY(%s)",
+        (partitions,),
+    )
+    source_hashes = {}
+    for state_key, state_json in cursor.fetchall():
+        if isinstance(state_json, str):
+            try:
+                state_json = json.loads(state_json)
+            except ValueError:
+                continue
+        if int((state_json or {}).get("status") or 0) == 200:
+            source_hashes[state_key] = (state_json or {}).get("content_sha256")
+    cursor.execute(
+        """
+        INSERT INTO external_tennis_source_state(source,state_key,state_json,updated_at)
+        VALUES ('canonical_tennis','projection',%s::jsonb,now())
+        ON CONFLICT(source,state_key) DO UPDATE
+        SET state_json=excluded.state_json,updated_at=now()
+        """,
+        (json.dumps({"projected_at": datetime.now(timezone.utc).isoformat(),
+                     "source_hashes": source_hashes,
+                     "canonical_matches": len(match_rows), "canonical_players": len(player_rows)}),),
     )
     connection.commit()
     cursor.close()

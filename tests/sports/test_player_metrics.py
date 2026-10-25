@@ -24,6 +24,17 @@ def test_aggregate_keeps_denominators_and_unknown_serve_volume():
     assert metrics["glicko"]["rd"] < 350
 
 
+def test_result_without_serve_stats_remains_usable_history_with_unknown_serve_volume():
+    metrics = aggregate_results([_result(0, True, "tml-result-no-stats")])
+
+    assert metrics["overall"]["matches"] == 1
+    assert metrics["overall"]["wins"] == 1
+    assert metrics["serve"]["points"] == 0
+    assert metrics["serve"]["points_won"] == 0
+    assert metrics["serve"]["unknown_volume_matches"] == 1
+    assert metrics["coverage"] == {"match_history": "available", "serve_volume_known": False}
+
+
 def test_rolling_windows_expire_without_loading_match_archive():
     metrics = aggregate_results([_result(-100, True, "old"), _result(-2, False, "recent")])
 

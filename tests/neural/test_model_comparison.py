@@ -7,6 +7,7 @@ import numpy as np
 from app.compare.calibration import ProbabilityCalibrator
 from app.compare.candidates.markov import match_win
 from app.compare.candidates.rating import HistoryMatch, RatingBook
+from app.compare.load import load_external_prematch, load_history
 from app.compare.rows import CompareRow
 from app.compare.splits import assert_disjoint, split_matches
 from app.models import TemporalCalibratedEstimator, build_logistic_regression_pipeline
@@ -26,6 +27,32 @@ def _row(event_id, start, label=1):
         player_a="a",
         player_b="b",
     )
+
+
+def test_canonical_match_loaders_exclude_rows_linked_as_cross_source_duplicates():
+    class Result:
+        def fetchall(self):
+            return []
+
+    class Session:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, *_args):
+            self.statements.append(str(statement))
+            return Result()
+
+    session = Session()
+    assert load_history(session, {}) == []
+    canonical_history_query = next(
+        statement for statement in session.statements
+        if "FROM ext_tennis_canonical_matches" in statement
+    )
+    assert "duplicate_of_id IS NULL" in canonical_history_query
+
+    session = Session()
+    assert load_external_prematch(session) == []
+    assert "duplicate_of_id IS NULL" in session.statements[0]
 
 
 def test_split_keeps_matches_apart():
@@ -156,6 +183,23 @@ def test_two_spellings_merge():
         loser_player_id="2",
         score="6-4, 6-3",
     )
+    api_tennis = RawMatch(
+        source="api_tennis",
+        source_match_id="api-2024-1",
+        played_at=day,
+        available_at=day + timedelta(days=8),
+        tour_level="ATP Singles",
+        tournament="Halle",
+        surface="unknown",
+        best_of=3,
+        round_name="F",
+        gender="m",
+        winner_name="Daniil Medvedev",
+        loser_name="Jannik Sinner",
+        winner_player_id="api-player-1",
+        loser_player_id="api-player-2",
+        score="2-0",
+    )
     odds = RawMatch(
         source="atp_odds",
         source_match_id="odds-1",
@@ -173,9 +217,9 @@ def test_two_spellings_merge():
         odds_winner=1.7,
         odds_loser=2.1,
     )
-    groups = cluster_matches([sackmann, tml, odds])
+    groups = cluster_matches([sackmann, tml, odds, api_tennis])
     assert len(groups) == 1
-    assert len(groups[0]) == 3
+    assert len(groups[0]) == 4
     tml.winner_player_id = "100"
     tml.loser_player_id = "200"
     sackmann.winner_player_id = "900"
@@ -217,6 +261,29 @@ def test_two_spellings_merge():
         odds_loser=2.0,
     )
     assert len(cluster_matches([full, short])) == 1
+
+
+def test_provider_player_id_namespaces_do_not_merge_unrelated_players():
+    from datetime import datetime, timezone
+
+    from app.compare.canonical import RawMatch, cluster_matches
+
+    day = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    source_a = RawMatch(
+        source="tml", source_match_id="tml-1", played_at=day, available_at=day,
+        tour_level="atp", tournament="Halle", surface="grass", best_of=3,
+        round_name="F", gender="m", winner_name="Daniil Medvedev", loser_name="Jannik Sinner",
+        winner_player_id="1", loser_player_id="2", score="6-4 6-3",
+    )
+    source_b = RawMatch(
+        source="api_tennis", source_match_id="api-1", played_at=day, available_at=day,
+        tour_level="atp", tournament="Halle", surface="grass", best_of=3,
+        round_name="F", gender="m", winner_name="Carlos Alcaraz", loser_name="Novak Djokovic",
+        winner_player_id="1", loser_player_id="2", score="6-4 6-3",
+    )
+    groups = cluster_matches([source_a, source_b])
+
+    assert len(groups) == 2
 
 
 def test_residual_shift_is_bounded():

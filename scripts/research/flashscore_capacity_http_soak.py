@@ -6,7 +6,15 @@ from datetime import datetime, timezone
 import json
 import subprocess
 import time
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+
+
+CANONICAL_CONTAINERS = {
+    "research": "neurobet_research",
+    "flashscore-worker": "neurobet_flashscore_worker",
+    "external-tennis-sources": "neurobet_external_tennis_sources",
+    "backend": "neurobet_backend",
+}
 
 
 def command(args: list[str]) -> str:
@@ -14,22 +22,42 @@ def command(args: list[str]) -> str:
 
 
 def container_id(service: str) -> str:
-    ids = command([
+    expected_name = CANONICAL_CONTAINERS[service]
+    rows = command([
         "docker", "ps", "--filter", "label=com.docker.compose.project=neurobet",
         "--filter", f"label=com.docker.compose.service={service}",
-        "--filter", "status=running", "--format", "{{.ID}}",
+        "--filter", "label=com.docker.compose.oneoff=False",
+        "--filter", "status=running", "--format", "{{.ID}} {{.Names}}",
     ]).splitlines()
-    if len(ids) != 1:
-        raise RuntimeError(f"expected one running {service}, got {len(ids)}")
-    return ids[0]
+    canonical = [row.split(maxsplit=1)[0] for row in rows
+                 if len(row.split(maxsplit=1)) == 2 and row.split(maxsplit=1)[1] == expected_name]
+    if len(canonical) != 1:
+        raise RuntimeError(
+            f"expected one running canonical container {expected_name} for {service}, got {len(canonical)}"
+        )
+    return canonical[0]
 
 
-def sample(queue_url: str) -> dict:
+def cgroup_counters(container: str, path: str) -> dict[str, int] | None:
+    try:
+        raw = command(["docker", "exec", container, "cat", path])
+        return {key: int(value) for key, value in
+                (line.split() for line in raw.splitlines() if len(line.split()) == 2)}
+    except (subprocess.CalledProcessError, RuntimeError, ValueError):
+        return None
+
+
+def get_json(url: str, timeout: float = 10) -> dict:
+    request = Request(url, headers={"Accept": "application/json"})
+    with urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def sample(queue_url: str, source_status_url: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     row: dict = {"observed_at": now, "services": {}}
     queue_started = time.monotonic()
-    with urlopen(queue_url, timeout=10) as response:
-        payload = json.loads(response.read())
+    payload = get_json(queue_url)
     row["queue_api_seconds"] = round(time.monotonic() - queue_started, 3)
     items = payload.get("items", [])
     row["worker"] = payload.get("worker")
@@ -43,6 +71,32 @@ def sample(queue_url: str) -> dict:
     for item in items:
         key = f"{item.get('kind')}:{item.get('status')}"
         row["queue"]["counts_by_kind_status"][key] = row["queue"]["counts_by_kind_status"].get(key, 0) + 1
+    live_waits = sorted(
+        int(item["wait_seconds"]) for item in items
+        if item.get("kind") == "pbp" and item.get("mode") == "live"
+        and item.get("wait_seconds") is not None
+    )
+    row["queue"]["live_pbp_wait_seconds"] = {
+        "count": len(live_waits), "p95": live_waits[min(len(live_waits) - 1, int((len(live_waits) - 1) * .95))]
+        if live_waits else None,
+        "max": live_waits[-1] if live_waits else None,
+    }
+    row["queue"]["source_control"] = {
+        key: (payload.get("worker") or {}).get(key)
+        for key in ("network_slots", "network_slots_limit", "cooldown_until", "healthy", "browser_lanes", "player_history_slots")
+    }
+
+    source_started = time.monotonic()
+    sources = get_json(source_status_url)
+    row["source_status_seconds"] = round(time.monotonic() - source_started, 3)
+    row["source_status"] = {
+        source.get("source"): {
+            "status": source.get("status"), "quota": source.get("quota"),
+            "jobs": source.get("jobs"), "point_documents": source.get("point_documents"),
+            "profile_history": source.get("profile_history"),
+        }
+        for source in sources.get("sources", [])
+    }
 
     meminfo = {}
     with open("/proc/meminfo", encoding="ascii") as handle:
@@ -51,7 +105,7 @@ def sample(queue_url: str) -> dict:
             meminfo[key] = int(value.strip().split()[0]) * 1024
     row["host_memory"] = {key: meminfo.get(key) for key in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree")}
 
-    for service in ("research", "flashscore-worker", "backend"):
+    for service in ("research", "flashscore-worker", "external-tennis-sources", "backend"):
         cid = container_id(service)
         stats = json.loads(command(["docker", "stats", "--no-stream", "--format", "{{json .}}", cid]))
         inspect = json.loads(command(["docker", "inspect", cid]))[0]
@@ -62,6 +116,8 @@ def sample(queue_url: str) -> dict:
             "restart_count": inspect.get("RestartCount"),
             "oom_killed": item.get("OOMKilled"),
             "stats": stats,
+            "cpu_throttling": cgroup_counters(cid, "/sys/fs/cgroup/cpu.stat"),
+            "memory_events": cgroup_counters(cid, "/sys/fs/cgroup/memory.events"),
         }
         if service in ("research", "flashscore-worker"):
             roots = command([
@@ -79,6 +135,7 @@ def sample(queue_url: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--queue-url", default="http://127.0.0.1:8005/api/tennis-history/flashscore/queue?limit=200&offset=0&include_completed=true")
+    parser.add_argument("--source-status-url", default="http://127.0.0.1:8005/api/tennis-history/sources/status")
     parser.add_argument("--duration-seconds", type=int, default=1800)
     parser.add_argument("--interval-seconds", type=int, default=15)
     parser.add_argument("--output", required=True)
@@ -88,7 +145,7 @@ def main() -> None:
     with open(args.output, "a", encoding="utf-8") as output:
         while True:
             try:
-                row = sample(args.queue_url)
+                row = sample(args.queue_url, args.source_status_url)
             except Exception as exc:
                 row = {"observed_at": datetime.now(timezone.utc).isoformat(),
                        "error": f"{type(exc).__name__}: {str(exc)[:240]}"}

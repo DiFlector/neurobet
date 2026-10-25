@@ -33,9 +33,11 @@ from app.tennis_flashscore import (
     _match_urls_from_profile_html,
     _page_has_pagination_progress,
     _profile_page_failure_reason,
+    _profile_http_get,
     PARSER_VERSION,
     parse_player_profile,
 )
+from app.main import _flashscore_source_wait_seconds
 from app.player_profiles import (
     _canonical_match_key, _is_duplicate_adjacent_fact, _matching_canonical_match_key,
     _post_match_profile_refresh_due, profile_refresh_timeout_seconds,
@@ -451,6 +453,38 @@ def test_profile_queue_timeout_is_not_reported_as_a_provider_network_failure():
         0, "TimeoutError: FLASHSCORE_SOURCE_LOCK_TIMEOUT"
     ) == "source_queue_timeout"
     assert _profile_page_failure_reason(0, "TimeoutError: connection reset") == "pagination_network_error"
+
+
+def test_live_pbp_has_bounded_source_queue_wait(monkeypatch):
+    monkeypatch.setenv("FLASHSCORE_SOURCE_LOCK_WAIT_SECONDS", "300")
+    monkeypatch.delenv("FLASHSCORE_LIVE_SOURCE_LOCK_WAIT_SECONDS", raising=False)
+    assert _flashscore_source_wait_seconds("live") == 60
+    assert _flashscore_source_wait_seconds("archive") == 300
+    monkeypatch.setenv("FLASHSCORE_LIVE_SOURCE_LOCK_WAIT_SECONDS", "45")
+    assert _flashscore_source_wait_seconds("live") == 45
+    monkeypatch.setenv("FLASHSCORE_SOURCE_LOCK_WAIT_SECONDS", "30")
+    assert _flashscore_source_wait_seconds("live") == 30
+
+
+def test_profile_http_get_returns_source_queue_timeout_without_sending_http(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def source_queue_timeout():
+        raise TimeoutError("FLASHSCORE_SOURCE_LOCK_TIMEOUT")
+        yield
+
+    monkeypatch.setattr(
+        "app.tennis_flashscore._get_profile_page_http_client",
+        lambda: pytest.fail("no HTTP request is sent when the source slot was not acquired"),
+    )
+    status, body, url, error = _profile_http_get(
+        "https://www.flashscore.com/player/example/player1/results/",
+        source_access=source_queue_timeout,
+    )
+    assert (status, body) == (0, "")
+    assert url.endswith("/results/")
+    assert error == "TimeoutError:FLASHSCORE_SOURCE_LOCK_TIMEOUT"
 
 
 def test_profile_count_compares_advertised_singles_not_all_feed_events():
@@ -1153,6 +1187,38 @@ def test_point_history_feed_parser_retains_tiebreak_sequence_and_set_result():
 
     assert parsed["quality"]["complete"] is True
     assert parsed["events"][-1]["quality"] == "terminal_from_tiebreak_result"
+    assert parsed["events"][-1]["state_after"] == {"set_result": [7, 6]}
+
+
+def test_normal_deuce_game_reaching_six_all_is_not_a_tiebreak():
+    feed = ("HA÷Set 1~HC÷6¬HE÷6¬HG÷1¬HK÷1"
+            "¬HL÷15:0, 15:15, 30:15, 30:30, 40:30, 40:40, A:40")
+    parsed = _parse_point_history_feed(feed)
+    assert not any(e.get("tie_break") for e in parsed["events"])
+    assert parsed["events"][-1]["state_after"] == ["AD", "40"]
+
+
+def test_separate_tiebreak_rows_have_contiguous_indices_and_one_terminal():
+    feed = "HA÷Set 1~HC÷7¬HE÷6¬HD÷7¬HF÷0¬HK÷1~HB÷Tiebreak - Set 1"
+    feed += "".join(f"~HC÷{point}¬HE÷0¬HG÷1¬HK÷1" for point in range(1, 8))
+    parsed = _parse_point_history_feed(feed)
+    points = [e for e in parsed["events"] if e.get("point_score") is not None]
+    assert [e["point_index"] for e in points] == list(range(7))
+    assert [e["winner"] for e in points] == [0] * 7
+    terminals = [e for e in parsed["events"] if e.get("quality") == "terminal_from_tiebreak_result"]
+    assert len(terminals) == 1
+    assert terminals[0]["state_after"] == {"set_result": [7, 6]}
+
+
+def test_real_three_set_http_feed_keeps_deuce_and_both_tiebreaks():
+    from pathlib import Path
+    feed = (Path(__file__).parent / "fixtures/flashscore_point_feed_A5F0BCMP.txt").read_text()
+    parsed = _parse_point_history_feed(feed)
+    assert parsed["sets"] == [1, 2, 3]
+    assert parsed["quality"]["gaps"] == []
+    assert parsed["quality"]["confirmed_points"] == 249
+    tiebreak_points = [e for e in parsed["events"] if e.get("tie_break") and e.get("point_score") is not None]
+    assert len(tiebreak_points) == 21  # 7:3 and 7:4
     assert parsed["events"][-1]["state_after"] == {"set_result": [7, 6]}
 
 

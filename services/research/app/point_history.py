@@ -46,12 +46,21 @@ def _parse_point_history_feed(payload: str) -> dict:
     signature = None
     previous_game_score: dict[int, list[int]] = {}
     tiebreak_score: dict[int, list[int]] = {}
+    tiebreak_results: dict[int, list[int]] = {}
+    completed_tiebreaks: set[int] = set()
+    in_tiebreak = False
     for segment in (part for part in payload.split("~") if part):
         fields = _feed_fields(segment)
         if "A1" in fields:
             signature = fields["A1"]
         if "HA" in fields:
             current_set = _feed_set_number(fields["HA"])
+            in_tiebreak = False
+            if current_set is not None:
+                sets_seen.add(current_set)
+        if "HB" in fields and re.search(r"tie[ -]?break", fields["HB"], re.I):
+            current_set = _feed_set_number(fields["HB"]) or current_set
+            in_tiebreak = True
             if current_set is not None:
                 sets_seen.add(current_set)
         if current_set is None or "HC" not in fields or "HE" not in fields:
@@ -68,13 +77,31 @@ def _parse_point_history_feed(payload: str) -> dict:
         server = {"1": 0, "2": 1}.get(server_code)
         raw_points = fields.get("HL", "")
         point_states = []
+        # HC/HE are game scores in ordinary rows and point scores in the
+        # separate HB="Tiebreak - Set N" section. A normal game ending 6:6
+        # can still contain deuce/advantage; it is not itself the tiebreak.
+        tie_break = in_tiebreak or bool(
+            game_score == [6, 6] and any(
+                re.fullmatch(r"\s*\d+\s*:\s*\d+\s*", p.split("|", 1)[0])
+                and any(int(v) not in {0, 15, 30, 40} for v in re.findall(r"\d+", p.split("|", 1)[0]))
+                for p in raw_points.split(",") if p.strip()
+            )
+        )
+        if not in_tiebreak and not raw_points and "HD" in fields and "HF" in fields and sorted(game_score) == [6, 7]:
+            tiebreak_results[current_set] = game_score
+            continue
+        if in_tiebreak and not raw_points:
+            point_states.append(tuple(game_score))
         for raw_point in raw_points.split(","):
             point = raw_point.split("|", 1)[0].strip()
             if not point:
                 continue
             score = re.search(r"^\s*(\d+)\s*:\s*(\d+)\s*$", point)
-            if score and (game_score == [6, 6] or "HD" in fields or "HF" in fields):
+            if score and tie_break:
                 point_states.append((int(score.group(1)), int(score.group(2))))
+                continue
+            if tie_break:
+                gaps.append({"set": current_set, "reason": "invalid_tiebreak_point_score"})
                 continue
             from tennis_adapter.point_history import _point_pair
             parsed = _point_pair(point)
@@ -83,14 +110,13 @@ def _parse_point_history_feed(payload: str) -> dict:
             else:
                 gaps.append({"set": current_set, "game_score": game_score, "reason": "unrecognized_feed_point"})
 
-        tie_break = bool(point_states and isinstance(point_states[0][0], int))
-        if tie_break:
+        if tie_break and point_states:
             before = tiebreak_score.get(current_set, [0, 0])
             for point_index, after_tuple in enumerate(point_states):
                 after = list(after_tuple)
                 changed = [i for i in (0, 1) if after[i] == before[i] + 1 and after[1-i] == before[1-i]]
                 winner = changed[0] if len(changed) == 1 else None
-                events.append({"set": current_set, "game_score": [6, 6], "point_index": point_index,
+                events.append({"set": current_set, "game_score": [6, 6], "point_index": sum(after) - 1,
                                "tie_break": True, "state_before": before, "state_after": after,
                                "point_score": after, "server": server, "winner": winner,
                                "confirmed": winner is not None, "retrospective": True,
@@ -99,9 +125,12 @@ def _parse_point_history_feed(payload: str) -> dict:
                     gaps.append({"set": current_set, "tie_break_score": after, "reason": "invalid_or_unanchored_tiebreak_transition"})
                 before = after
             tiebreak_score[current_set] = before
-            if max(before) >= 7 and abs(before[0] - before[1]) >= 2:
+            if current_set not in completed_tiebreaks and max(before) >= 7 and abs(before[0] - before[1]) >= 2:
                 winner = 0 if before[0] > before[1] else 1
                 set_score = [7, 6] if winner == 0 else [6, 7]
+                if current_set in tiebreak_results and tiebreak_results[current_set] != set_score:
+                    gaps.append({"set": current_set, "reason": "tiebreak_final_score_mismatch"})
+                completed_tiebreaks.add(current_set)
                 events.append({"set": current_set, "game_score": set_score, "point_index": None,
                                "state_before": before, "state_after": {"set_result": set_score},
                                "point_score": None, "server": server, "winner": winner,
@@ -139,6 +168,8 @@ def _parse_point_history_feed(payload: str) -> dict:
 
     if not sets_seen:
         gaps.append({"reason": "point_by_point_feed_missing"})
+    for set_number in tiebreak_results.keys() - completed_tiebreaks:
+        gaps.append({"set": set_number, "reason": "tiebreak_point_sequence_missing"})
     quality = {"event_count": len(events), "confirmed_points": sum(
         bool(event["confirmed"]) and event.get("quality") in {"confirmed", "terminal_from_game_result"}
         for event in events), "ambiguous_points": sum(not event["confirmed"] for event in events),
@@ -622,6 +653,8 @@ def fetch_point_documents(
                 fallback_reason = "HTTP_200_FEED_WITHOUT_USABLE_HISTORY"
             else:
                 fallback_reason = error or f"HTTP_{status}_FEED_UNAVAILABLE"
+                if "FLASHSCORE_SOURCE_LOCK_TIMEOUT" in fallback_reason:
+                    return [], "SOURCE_QUEUE_TIMEOUT"
     access = source_access or nullcontext
     output = []
     from .browser_pool import flashscore_chromium
@@ -899,6 +932,400 @@ def collect_source_point_history(
         "fonbet_link_status": "unlinked_at_retrieval", "gaps": gaps,
     }
 
+def _usable_alternative_point_version(*, source: str, events: list, quality: dict,
+                                      available_at: datetime | None, retrospective: bool,
+                                      is_live: bool, as_of: datetime,
+                                      allow_partial: bool = False) -> bool:
+    """Check whether an alternative has usable points without overstating completeness.
+
+    A caller may accept an explicitly partial retrospective sequence so we do
+    not scrape the same match again merely to rediscover known points. The
+    returned quality stays partial and retains its gaps. Live use always needs
+    a fresh, non-retrospective observation within the 90-second window.
+    """
+    from .player_data_coverage import source_capability_enabled
+
+    if source not in {"api_tennis", "match_charting_project"}:
+        return False
+    if not source_capability_enabled(source, "point_by_point"):
+        return False
+    cutoff = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of.astimezone(timezone.utc)
+    available = available_at.replace(tzinfo=timezone.utc) if available_at and available_at.tzinfo is None else available_at
+    if available is None:
+        return False
+    available = available.astimezone(timezone.utc)
+    if available > cutoff or not isinstance(events, list) or not events:
+        return False
+    confirmed_events = [event for event in events
+                        if isinstance(event, dict) and event.get("confirmed") is True]
+    if not confirmed_events:
+        return False
+    if not allow_partial:
+        if quality.get("complete") is not True or quality.get("gaps"):
+            return False
+        # A provider's completeness flag must not hide ambiguous normalized rows.
+        if len(confirmed_events) != len(events):
+            return False
+    if is_live and (retrospective or cutoff - available > timedelta(seconds=90)):
+        return False
+    return True
+
+
+def _orient_alternative_point_events(events: list, *, source_first_is_fonbet_a: bool) -> list:
+    """Copy source point rows into Fonbet A/B orientation without changing quality."""
+    import copy
+
+    output = copy.deepcopy(events)
+    if source_first_is_fonbet_a:
+        return output
+    for event in output:
+        if not isinstance(event, dict):
+            continue
+        for key in ("state_before", "state_after", "point_score", "game_score"):
+            values = event.get(key)
+            if isinstance(values, list) and len(values) == 2:
+                event[key] = [values[1], values[0]]
+        for key in ("winner", "server"):
+            value = event.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value in (0, 1):
+                event[key] = 1 - value
+    return output
+
+
+def _link_api_tennis_archive_for_event(session, event, *, as_of: datetime) -> dict | None:
+    """Attach an archived API-Tennis PBP tape only through canonical IDs and source IDs.
+
+    This is intentionally limited to finished singles events, a unique canonical
+    match in a one-day date window, and an exact provider first/second-player ID
+    orientation. Name-only or score-only matches are never linked.
+    """
+    from db.models import TennisPlayerProfile, TennisPointDocument, TennisPointHistoryVersion
+    from db.models.external_tennis import (
+        ExtTennisCanonicalMatch, ExtTennisMatch, ExtTennisMatchObservation,
+    )
+    from sqlalchemy import and_, or_
+
+    if event.finished_at is None or event.is_live or not event.participant_a_id or not event.participant_b_id:
+        return None
+    profiles = session.query(TennisPlayerProfile).filter(
+        TennisPlayerProfile.participant_id.in_((event.participant_a_id, event.participant_b_id))
+    ).all()
+    canonical_by_participant = {
+        row.participant_id: row.canonical_player_id for row in profiles if row.canonical_player_id
+    }
+    canonical_a = canonical_by_participant.get(event.participant_a_id)
+    canonical_b = canonical_by_participant.get(event.participant_b_id)
+    if not canonical_a or not canonical_b or canonical_a == canonical_b:
+        return None
+
+    matches = session.query(ExtTennisCanonicalMatch).filter(
+        or_(
+            and_(ExtTennisCanonicalMatch.winner_player_id == canonical_a,
+                 ExtTennisCanonicalMatch.loser_player_id == canonical_b),
+            and_(ExtTennisCanonicalMatch.winner_player_id == canonical_b,
+                 ExtTennisCanonicalMatch.loser_player_id == canonical_a),
+        ),
+        ExtTennisCanonicalMatch.duplicate_of_id.is_(None),
+        ExtTennisCanonicalMatch.played_at >= event.scheduled_start_at - timedelta(days=1),
+        ExtTennisCanonicalMatch.played_at < event.scheduled_start_at + timedelta(days=2),
+    ).all()
+    api_matches = []
+    for match in matches:
+        source_ids = [str(value).split(":", 1)[1] for value in
+                      (match.stats or {}).get("sources", [])
+                      if isinstance(value, str) and value.startswith("api_tennis:")]
+        if source_ids:
+            api_matches.append((match, list(dict.fromkeys(source_ids))))
+    if len(api_matches) != 1:
+        return None
+    canonical_match, api_source_ids = api_matches[0]
+
+    provider_match = session.query(ExtTennisMatch).filter(
+        ExtTennisMatch.source == "api_tennis",
+        ExtTennisMatch.source_match_id.in_(api_source_ids),
+        ExtTennisMatch.available_at <= as_of,
+    ).order_by(ExtTennisMatch.available_at.desc()).first()
+    if provider_match is None:
+        return None
+    observation = session.query(ExtTennisMatchObservation).filter(
+        ExtTennisMatchObservation.source == "api_tennis",
+        ExtTennisMatchObservation.source_match_id == provider_match.source_match_id,
+        ExtTennisMatchObservation.available_at <= as_of,
+    ).order_by(ExtTennisMatchObservation.available_at.desc()).first()
+    source_event = (observation.payload or {}).get("event") if observation else None
+    try:
+        first_id = str(source_event["first_player_key"])
+        second_id = str(source_event["second_player_key"])
+    except (KeyError, TypeError):
+        return None
+    source_winner_id = str(provider_match.winner_player_id or "")
+    source_loser_id = str(provider_match.loser_player_id or "")
+    if not source_winner_id or not source_loser_id or {first_id, second_id} != {source_winner_id, source_loser_id}:
+        return None
+
+    source_first_canonical = (canonical_match.winner_player_id if first_id == source_winner_id
+                              else canonical_match.loser_player_id)
+    if source_first_canonical not in {canonical_a, canonical_b}:
+        return None
+    source_first_is_a = source_first_canonical == canonical_a
+
+    documents = session.query(TennisPointDocument, TennisPointHistoryVersion).join(
+        TennisPointHistoryVersion,
+        TennisPointHistoryVersion.document_id == TennisPointDocument.id,
+    ).filter(
+        TennisPointDocument.source == "api_tennis",
+        TennisPointDocument.source_match_id == provider_match.source_match_id,
+        TennisPointDocument.available_at <= as_of,
+        TennisPointDocument.availability_status == "known",
+        TennisPointHistoryVersion.fonbet_event_id.is_(None),
+        TennisPointHistoryVersion.available_at <= as_of,
+        TennisPointHistoryVersion.availability_status == "known",
+    ).order_by(TennisPointHistoryVersion.available_at.desc(),
+               TennisPointHistoryVersion.id.desc()).all()
+    for document, source_version in documents:
+        source_quality = source_version.quality_json or {}
+        if not _usable_alternative_point_version(
+            source="api_tennis", events=source_version.events_json,
+            quality=source_quality, available_at=source_version.available_at,
+            retrospective=bool(source_version.retrospective), is_live=False,
+            as_of=as_of, allow_partial=True,
+        ):
+            continue
+        linked = session.query(TennisPointHistoryVersion).filter_by(
+            document_id=document.id, fonbet_event_id=event.id,
+            parser_version="api_tennis_pbp_link_v1",
+        ).order_by(TennisPointHistoryVersion.available_at.desc()).first()
+        linked_version_created = linked is None
+        if linked is None:
+            linked_at = datetime.now(timezone.utc)
+            linked_quality = {
+                **source_quality,
+                "source_complete": bool(source_quality.get("complete")),
+                "complete": False,
+                "link": {
+                    "method": "canonical_match_and_provider_player_ids",
+                    "canonical_match_key": canonical_match.canonical_key,
+                    "fonbet_event_id": str(event.id),
+                    "source_first_is_fonbet_a": source_first_is_a,
+                    "source_match_id": provider_match.source_match_id,
+                    "linked_at": linked_at.isoformat(),
+                },
+            }
+            linked = TennisPointHistoryVersion(
+                document_id=document.id, source_match_id=provider_match.source_match_id,
+                fonbet_event_id=event.id, parser_version="api_tennis_pbp_link_v1",
+                retrieved_at=source_version.retrieved_at, parsed_at=linked_at,
+                # Linking knowledge becomes available now; never backdate it to
+                # the source observation or the historical match date.
+                available_at=linked_at, availability_status="known",
+                events_json=_orient_alternative_point_events(
+                    source_version.events_json, source_first_is_fonbet_a=source_first_is_a,
+                ), quality_json=linked_quality, retrospective=True,
+            )
+            session.add(linked)
+            session.flush()
+        return {
+            "status": "partial", "source": "api_tennis",
+            "source_match_id": provider_match.source_match_id,
+            "documents_saved": 0, "confirmed_points": int(source_quality.get("confirmed_points", 0) or 0),
+            "retrospective": True, "cached": True, "available_at": linked.available_at,
+            "quality": linked.quality_json or source_quality, "complete": False,
+            "linked_version_created": linked_version_created,
+        }
+    return None
+
+
+def _link_match_charting_archive_for_event(session, event, *, as_of: datetime) -> dict | None:
+    """Link MCP's selected chart only by exact canonical names/date/tournament evidence."""
+    from db.models import TennisPlayerProfile, TennisPointDocument, TennisPointHistoryVersion
+    from db.models.external_tennis import (
+        ExtTennisCanonicalMatch, ExtTennisCanonicalPlayer, ExtTennisMatchObservation,
+    )
+    from sqlalchemy import and_, or_
+    from tennis_adapter.external_names import transliterate
+
+    if event.finished_at is None or event.is_live or not event.participant_a_id or not event.participant_b_id:
+        return None
+    profiles = session.query(TennisPlayerProfile).filter(
+        TennisPlayerProfile.participant_id.in_((event.participant_a_id, event.participant_b_id))
+    ).all()
+    canonical_by_participant = {
+        row.participant_id: row.canonical_player_id for row in profiles if row.canonical_player_id
+    }
+    canonical_a = canonical_by_participant.get(event.participant_a_id)
+    canonical_b = canonical_by_participant.get(event.participant_b_id)
+    if not canonical_a or not canonical_b or canonical_a == canonical_b:
+        return None
+    matches = session.query(ExtTennisCanonicalMatch).filter(
+        or_(
+            and_(ExtTennisCanonicalMatch.winner_player_id == canonical_a,
+                 ExtTennisCanonicalMatch.loser_player_id == canonical_b),
+            and_(ExtTennisCanonicalMatch.winner_player_id == canonical_b,
+                 ExtTennisCanonicalMatch.loser_player_id == canonical_a),
+        ),
+        ExtTennisCanonicalMatch.duplicate_of_id.is_(None),
+        ExtTennisCanonicalMatch.played_at >= event.scheduled_start_at - timedelta(days=1),
+        ExtTennisCanonicalMatch.played_at < event.scheduled_start_at + timedelta(days=2),
+    ).all()
+    if len(matches) != 1:
+        return None
+    canonical_match = matches[0]
+    if not canonical_match.tournament.strip():
+        return None
+    players = session.query(ExtTennisCanonicalPlayer).filter(
+        ExtTennisCanonicalPlayer.id.in_((canonical_a, canonical_b))
+    ).all()
+    if len(players) != 2:
+        return None
+    names_by_id = {row.id: " ".join(transliterate(row.display_name).split()) for row in players}
+    expected_names = {names_by_id.get(canonical_a), names_by_id.get(canonical_b)}
+    if not all(expected_names):
+        return None
+    generic_tournament_tokens = {
+        "open", "championship", "championships", "tournament", "masters",
+        "cup", "trophy", "series", "international", "internationals",
+        "atp", "wta", "itf", "challenger", "qualifying", "qualifiers",
+    }
+    tournament_tokens = set(re.findall(r"[a-z0-9]{4,}", transliterate(canonical_match.tournament)))
+    tournament_tokens -= generic_tournament_tokens
+    if not tournament_tokens:
+        return None
+    dates = {(canonical_match.played_at + timedelta(days=offset)).strftime("%Y%m%d")
+             for offset in (-1, 0, 1)}
+    observations = session.query(ExtTennisMatchObservation).filter(
+        ExtTennisMatchObservation.source == "match_charting_project",
+        ExtTennisMatchObservation.available_at <= as_of,
+        ExtTennisMatchObservation.payload["date"].astext.in_(dates),
+    ).order_by(ExtTennisMatchObservation.available_at.desc()).all()
+    matched_metadata = {}
+    for observation in observations:
+        payload = observation.payload or {}
+        player_1 = " ".join(transliterate(str(payload.get("player_1") or "")).split())
+        player_2 = " ".join(transliterate(str(payload.get("player_2") or "")).split())
+        if not player_1 or not player_2 or {player_1, player_2} != expected_names:
+            continue
+        source_tournament_tokens = set(re.findall(
+            r"[a-z0-9]{4,}", transliterate(str(payload.get("tournament") or "")),
+        ))
+        source_tournament_tokens -= generic_tournament_tokens
+        if not source_tournament_tokens or source_tournament_tokens != tournament_tokens:
+            continue
+        # Repeated snapshots of the same stable MCP match id are one candidate;
+        # two different ids remain ambiguous and are never joined.
+        matched_metadata.setdefault(str(observation.source_match_id), (observation, payload))
+    if len(matched_metadata) != 1:
+        return None
+    source_match_id, (observation, payload) = next(iter(matched_metadata.items()))
+    player_1 = " ".join(transliterate(str(payload.get("player_1") or "")).split())
+    source_first_is_a = player_1 == names_by_id[canonical_a]
+    documents = session.query(TennisPointDocument, TennisPointHistoryVersion).join(
+        TennisPointHistoryVersion,
+        TennisPointHistoryVersion.document_id == TennisPointDocument.id,
+    ).filter(
+        TennisPointDocument.source == "match_charting_project",
+        TennisPointDocument.source_match_id == source_match_id,
+        TennisPointDocument.available_at <= as_of,
+        TennisPointDocument.availability_status == "known",
+        TennisPointHistoryVersion.fonbet_event_id.is_(None),
+        TennisPointHistoryVersion.available_at <= as_of,
+        TennisPointHistoryVersion.availability_status == "known",
+    ).order_by(TennisPointHistoryVersion.available_at.desc(),
+               TennisPointHistoryVersion.id.desc()).all()
+    for document, source_version in documents:
+        source_quality = source_version.quality_json or {}
+        if not _usable_alternative_point_version(
+            source="match_charting_project", events=source_version.events_json,
+            quality=source_quality, available_at=source_version.available_at,
+            retrospective=bool(source_version.retrospective), is_live=False,
+            as_of=as_of, allow_partial=True,
+        ):
+            continue
+        parser_version = "match_charting_project_pbp_link_v1"
+        linked = session.query(TennisPointHistoryVersion).filter_by(
+            document_id=document.id, fonbet_event_id=event.id,
+            parser_version=parser_version,
+        ).order_by(TennisPointHistoryVersion.available_at.desc()).first()
+        linked_version_created = linked is None
+        if linked is None:
+            linked_at = datetime.now(timezone.utc)
+            linked_quality = {
+                **source_quality, "source_complete": bool(source_quality.get("complete")),
+                "complete": False,
+                "link": {
+                    "method": "unique_canonical_pair_date_tournament_and_exact_names",
+                    "canonical_match_key": canonical_match.canonical_key,
+                    "fonbet_event_id": str(event.id),
+                    "source_first_is_fonbet_a": source_first_is_a,
+                    "source_match_id": source_match_id,
+                    "source_observation_available_at": observation.available_at.isoformat(),
+                    "linked_at": linked_at.isoformat(),
+                },
+            }
+            linked = TennisPointHistoryVersion(
+                document_id=document.id, source_match_id=source_match_id,
+                fonbet_event_id=event.id, parser_version=parser_version,
+                retrieved_at=source_version.retrieved_at, parsed_at=linked_at,
+                available_at=linked_at, availability_status="known",
+                events_json=_orient_alternative_point_events(
+                    source_version.events_json, source_first_is_fonbet_a=source_first_is_a,
+                ), quality_json=linked_quality, retrospective=True,
+            )
+            session.add(linked)
+            session.flush()
+        return {
+            "status": "partial", "source": "match_charting_project",
+            "source_match_id": source_match_id, "documents_saved": 0,
+            "confirmed_points": int(source_quality.get("confirmed_points", 0) or 0),
+            "retrospective": True, "cached": True, "available_at": linked.available_at,
+            "quality": linked.quality_json or source_quality, "complete": False,
+            "linked_version_created": linked_version_created,
+        }
+    return None
+
+
+def usable_alternative_history_for_event(session, event, *, as_of: datetime | None = None) -> dict | None:
+    """Return the best linked alternative PBP snapshot without hiding partial quality."""
+    from db.models import TennisPointDocument, TennisPointHistoryVersion
+
+    cutoff = as_of or datetime.now(timezone.utc)
+    is_live = bool(event.is_live and getattr(event, "finished_at", None) is None)
+    versions = session.query(TennisPointHistoryVersion, TennisPointDocument).join(
+        TennisPointDocument, TennisPointDocument.id == TennisPointHistoryVersion.document_id,
+    ).filter(
+        TennisPointHistoryVersion.fonbet_event_id == event.id,
+        TennisPointHistoryVersion.available_at <= cutoff,
+        TennisPointHistoryVersion.availability_status == "known",
+        TennisPointDocument.available_at <= cutoff,
+        TennisPointDocument.availability_status == "known",
+        TennisPointDocument.parse_status.in_(("complete", "partial")),
+        TennisPointDocument.source.in_(("api_tennis", "match_charting_project")),
+    ).order_by(TennisPointHistoryVersion.available_at.desc(),
+               TennisPointHistoryVersion.id.desc()).all()
+    for version, document in versions:
+        quality = version.quality_json or {}
+        if _usable_alternative_point_version(
+            source=document.source, events=version.events_json,
+            quality=quality, available_at=version.available_at,
+            retrospective=bool(version.retrospective), is_live=is_live, as_of=cutoff,
+            allow_partial=True,
+        ):
+            complete = quality.get("complete") is True and not quality.get("gaps") and len(
+                [event for event in (version.events_json or [])
+                 if isinstance(event, dict) and event.get("confirmed") is True]
+            ) == len(version.events_json or [])
+            return {
+                "status": "available" if complete else "partial", "source": document.source,
+                "source_match_id": document.source_match_id,
+                "documents_saved": 0,
+                "confirmed_points": int(quality.get("confirmed_points", 0) or 0),
+                "retrospective": bool(version.retrospective), "cached": True,
+                "available_at": version.available_at, "quality": quality,
+                "complete": complete,
+            }
+    return (_link_api_tennis_archive_for_event(session, event, as_of=cutoff)
+            or _link_match_charting_archive_for_event(session, event, as_of=cutoff))
+
+
 def collect_event_point_history(event_id: str, attempt_token: str | None = None, source_access=None) -> dict:
     from db.connection import SessionLocal
     from db.models import Event, ExtTennisMatch, ExtTennisMatchObservation, TennisPointDocument, TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJob
@@ -914,7 +1341,15 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
         event = session.get(Event, event_uuid)
         if event is None or event.sport_code != "tennis": return {"status": "not_found"}
         event_names = (event.participant_a_name, event.participant_b_name)
-        is_live = bool(event.is_live)
+        is_live = bool(event.is_live and getattr(event, "finished_at", None) is None)
+        alternative = usable_alternative_history_for_event(session, event, as_of=now)
+        if alternative:
+            if alternative.get("linked_version_created"):
+                session.commit()
+            return alternative
+        from .player_data_coverage import source_capability_enabled
+        if not source_capability_enabled("flashscore", "point_by_point"):
+            return {"status": "source_disabled", "reason": "SOURCE_CAPABILITY_DISABLED"}
         event_link_rows = session.query(TennisPointMatchLink).filter(
             TennisPointMatchLink.fonbet_event_id == event_uuid,
             TennisPointMatchLink.available_at <= now,

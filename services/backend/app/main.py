@@ -312,9 +312,17 @@ def get_events(
                 func.row_number().over(partition_by=(TennisPointHistoryVersion.fonbet_event_id),
                     order_by=TennisPointHistoryVersion.retrieved_at.desc()).label("row_number"),
             ).filter(TennisPointHistoryVersion.fonbet_event_id.in_(event_ids)).subquery()
-            for item in session.query(TennisPointHistoryVersion).join(ranked_points,
-                ranked_points.c.point_version_id == TennisPointHistoryVersion.id).filter(ranked_points.c.row_number == 1).all():
-                point_history_by_event[str(item.fonbet_event_id)] = item
+            point_versions = session.query(TennisPointHistoryVersion).join(ranked_points,
+                ranked_points.c.point_version_id == TennisPointHistoryVersion.id).filter(ranked_points.c.row_number == 1).all()
+            from db.models import TennisPointDocument
+            source_by_document = {row.id: row.source for row in session.query(TennisPointDocument).filter(
+                TennisPointDocument.id.in_([item.document_id for item in point_versions])
+            ).all()} if point_versions else {}
+            for item in point_versions:
+                point_history_by_event[str(item.fonbet_event_id)] = {
+                    "version": item,
+                    "source": source_by_document.get(item.document_id, "unknown"),
+                }
         if TennisPlayerProfile is not None and events:
             participant_ids = {
                 participant_id
@@ -396,10 +404,12 @@ def get_events(
                         "b": player_profiles.get(str(e.participant_b_id)) if e.participant_b_id else None,
                     },
                     "point_history": ({
-                        "source_match_id": point_history_by_event[str(e.id)].source_match_id,
-                        "retrieved_at": point_history_by_event[str(e.id)].retrieved_at.isoformat(),
-                        "confirmed_points": (point_history_by_event[str(e.id)].quality_json or {}).get("confirmed_points", 0),
-                        "gaps": (point_history_by_event[str(e.id)].quality_json or {}).get("gaps", []),
+                        "source": point_history_by_event[str(e.id)]["source"],
+                        "source_match_id": point_history_by_event[str(e.id)]["version"].source_match_id,
+                        "retrieved_at": point_history_by_event[str(e.id)]["version"].retrieved_at.isoformat(),
+                        "confirmed_points": (point_history_by_event[str(e.id)]["version"].quality_json or {}).get("confirmed_points", 0),
+                        "gaps": (point_history_by_event[str(e.id)]["version"].quality_json or {}).get("gaps", []),
+                        "complete": (point_history_by_event[str(e.id)]["version"].quality_json or {}).get("complete") is True,
                     } if str(e.id) in point_history_by_event else None),
                     "point_history_status": point_job_by_event[str(e.id)].status if str(e.id) in point_job_by_event else "not_queued",
                 }
@@ -564,14 +574,43 @@ def get_latest_tennis_forecast(event_id: str, model_name: Optional[str] = None) 
         return {"forecast": row.forecast_json if row else None}
 
 
+def _point_history_provenance(selected_versions, source_by_document: dict[Any, str]) -> dict[str, Any]:
+    """Describe the provider and completeness of selected point-history versions."""
+    coverage: dict[str, dict[str, Any]] = {}
+    for version in selected_versions:
+        source = source_by_document.get(version.document_id, "unknown")
+        bucket = coverage.setdefault(source, {
+            "documents": 0, "complete": True, "gaps": 0, "last_available_at": None,
+        })
+        quality = version.quality_json if isinstance(version.quality_json, dict) else {}
+        bucket["documents"] += 1
+        bucket["complete"] = bucket["complete"] and quality.get("complete") is True
+        bucket["gaps"] += len(quality.get("gaps") or [])
+        available = version.available_at.isoformat() if version.available_at else None
+        if available and (bucket["last_available_at"] is None or available > bucket["last_available_at"]):
+            bucket["last_available_at"] = available
+    sources = sorted(coverage)
+    return {
+        "source": (source_by_document.get(max(
+            selected_versions, key=lambda row: (row.available_at, str(row.id))
+        ).document_id, "unknown") if selected_versions else "flashscore"),
+        "sources": sources,
+        "source_coverage": coverage,
+        "complete": bool(coverage) and all(item["complete"] for item in coverage.values()),
+    }
+
+
 @app.get("/api/events/{event_id}/point-history")
 def get_event_point_history(
     event_id: str, as_of: Optional[datetime] = None, limit: int = 500, offset: int = 0,
     include_versions: bool = False,
 ) -> Dict[str, Any]:
-    """Return archived, point-in-time Flashscore point history for a Fonbet event."""
+    """Return archived, point-in-time point history with its actual provider provenance."""
     from db.connection import SessionLocal
-    from db.models import TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJobEvent
+    from db.models import (
+        TennisPointDocument, TennisPointHistoryVersion, TennisPointMatchLink,
+        TennisPointRefreshJobEvent,
+    )
     from tennis_adapter.point_history import is_authoritative_point_history_version
     try:
         event_uuid = uuid.UUID(event_id)
@@ -604,6 +643,10 @@ def get_event_point_history(
             TennisPointHistoryVersion.available_at.is_not(None),
             TennisPointHistoryVersion.available_at <= resolved_as_of,
         ).order_by(TennisPointHistoryVersion.available_at, TennisPointHistoryVersion.id).all()
+        documents = session.query(TennisPointDocument).filter(
+            TennisPointDocument.id.in_([row.document_id for row in versions]) if versions else False
+        ).all()
+        source_by_document = {row.id: row.source for row in documents}
         latest_by_source_set = {}
         for version in versions:
             if not is_authoritative_point_history_version(version.events_json, version.quality_json):
@@ -617,6 +660,9 @@ def get_event_point_history(
                 latest_by_source_set[(version.source_match_id, set_no)] = version
         selected_versions = list(latest_by_source_set.items())
         newest = max((row for _, row in selected_versions), key=lambda row: (row.available_at, str(row.id)), default=None)
+        provenance = _point_history_provenance(
+            [row for _, row in selected_versions], source_by_document
+        )
         sequence = []
         for (source_match_id, set_no), version in selected_versions:
             for index, item in enumerate(version.events_json or []):
@@ -641,6 +687,7 @@ def get_event_point_history(
         versions_payload = None
         if include_versions:
             versions_payload = [{"source_match_id": row.source_match_id,
+                "source": source_by_document.get(row.document_id, "unknown"),
                 "document_id": str(row.document_id), "retrieved_at": row.retrieved_at.isoformat(),
                 "parsed_at": row.parsed_at.isoformat() if row.parsed_at else None,
                 "available_at": row.available_at.isoformat() if row.available_at else None,
@@ -650,7 +697,8 @@ def get_event_point_history(
                 for row in versions]
         return {
             "event_id": event_id, "as_of": resolved_as_of.isoformat(), "resolved_as_of": resolved_as_of.isoformat(),
-            "source": "flashscore", "source_match_id": newest.source_match_id if newest else (source_ids[-1] if source_ids else None),
+            **provenance,
+            "source_match_id": newest.source_match_id if newest else (source_ids[-1] if source_ids else None),
             "versions_total": len(versions), "total": total, "limit": limit, "offset": offset,
             "sequence": page, "versions": versions_payload,
             "freshness_seconds": max(0.0, (resolved_as_of-newest.available_at).total_seconds()) if newest else None,
@@ -3331,6 +3379,183 @@ def _flashscore_queue_timing(*, status: str, now: datetime, enqueued_at: datetim
     }
 
 
+_FLASHSCORE_QUEUE_HIDDEN_REASONS = {
+    "PLAYER_SOURCE_IDS_MISSING",
+    "PLAYER_COUNTRY_CODE_UNRESOLVED",
+    "SEARCH_CANDIDATES_REJECTED_BY_NAME",
+    # Legacy static profile archive batches have been intentionally disabled.
+    # Keep their durable blocked rows and checkpoints for audit/manual import,
+    # but do not present them as actionable work in the default queue.
+    "STATIC_PROFILE_ARCHIVE_DISABLED_OR_UNVERIFIED",
+}
+
+
+def _flashscore_queue_row_is_hidden(row: dict[str, Any], now: datetime) -> bool:
+    """Keep parked work out of the operational table until it can make progress.
+
+    Jobs remain durable in PostgreSQL. A weekly no-match retry becomes visible
+    again only when its retry time is due; identity/source blockers reappear
+    after their owner clears the reason and requeues the job.
+    """
+    if row.get("status") == "running":
+        return False
+    if row.get("status") == "waiting_players":
+        # These are durable dependency waits; the dispatcher requeues them when
+        # source identities arrive, but they are not actionable queue work.
+        return True
+    reason = str(row.get("reason") or row.get("last_error") or "")
+    if reason == "CAPTCHA_CHALLENGE_ABORTED":
+        # Blocked CAPTCHA jobs are parked durable work. They reappear only
+        # after Research changes their status back to queued/retry, or an
+        # operator explicitly retries them through the existing endpoint.
+        if row.get("status") == "blocked":
+            return True
+        retry_at = row.get("next_retry_at")
+        if retry_at:
+            try:
+                retry_at = retry_at if isinstance(retry_at, datetime) else datetime.fromisoformat(
+                    str(retry_at).replace("Z", "+00:00")
+                )
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                if retry_at > now:
+                    return True
+            except (TypeError, ValueError):
+                pass
+    if reason in _FLASHSCORE_QUEUE_HIDDEN_REASONS:
+        return True
+    if reason == "PERSISTENT_TRANSPORT_FAILURE":
+        # Leave a newly failing source visible for diagnosis, then park stale
+        # transport failures so they stop cluttering the operational queue.
+        failure_started = (row.get("first_failure_at") or row.get("failure_started_at")
+                           or row.get("transport_failure_started_at"))
+        if not failure_started:
+            # Older durable jobs predate first_failure_at. Once such a job has
+            # accumulated repeated attempts, use its creation time as a
+            # conservative age anchor instead of resetting the 24h window on
+            # every retry/update.
+            attempts = int(row.get("attempts") or 0)
+            failure_started = (row.get("created_at") if attempts >= 3 else None)
+        failure_started = failure_started or row.get("last_activity_at") or row.get("updated_at")
+        if failure_started:
+            try:
+                failure_started = failure_started if isinstance(failure_started, datetime) else datetime.fromisoformat(
+                    str(failure_started).replace("Z", "+00:00")
+                )
+                if failure_started.tzinfo is None:
+                    failure_started = failure_started.replace(tzinfo=timezone.utc)
+                return now - failure_started >= timedelta(hours=24)
+            except (TypeError, ValueError):
+                return False
+    if reason == "SEARCH_COMPLETED_NO_MATCH":
+        status = row.get("status")
+        # A no-match result is durable negative evidence. Keep a parked job out
+        # of the operational table until its weekly retry is actionable. Legacy
+        # blocked rows need an explicit data/identity change to become runnable.
+        if status in {"blocked", "waiting_players", "waiting_match"}:
+            return True
+        if status not in {"retry", "queued"}:
+            return False
+        retry_at = row.get("next_retry_at")
+        if retry_at:
+            try:
+                retry_at = retry_at if isinstance(retry_at, datetime) else datetime.fromisoformat(str(retry_at))
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return retry_at > now
+            except (TypeError, ValueError):
+                return True
+        # A retry/queued row without a durable due time cannot be dispatched
+        # safely, so it should not look actionable in the table.
+        return True
+    return False
+
+
+def _flashscore_queue_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """Put stale-live lookups after all actionable Flashscore work."""
+    status_rank = {"running": 0, "queued": 1, "retry": 2, "blocked": 3,
+                   "waiting_players": 4, "waiting_match": 4,
+                   "completed": 5, "finalized": 5, "skipped": 6}
+    stale_live = (row.get("reason") or row.get("last_error")) == "EVENT_NO_LONGER_FRESH_LIVE"
+    return (1 if stale_live else 0, status_rank.get(row.get("status"), 4),
+            row.get("priority", 10), row.get("next_retry_at") or "", row.get("id", ""))
+
+
+_TENNIS_SOURCE_CAPABILITIES = {
+    "match_history": {"tennis_my_life", "tennis_explorer", "tennis_abstract", "api_tennis", "flashscore"},
+    "serve_statistics": {"tennis_my_life", "api_tennis", "flashscore"},
+    "point_by_point": {"api_tennis", "match_charting_project", "flashscore"},
+}
+
+
+def _tennis_source_capability_enabled(source: str, capability: str) -> bool:
+    canonical_source = {"mcp": "match_charting_project", "tml": "tennis_my_life"}.get(source, source)
+    if canonical_source not in _TENNIS_SOURCE_CAPABILITIES.get(capability, set()):
+        return False
+    source_key = canonical_source.upper().replace("-", "_")
+    value = os.getenv(f"TENNIS_SOURCE_{source_key}_{capability.upper()}_ENABLED", "true")
+    return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _queue_player_source_context(profile, coverage_rows, *, now: datetime,
+                                missing_pbp_identity: bool = False) -> dict[str, Any]:
+    """Summarize the latest per-capability evidence for a queue row."""
+    sources = {}
+    for coverage in coverage_rows:
+        coverage_source = {"mcp": "match_charting_project", "tml": "tennis_my_life"}.get(
+            coverage.source, coverage.source
+        )
+        if not _tennis_source_capability_enabled(coverage_source, coverage.capability):
+            continue
+        checked = coverage.checked_at
+        if checked.tzinfo is None:
+            checked = checked.replace(tzinfo=timezone.utc)
+        checked = checked.astimezone(timezone.utc)
+        age = now - checked
+        fresh = timedelta(0) <= age <= timedelta(days=7)
+        partial_sources = {
+            "match_history": {"api_tennis", "tennis_explorer", "tennis_abstract"},
+            "serve_statistics": {"tennis_my_life", "api_tennis"},
+        }
+        partial_capability = (
+            coverage.capability in partial_sources
+            and coverage_source in partial_sources[coverage.capability]
+            and coverage.status == "partial" and not coverage.complete
+            and (coverage.evidence_json or {}).get("usable_for_metrics") is True
+        )
+        usable = fresh and ((coverage.status == "available" and coverage.complete) or partial_capability)
+        current = sources.get(coverage.capability)
+        if current is None or checked > current["_checked_at"]:
+            sources[coverage.capability] = {
+                "source": coverage_source, "status": coverage.status,
+                "complete": bool(coverage.complete), "checked_at": checked.isoformat(),
+                "evidence": dict(coverage.evidence_json or {}),
+                "fresh": fresh, "usable": usable, "_checked_at": checked,
+            }
+    for value in sources.values():
+        value.pop("_checked_at", None)
+    identities = dict(getattr(profile, "source_identities", None) or {}) if profile else {}
+    confirmed_ids = {
+        key.removeprefix("archive:"): str(value)
+        for key, value in identities.items()
+        if value and (key.startswith("archive:") or key == "flashscore")
+    }
+    history = sources.get("match_history")
+    fallback_reason = (
+        "IDENTITY_CONFIRMATION_REQUIRED"
+        if profile and getattr(profile, "sync_status", None) == "identity_confirmation_required"
+        else "PBP_IDENTITY_MISSING_HISTORY_AVAILABLE"
+        if missing_pbp_identity and history and history["usable"]
+        else "PBP_IDENTITY_MISSING"
+        if missing_pbp_identity
+        else "FRESH_HISTORY_AVAILABLE" if history and history["usable"]
+        else "HISTORY_SOURCE_GAP_OR_STALE"
+    )
+    return {"confirmed_source_ids": confirmed_ids, "capabilities": sources,
+            "fallback_reason": fallback_reason,
+            "required_capability": "point_by_point" if missing_pbp_identity else "match_history"}
+
+
 @app.get("/api/tennis-history/flashscore/queue")
 def get_flashscore_research_queue(
     limit: int = Query(50, ge=1, le=200),
@@ -3340,10 +3565,13 @@ def get_flashscore_research_queue(
     mode: Optional[str] = Query(None, description="live or prematch"),
     search: Optional[str] = None,
     include_completed: bool = False,
+    include_parked: bool = False,
 ) -> Dict[str, Any]:
     """Read-only operational view of durable Flashscore jobs."""
     from db.models import FlashscoreImportJob, TennisMatchLookupJob, TennisPlayerRefreshJob, TennisPointDocument, TennisPointRefreshJob
-    from db.models.external_tennis import TennisPlayerProfile, TennisPointMatchLink
+    from db.models.external_tennis import (
+        TennisPlayerDataCoverage, TennisPlayerProfile, TennisPointMatchLink,
+    )
     from db.models.sports import Participant
 
     now = datetime.now(timezone.utc)
@@ -3402,8 +3630,14 @@ def get_flashscore_research_queue(
                 "last_error": job.last_error, "related_events": 1})
 
         terminal_match_statuses = ("matched", "waiting_confirmation")
+        stale_live_match_rows = session.query(TennisMatchLookupJob.event_id).filter(
+            TennisMatchLookupJob.status == "waiting_match",
+            TennisMatchLookupJob.last_error == "EVENT_NO_LONGER_FRESH_LIVE",
+            TennisMatchLookupJob.updated_at >= now - timedelta(hours=24),
+        ).all()
+        match_event_ids = set(event_ids) | {row[0] for row in stale_live_match_rows}
         match_scope = [and_(
-            TennisMatchLookupJob.event_id.in_(event_ids),
+            TennisMatchLookupJob.event_id.in_(match_event_ids or [uuid.UUID(int=0)]),
             ~TennisMatchLookupJob.status.in_(terminal_match_statuses),
         )]
         if include_completed:
@@ -3414,22 +3648,29 @@ def get_flashscore_research_queue(
         ).all()
         for job in match_jobs:
             event = event_map.get(str(job.event_id))
-            if event is None and not (include_completed and job.status in {"matched", "waiting_confirmation"} and job.updated_at >= now - timedelta(hours=24)):
+            stale_live_lookup = job.last_error == "EVENT_NO_LONGER_FRESH_LIVE" and job.status == "waiting_match"
+            stale_live_deferred = job.last_error == "EVENT_NO_LONGER_FRESH_LIVE"
+            if event is None and not (stale_live_lookup or (include_completed and job.status in {"matched", "waiting_confirmation"} and job.updated_at >= now - timedelta(hours=24))):
                 continue
             event = event or session.get(Event, job.event_id)
             if event is None:
                 continue
+            # waiting_match is a dependency wait until the Fonbet event is
+            # fresh live again, not a scheduled retry. Keep its old next_run_at
+            # internally for recovery, but do not present it as an attempt ETA.
+            next_retry_at = None if stale_live_lookup else job.next_run_at.isoformat()
             rows.append({"id": f"match:{job.event_id}", "event_id": str(job.event_id),
                 "label": f"{event.participant_a_name} — {event.participant_b_name}", "player": None,
-                "kind": "match_lookup", "status": job.status, "priority": 1 if event.is_live else 11,
+                "kind": "match_lookup", "status": job.status,
+                "priority": 999 if stale_live_deferred else (1 if event.is_live else 11),
                 "mode": "live" if event.is_live else "prematch",
                 **_flashscore_queue_timing(status=job.status, now=now,
-                    enqueued_at=job.updated_at, next_run_at=job.next_run_at,
+                    enqueued_at=job.updated_at, next_run_at=None if stale_live_lookup else job.next_run_at,
                     attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
                     lease_until=job.lease_until),
                 "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": job.updated_at.isoformat() if job.status == "matched" else None,
-                "next_retry_at": job.next_run_at.isoformat(),
+                "next_retry_at": next_retry_at,
                 "reason": None if job.status == "running" else job.last_error,
                 "last_error": job.last_error, "related_events": 1})
 
@@ -3445,16 +3686,37 @@ def get_flashscore_research_queue(
         ).outerjoin(TennisPlayerProfile, TennisPlayerProfile.participant_id == Participant.id).filter(
             Participant.sport_code == "tennis", or_(*player_scope)
         ).order_by(TennisPlayerRefreshJob.requested_at.desc()).all()
+        coverage_by_participant: dict[str, list[Any]] = {}
+        player_ids = list({job.participant_id for job, _participant, _profile in player_jobs})
+        if player_ids:
+            coverage_rows = session.query(TennisPlayerDataCoverage).filter(
+                TennisPlayerDataCoverage.participant_id.in_(player_ids)
+            ).all()
+            for coverage in coverage_rows:
+                coverage_by_participant.setdefault(str(coverage.participant_id), []).append(coverage)
         participant_events: dict[str, list[Any]] = {}
         for event in event_map.values():
             for pid in (event.participant_a_id, event.participant_b_id):
                 if pid:
                     participant_events.setdefault(str(pid), []).append(event)
+        missing_pbp_identity_players: set[str] = set()
+        for point_job in point_jobs:
+            if point_job.status != "waiting_players" or point_job.last_error != "PLAYER_SOURCE_IDS_MISSING":
+                continue
+            event = event_map.get(str(point_job.event_id))
+            if event is not None:
+                missing_pbp_identity_players.update(
+                    str(pid) for pid in (event.participant_a_id, event.participant_b_id) if pid
+                )
         for job, participant, profile in player_jobs:
             associated = participant_events.get(str(participant.id), [])
             if not associated and not (include_completed and job.status == "completed"):
                 continue
             display_status = "identity_confirmation_required" if profile and profile.sync_status == "identity_confirmation_required" else job.status
+            source_context = _queue_player_source_context(
+                profile, coverage_by_participant.get(str(participant.id), []), now=now,
+                missing_pbp_identity=str(participant.id) in missing_pbp_identity_players,
+            )
             rows.append({"id": f"player:{participant.id}", "event_id": str(associated[0].id) if associated else None,
                 "related_event_ids": [str(event.id) for event in associated],
                 "label": " · ".join(dict.fromkeys(f"{e.participant_a_name} — {e.participant_b_name}" for e in associated[:3])) or participant.canonical_name,
@@ -3466,9 +3728,13 @@ def get_flashscore_research_queue(
                     lease_until=job.lease_until),
                 "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
                 "last_success_at": profile.last_success_at.isoformat() if profile and profile.last_success_at else None,
-                "next_retry_at": job.next_run_at.isoformat() if job.status in {"retry", "queued"} else None,
+                "next_retry_at": job.next_run_at.isoformat() if (
+                    job.status in {"retry", "queued"}
+                    or job.last_error == "CAPTCHA_CHALLENGE_ABORTED"
+                ) else None,
                 "reason": None if job.status == "running" else job.last_error,
-                "last_error": job.last_error, "related_events": len(associated)})
+                "last_error": job.last_error, "related_events": len(associated),
+                "source_context": source_context})
 
         imports = session.query(FlashscoreImportJob).order_by(FlashscoreImportJob.updated_at.desc()).limit(200).all()
         for job in imports:
@@ -3481,13 +3747,13 @@ def get_flashscore_research_queue(
                     attempt_started_at=job.attempt_started_at or (job.updated_at if job.status == "running" else None),
                     lease_until=job.lease_until),
                 "attempts": job.attempts, "last_activity_at": job.updated_at.isoformat(),
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "first_failure_at": (job.progress_json or {}).get("first_failure_at"),
                 "last_success_at": job.updated_at.isoformat() if job.status == "completed" else None,
                 "next_retry_at": job.next_run_at.isoformat(),
                 "reason": None if job.status == "running" else job.last_error,
                 "last_error": job.last_error, "related_events": 0})
 
-        summary_statuses = {name: sum(1 for row in rows if row["status"] == name) for name in {row["status"] for row in rows}}
-        identity_confirmation = sum(1 for row in rows if row["status"] == "identity_confirmation_required")
         link_history = session.query(TennisPointMatchLink).filter(
             TennisPointMatchLink.fonbet_event_id.is_not(None), TennisPointMatchLink.available_at <= now
         ).distinct(TennisPointMatchLink.source_match_id).order_by(
@@ -3511,8 +3777,12 @@ def get_flashscore_research_queue(
         if search:
             needle = search.casefold()
             rows = [row for row in rows if needle in (row.get("label") or "").casefold() or needle in (row.get("player") or "").casefold()]
-        status_rank = {"running": 0, "queued": 1, "retry": 2, "blocked": 3, "completed": 4, "finalized": 4, "skipped": 5}
-        rows.sort(key=lambda row: (status_rank.get(row["status"], 3), row["priority"], row["next_retry_at"] or "", row["id"]))
+        if not include_parked:
+            rows = [row for row in rows if not _flashscore_queue_row_is_hidden(row, now)]
+        rows.sort(key=_flashscore_queue_sort_key)
+        summary_statuses = {name: sum(1 for row in rows if row["status"] == name)
+                            for name in {row["status"] for row in rows}}
+        identity_confirmation = sum(1 for row in rows if row["status"] == "identity_confirmation_required")
         total = len(rows)
         page = rows[offset:offset + limit]
         statuses = {name: sum(1 for row in rows if row["status"] == name) for name in {row["status"] for row in rows}}
@@ -3585,6 +3855,7 @@ def get_flashscore_research_queue(
                 ~TennisPlayerRefreshJob.participant_id.in_(active_participant_ids)
             )
         lane_profiles_background = lane_profiles_background_query.scalar() or 0
+        profile_slot_capacity = max(1, int(os.getenv("FLASHSCORE_WORKER_PROFILE_CONCURRENCY", "2")))
         worker_state["browser_lanes"] = {
             "total": browser_budget,
             "live_pbp": {"capacity": live_capacity, "active": int(lane_live_pbp)},
@@ -3594,6 +3865,10 @@ def get_flashscore_research_queue(
                         "active": int(lane_source_pbp + lane_archives + lane_profiles_background),
                         "shared_with_current": backlog_capacity == 0},
         }
+        worker_state["player_history_slots"] = {
+            "capacity": profile_slot_capacity,
+            "active": int(lane_profiles_current + lane_profiles_background),
+        }
         return {"items": page, "total": total, "limit": limit, "offset": offset,
             "generated_at": now.isoformat(), "eligible_matches": len(eligible_ids),
             "prepared_players": int(profiles_ready or 0), "statuses": summary_statuses,
@@ -3601,6 +3876,443 @@ def get_flashscore_research_queue(
             "documents_saved_last_hour": int(documents_saved_last_hour),
             "confirmed_links_last_hour": int(confirmed_links_last_hour),
             "worker": worker_state}
+
+
+@app.post("/api/tennis-history/flashscore/import/{job_id}/retry")
+def retry_blocked_flashscore_import(job_id: uuid.UUID) -> Dict[str, Any]:
+    """Explicitly retry a parked archive after access or identity has changed."""
+    from db.models import FlashscoreImportJob
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        job = session.query(FlashscoreImportJob).filter_by(id=job_id).with_for_update().first()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Flashscore import job not found")
+        if job.status != "blocked":
+            raise HTTPException(status_code=409, detail=f"Job is {job.status}, not blocked")
+        progress = dict(job.progress_json or {})
+        history = list(progress.get("manual_retries") or [])
+        history.append({"at": now.isoformat(), "previous_error": job.last_error,
+                        "attempts_before_retry": job.attempts})
+        progress["manual_retries"] = history[-20:]
+        job.progress_json = progress
+        job.status = "queued"
+        job.last_error = None
+        job.next_run_at = now
+        job.attempt_token = None
+        job.lease_until = None
+        job.updated_at = now
+        session.commit()
+        return {"status": job.status, "job_id": str(job.id), "attempts": job.attempts,
+                "progress": job.progress_json, "previous_error": history[-1]["previous_error"]}
+
+
+@app.post("/api/tennis-history/flashscore/player/{participant_id}/retry")
+def retry_blocked_flashscore_player(participant_id: uuid.UUID) -> Dict[str, Any]:
+    """Explicitly retry a player refresh parked by a Flashscore CAPTCHA."""
+    from db.models import TennisPlayerRefreshJob
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        job = session.query(TennisPlayerRefreshJob).filter_by(
+            participant_id=participant_id
+        ).with_for_update().first()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Flashscore player job not found")
+        if job.status != "blocked" or job.last_error != "CAPTCHA_CHALLENGE_ABORTED":
+            raise HTTPException(status_code=409, detail="Player job is not parked for CAPTCHA")
+        progress = dict(job.progress_json or {})
+        history = list(progress.get("manual_retries") or [])
+        history.append({"at": now.isoformat(), "previous_error": job.last_error,
+                        "attempts_before_retry": job.attempts})
+        progress["manual_retries"] = history[-20:]
+        job.progress_json = progress
+        job.status = "queued"
+        job.last_error = None
+        job.next_run_at = now
+        job.attempt_token = None
+        job.lease_until = None
+        job.completed_at = None
+        job.updated_at = now
+        session.commit()
+        return {"status": job.status, "participant_id": str(participant_id),
+                "attempts": job.attempts, "progress": job.progress_json,
+                "previous_error": history[-1]["previous_error"]}
+
+
+def _summarize_tennis_source_metrics(payload: dict[str, Any] | None, now: datetime) -> dict[str, Any]:
+    cutoff = now - timedelta(hours=24)
+    totals = {"requests": 0, "successful_requests": 0, "errors": 0, "published": 0,
+              "prevented_flashscore": 0, "latency_total_ms": 0, "latency_samples": 0}
+    max_latency_ms = 0
+    for key, bucket in ((payload or {}).get("buckets") or {}).items():
+        try:
+            bucket_at = datetime.fromisoformat(str(key).replace("Z", "+00:00"))
+            if bucket_at.tzinfo is None:
+                bucket_at = bucket_at.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if bucket_at < cutoff or bucket_at > now:
+            continue
+        for field in totals:
+            value = bucket.get(field, 0)
+            if isinstance(value, (int, float)):
+                totals[field] += int(value)
+        max_latency_ms = max(max_latency_ms, int(bucket.get("latency_max_ms", 0) or 0))
+    samples = totals.pop("latency_samples")
+    latency_total = totals.pop("latency_total_ms")
+    totals.update({"window": "rolling_24h",
+                   "avg_latency_ms": round(latency_total / samples) if samples else None,
+                   "max_latency_ms": max_latency_ms})
+    return totals
+
+
+def _api_tennis_offline_import_status(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Expose durable progress without exposing raw provider payloads."""
+    fields = (
+        "status", "rows_scanned", "documents_saved", "projected", "merged",
+        "ambiguous", "unlinked", "unchanged", "cursor_version",
+        "last_available_at", "last_source_match_id", "paused_at", "checkpointed_at", "completed_at",
+    )
+    result = {}
+    for key in ("pbp_backfill", "canonical_projection_backfill"):
+        snapshot = state.get(key) or {}
+        result[key] = {field: snapshot.get(field) for field in fields if field in snapshot}
+        result[key].setdefault("status", "not_started")
+    return result
+
+
+def _live_tennis_profile_status(state: dict[str, Any], *, now: datetime) -> tuple[str, dict[str, Any]]:
+    profile_states = [value for key, value in state.items()
+                      if key.startswith("profile:") and isinstance(value, dict)]
+    successful_profiles = [value for value in profile_states
+                           if value.get("status") == 200 and isinstance(value.get("profile"), dict)]
+    fresh_profiles = 0
+    for profile_state in successful_profiles:
+        checked = profile_state.get("checked_at") or profile_state.get("observed_at")
+        if not checked:
+            continue
+        try:
+            checked_at = datetime.fromisoformat(str(checked).replace("Z", "+00:00"))
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+            if timedelta(0) <= now - checked_at.astimezone(timezone.utc) <= timedelta(days=7):
+                fresh_profiles += 1
+        except (TypeError, ValueError):
+            continue
+    catalog = state.get("latest_live_catalog") or {}
+    status = (
+        "live_catalog_and_profiles" if catalog.get("status") == 200 and successful_profiles
+        else "live_catalog_supplement" if catalog.get("status") == 200
+        else "profiles_available" if successful_profiles
+        else "credentials_ready"
+    )
+    profile_status = "fresh_profiles_available" if fresh_profiles else (
+        "profiles_stale" if successful_profiles else "profiles_not_yet_fetched"
+    )
+    latest_attempt = max(
+        profile_states,
+        key=lambda item: str(item.get("observed_at") or item.get("checked_at") or ""),
+        default=None,
+    )
+    last_attempt = None
+    if latest_attempt is not None:
+        reason = latest_attempt.get("error") or (
+            latest_attempt.get("match_status") if latest_attempt.get("status") != 200 else None
+        )
+        last_attempt = {
+            "status": str(latest_attempt.get("status") or "unknown"),
+            "reason": str(reason) if reason else None,
+            "observed_at": latest_attempt.get("observed_at") or latest_attempt.get("checked_at"),
+            "retry_after": latest_attempt.get("retry_after"),
+        }
+    summary = {
+        "status": profile_status,
+        "profiles_with_snapshot": len(successful_profiles),
+        "fresh_snapshots": fresh_profiles,
+        "attempted_profiles": len(profile_states),
+        "last_attempt": last_attempt,
+        "complete_career_history": False,
+        "role": "public_bio_and_ranking_supplement",
+        "match_data_authority": "fonbet",
+    }
+    return status, summary
+
+
+def _tennis_explorer_profile_daily_limit(profile_quota: dict[str, Any]) -> int:
+    """Read the configured profile-fetch budget persisted by the source worker."""
+    try:
+        return max(0, int(profile_quota.get("daily_limit", 20)))
+    except (TypeError, ValueError):
+        return 20
+
+
+@app.get("/api/tennis-history/sources/status")
+def get_tennis_source_status() -> Dict[str, Any]:
+    """Operational source/capability view; never returns credentials or request URLs with secrets."""
+    sources = {
+        "tennis_my_life": {"label": "TennisMyLife", "role": "primary", "capabilities": ["results", "serve_statistics"], "tours": ["ATP", "WTA", "Challenger"]},
+        "tennis_explorer": {"label": "TennisExplorer", "role": "recent_results_supplement", "capabilities": ["results", "accessible_profile_history"], "tours": ["ATP", "WTA", "Challenger", "ITF"], "profile_tours": ["ITF"]},
+        "tennis_abstract": {"label": "Tennis Abstract", "role": "partial_history_supplement", "capabilities": ["partial_recent_results", "canonical_partial_history", "provider_percentages_not_metric_ready"], "tours": ["ATP", "WTA"]},
+        "api_tennis": {"label": "API-Tennis", "role": "temporary_archive_supplement", "capabilities": ["results", "partial_history", "partial_pbp", "serve_statistics"], "tours": ["ATP", "WTA", "Challenger", "ITF"]},
+        "live_tennis_api": {"label": "Live Tennis API", "role": "catalog_and_profile_supplement", "capabilities": ["match_catalog", "public_player_profiles"], "tours": ["ATP", "WTA", "Challenger", "ITF"]},
+        "livescore": {"label": "LiveScore", "role": "match_discovery_supplement", "capabilities": ["live_match_discovery"], "tours": ["ATP", "WTA", "Challenger"]},
+        "mcp": {"label": "Match Charting Project", "role": "historical_supplement", "capabilities": ["selected_pbp", "shot_statistics"], "tours": ["ATP", "WTA"]},
+        "stored_profile_metrics": {"label": "Сохранённая история Neurobet", "role": "local_history_cache", "capabilities": ["stored_match_history"], "tours": ["ATP", "WTA", "Challenger", "ITF"]},
+        "flashscore": {"label": "Flashscore", "role": "fallback", "capabilities": ["history", "serve_statistics", "pbp"], "tours": ["ATP", "WTA", "Challenger", "ITF"]},
+    }
+    state_by_source: dict[str, dict[str, Any]] = {}
+    job_counts: dict[str, dict[str, int]] = {}
+    point_counts: dict[str, dict[str, int]] = {}
+    player_coverage: dict[str, list[dict[str, Any]]] = {}
+    now = datetime.now(timezone.utc)
+    try:
+        with SessionLocal() as session:
+            state_rows = session.execute(text("""
+                SELECT source,state_key,state_json,updated_at
+                FROM external_tennis_source_state
+                WHERE source IN ('permanent_sources','api_tennis','live_tennis_api','livescore','match_charting_project','tennis_my_life','tennis_explorer','tennis_explorer_profiles','tennis_abstract','stored_profile_metrics')
+            """)).mappings().all()
+            for row in state_rows:
+                state = row["state_json"] if isinstance(row["state_json"], dict) else {}
+                if row["source"] == "permanent_sources" and row["state_key"] == "status":
+                    for name, value in (state.get("integrations") or {}).items():
+                        state_by_source.setdefault(name, {})["status"] = value
+                elif row["source"] == "tennis_explorer_profiles" and row["state_key"] == "quota":
+                    state_by_source.setdefault("tennis_explorer", {})["profile_quota"] = state
+                elif row["state_key"] == "request_metrics":
+                    source_key = "mcp" if row["source"] == "match_charting_project" else row["source"]
+                    state_by_source.setdefault(source_key, {})["request_metrics"] = state
+                elif row["source"] in sources or row["source"] == "match_charting_project":
+                    source_key = "mcp" if row["source"] == "match_charting_project" else row["source"]
+                    state_by_source.setdefault(source_key, {})[row["state_key"]] = state
+                    state_by_source[source_key]["updated_at"] = row["updated_at"].isoformat() if row["updated_at"] else None
+            charting_status = state_by_source.pop("match_charting_project", None)
+            if charting_status:
+                state_by_source.setdefault("mcp", {}).update(charting_status)
+            if "api_tennis_archive" in state_by_source:
+                api_status = state_by_source.pop("api_tennis_archive")
+                state_by_source.setdefault("api_tennis", {}).update(api_status)
+            for row in session.execute(text("""
+                SELECT source,status,count(*) AS total
+                FROM external_tennis_source_jobs GROUP BY source,status
+            """)).mappings():
+                job_counts.setdefault(row["source"], {})[row["status"]] = int(row["total"])
+            for row in session.execute(text("""
+                SELECT source,parse_status,count(*) AS total
+                FROM tennis_point_documents GROUP BY source,parse_status
+            """)).mappings():
+                point_counts.setdefault(row["source"], {})[row["parse_status"]] = int(row["total"])
+            point_counts["mcp"] = point_counts.get("match_charting_project", {})
+            cutoff = now - timedelta(days=7)
+            for row in session.execute(text("""
+                SELECT source,capability,status,complete,count(*) AS profiles,
+                       count(*) FILTER (WHERE checked_at >= :cutoff AND checked_at <= :now) AS fresh_profiles,
+                       count(*) FILTER (
+                         WHERE checked_at >= :cutoff AND checked_at <= :now
+                           AND ((status='available' AND complete IS TRUE)
+                             OR (capability IN ('match_history','serve_statistics')
+                                 AND status='partial'
+                                 AND complete IS FALSE AND evidence_json->>'usable_for_metrics'='true'))
+                       ) AS usable_profiles,
+                       max(checked_at) AS latest_checked_at
+                FROM tennis_player_data_coverage
+                GROUP BY source,capability,status,complete
+                ORDER BY source,capability,status,complete
+            """), {"cutoff": cutoff, "now": now}).mappings():
+                player_coverage.setdefault(row["source"], []).append({
+                    "capability": row["capability"], "status": row["status"],
+                    "complete": bool(row["complete"]), "profiles": int(row["profiles"]),
+                    "fresh_profiles": int(row["fresh_profiles"]),
+                    "usable_profiles": int(row["usable_profiles"]),
+                    "latest_checked_at": row["latest_checked_at"].isoformat()
+                    if row["latest_checked_at"] else None,
+                })
+    except Exception as exc:
+        logger.exception("Tennis source status query failed: %s", type(exc).__name__)
+        return {"generated_at": now.isoformat(), "status": "partial", "error": "source_status_unavailable", "sources": []}
+
+    result = []
+    for source, metadata in sources.items():
+        state = state_by_source.get(source, {})
+        gate_source = {"mcp": "match_charting_project"}.get(source, source)
+        route_capabilities = [capability for capability, providers in _TENNIS_SOURCE_CAPABILITIES.items()
+                              if gate_source in providers]
+        quota_state = state.get("quota") or {}
+        quota = None
+        if quota_state:
+            daily_budget, minute_budget = ((6000, 30) if source == "api_tennis" else
+                                           (80, 24) if source == "live_tennis_api" else
+                                           (24, 1) if source == "livescore" else
+                                           (10, None) if source == "tennis_abstract" else (None, None))
+            quota = {"day": quota_state.get("day"), "daily_used": quota_state.get("daily_calls"),
+                     "daily_limit": daily_budget, "minute_used": quota_state.get("minute_calls"),
+                     "minute_limit": minute_budget}
+        status = (
+            "local_history_cache" if source == "stored_profile_metrics" else
+            state.get("status") or ("fallback_ready" if source == "flashscore" else "not_integrated")
+        )
+        if source == "tennis_my_life" and state.get("historical_archive"):
+            archive = state["historical_archive"]
+            status = (f"historical_seasons_{archive.get('status', 'running')}_"
+                      f"{archive.get('next_partition', 0)}_of_{archive.get('partitions_total', 0)}")
+        if source == "tennis_explorer":
+            recent = state.get("recent_window") or {}
+            if recent.get("status") == 200:
+                status = "recent_results_ingested_player_career_unverified"
+            elif recent.get("status") == 429:
+                status = "paused_rate_limit"
+            elif recent.get("status") == 0:
+                status = "recent_results_refresh_error"
+        if source == "livescore":
+            catalog = state.get("live_catalog") or {}
+            if catalog.get("status") == 200 and catalog.get("catalog_valid"):
+                status = "live_match_discovery_catalog"
+            elif catalog.get("status") == 429:
+                status = "paused_rate_limit"
+            elif catalog.get("status") is not None:
+                status = "catalog_unavailable"
+        if source == "live_tennis_api":
+            status, extra_profile_history = _live_tennis_profile_status(state, now=now)
+            if state.get("latest_live_catalog"):
+                extra_profile_history = {
+                    **extra_profile_history,
+                    "catalog_observed_at": state["latest_live_catalog"].get("observed_at"),
+                    "catalog_match_count": state["latest_live_catalog"].get("match_count", 0),
+                }
+        else:
+            extra_profile_history = None
+        if source == "api_tennis":
+            api_jobs = job_counts.get(source, {})
+            if now >= datetime(2026, 11, 7, tzinfo=timezone.utc):
+                status = "cutoff_reached"
+            elif api_jobs.get("queued", 0) and (quota or {}).get("daily_used", 0) >= 6000:
+                status = "paused_daily_budget"
+            elif api_jobs.get("running", 0):
+                status = "archiving"
+            elif api_jobs.get("queued", 0):
+                status = "queued"
+            elif api_jobs.get("complete", 0):
+                status = "archive_complete"
+        extra = {}
+        extra["routing_enabled"] = {
+            capability: _tennis_source_capability_enabled(source, capability)
+            for capability in route_capabilities
+        }
+        extra["metrics"] = _summarize_tennis_source_metrics(state.get("request_metrics"), now)
+        if source == "api_tennis":
+            extra["offline_imports"] = _api_tennis_offline_import_status(state)
+        if source == "livescore" and state.get("live_catalog"):
+            catalog = state["live_catalog"]
+            extra["live_catalog"] = {
+                "observed_at": catalog.get("observed_at"),
+                "match_count": catalog.get("match_count", 0),
+                "identified_matches": catalog.get("identified_matches", 0),
+                "tournaments": catalog.get("tournaments", []),
+                "role": "discovery_only",
+                "score_authority": "fonbet",
+            }
+        if source == "live_tennis_api":
+            extra["profile_history"] = extra_profile_history
+            if state.get("latest_live_catalog"):
+                catalog = state["latest_live_catalog"]
+                extra["live_catalog"] = {
+                    "observed_at": catalog.get("observed_at"),
+                    "match_count": catalog.get("match_count", 0),
+                    "raw_object_key": catalog.get("raw_object_key"),
+                    "role": "catalog_supplement_only",
+                    "score_authority": "fonbet",
+                }
+        if source == "tennis_my_life":
+            archive = state.get("historical_archive") or {}
+            extra["historical_seasons"] = {
+                "status": archive.get("status", "not_started"),
+                "current_partition": archive.get("current_partition"),
+                "completed_partitions": archive.get("next_partition", 0),
+                "partitions_total": archive.get("partitions_total"),
+                "through_year": archive.get("through_year"),
+                "available_by_tour": archive.get("available_by_tour", {}),
+                "unavailable_by_tour": archive.get("unavailable_by_tour", {}),
+                "updated_at": archive.get("updated_at"),
+                "start_year_by_tour": archive.get("start_year_by_tour", {}),
+            }
+        if source == "tennis_explorer" and state.get("recent_window"):
+            recent = state["recent_window"]
+            extra["recent_window"] = {
+                "days_completed": recent.get("days_completed", []),
+                "normalized_matches": recent.get("normalized_matches", 0),
+                "coverage": recent.get("coverage"),
+                "paused_until": recent.get("paused_until"),
+                "canonical_projection": recent.get("canonical_projection")
+                or state.get("canonical_projection"),
+            }
+            profile_import = state.get("profile_import") or {}
+            profile_quota = state.get("profile_quota") or {}
+            profile_states = [
+                (key, value) for key, value in state.items()
+                if key.startswith("profile:") and isinstance(value, dict)
+            ]
+            successful_profiles = [
+                (key, value) for key, value in profile_states if value.get("status") == 200
+            ]
+            fresh_profiles = 0
+            for _, value in successful_profiles:
+                checked = value.get("checked_at") or value.get("observed_at")
+                if not checked:
+                    continue
+                try:
+                    checked_at = datetime.fromisoformat(checked.replace("Z", "+00:00"))
+                    if timedelta(0) <= now - checked_at <= timedelta(days=7):
+                        fresh_profiles += 1
+                except (TypeError, ValueError):
+                    continue
+            latest_profile_check = max(
+                (value.get("checked_at") or value.get("observed_at") or ""
+                 for _, value in successful_profiles), default=None,
+            )
+            extra["profile_history"] = {
+                "status": profile_import.get("status") or (
+                    "accessible_snapshots_partial" if successful_profiles else "not_started"
+                ),
+                "attempted_today": profile_quota.get("daily_calls", 0),
+                "daily_limit": _tennis_explorer_profile_daily_limit(profile_quota),
+                "profiles_with_snapshot": len(successful_profiles),
+                "fresh_snapshots": fresh_profiles,
+                "latest_profile_check": latest_profile_check,
+                "last_import": {
+                    "attempted": profile_import.get("attempted", 0),
+                    "normalized_matches": profile_import.get("imported", 0),
+                    "projected_matches": profile_import.get("projected", 0),
+                    "skipped_recent": profile_import.get("skipped", 0),
+                    "complete_career_history": False,
+                    "observed_at": profile_import.get("observed_at"),
+                },
+                "tours": metadata.get("profile_tours", []),
+            }
+        if source == "tennis_abstract":
+            profile_import = state.get("profile_import") or {}
+            profile_states = [value for key, value in state.items()
+                              if key.startswith("profile:") and isinstance(value, dict)]
+            extra["profile_history"] = {
+                "status": profile_import.get("status") or "not_yet_imported",
+                "attempted_requests": profile_import.get("attempted_requests", 0),
+                "daily_limit": 10,
+                "imported_match_observations": profile_import.get("imported_match_observations", 0),
+                "recent_profiles": sum(value.get("status") == 200 for value in profile_states),
+                "complete_career_history": False,
+                "usable_for_metrics": any(value.get("usable_for_metrics") is True
+                                           for value in profile_states),
+                "projected_matches": sum(
+                    int((value.get("canonical_projection") or {}).get("projected", 0) or 0)
+                    + int((value.get("canonical_projection") or {}).get("merged", 0) or 0)
+                    for value in profile_states
+                ),
+            }
+        result.append({**metadata, "source": source, "status": status,
+                       "updated_at": state.get("updated_at"), "quota": quota,
+                       "jobs": job_counts.get(source, {}), "point_documents": point_counts.get(source, {}),
+                       "player_coverage": player_coverage.get(source, []), **extra})
+    return {"generated_at": now.isoformat(), "status": "ok", "sources": result}
 
 
 @app.get("/api/events/{event_id}/flashscore-research")

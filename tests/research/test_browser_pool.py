@@ -8,7 +8,9 @@ import types
 
 import pytest
 
-from services.research.app.browser_pool import _BrowserState, ThreadLocalChromium
+from services.research.app.browser_pool import (
+    _BrowserState, ThreadLocalChromium, browser_context_proxy_options,
+)
 
 
 class FakeContext:
@@ -23,13 +25,15 @@ class FakeBrowser:
     def __init__(self):
         self.closed = False
         self.contexts = []
+        self.context_options = []
 
     def is_connected(self):
         return not self.closed
 
-    def new_context(self, **_kwargs):
+    def new_context(self, **kwargs):
         context = FakeContext()
         self.contexts.append(context)
+        self.context_options.append(kwargs)
         return context
 
     def close(self):
@@ -146,6 +150,43 @@ def test_age_limit_restarts_browser_with_a_fresh_driver(monkeypatch):
 
     assert old_browser.closed and old_playwright.stopped
     assert not new_browser.closed
+
+
+def test_remote_browser_connection_uses_shared_endpoint_and_proxy_context(monkeypatch):
+    pool = ThreadLocalChromium()
+    browser = FakeBrowser()
+    calls = []
+
+    class FakeChromium:
+        def connect(self, endpoint, **kwargs):
+            calls.append((endpoint, kwargs))
+            return browser
+
+        def launch(self, **_kwargs):
+            raise AssertionError("remote mode must not launch a local browser")
+
+    playwright = FakePlaywright()
+    playwright.chromium = FakeChromium()
+    fake_sync_api = types.ModuleType("playwright.sync_api")
+    fake_sync_api.sync_playwright = lambda: types.SimpleNamespace(start=lambda: playwright)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake_sync_api)
+    monkeypatch.setattr(pool, "_acquire_slot", lambda: 123)
+    monkeypatch.setattr(pool, "_release_slot", lambda _fd: None)
+    monkeypatch.setenv("PLAYWRIGHT_WS_ENDPOINT", "ws://research-browser:3000/")
+    monkeypatch.setenv("RESEARCH_HTTP_PROXY", "http://proxy-user:secret@proxy.example:8080")
+
+    with pool.context({"headless": True}, locale="en-US"):
+        pass
+
+    assert calls == [("ws://research-browser:3000/", {"timeout": 30000})]
+    assert browser.context_options[0]["proxy"] == {
+        "server": "http://proxy.example:8080", "username": "proxy-user", "password": "secret",
+    }
+
+
+def test_browser_context_proxy_options_preserve_uncredentialed_proxy(monkeypatch):
+    monkeypatch.setenv("RESEARCH_HTTP_PROXY", "http://127.0.0.1:17890")
+    assert browser_context_proxy_options() == {"proxy": {"server": "http://127.0.0.1:17890"}}
 
 
 def test_browser_slot_lock_is_shared_between_pool_instances(monkeypatch, tmp_path):

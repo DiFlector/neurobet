@@ -14,6 +14,7 @@ Verifies all REST and SSE endpoints specified in Architecture Section 31 and Roa
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from db.connection import SessionLocal
@@ -24,9 +25,117 @@ from db.models.predictions import MLPrediction
 from db.models.research import WebResearchRun, WebEvidence, WebDocument
 from db.models.betting import VirtualAccount, LedgerEntry, Bet, BetProposal, BetSettlement
 from db.models.ml_registry import ModelVersion, TrainingRun
-from app.main import app, _flashscore_queue_timing, _is_overdue_live_pbp
+from app.main import (
+    app, _flashscore_queue_timing, _flashscore_queue_row_is_hidden,
+    _flashscore_queue_sort_key, _is_overdue_live_pbp,
+    _point_history_provenance, _queue_player_source_context,
+    _live_tennis_profile_status,
+    _tennis_source_capability_enabled,
+    _api_tennis_offline_import_status,
+    _summarize_tennis_source_metrics,
+)
 
 client = TestClient(app)
+
+
+def test_flashscore_queue_hides_parked_source_failures_until_actionable():
+    now = datetime.now(timezone.utc)
+    for reason in (
+        "PLAYER_SOURCE_IDS_MISSING",
+        "PLAYER_COUNTRY_CODE_UNRESOLVED",
+        "SEARCH_CANDIDATES_REJECTED_BY_NAME",
+    ):
+        assert _flashscore_queue_row_is_hidden(
+            {"status": "blocked", "reason": reason}, now
+        )
+        assert _flashscore_queue_row_is_hidden(
+            {"status": "retry", "reason": reason, "next_retry_at": now.isoformat()}, now
+        )
+    assert _flashscore_queue_row_is_hidden(
+        {"status": "waiting_players", "kind": "match_lookup", "reason": None}, now
+    )
+    # Disabled legacy static archive batches remain durable for audit and
+    # checkpoint recovery, but are not actionable queue work.
+    assert _flashscore_queue_row_is_hidden({
+        "status": "blocked", "kind": "full_archive",
+        "reason": "STATIC_PROFILE_ARCHIVE_DISABLED_OR_UNVERIFIED",
+    }, now)
+    recent_transport_failure = {
+        "status": "retry", "reason": "PERSISTENT_TRANSPORT_FAILURE",
+        "last_activity_at": (now - timedelta(hours=23, minutes=59)).isoformat(),
+    }
+    old_transport_failure = {
+        **recent_transport_failure,
+        "last_activity_at": (now - timedelta(hours=24)).isoformat(),
+    }
+    retried_transport_failure = {
+        **recent_transport_failure,
+        "last_activity_at": (now - timedelta(minutes=2)).isoformat(),
+        "first_failure_at": (now - timedelta(hours=24)).isoformat(),
+    }
+    legacy_old_transport_failure = {
+        "status": "blocked", "reason": "PERSISTENT_TRANSPORT_FAILURE", "attempts": 44,
+        "created_at": (now - timedelta(days=2)).isoformat(),
+        "last_activity_at": (now - timedelta(minutes=2)).isoformat(),
+    }
+    legacy_recent_transport_failure = {
+        **legacy_old_transport_failure,
+        "created_at": (now - timedelta(hours=23)).isoformat(),
+    }
+    assert not _flashscore_queue_row_is_hidden(recent_transport_failure, now)
+    assert _flashscore_queue_row_is_hidden(old_transport_failure, now)
+    assert _flashscore_queue_row_is_hidden(retried_transport_failure, now)
+    assert _flashscore_queue_row_is_hidden(legacy_old_transport_failure, now)
+    assert not _flashscore_queue_row_is_hidden(legacy_recent_transport_failure, now)
+    future_retry = {"status": "retry", "reason": "SEARCH_COMPLETED_NO_MATCH",
+                    "next_retry_at": (now + timedelta(days=7)).isoformat()}
+    due_retry = {**future_retry, "next_retry_at": (now - timedelta(seconds=1)).isoformat()}
+    future_queued_retry = {**future_retry, "status": "queued"}
+    parked_no_match = {"status": "blocked", "reason": "SEARCH_COMPLETED_NO_MATCH"}
+    assert _flashscore_queue_row_is_hidden(future_retry, now)
+    assert _flashscore_queue_row_is_hidden(future_queued_retry, now)
+    assert _flashscore_queue_row_is_hidden(parked_no_match, now)
+    assert _flashscore_queue_row_is_hidden(
+        {"status": "retry", "reason": "SEARCH_COMPLETED_NO_MATCH"}, now
+    )
+    assert _flashscore_queue_row_is_hidden(
+        {"status": "queued", "reason": "SEARCH_COMPLETED_NO_MATCH"}, now
+    )
+    assert not _flashscore_queue_row_is_hidden(due_retry, now)
+
+
+def test_flashscore_captcha_job_is_hidden_until_automatic_retry_is_due():
+    now = datetime.now(timezone.utc)
+    parked = {
+        "status": "blocked", "reason": "CAPTCHA_CHALLENGE_ABORTED",
+        "next_retry_at": (now + timedelta(hours=5)).isoformat(),
+    }
+    due = {**parked, "next_retry_at": (now - timedelta(seconds=1)).isoformat()}
+    manual_only = {"status": "blocked", "reason": "CAPTCHA_CHALLENGE_ABORTED"}
+    assert _flashscore_queue_row_is_hidden(parked, now)
+    assert _flashscore_queue_row_is_hidden(due, now)
+    assert _flashscore_queue_row_is_hidden(manual_only, now)
+    assert not _flashscore_queue_row_is_hidden({**due, "status": "queued"}, now)
+
+
+def test_stale_live_match_lookup_sorts_after_all_actionable_work():
+    stale = {"id": "stale", "status": "waiting_match", "priority": 999,
+             "reason": "EVENT_NO_LONGER_FRESH_LIVE", "next_retry_at": ""}
+    running_archive = {"id": "archive", "status": "running", "priority": 20,
+                       "reason": None, "next_retry_at": ""}
+    assert _flashscore_queue_sort_key(running_archive) < _flashscore_queue_sort_key(stale)
+    stale_by_last_error = {**stale, "reason": None, "last_error": "EVENT_NO_LONGER_FRESH_LIVE"}
+    assert _flashscore_queue_sort_key(running_archive) < _flashscore_queue_sort_key(stale_by_last_error)
+
+
+def test_stale_live_match_lookup_has_no_scheduled_retry_eta():
+    now = datetime.now(timezone.utc)
+    timing = _flashscore_queue_timing(
+        status="waiting_match", now=now, enqueued_at=now - timedelta(hours=12),
+        next_run_at=None, attempt_started_at=None, lease_until=None,
+    )
+    assert timing["wait_seconds"] is None
+    assert timing["retry_in_seconds"] is None
 
 
 def test_overdue_live_pbp_counts_only_due_runnable_jobs_with_confirmed_source():
@@ -60,6 +169,213 @@ def test_flashscore_queue_timing_tracks_current_attempt_and_due_wait_separately(
     assert 239 <= waiting_retry["retry_in_seconds"] <= 241
 
 
+def test_queue_source_context_keeps_partial_history_freshness_and_capabilities_separate():
+    now = datetime.now(timezone.utc)
+    profile = type("Profile", (), {"source_identities": {
+        "archive:api_tennis": "api-player-id", "flashscore": "fs-id",
+    }})()
+    coverage = [
+        type("Coverage", (), {
+            "capability": "match_history", "source": "api_tennis",
+            "status": "partial", "complete": False, "checked_at": now - timedelta(days=2),
+            "evidence_json": {"usable_for_metrics": True},
+        })(),
+        type("Coverage", (), {
+            "capability": "serve_statistics", "source": "tennis_my_life",
+            "status": "available", "complete": True, "checked_at": now - timedelta(days=8),
+            "evidence_json": {},
+        })(),
+        type("Coverage", (), {
+            "capability": "serve_statistics", "source": "tennis_my_life",
+            "status": "partial", "complete": False, "checked_at": now - timedelta(days=1),
+            "evidence_json": {"usable_for_metrics": True, "matches_with_explicit_stats": 49},
+        })(),
+    ]
+
+    context = _queue_player_source_context(profile, coverage, now=now)
+
+    assert context["confirmed_source_ids"] == {"api_tennis": "api-player-id", "flashscore": "fs-id"}
+    assert context["capabilities"]["match_history"]["usable"] is True
+    assert context["capabilities"]["match_history"]["complete"] is False
+    assert context["capabilities"]["serve_statistics"]["fresh"] is True
+    assert context["capabilities"]["serve_statistics"]["usable"] is True
+    assert context["capabilities"]["serve_statistics"]["complete"] is False
+    assert context["capabilities"]["serve_statistics"]["evidence"]["matches_with_explicit_stats"] == 49
+    assert context["fallback_reason"] == "FRESH_HISTORY_AVAILABLE"
+    assert context["required_capability"] == "match_history"
+
+    # A profile-history job can be running solely to resolve the Flashscore
+    # identity required by a separate PBP task; expose that missing capability
+    # instead of implying that player history itself needs Flashscore.
+    context = _queue_player_source_context(profile, coverage, now=now, missing_pbp_identity=True)
+    assert context["fallback_reason"] == "PBP_IDENTITY_MISSING_HISTORY_AVAILABLE"
+    assert context["required_capability"] == "point_by_point"
+
+
+def test_queue_source_context_explains_history_fallback_when_no_fresh_source_exists():
+    context = _queue_player_source_context(None, [], now=datetime.now(timezone.utc))
+    assert context["capabilities"] == {}
+    assert context["fallback_reason"] == "HISTORY_SOURCE_GAP_OR_STALE"
+
+    profile = type("Profile", (), {"source_identities": {},
+                                   "sync_status": "identity_confirmation_required"})()
+    context = _queue_player_source_context(profile, [], now=datetime.now(timezone.utc))
+    assert context["fallback_reason"] == "IDENTITY_CONFIRMATION_REQUIRED"
+
+
+def test_queue_source_context_ignores_disabled_source_coverage(monkeypatch):
+    now = datetime.now(timezone.utc)
+    monkeypatch.setenv("TENNIS_SOURCE_API_TENNIS_MATCH_HISTORY_ENABLED", "false")
+    coverage = [SimpleNamespace(
+        capability="match_history", source="api_tennis", status="partial", complete=False,
+        checked_at=now, evidence_json={"usable_for_metrics": True},
+    )]
+    context = _queue_player_source_context(None, coverage, now=now)
+    assert context["capabilities"] == {}
+    assert context["fallback_reason"] == "HISTORY_SOURCE_GAP_OR_STALE"
+    assert _tennis_source_capability_enabled("api_tennis", "serve_statistics")
+    assert _tennis_source_capability_enabled("tennis_my_life", "match_history")
+    assert _tennis_source_capability_enabled("mcp", "point_by_point")
+
+
+def test_source_status_reports_profile_level_fresh_and_usable_coverage():
+    response = client.get("/api/tennis-history/sources/status")
+
+    assert response.status_code == 200
+    sources = {row["source"]: row for row in response.json()["sources"]}
+    for source in ("tennis_my_life", "tennis_explorer", "tennis_abstract", "api_tennis",
+                   "stored_profile_metrics", "flashscore"):
+        assert "player_coverage" in sources[source]
+        assert isinstance(sources[source]["player_coverage"], list)
+        assert sources[source]["metrics"]["window"] == "rolling_24h"
+        assert sources[source]["metrics"]["requests"] >= sources[source]["metrics"]["successful_requests"]
+        assert sources[source]["metrics"]["requests"] >= sources[source]["metrics"]["errors"]
+        for coverage in sources[source]["player_coverage"]:
+            assert coverage["capability"] in {"match_history", "serve_statistics", "point_by_point"}
+            assert coverage["profiles"] >= coverage["fresh_profiles"] >= coverage["usable_profiles"] >= 0
+    assert "historical_seasons" in sources["tennis_my_life"]
+    assert sources["stored_profile_metrics"]["role"] == "local_history_cache"
+    assert sources["stored_profile_metrics"]["status"] == "local_history_cache"
+    assert sources["tennis_my_life"]["historical_seasons"]["status"] in {
+        "not_started", "running", "complete"
+    }
+
+
+def test_live_tennis_source_status_reports_fresh_profiles_without_claiming_career_history():
+    now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+    state = {
+        "latest_live_catalog": {"status": 200, "match_count": 12},
+        "profile:one": {"status": 200, "checked_at": "2026-10-24T11:00:00Z",
+                        "profile": {"player_id": "10"}},
+        "profile:two": {"status": 200, "checked_at": "2026-10-01T11:00:00Z",
+                        "profile": {"player_id": "11"}},
+        "profile:failed": {"status": "search_failed", "match_status": "SEARCH_HTTP_429",
+                           "error": "HTTP_429", "retry_after": "900",
+                           "checked_at": "2026-10-24T11:30:00Z"},
+    }
+
+    status, profile_history = _live_tennis_profile_status(state, now=now)
+
+    assert status == "live_catalog_and_profiles"
+    assert profile_history["status"] == "fresh_profiles_available"
+    assert profile_history["profiles_with_snapshot"] == 2
+    assert profile_history["fresh_snapshots"] == 1
+    assert profile_history["attempted_profiles"] == 3
+    assert profile_history["complete_career_history"] is False
+    assert profile_history["match_data_authority"] == "fonbet"
+    assert profile_history["last_attempt"] == {
+        "status": "search_failed", "reason": "HTTP_429",
+        "observed_at": "2026-10-24T11:30:00Z", "retry_after": "900",
+    }
+    _, success_history = _live_tennis_profile_status({
+        "profile:success": {"status": 200, "match_status": "MATCHED",
+                            "checked_at": "2026-10-24T11:45:00Z", "profile": {"player_id": "12"}},
+    }, now=now)
+    assert success_history["last_attempt"]["reason"] is None
+
+
+def test_tennis_explorer_profile_daily_limit_uses_persisted_budget():
+    from app.main import _tennis_explorer_profile_daily_limit
+
+    assert _tennis_explorer_profile_daily_limit({"daily_limit": 20}) == 20
+    assert _tennis_explorer_profile_daily_limit({"daily_limit": 7}) == 7
+    assert _tennis_explorer_profile_daily_limit({}) == 20
+    assert _tennis_explorer_profile_daily_limit({"daily_limit": "invalid"}) == 20
+
+
+def test_source_metrics_summary_is_rolling_24h_and_separates_prevented_fallbacks():
+    now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+    metrics = _summarize_tennis_source_metrics({"buckets": {
+        "2026-10-24T11:00:00Z": {
+            "requests": 4, "successful_requests": 3, "errors": 1,
+            "published": 2, "prevented_flashscore": 5,
+            "latency_total_ms": 900, "latency_samples": 3, "latency_max_ms": 600,
+        },
+        "2026-10-23T11:00:00Z": {
+            "requests": 100, "successful_requests": 100, "errors": 0,
+            "published": 100, "prevented_flashscore": 100,
+            "latency_total_ms": 1000, "latency_samples": 100, "latency_max_ms": 10,
+        },
+    }}, now)
+    assert metrics == {
+        "requests": 4, "successful_requests": 3, "errors": 1, "published": 2,
+        "prevented_flashscore": 5, "window": "rolling_24h",
+        "avg_latency_ms": 300, "max_latency_ms": 600,
+    }
+
+
+def test_api_tennis_status_exposes_offline_import_checkpoints_without_raw_data():
+    summary = _api_tennis_offline_import_status({
+        "pbp_backfill": {"status": "paused", "rows_scanned": 11200,
+                         "documents_saved": 9630, "last_source_match_id": "m-1",
+                         "payload": {"secret": "must not escape"}},
+        "canonical_projection_backfill": {"status": "running", "rows_scanned": 5700,
+                                           "projected": 991, "merged": 2153,
+                                           "ambiguous": 193, "unlinked": 314},
+    })
+
+    assert summary["pbp_backfill"] == {
+        "status": "paused", "rows_scanned": 11200, "documents_saved": 9630,
+        "last_source_match_id": "m-1",
+    }
+    assert summary["canonical_projection_backfill"]["status"] == "running"
+    assert summary["canonical_projection_backfill"]["ambiguous"] == 193
+    assert summary["canonical_projection_backfill"]["unlinked"] == 314
+    assert "payload" not in summary["pbp_backfill"]
+
+
+def test_point_history_api_provenance_preserves_source_and_partial_completeness():
+    now = datetime.now(timezone.utc)
+    document_id = uuid.uuid4()
+    version = SimpleNamespace(
+        document_id=document_id, source_match_id="mcp:match-1", available_at=now,
+        id=uuid.uuid4(), quality_json={"complete": False, "gaps": [{"reason": "sampled_archive"}]},
+    )
+    provenance = _point_history_provenance([version], {document_id: "match_charting_project"})
+    assert provenance["source"] == "match_charting_project"
+    assert provenance["sources"] == ["match_charting_project"]
+    assert provenance["complete"] is False
+    assert provenance["source_coverage"]["match_charting_project"]["gaps"] == 1
+
+    flashscore_document = uuid.uuid4()
+    flashscore_version = SimpleNamespace(
+        document_id=flashscore_document, source_match_id="fs:match-1",
+        available_at=now + timedelta(seconds=1), id=uuid.uuid4(),
+        quality_json={"complete": True, "gaps": []},
+    )
+    combined = _point_history_provenance(
+        [version, flashscore_version],
+        {document_id: "match_charting_project", flashscore_document: "flashscore"},
+    )
+    assert combined["sources"] == ["flashscore", "match_charting_project"]
+    assert combined["source"] == "flashscore"
+    assert combined["complete"] is False
+
+    legacy = _point_history_provenance([], {})
+    assert legacy["source"] == "flashscore"
+    assert legacy["complete"] is False
+
+
 def test_flashscore_queue_api_returns_bounded_operational_projection():
     response = client.get("/api/tennis-history/flashscore/queue?limit=3&offset=0")
     assert response.status_code == 200
@@ -83,6 +399,72 @@ def test_flashscore_queue_hides_terminal_jobs_unless_history_is_requested():
     assert response.status_code == 200
     terminal_statuses = {"completed", "finalized", "skipped", "superseded", "matched"}
     assert not any(item["status"] in terminal_statuses for item in response.json()["items"])
+
+
+def test_blocked_flashscore_archive_requires_explicit_retry():
+    from db.models import FlashscoreImportJob
+
+    job_id = uuid.uuid4()
+    with SessionLocal() as session:
+        job = FlashscoreImportJob(
+            id=job_id, job_key=f"test-blocked-retry:{job_id}", status="blocked",
+            profile_urls=["https://www.flashscore.com/player/test/abcdef12/results/"],
+            progress_json={"page_checkpoints": {"0": {"pages": ["checkpoint"]}}},
+            attempts=7, last_error="CAPTCHA_CHALLENGE_ABORTED", next_run_at=datetime.now(timezone.utc),
+        )
+        session.add(job)
+        session.commit()
+    try:
+        response = client.post(f"/api/tennis-history/flashscore/import/{job_id}/retry")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "queued"
+        assert payload["attempts"] == 7
+        assert payload["previous_error"] == "CAPTCHA_CHALLENGE_ABORTED"
+        assert payload["progress"]["page_checkpoints"]["0"]["pages"] == ["checkpoint"]
+        assert payload["progress"]["manual_retries"][-1]["attempts_before_retry"] == 7
+    finally:
+        with SessionLocal() as session:
+            job = session.get(FlashscoreImportJob, job_id)
+            if job:
+                session.delete(job)
+                session.commit()
+
+
+def test_blocked_flashscore_player_requires_explicit_retry():
+    from db.models import Participant, TennisPlayerRefreshJob
+
+    participant_id = uuid.uuid4()
+    with SessionLocal() as session:
+        _ensure_sport(session)
+        participant = Participant(id=participant_id, sport_code="tennis",
+                                  canonical_name=f"Retry test {participant_id}")
+        session.add(participant)
+        session.flush()
+        session.add(TennisPlayerRefreshJob(
+            participant_id=participant_id, status="blocked", attempts=5,
+            last_error="CAPTCHA_CHALLENGE_ABORTED", next_run_at=datetime.now(timezone.utc),
+            progress_json={"stage": "manual_retry_required", "page_checkpoint": ["saved"]},
+        ))
+        session.commit()
+    try:
+        response = client.post(f"/api/tennis-history/flashscore/player/{participant_id}/retry")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "queued"
+        assert payload["attempts"] == 5
+        assert payload["previous_error"] == "CAPTCHA_CHALLENGE_ABORTED"
+        assert payload["progress"]["page_checkpoint"] == ["saved"]
+        assert payload["progress"]["manual_retries"][-1]["attempts_before_retry"] == 5
+    finally:
+        with SessionLocal() as session:
+            job = session.get(TennisPlayerRefreshJob, participant_id)
+            if job:
+                session.delete(job)
+            participant = session.get(Participant, participant_id)
+            if participant:
+                session.delete(participant)
+            session.commit()
 
 
 def _ensure_sport(session):

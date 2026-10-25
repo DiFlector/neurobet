@@ -142,6 +142,9 @@ def _profile_http_get(url: str, source_access=None, *, feed: bool = False) -> tu
                 response = _get_profile_page_http_client().get(current_url, headers=headers)
         except httpx.TimeoutException as exc:
             return 0, "", current_url, f"TimeoutError:{str(exc)[:180]}"
+        except TimeoutError as exc:
+            # Shared egress queue timeout means no provider request was sent.
+            return 0, "", current_url, f"TimeoutError:{str(exc)[:180]}"
         except httpx.HTTPError as exc:
             return 0, "", current_url, f"{type(exc).__name__}:{str(exc)[:180]}"
 
@@ -1650,9 +1653,15 @@ class FlashscoreTennisImporter:
 
             async def load() -> tuple[str, list[str], Optional[str], bool, list[dict[str, Any]]]:
                 async with async_playwright() as playwright:
-                    browser = await playwright.chromium.launch(**_browser_launch_options())
+                    from .browser_pool import browser_context_proxy_options, playwright_browser_endpoint
+                    endpoint = playwright_browser_endpoint()
+                    browser = (await playwright.chromium.connect(endpoint, timeout=30000)
+                               if endpoint else await playwright.chromium.launch(**_browser_launch_options()))
                     try:
-                        context = await browser.new_context(locale="en-US", timezone_id="UTC")
+                        context_options = {"locale": "en-US", "timezone_id": "UTC"}
+                        if endpoint:
+                            context_options.update(browser_context_proxy_options())
+                        context = await browser.new_context(**context_options)
                         await _install_flashscore_request_filter_async(context)
                         page = await context.new_page()
                         with access():

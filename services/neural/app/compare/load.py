@@ -62,6 +62,7 @@ def load_history(session: Session, aliases: Dict[str, str]) -> List[HistoryMatch
             SELECT available_at, winner_name, loser_name, surface, tour_level,
                    serve_won_winner, serve_won_loser, winner_rank, loser_rank
             FROM ext_tennis_canonical_matches
+            WHERE duplicate_of_id IS NULL
             """
         )
     ).fetchall()
@@ -139,7 +140,8 @@ def load_external_prematch(session: Session, limit_from: str = "2018-01-01") -> 
                    best_of, round_name, gender, winner_name, loser_name, odds_winner, odds_loser,
                    winner_rank, loser_rank
             FROM ext_tennis_canonical_matches
-            WHERE odds_winner > 1 AND odds_loser > 1 AND played_at >= :start
+            WHERE duplicate_of_id IS NULL
+              AND odds_winner > 1 AND odds_loser > 1 AND played_at >= :start
             ORDER BY played_at
             """
         ),

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,6 +64,8 @@ class ExtTennisMatch(Base):
         Index("idx_ext_tennis_matches_source_played", "source", "played_at"),
         Index("idx_ext_tennis_matches_available", "available_at"),
         Index("idx_ext_tennis_matches_players", "winner_name", "loser_name"),
+        Index("idx_ext_tennis_matches_source_winner_id", "source", "winner_player_id"),
+        Index("idx_ext_tennis_matches_source_loser_id", "source", "loser_player_id"),
     )
 
 
@@ -86,6 +88,14 @@ class ExtTennisMatchObservation(Base):
     __table_args__ = (
         UniqueConstraint("source", "source_match_id", "available_at", name="uq_ext_tennis_match_observation_version"),
         Index("idx_ext_tennis_match_observation_time", "source", "source_match_id", "available_at"),
+        Index(
+            "idx_api_tennis_observation_available_cursor", "available_at", "source_match_id",
+            postgresql_where=text("source = 'api_tennis'"),
+        ),
+        Index(
+            "idx_mcp_observation_payload_date", text("(payload->>'date')"), "source_match_id",
+            postgresql_where=text("source = 'match_charting_project'"),
+        ),
     )
 
 
@@ -188,6 +198,27 @@ class TennisPlayerMetricSnapshot(Base):
     __table_args__ = (
         UniqueConstraint("participant_id", "metrics_version", "history_digest", name="uq_tennis_player_metric_snapshot"),
         Index("idx_tennis_player_metric_asof", "participant_id", "available_at"),
+    )
+
+
+class TennisPlayerDataCoverage(Base):
+    """Last verified source coverage for one player's independently usable data capability."""
+
+    __tablename__ = "tennis_player_data_coverage"
+
+    participant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), primary_key=True
+    )
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    capability: Mapped[str] = mapped_column(String(32), primary_key=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_watermark: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+
+    __table_args__ = (
+        Index("idx_tennis_player_data_coverage_fresh", "participant_id", "capability", "checked_at"),
     )
 
 
@@ -430,6 +461,59 @@ class ExtTennisCanonicalPlayer(Base):
 
     __table_args__ = (
         Index("idx_ext_tennis_canonical_players_name", "surname_key", "initial", "gender"),
+        Index("idx_ext_tennis_canonical_players_api_id", text("(source_ids->>'api_tennis')")),
+    )
+
+
+class ExtTennisCanonicalPlayerAlias(Base):
+    """Append-only provider ID aliases; one canonical player may have many IDs."""
+
+    __tablename__ = "ext_tennis_canonical_player_aliases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_player_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_player_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="confirmed")
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('confirmed', 'candidate', 'rejected')", name="ck_ext_tennis_player_alias_status"),
+        UniqueConstraint(
+            "source", "source_player_id", "canonical_player_id",
+            name="uq_ext_tennis_canonical_player_alias_candidate",
+        ),
+        Index("idx_ext_tennis_player_alias_lookup", "source", "source_player_id", "status"),
+        Index("idx_ext_tennis_player_alias_person", "canonical_player_id", "source", "status"),
+        Index(
+            "uq_ext_tennis_player_alias_confirmed", "source", "source_player_id", unique=True,
+            postgresql_where=text("status = 'confirmed'"),
+        ),
+    )
+
+
+class ExtTennisCanonicalPlayerAliasDecision(Base):
+    """Append-only audit record for a human-reviewed alias conflict decision."""
+
+    __tablename__ = "ext_tennis_canonical_player_alias_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_player_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_player_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    rejected_candidate_ids: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    rationale: Mapped[str] = mapped_column(String(2000), nullable=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    decided_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        Index("idx_ext_tennis_alias_decision_lookup", "source", "source_player_id", "created_at"),
     )
 
 
@@ -464,12 +548,19 @@ class ExtTennisCanonicalMatch(Base):
     odds_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     stats_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     stats: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    duplicate_of_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_matches.id", ondelete="RESTRICT"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
+        CheckConstraint("duplicate_of_id IS NULL OR duplicate_of_id <> id", name="ck_ext_tennis_match_not_self_duplicate"),
         UniqueConstraint("canonical_key", name="uq_ext_tennis_canonical_key"),
         Index("idx_ext_tennis_canonical_available", "available_at"),
+        Index("idx_ext_tennis_canonical_played_gender", "played_at", "gender"),
+        Index("idx_ext_tennis_canonical_duplicate_of", "duplicate_of_id", postgresql_where=text("duplicate_of_id IS NOT NULL")),
         Index("idx_ext_tennis_canonical_players", "winner_player_id", "loser_player_id"),
+        Index("idx_ext_tennis_canonical_loser", "loser_player_id", "played_at", "canonical_key"),
     )
 
 

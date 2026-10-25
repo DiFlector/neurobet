@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Clock, Layers, Zap, CheckCircle2, Search } from "lucide-react";
+import { Clock, Layers, Zap, CheckCircle2, Search, RefreshCw } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,26 +12,30 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { QueueItem, QueueStats, FlashscoreQueueData } from "@/lib/types";
+import { QueueItem, QueueStats, FlashscoreQueueData, TennisSourceStatusData } from "@/lib/types";
 
 interface QueueTabProps {
   queue: QueueItem[];
   stats: QueueStats | null;
   flashscore?: FlashscoreQueueData | null;
+  sourceStatus?: TennisSourceStatusData | null;
   flashscoreStale?: boolean;
   onSelectEvent?: (eventId: string) => void;
   onFlashscoreOffsetChange?: (offset: number) => void;
-  onFlashscoreFiltersChange?: (filters: { kind?: string; status?: string; mode?: string; search?: string }) => void;
+  onFlashscoreFiltersChange?: (filters: { kind?: string; status?: string; mode?: string; search?: string; include_parked?: boolean }) => void;
+  onRetryBlockedFlashscoreJob?: (kind: "full_archive" | "player_history", itemId: string) => Promise<boolean>;
   includeCompleted?: boolean;
   onIncludeCompletedChange?: (value: boolean) => void;
   loading?: boolean;
 }
 
-export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, onSelectEvent, onFlashscoreOffsetChange, onFlashscoreFiltersChange, includeCompleted = false, onIncludeCompletedChange, loading = false }: QueueTabProps) {
+export function QueueTab({ queue, stats, flashscore, sourceStatus, flashscoreStale = false, onSelectEvent, onFlashscoreOffsetChange, onFlashscoreFiltersChange, onRetryBlockedFlashscoreJob, includeCompleted = false, onIncludeCompletedChange, loading = false }: QueueTabProps) {
   const [kind, setKind] = React.useState("all");
   const [status, setStatus] = React.useState("all");
   const [mode, setMode] = React.useState("all");
   const [search, setSearch] = React.useState("");
+  const [showParked, setShowParked] = React.useState(false);
+  const [retryingJobId, setRetryingJobId] = React.useState<string | null>(null);
   const queueLength = stats?.queue_length ?? queue.length;
   const processedTotal = stats?.processed_total ?? 0;
   const runningCount = stats?.running_count ?? queue.filter((item) => item.status === "PROCESSING").length;
@@ -42,10 +46,11 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
         status: status === "all" ? undefined : status,
         mode: mode === "all" ? undefined : mode,
         search: search.trim() || undefined,
+        include_parked: showParked || undefined,
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [kind, status, mode, search, onFlashscoreFiltersChange]);
+  }, [kind, status, mode, search, showParked, onFlashscoreFiltersChange]);
   const filtered = flashscore?.items || [];
   const pageCount = Math.max(1, Math.ceil((flashscore?.total || 0) / 50));
   const pageIndex = Math.floor((flashscore?.offset || 0) / 50);
@@ -61,9 +66,124 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
   const kindLabels: Record<string, string> = {
     player_history: "История игрока", match_lookup: "Поиск матча", pbp: "Очковая лента", full_archive: "Полный архив",
   };
+  const historySourceLabels: Record<string, string> = {
+    tennis_my_life: "TennisMyLife", tennis_explorer: "TennisExplorer",
+    tennis_abstract: "Tennis Abstract", flashscore: "Flashscore",
+  };
+  const sourceRoleLabels: Record<string, string> = {
+    primary: "Основной", supplement: "Дополнение", historical_supplement: "Исторический архив",
+    recent_results_supplement: "Свежие результаты",
+    temporary_archive: "Временный архив", catalog_supplement: "Каталог матчей",
+    catalog_fallback: "Резерв каталога", catalog_candidate: "Кандидат каталога",
+    catalog_and_profile_supplement: "Каталог и профили (дополнение)", fallback: "Резерв",
+  };
+  const sourceStatusLabels: Record<string, string> = {
+    fallback_ready: "Резерв готов", not_integrated: "Не подключён",
+    credentials_ready: "Архив доступен", raw_archived_and_season_results_normalized: "Результаты загружаются",
+    daily_hash_check_and_raw_snapshot: "Сверка архива",
+    hourly_free_catalog_supplement: "Каталог обновляется",
+    live_catalog_and_profiles: "Каталог и профили доступны", live_catalog_supplement: "Каталог доступен",
+    profiles_available: "Профили доступны",
+    http_reachable_not_ingested_coverage_unmeasured: "Ожидает интеграции",
+    scheduled_recent_results_ingestion_player_coverage_unverified: "Ожидает первого импорта",
+    recent_results_ingested_player_career_unverified: "Результаты загружены; история профиля не подтверждена",
+    paused_rate_limit: "Пауза по лимиту источника",
+    recent_results_refresh_error: "Ошибка обновления результатов",
+    paused_daily_budget: "Пауза: дневная квота исчерпана", archiving: "Архив загружается",
+    queued: "Ожидает квоты", archive_complete: "Архив завершён", cutoff_reached: "Доступ закрыт по сроку",
+  };
+  const sourceStatusLabel = (status: string) => status.startsWith("retrospective_ingested:")
+    ? "Ретроспективный архив загружен"
+    : sourceStatusLabels[status] || status.replaceAll("_", " ");
+  const capabilityLabels: Record<string, string> = {
+    results: "результаты", serve_statistics: "статистика подачи", partial_pbp: "частичная PBP",
+    pbp: "PBP", history: "история", profiles: "профили", selected_pbp: "выборочная PBP",
+    shot_statistics: "удары", match_catalog: "каталог матчей", scoreboard: "табло", historical_pbp: "архивная PBP",
+    match_history: "история игрока", point_by_point: "очковая лента",
+    public_player_profiles: "публичные профили игроков",
+  };
 
   return (
     <div className="space-y-6">
+      <Card className="border-border/60 bg-card/80">
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-base font-semibold">Источники теннисных данных</CardTitle>
+          <CardDescription className="text-xs">
+            Возможности и состояние HTTP-источников. Flashscore остаётся резервом для непокрытых данных.
+            {sourceStatus?.generated_at ? ` Срез: ${new Date(sourceStatus.generated_at).toLocaleTimeString("ru-RU")}` : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          {sourceStatus?.sources?.length ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {sourceStatus.sources.map((source) => {
+                const jobs = Object.values(source.jobs || {}).reduce((sum, count) => sum + count, 0);
+                const docs = Object.values(source.point_documents || {}).reduce((sum, count) => sum + count, 0);
+                const playerCoverage = source.player_coverage || [];
+                const pbpImport = source.offline_imports?.pbp_backfill;
+                const canonicalImport = source.offline_imports?.canonical_projection_backfill;
+                return (
+                  <div key={source.source} className="min-w-0 rounded-md border border-border/60 bg-muted/20 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold">{source.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{sourceRoleLabels[source.role] || source.role}</p>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 text-[9px]">
+                        {sourceStatusLabel(source.status)}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-[10px] text-muted-foreground">
+                      {(source.capabilities || []).map((capability) => capabilityLabels[capability] || capability).join(" · ")}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Туры: {(source.tours || []).join(" · ")}</p>
+                    {source.routing_enabled && Object.keys(source.routing_enabled).length > 0 && (
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Маршрут: {Object.entries(source.routing_enabled).map(([capability, enabled]) =>
+                          `${capabilityLabels[capability] || capability} ${enabled ? "вкл." : "выкл."}`
+                        ).join(" · ")}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                      {source.quota?.daily_limit != null && <span>Квота {source.quota.daily_used ?? 0}/{source.quota.daily_limit} сегодня</span>}
+                      {pbpImport && pbpImport.status !== "not_started" && <span>Офлайн PBP: {pbpImport.rows_scanned ?? 0} строк · {pbpImport.documents_saved ?? 0} документов</span>}
+                      {canonicalImport && canonicalImport.status !== "not_started" && <span>Офлайн история: {canonicalImport.rows_scanned ?? 0} строк · {canonicalImport.projected ?? 0} новых · {canonicalImport.merged ?? 0} объединено · {canonicalImport.ambiguous ?? 0} спорных · {canonicalImport.unlinked ?? 0} без связи</span>}
+                      {source.recent_window?.normalized_matches != null && <span>Результатов за 7 дней {source.recent_window.normalized_matches}</span>}
+                      {source.recent_window?.days_completed?.length ? <span>Дней проверено {source.recent_window.days_completed.length}/7</span> : null}
+                      {source.profile_history && <span>Профили: {source.profile_history.fresh_snapshots}/{source.profile_history.profiles_with_snapshot} свежих · записей {source.profile_history.attempted_profiles}</span>}
+                      {source.profile_history?.last_attempt?.reason && <span>Последняя проверка профиля: {source.profile_history.last_attempt.reason}{source.profile_history.last_attempt.retry_after ? ` · повтор через ${source.profile_history.last_attempt.retry_after}` : ""}</span>}
+                      {source.live_catalog && <span>Матчей в каталоге {source.live_catalog.match_count} · счёт: {source.live_catalog.score_authority === "fonbet" ? "Fonbet" : source.live_catalog.score_authority}</span>}
+                      {jobs > 0 && <span>Заданий {jobs}</span>}
+                      {docs > 0 && <span>PBP документов {docs}</span>}
+                    </div>
+                    {playerCoverage.length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-border/40 pt-2">
+                        {playerCoverage.map((coverage) => (
+                          <p key={`${coverage.capability}:${coverage.status}:${coverage.complete}`} className="text-[10px] text-muted-foreground">
+                            {capabilityLabels[coverage.capability] || coverage.capability}: пригодно {coverage.usable_profiles}/{coverage.fresh_profiles} свежих · проверено {coverage.profiles}
+                            {coverage.complete ? " · полное" : " · частичное"}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {source.metrics && (source.metrics.requests > 0 || source.metrics.published > 0 || source.metrics.prevented_flashscore > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-border/40 pt-2 text-[10px] text-muted-foreground">
+                        <span>HTTP за 24 ч {source.metrics.successful_requests}/{source.metrics.requests} · ошибок {source.metrics.errors}</span>
+                        {source.metrics.avg_latency_ms != null && <span>ответ ср./макс. {source.metrics.avg_latency_ms}/{source.metrics.max_latency_ms ?? "—"} мс</span>}
+                        {source.metrics.published > 0 && <span>публикаций {source.metrics.published}</span>}
+                        {source.metrics.prevented_flashscore > 0 && <span>предотвращено Flashscore {source.metrics.prevented_flashscore}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Состояние источников пока недоступно</p>
+          )}
+        </CardContent>
+      </Card>
+
       {/* 3 Карточки статистики шедулера */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <Card className="border-border/60 bg-card/60">
@@ -187,6 +307,9 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
               · матчи {flashscore.worker.browser_lanes.current_matches.active}/{flashscore.worker.browser_lanes.current_matches.capacity}
               · архив {flashscore.worker.browser_lanes.backlog.active}/{flashscore.worker.browser_lanes.backlog.capacity}
             </span>}
+            {flashscore?.worker.player_history_slots && <span className="text-[10px] text-muted-foreground">
+              История игроков {flashscore.worker.player_history_slots.active}/{flashscore.worker.player_history_slots.capacity}
+            </span>}
             <span className="text-[10px] text-muted-foreground">
               {flashscore?.worker.cooldown_until && new Date(flashscore.worker.cooldown_until) > new Date() ? `Пауза источника до ${new Date(flashscore.worker.cooldown_until).toLocaleTimeString("ru-RU")}` : flashscore?.worker.healthy ? "Исполнитель работает" : flashscore?.worker.configured ? "Исполнитель не отвечает" : "Состояние регулятора недоступно"}
             </span>
@@ -216,20 +339,30 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
               <input className="h-8 w-full rounded-md border bg-background pl-8 pr-2 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Матч или игрок" />
             </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={includeCompleted} onChange={(e) => onIncludeCompletedChange?.(e.target.checked)} />Завершённые за сутки</label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={showParked} onChange={(e) => { setShowParked(e.target.checked); onFlashscoreOffsetChange?.(0); }} />Отложенные задания</label>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="table-fixed min-w-[1180px]">
               <TableHeader className="bg-muted/40"><TableRow className="text-xs">
-                <TableHead>Матч / игрок</TableHead><TableHead>Работа</TableHead><TableHead>Статус</TableHead><TableHead>Приоритет</TableHead><TableHead>Ожидание / работа</TableHead><TableHead>Последняя активность</TableHead><TableHead>Следующая попытка</TableHead><TableHead>Причина</TableHead>
+                <TableHead className="w-[360px]">Матч / игрок</TableHead><TableHead>Работа</TableHead><TableHead>Статус</TableHead><TableHead>Приоритет</TableHead><TableHead>Ожидание / работа</TableHead><TableHead>Последняя активность</TableHead><TableHead>Следующая попытка</TableHead><TableHead>Причина</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {visible.length === 0 ? <TableRow><TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">{loading ? "Загрузка очереди…" : "Заданий по выбранным фильтрам нет"}</TableCell></TableRow> : visible.map((item) => (
                   <TableRow key={item.id} className="border-border/50 text-xs">
-                    <TableCell>
-                      {item.event_id && onSelectEvent ? <button className="text-left font-medium text-primary hover:underline" onClick={() => onSelectEvent(item.event_id!)}>{item.label || item.event_id.slice(0, 8)}</button> : <span className="font-medium">{item.label || item.player || "—"}</span>}
+                    <TableCell className="w-[360px] max-w-[360px] overflow-hidden">
+                      {item.event_id && onSelectEvent ? <button title={item.label || item.event_id} className="block w-full truncate text-left font-medium text-primary hover:underline" onClick={() => onSelectEvent(item.event_id!)}>{item.label || item.event_id.slice(0, 8)}</button> : <span title={item.label || item.player || "—"} className="block w-full truncate font-medium">{item.label || item.player || "—"}</span>}
                       {item.player && <div className="text-[10px] text-muted-foreground">{item.player}{(item.related_events || 0) > 1 ? ` · матчей: ${item.related_events}` : ""}</div>}
+                      {item.kind === "player_history" && item.source_context && (() => {
+                        const history = item.source_context.capabilities.match_history;
+                        const description = history
+                          ? `${historySourceLabels[history.source] || history.source} · ${history.complete ? "полная" : "частичная"} · ${history.fresh ? "свежая" : "устарела"}`
+                          : "нет пригодной истории";
+                        return <div className="truncate text-[10px] text-muted-foreground" title={`Причина резервного запроса: ${item.source_context.fallback_reason}`}>
+                          История: {description}
+                        </div>;
+                      })()}
                       {item.mode && item.mode !== "archive" && <div className="text-[10px] text-muted-foreground">{item.mode === "live" ? "Live" : "Prematch"}</div>}
                     </TableCell>
                     <TableCell>{kindLabels[item.kind] || item.kind}</TableCell>
@@ -246,7 +379,21 @@ export function QueueTab({ queue, stats, flashscore, flashscoreStale = false, on
                     </TableCell>
                     <TableCell>{item.last_activity_at ? new Date(item.last_activity_at).toLocaleString("ru-RU") : "—"}</TableCell>
                     <TableCell>{item.next_retry_at ? new Date(item.next_retry_at).toLocaleString("ru-RU") : "—"}</TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={item.last_error || item.reason || ""}>{item.reason || "—"}</TableCell>
+                    <TableCell className="max-w-[260px]">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate" title={item.last_error || item.reason || ""}>{item.reason || "—"}</span>
+                        {(item.kind === "full_archive" || item.kind === "player_history") && item.status === "blocked" && onRetryBlockedFlashscoreJob && <button
+                          className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+                          disabled={retryingJobId !== null}
+                          title="Возобновить задание после устранения причины ошибки"
+                          onClick={async () => {
+                            setRetryingJobId(item.id);
+                            try { await onRetryBlockedFlashscoreJob(item.kind as "full_archive" | "player_history", item.id); }
+                            finally { setRetryingJobId(null); }
+                          }}
+                        ><RefreshCw className={`h-3 w-3 ${retryingJobId === item.id ? "animate-spin" : ""}`} />Повторить</button>}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -1,0 +1,2663 @@
+{
+  "schema_version": "1.0",
+  "evaluated_at": "2026-10-24T10:00:37.204240+00:00",
+  "usage": {
+    "purpose": "noncommercial_research",
+    "rights_review": "user_confirmed_2026-10-23"
+  },
+  "request_probes": [
+    {
+      "name": "api_events",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct",
+      "at": "2026-10-23T11:44:30.420613+00:00",
+      "status": 200,
+      "seconds": 0.22,
+      "bytes": 1636,
+      "content_type": "application/json; charset=utf-8",
+      "sha256": "b4fae573b4ce7b86ce767e5c8b75ca18294f759cf8de31a5339b95dc8e80e365",
+      "json_keys": [
+        "success",
+        "result"
+      ],
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_tennis",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct",
+      "at": "2026-10-23T11:44:32.640680+00:00",
+      "error": "ReadTimeout",
+      "seconds": 35.359
+    },
+    {
+      "name": "live_api",
+      "url": "https://api.livetennisapi.com/api/public/v1/matches",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:10.000380+00:00",
+      "status": 200,
+      "seconds": 1.966,
+      "bytes": 65120,
+      "content_type": "application/json",
+      "sha256": "e38270684e6f59a1dd940ba60ba6794aa8e0168be3c424d3f8fa252e4783e3db",
+      "json_keys": [
+        "data",
+        "meta"
+      ],
+      "records": 33
+    },
+    {
+      "name": "live_usage",
+      "url": "https://api.livetennisapi.com/api/public/v1/usage",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:13.968293+00:00",
+      "status": 200,
+      "seconds": 0.244,
+      "bytes": 372,
+      "content_type": "application/json",
+      "sha256": "7f66f9148e70804ffc5c40dbd340ef16b674d6ffe18a7144cfe3a155f743a096",
+      "json_keys": [
+        "as_of",
+        "base_tier",
+        "channel",
+        "history",
+        "history_limits",
+        "limits",
+        "paid_until",
+        "principal",
+        "resumes_at",
+        "subscription_state",
+        "tier",
+        "tier_expires_at"
+      ]
+    },
+    {
+      "name": "ta_sinner",
+      "url": "https://www.tennisabstract.com/jsmatches/JannikSinner.js",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:16.215503+00:00",
+      "status": 200,
+      "seconds": 0.942,
+      "bytes": 12523,
+      "content_type": "text/javascript",
+      "sha256": "01908a5185c82410a1762a4646c0d11c620c842cf799746b1b60aa71a640100b"
+    },
+    {
+      "name": "ta_swiatek",
+      "url": "https://www.tennisabstract.com/jsmatches/IgaSwiatek.js",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:19.158038+00:00",
+      "status": 200,
+      "seconds": 0.488,
+      "bytes": 58902,
+      "content_type": "text/javascript",
+      "sha256": "d937fd4080e75bc479d3f216d09b54a958ac50a973e1f7fefb1e876edf5b2ae7"
+    },
+    {
+      "name": "te_results",
+      "url": "https://www.tennisexplorer.com/results/",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:21.646110+00:00",
+      "status": 200,
+      "seconds": 0.558,
+      "bytes": 580372,
+      "content_type": "text/html; charset=UTF-8",
+      "sha256": "4771111e80d1289b0e069914b1d2e0a77962f55d8dc1ecbf23052fa6ba6d97b3"
+    },
+    {
+      "name": "tml_atp",
+      "url": "https://stats.tennismylife.org/data/2026.csv",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:24.206733+00:00",
+      "status": 200,
+      "seconds": 0.396,
+      "bytes": 546269,
+      "content_type": "text/csv; charset=utf-8",
+      "sha256": "ab634c569f222fbbfcfd99e67542c507c7a5dcce3a7f5969e94158d585ea7adb"
+    },
+    {
+      "name": "tml_wta",
+      "url": "https://stats.tennismylife.org/data/2026_wta.csv",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:26.604121+00:00",
+      "status": 200,
+      "seconds": 0.225,
+      "bytes": 491269,
+      "content_type": "text/csv; charset=utf-8",
+      "sha256": "f1a5a64cbda79bc8058e78db5ea0c77ac037874c3adad367c378d49b446bc354"
+    },
+    {
+      "name": "tml_challenger",
+      "url": "https://stats.tennismylife.org/data/2026_challenger.csv",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:28.830189+00:00",
+      "status": 200,
+      "seconds": 0.266,
+      "bytes": 1328547,
+      "content_type": "text/csv; charset=utf-8",
+      "sha256": "2908177949820e2297a553ca9d16fcae8b43b2e140b8c4379479d449b1190a70"
+    },
+    {
+      "name": "mcp_readme",
+      "url": "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/README.md",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:31.099612+00:00",
+      "status": 200,
+      "seconds": 0.289,
+      "bytes": 4805,
+      "content_type": "text/plain; charset=utf-8",
+      "sha256": "2c2a5961a2761eea35b4143e9cab1d23200f49d72fc0ced56bb09f5a326e8444"
+    },
+    {
+      "name": "omkar_readme",
+      "url": "https://raw.githubusercontent.com/omkarcloud/flashscore-scraper/master/README.md",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:33.388842+00:00",
+      "status": 200,
+      "seconds": 0.283,
+      "bytes": 9828,
+      "content_type": "text/plain; charset=utf-8",
+      "sha256": "d6662800bd6f7748c6ced8322874220ff9e340f5238cb8e804a2f4f1c8588b64"
+    },
+    {
+      "name": "sofa_live",
+      "url": "https://www.sofascore.com/api/v1/sport/tennis/events/live",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:35.672103+00:00",
+      "status": 403,
+      "seconds": 0.097,
+      "bytes": 48,
+      "content_type": "application/json",
+      "sha256": "6b771bca0fe4271cc0baf29954f10c68be99102048e4df524b6d7d6bf38dad5d",
+      "json_keys": [
+        "error"
+      ]
+    },
+    {
+      "name": "livescore",
+      "url": "https://prod-public-api.livescore.com/v1/api/app/live/tennis/0.00",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:37.769846+00:00",
+      "status": 200,
+      "seconds": 0.34,
+      "bytes": 3361,
+      "content_type": "application/json",
+      "sha256": "4ddf3585dc0ae4441c93568ec857f47cb14e201a535fba114ef56c1599e2b1cb",
+      "json_keys": [
+        "Ts",
+        "Stages"
+      ]
+    },
+    {
+      "name": "xbet",
+      "url": "https://1xbet.com/LiveFeed/Get1x2_VZip",
+      "route": "host_direct",
+      "at": "2026-10-23T11:45:40.110149+00:00",
+      "error": "ConnectError",
+      "seconds": 0.047
+    },
+    {
+      "name": "api_atp",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:00:44.639565+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 372308,
+      "seconds": 0.289,
+      "sha256": "d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995",
+      "keys": [
+        "success",
+        "result"
+      ],
+      "records": 13,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_wta",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:00:46.932925+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 25.024
+    },
+    {
+      "name": "api_challenger",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:01:13.957793+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 25.283
+    },
+    {
+      "name": "api_itf_m",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:01:41.241342+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 25.333
+    },
+    {
+      "name": "api_itf_w",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:02:08.575254+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 25.35
+    },
+    {
+      "name": "ta_sinner_page",
+      "url": "https://www.tennisabstract.com/cgi-bin/player.cgi",
+      "at": "2026-10-23T12:02:35.925703+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 44210,
+      "seconds": 0.976,
+      "sha256": "55c28b764747faae25d957099879008459d329b2440f53d8b1c5a070e3526899"
+    },
+    {
+      "name": "ta_swiatek_page",
+      "url": "https://www.tennisabstract.com/cgi-bin/wplayer.cgi",
+      "at": "2026-10-23T12:02:38.902159+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 44231,
+      "seconds": 0.546,
+      "sha256": "aecdf970e5d60679d8ba2cdf2871f612e856a91245349e3660b12362c1f904c3"
+    },
+    {
+      "name": "tml_ongoing_atp",
+      "url": "https://stats.tennismylife.org/data/ongoing_tourneys.csv",
+      "at": "2026-10-23T12:02:41.448796+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 13299,
+      "seconds": 0.311,
+      "sha256": "1f90a1ec65e4b997edb2d4d1ff7c2e5cfbf4cd6c2e17854bf50e3e0c20cdbae9"
+    },
+    {
+      "name": "tml_ongoing_wta",
+      "url": "https://stats.tennismylife.org/data/wta_ongoing_tourneys.csv",
+      "at": "2026-10-23T12:02:43.760499+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 10622,
+      "seconds": 0.054,
+      "sha256": "f16cc1555ce114bf6db6441adaee312d74f1a227a9a25c9ad1663d4d2b19cc1f"
+    },
+    {
+      "name": "tml_ongoing_challenger",
+      "url": "https://stats.tennismylife.org/data/challenger_ongoing_tourneys.csv",
+      "at": "2026-10-23T12:02:45.814511+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 27903,
+      "seconds": 0.056,
+      "sha256": "7778c262861152948c13162b038886fc49bd8e11f774360eae9ab5cce707b433"
+    },
+    {
+      "name": "livescore_scoreboard",
+      "url": "https://prod-public-api.livescore.com/v1/api/app/scoreboard/tennis/1908475",
+      "at": "2026-10-23T12:02:47.870953+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 1615,
+      "seconds": 0.225,
+      "sha256": "ef4a1aa0ee74676544c168d036ad49a9b83d1e038a544b4466d19e3e10962d93",
+      "keys": [
+        "Eid",
+        "Pids",
+        "Sids",
+        "Media",
+        "Tr1",
+        "Tr2",
+        "Tr1S1",
+        "Tr2S1",
+        "Tr1S2",
+        "Tr2S2"
+      ]
+    },
+    {
+      "name": "live_stats",
+      "url": "https://api.livetennisapi.com/api/public/v1/matches/208193/statistics",
+      "at": "2026-10-23T12:02:50.096838+00:00",
+      "route": "host_direct",
+      "status": 403,
+      "bytes": 297,
+      "seconds": 0.646,
+      "sha256": "106584b4c17520e01fba61e7f16d08f63bf20512a1821098a9d07d29fa16b837",
+      "keys": [
+        "capability",
+        "detail",
+        "docs",
+        "error",
+        "upgrade_channel",
+        "upgrade_price_usd_month",
+        "upgrade_tier",
+        "upgrade_url"
+      ],
+      "error_code": "upgrade_required"
+    },
+    {
+      "name": "live_points",
+      "url": "https://api.livetennisapi.com/api/public/v1/matches/208193/points",
+      "at": "2026-10-23T12:02:52.743751+00:00",
+      "route": "host_direct",
+      "status": 403,
+      "bytes": 289,
+      "seconds": 0.229,
+      "sha256": "3dfd33a03d9948a3ed66d825fb92f5b1167bf7e10ede3e35391d803b8b6d89c0",
+      "keys": [
+        "capability",
+        "detail",
+        "docs",
+        "error",
+        "upgrade_channel",
+        "upgrade_price_usd_month",
+        "upgrade_tier",
+        "upgrade_url"
+      ],
+      "error_code": "upgrade_required"
+    },
+    {
+      "name": "api_wta_get",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:04:56.077376+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 233867,
+      "seconds": 0.27,
+      "sha256": "f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56",
+      "keys": [
+        "success",
+        "result"
+      ],
+      "records": 8,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_challenger_get",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:04:58.351496+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 22.023
+    },
+    {
+      "name": "api_itf_m_get",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:05:22.375110+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 22.332
+    },
+    {
+      "name": "api_itf_w_get",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:05:46.707150+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 22.897
+    },
+    {
+      "name": "ta_sinner_frag",
+      "url": "https://www.tennisabstract.com/jsfrags/JannikSinner.js",
+      "at": "2026-10-23T12:06:11.604431+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 222469,
+      "seconds": 0.962,
+      "sha256": "212d70cbe13e2742d46a235c9d215fba7499382da018cbfc3b9c669c49b8ebff"
+    },
+    {
+      "name": "ta_swiatek_frag",
+      "url": "https://www.tennisabstract.com/jsfrags/IgaSwiatek.js",
+      "at": "2026-10-23T12:06:14.567581+00:00",
+      "route": "host_direct",
+      "error": "ReadTimeout",
+      "seconds": 22.025
+    },
+    {
+      "name": "te_profile_atp",
+      "url": "https://www.tennisexplorer.com/player/medvedev-e0d2d/",
+      "at": "2026-10-23T12:06:38.592956+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 192782,
+      "seconds": 0.354,
+      "sha256": "e4e691d08fa4b337831d4d6edd32152ac1ea9849fd5c5e4b1fdeaae6d123e5c6"
+    },
+    {
+      "name": "te_profile_wta",
+      "url": "https://www.tennisexplorer.com/player/shnaider-51347/",
+      "at": "2026-10-23T12:06:40.948061+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 198778,
+      "seconds": 0.424,
+      "sha256": "4db550bdaa0f73857c66503a4c1e612ec50ceb0a02a9f2ece7e99c27a93fdbd0"
+    },
+    {
+      "name": "te_profile_challenger",
+      "url": "https://www.tennisexplorer.com/player/gulin-1ef00/",
+      "at": "2026-10-23T12:06:43.373197+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 176484,
+      "seconds": 0.259,
+      "sha256": "d4f69190c72d9d05d0a2aca59cbadbbf83c45455086a961865f13e5d0c14c981"
+    },
+    {
+      "name": "te_profile_itf",
+      "url": "https://www.tennisexplorer.com/player/lamens/",
+      "at": "2026-10-23T12:06:45.632758+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 172402,
+      "seconds": 0.28,
+      "sha256": "373e0667b753f381467a6c27edd7153fb789f175714320ee451ea8a11ab810d3"
+    },
+    {
+      "name": "te_match",
+      "url": "https://www.tennisexplorer.com/match-detail/",
+      "at": "2026-10-23T12:06:47.913774+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 477162,
+      "seconds": 0.354,
+      "sha256": "44eb94f71d5eb8ed2677d8b1708027ec33b58e526e719a4e79744e6da4ee08d6"
+    },
+    {
+      "name": "mcp_m_matches",
+      "url": "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/charting-m-matches.csv",
+      "at": "2026-10-23T12:06:50.268805+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 1141817,
+      "seconds": 0.455,
+      "sha256": "d8dce1ad8d12c04efa01da587441b54ece8e8100530660528312244f632efe80"
+    },
+    {
+      "name": "mcp_m_serve",
+      "url": "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/charting-m-stats-ServeBasics.csv",
+      "at": "2026-10-23T12:06:52.726196+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 4482664,
+      "seconds": 0.74,
+      "sha256": "5336ad5a021b482c50529ccc78043518b3ce75ca011ef1562a27683c45fffb0d"
+    },
+    {
+      "name": "mcp_w_matches",
+      "url": "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/charting-w-matches.csv",
+      "at": "2026-10-23T12:06:55.471773+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 638031,
+      "seconds": 0.29,
+      "sha256": "fba52fd6f6fa50190f79a38f366d8841b49bf76d5c4a598deb3e8d78a9796294"
+    },
+    {
+      "name": "mcp_w_serve",
+      "url": "https://raw.githubusercontent.com/JeffSackmann/tennis_MatchChartingProject/master/charting-w-stats-ServeBasics.csv",
+      "at": "2026-10-23T12:06:57.762821+00:00",
+      "route": "host_direct",
+      "status": 200,
+      "bytes": 2497203,
+      "seconds": 0.514,
+      "sha256": "f991e14be47cfb9113b0c7262b775df287e1e78cb10a07ec727ca7bb2ed66c9b"
+    },
+    {
+      "name": "api_all_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:07:21.823015+00:00",
+      "error": "ReadTimeout",
+      "seconds": 20.671
+    },
+    {
+      "name": "api_atp_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:07:44.494127+00:00",
+      "status": 200,
+      "bytes": 372308,
+      "seconds": 0.296,
+      "sha256": "d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995",
+      "records": 13,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_wta_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:07:46.797177+00:00",
+      "status": 200,
+      "bytes": 233867,
+      "seconds": 0.215,
+      "sha256": "f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56",
+      "records": 8,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_challenger_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:07:49.016353+00:00",
+      "error": "ReadTimeout",
+      "seconds": 20.284
+    },
+    {
+      "name": "api_itf_m_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:08:11.301224+00:00",
+      "error": "ReadTimeout",
+      "seconds": 20.297
+    },
+    {
+      "name": "api_itf_w_close",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct_connection_close",
+      "at": "2026-10-23T12:08:33.598677+00:00",
+      "error": "ReadTimeout",
+      "seconds": 20.318
+    },
+    {
+      "name": "api_live_itf",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct",
+      "at": "2026-10-23T12:12:42.619883+00:00",
+      "status": 200,
+      "bytes": 95205,
+      "seconds": 1.721,
+      "sha256": "44830fd4c047d6d55d063cc1b4670f6b6b4e2253c2d2f233e19ac5fea6463729",
+      "keys": [
+        "success",
+        "result"
+      ],
+      "records": 11,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    },
+    {
+      "name": "api_tournaments_itf",
+      "url": "https://api.api-tennis.com/tennis/",
+      "route": "host_direct",
+      "at": "2026-10-23T12:12:46.342723+00:00",
+      "error": "ReadTimeout",
+      "seconds": 20.294
+    },
+    {
+      "name": "ta_swiatek_frag_retry",
+      "url": "https://www.tennisabstract.com/jsfrags/IgaSwiatek.js",
+      "route": "host_direct",
+      "at": "2026-10-23T12:13:08.637291+00:00",
+      "status": 200,
+      "bytes": 227970,
+      "seconds": 0.722,
+      "sha256": "3609780805a83ae484c5dd238ff089d5fe657511f9d7d6cc9af95e742f9286f1"
+    },
+    {
+      "name": "xbet_proxy_1",
+      "url": "https://1xbet.com/LiveFeed/Get1x2_VZip",
+      "route": "supplied_proxy",
+      "at": "2026-10-23T12:13:11.359726+00:00",
+      "status": 203,
+      "bytes": 2536,
+      "seconds": 1.139,
+      "sha256": "82de17f835e74cc772cec1aed08754ee5f7f1740a76d9e6d95c4e625c9ad01e1"
+    },
+    {
+      "name": "xbet_proxy_2",
+      "url": "https://1xbet.com/LiveFeed/Get1x2_VZip",
+      "route": "supplied_proxy",
+      "at": "2026-10-23T12:13:14.498969+00:00",
+      "status": 203,
+      "bytes": 2542,
+      "seconds": 0.517,
+      "sha256": "24ea12621c26bf5479856e9a9eb33dbf5f543248f507d895743781c78402f89b"
+    },
+    {
+      "name": "omkar_shared_feed",
+      "url": "https://global.flashscore.ninja/2/x/feed/df_mh_2_A5F0BCMP",
+      "at": "2026-10-23T12:21:26.598829+00:00",
+      "route": "configured_proxy_shared_flashscore_regulator",
+      "candidate_commit": "b1c54af09d893a5a56a52398f76845a111b4235e",
+      "test_scope": "parser_on_same_real_feed_no_candidate_transport_or_fanout",
+      "status": 200,
+      "seconds": 1.285,
+      "bytes": 3518,
+      "error": null,
+      "sha256": "56e4736b08cbee7b35457141cb88d9d650f0df75fc3481004694f3a0438ee470",
+      "our_events": 251,
+      "our_complete": true,
+      "our_gaps": [],
+      "candidate_sets": 3,
+      "candidate_games": 54,
+      "candidate_raw_point_states": 197,
+      "candidate_current_game": null
+    },
+    {
+      "name": "api_itf_tournament",
+      "url": "https://api.api-tennis.com/tennis/",
+      "at": "2026-10-23T12:22:21.157482+00:00",
+      "route": "host_direct",
+      "tournament_key": 11081,
+      "status": 200,
+      "bytes": 13,
+      "seconds": 0.272,
+      "sha256": "ae95d608ee76e064ca676f3114fc5f48b0d5adac9ea3c9dbd137112f53c9b055",
+      "records": 0,
+      "provider_success": 1,
+      "provider_empty_without_result": true
+    },
+    {
+      "name": "api_proxy_day",
+      "url": "minio://research-documents/snapshots/external-tennis/api-tennis/2026-10-22/74518944690efa6dde8547970f5abcd68d10922b650c2f091ccb08e12ebb8f7f.json.gz",
+      "provider_url": "https://api.api-tennis.com/tennis/",
+      "route": "existing_worker_archive_reused_no_extra_provider_call",
+      "status": 200,
+      "records": 396,
+      "point_records": 335,
+      "statistics_records": 72,
+      "started_at": "2026-10-23 12:42:00.727795+00:00",
+      "finished_at": "2026-10-23 12:42:01.631446+00:00",
+      "sha256": "74518944690efa6dde8547970f5abcd68d10922b650c2f091ccb08e12ebb8f7f",
+      "bytes": 6244416,
+      "provider_success": 1,
+      "provider_empty_without_result": false
+    }
+  ],
+  "raw_archive": {
+    "api_atp": {
+      "sha256": "d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_atp/d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995.json.gz",
+      "raw_bytes": 372308
+    },
+    "api_atp_close": {
+      "sha256": "d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_atp_close/d6622919147190c603018086ac2dbafd12a4ee11e53feb191d9da58a523f9995.json.gz",
+      "raw_bytes": 372308
+    },
+    "api_events": {
+      "sha256": "b4fae573b4ce7b86ce767e5c8b75ca18294f759cf8de31a5339b95dc8e80e365",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_events/b4fae573b4ce7b86ce767e5c8b75ca18294f759cf8de31a5339b95dc8e80e365.json.gz",
+      "raw_bytes": 1636
+    },
+    "api_live_itf": {
+      "sha256": "44830fd4c047d6d55d063cc1b4670f6b6b4e2253c2d2f233e19ac5fea6463729",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_live_itf/44830fd4c047d6d55d063cc1b4670f6b6b4e2253c2d2f233e19ac5fea6463729.json.gz",
+      "raw_bytes": 95205
+    },
+    "api_wta_close": {
+      "sha256": "f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_wta_close/f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56.json.gz",
+      "raw_bytes": 233867
+    },
+    "api_wta_get": {
+      "sha256": "f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_wta_get/f9777c0f3c41ce7de0606e1f975ca9ea544105d83e812a87fdff7d1b368aba56.json.gz",
+      "raw_bytes": 233867
+    },
+    "live_api": {
+      "sha256": "e38270684e6f59a1dd940ba60ba6794aa8e0168be3c424d3f8fa252e4783e3db",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/live_api/e38270684e6f59a1dd940ba60ba6794aa8e0168be3c424d3f8fa252e4783e3db.json.gz",
+      "raw_bytes": 65120
+    },
+    "live_points": {
+      "sha256": "3dfd33a03d9948a3ed66d825fb92f5b1167bf7e10ede3e35391d803b8b6d89c0",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/live_points/3dfd33a03d9948a3ed66d825fb92f5b1167bf7e10ede3e35391d803b8b6d89c0.json.gz",
+      "raw_bytes": 289
+    },
+    "live_stats": {
+      "sha256": "106584b4c17520e01fba61e7f16d08f63bf20512a1821098a9d07d29fa16b837",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/live_stats/106584b4c17520e01fba61e7f16d08f63bf20512a1821098a9d07d29fa16b837.json.gz",
+      "raw_bytes": 297
+    },
+    "live_usage": {
+      "sha256": "7f66f9148e70804ffc5c40dbd340ef16b674d6ffe18a7144cfe3a155f743a096",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/live_usage/7f66f9148e70804ffc5c40dbd340ef16b674d6ffe18a7144cfe3a155f743a096.json.gz",
+      "raw_bytes": 372
+    },
+    "livescore": {
+      "sha256": "4ddf3585dc0ae4441c93568ec857f47cb14e201a535fba114ef56c1599e2b1cb",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/livescore/4ddf3585dc0ae4441c93568ec857f47cb14e201a535fba114ef56c1599e2b1cb.json.gz",
+      "raw_bytes": 3361
+    },
+    "livescore_scoreboard": {
+      "sha256": "ef4a1aa0ee74676544c168d036ad49a9b83d1e038a544b4466d19e3e10962d93",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/livescore_scoreboard/ef4a1aa0ee74676544c168d036ad49a9b83d1e038a544b4466d19e3e10962d93.json.gz",
+      "raw_bytes": 1615
+    },
+    "mcp_m_matches": {
+      "sha256": "d8dce1ad8d12c04efa01da587441b54ece8e8100530660528312244f632efe80",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/mcp_m_matches/d8dce1ad8d12c04efa01da587441b54ece8e8100530660528312244f632efe80.json.gz",
+      "raw_bytes": 1141817
+    },
+    "mcp_m_serve": {
+      "sha256": "5336ad5a021b482c50529ccc78043518b3ce75ca011ef1562a27683c45fffb0d",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/mcp_m_serve/5336ad5a021b482c50529ccc78043518b3ce75ca011ef1562a27683c45fffb0d.json.gz",
+      "raw_bytes": 4482664
+    },
+    "mcp_readme": {
+      "sha256": "2c2a5961a2761eea35b4143e9cab1d23200f49d72fc0ced56bb09f5a326e8444",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/mcp_readme/2c2a5961a2761eea35b4143e9cab1d23200f49d72fc0ced56bb09f5a326e8444.json.gz",
+      "raw_bytes": 4805
+    },
+    "mcp_w_matches": {
+      "sha256": "fba52fd6f6fa50190f79a38f366d8841b49bf76d5c4a598deb3e8d78a9796294",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/mcp_w_matches/fba52fd6f6fa50190f79a38f366d8841b49bf76d5c4a598deb3e8d78a9796294.json.gz",
+      "raw_bytes": 638031
+    },
+    "mcp_w_serve": {
+      "sha256": "f991e14be47cfb9113b0c7262b775df287e1e78cb10a07ec727ca7bb2ed66c9b",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/mcp_w_serve/f991e14be47cfb9113b0c7262b775df287e1e78cb10a07ec727ca7bb2ed66c9b.json.gz",
+      "raw_bytes": 2497203
+    },
+    "omkar_readme": {
+      "sha256": "d6662800bd6f7748c6ced8322874220ff9e340f5238cb8e804a2f4f1c8588b64",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/omkar_readme/d6662800bd6f7748c6ced8322874220ff9e340f5238cb8e804a2f4f1c8588b64.json.gz",
+      "raw_bytes": 9828
+    },
+    "sofa_live": {
+      "sha256": "6b771bca0fe4271cc0baf29954f10c68be99102048e4df524b6d7d6bf38dad5d",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/sofa_live/6b771bca0fe4271cc0baf29954f10c68be99102048e4df524b6d7d6bf38dad5d.json.gz",
+      "raw_bytes": 48
+    },
+    "ta_sinner": {
+      "sha256": "01908a5185c82410a1762a4646c0d11c620c842cf799746b1b60aa71a640100b",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_sinner/01908a5185c82410a1762a4646c0d11c620c842cf799746b1b60aa71a640100b.json.gz",
+      "raw_bytes": 12523
+    },
+    "ta_sinner_frag": {
+      "sha256": "212d70cbe13e2742d46a235c9d215fba7499382da018cbfc3b9c669c49b8ebff",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_sinner_frag/212d70cbe13e2742d46a235c9d215fba7499382da018cbfc3b9c669c49b8ebff.json.gz",
+      "raw_bytes": 222469
+    },
+    "ta_sinner_page": {
+      "sha256": "55c28b764747faae25d957099879008459d329b2440f53d8b1c5a070e3526899",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_sinner_page/55c28b764747faae25d957099879008459d329b2440f53d8b1c5a070e3526899.json.gz",
+      "raw_bytes": 44210
+    },
+    "ta_swiatek": {
+      "sha256": "d937fd4080e75bc479d3f216d09b54a958ac50a973e1f7fefb1e876edf5b2ae7",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_swiatek/d937fd4080e75bc479d3f216d09b54a958ac50a973e1f7fefb1e876edf5b2ae7.json.gz",
+      "raw_bytes": 58902
+    },
+    "ta_swiatek_frag_retry": {
+      "sha256": "3609780805a83ae484c5dd238ff089d5fe657511f9d7d6cc9af95e742f9286f1",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_swiatek_frag_retry/3609780805a83ae484c5dd238ff089d5fe657511f9d7d6cc9af95e742f9286f1.json.gz",
+      "raw_bytes": 227970
+    },
+    "ta_swiatek_page": {
+      "sha256": "aecdf970e5d60679d8ba2cdf2871f612e856a91245349e3660b12362c1f904c3",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/ta_swiatek_page/aecdf970e5d60679d8ba2cdf2871f612e856a91245349e3660b12362c1f904c3.json.gz",
+      "raw_bytes": 44231
+    },
+    "te_match": {
+      "sha256": "44eb94f71d5eb8ed2677d8b1708027ec33b58e526e719a4e79744e6da4ee08d6",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_match/44eb94f71d5eb8ed2677d8b1708027ec33b58e526e719a4e79744e6da4ee08d6.json.gz",
+      "raw_bytes": 477162
+    },
+    "te_profile_atp": {
+      "sha256": "e4e691d08fa4b337831d4d6edd32152ac1ea9849fd5c5e4b1fdeaae6d123e5c6",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_profile_atp/e4e691d08fa4b337831d4d6edd32152ac1ea9849fd5c5e4b1fdeaae6d123e5c6.json.gz",
+      "raw_bytes": 192782
+    },
+    "te_profile_challenger": {
+      "sha256": "d4f69190c72d9d05d0a2aca59cbadbbf83c45455086a961865f13e5d0c14c981",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_profile_challenger/d4f69190c72d9d05d0a2aca59cbadbbf83c45455086a961865f13e5d0c14c981.json.gz",
+      "raw_bytes": 176484
+    },
+    "te_profile_itf": {
+      "sha256": "373e0667b753f381467a6c27edd7153fb789f175714320ee451ea8a11ab810d3",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_profile_itf/373e0667b753f381467a6c27edd7153fb789f175714320ee451ea8a11ab810d3.json.gz",
+      "raw_bytes": 172402
+    },
+    "te_profile_wta": {
+      "sha256": "4db550bdaa0f73857c66503a4c1e612ec50ceb0a02a9f2ece7e99c27a93fdbd0",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_profile_wta/4db550bdaa0f73857c66503a4c1e612ec50ceb0a02a9f2ece7e99c27a93fdbd0.json.gz",
+      "raw_bytes": 198778
+    },
+    "te_results": {
+      "sha256": "4771111e80d1289b0e069914b1d2e0a77962f55d8dc1ecbf23052fa6ba6d97b3",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/te_results/4771111e80d1289b0e069914b1d2e0a77962f55d8dc1ecbf23052fa6ba6d97b3.json.gz",
+      "raw_bytes": 580372
+    },
+    "tml_atp": {
+      "sha256": "ab634c569f222fbbfcfd99e67542c507c7a5dcce3a7f5969e94158d585ea7adb",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_atp/ab634c569f222fbbfcfd99e67542c507c7a5dcce3a7f5969e94158d585ea7adb.json.gz",
+      "raw_bytes": 546269
+    },
+    "tml_challenger": {
+      "sha256": "2908177949820e2297a553ca9d16fcae8b43b2e140b8c4379479d449b1190a70",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_challenger/2908177949820e2297a553ca9d16fcae8b43b2e140b8c4379479d449b1190a70.json.gz",
+      "raw_bytes": 1328547
+    },
+    "tml_ongoing_atp": {
+      "sha256": "1f90a1ec65e4b997edb2d4d1ff7c2e5cfbf4cd6c2e17854bf50e3e0c20cdbae9",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_ongoing_atp/1f90a1ec65e4b997edb2d4d1ff7c2e5cfbf4cd6c2e17854bf50e3e0c20cdbae9.json.gz",
+      "raw_bytes": 13299
+    },
+    "tml_ongoing_challenger": {
+      "sha256": "7778c262861152948c13162b038886fc49bd8e11f774360eae9ab5cce707b433",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_ongoing_challenger/7778c262861152948c13162b038886fc49bd8e11f774360eae9ab5cce707b433.json.gz",
+      "raw_bytes": 27903
+    },
+    "tml_ongoing_wta": {
+      "sha256": "f16cc1555ce114bf6db6441adaee312d74f1a227a9a25c9ad1663d4d2b19cc1f",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_ongoing_wta/f16cc1555ce114bf6db6441adaee312d74f1a227a9a25c9ad1663d4d2b19cc1f.json.gz",
+      "raw_bytes": 10622
+    },
+    "tml_wta": {
+      "sha256": "f1a5a64cbda79bc8058e78db5ea0c77ac037874c3adad367c378d49b446bc354",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/tml_wta/f1a5a64cbda79bc8058e78db5ea0c77ac037874c3adad367c378d49b446bc354.json.gz",
+      "raw_bytes": 491269
+    },
+    "xbet_proxy_1": {
+      "sha256": "82de17f835e74cc772cec1aed08754ee5f7f1740a76d9e6d95c4e625c9ad01e1",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/xbet_proxy_1/82de17f835e74cc772cec1aed08754ee5f7f1740a76d9e6d95c4e625c9ad01e1.json.gz",
+      "raw_bytes": 2536
+    },
+    "xbet_proxy_2": {
+      "sha256": "24ea12621c26bf5479856e9a9eb33dbf5f543248f507d895743781c78402f89b",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/xbet_proxy_2/24ea12621c26bf5479856e9a9eb33dbf5f543248f507d895743781c78402f89b.json.gz",
+      "raw_bytes": 2542
+    },
+    "api_itf_tournament": {
+      "sha256": "ae95d608ee76e064ca676f3114fc5f48b0d5adac9ea3c9dbd137112f53c9b055",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/api_itf_tournament/ae95d608ee76e064ca676f3114fc5f48b0d5adac9ea3c9dbd137112f53c9b055.json.gz",
+      "raw_bytes": 13
+    },
+    "omkar_shared_feed": {
+      "sha256": "56e4736b08cbee7b35457141cb88d9d650f0df75fc3481004694f3a0438ee470",
+      "raw_object_key": "snapshots/external-tennis/source-probe-20261023/omkar_shared_feed/56e4736b08cbee7b35457141cb88d9d650f0df75fc3481004694f3a0438ee470.json.gz",
+      "raw_bytes": 3518
+    },
+    "api_proxy_day": {
+      "sha256": "74518944690efa6dde8547970f5abcd68d10922b650c2f091ccb08e12ebb8f7f",
+      "raw_object_key": "snapshots/external-tennis/api-tennis/2026-10-22/74518944690efa6dde8547970f5abcd68d10922b650c2f091ccb08e12ebb8f7f.json.gz",
+      "raw_bytes": 6244416
+    }
+  },
+  "tennisexplorer": {
+    "singles_by_tour": {
+      "wta": 8,
+      "itf": 210,
+      "atp": 13,
+      "challenger": 25
+    },
+    "profile_pages": {
+      "te_profile_wta": {
+        "headings": [
+          "Shnaider Diana - profile",
+          "Shnaider Diana",
+          "Player's record"
+        ],
+        "match_links": 109,
+        "scope": "one_profile_page_not_certified_full_career"
+      },
+      "te_profile_itf": {
+        "headings": [
+          "Lamens Suzan - profile",
+          "Lamens Suzan",
+          "Player's record"
+        ],
+        "match_links": 61,
+        "scope": "one_profile_page_not_certified_full_career"
+      },
+      "te_profile_challenger": {
+        "headings": [
+          "Gulin Svyatoslav - profile",
+          "Gulin Svyatoslav",
+          "Player's record"
+        ],
+        "match_links": 87,
+        "scope": "one_profile_page_not_certified_full_career"
+      },
+      "te_profile_atp": {
+        "headings": [
+          "Medvedev Daniil - profile",
+          "Medvedev Daniil",
+          "Player's record"
+        ],
+        "match_links": 83,
+        "scope": "one_profile_page_not_certified_full_career"
+      }
+    }
+  },
+  "tennis_my_life": {
+    "atp": {
+      "season": {
+        "records": 2576,
+        "with_both_serve_points": 2526,
+        "with_both_aces": 2526,
+        "latest_provider_date": "20261018",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      },
+      "ongoing": {
+        "records": 63,
+        "with_both_serve_points": 61,
+        "with_both_aces": 61,
+        "latest_provider_date": "20261023",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      }
+    },
+    "wta": {
+      "season": {
+        "records": 2375,
+        "with_both_serve_points": 2356,
+        "with_both_aces": 2356,
+        "latest_provider_date": "20261012",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      },
+      "ongoing": {
+        "records": 50,
+        "with_both_serve_points": 50,
+        "with_both_aces": 50,
+        "latest_provider_date": "20261019",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      }
+    },
+    "challenger": {
+      "season": {
+        "records": 6447,
+        "with_both_serve_points": 6425,
+        "with_both_aces": 6425,
+        "latest_provider_date": "20261012",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      },
+      "ongoing": {
+        "records": 124,
+        "with_both_serve_points": 124,
+        "with_both_aces": 124,
+        "latest_provider_date": "20261019",
+        "date_precision": "provider_tournament_or_match_date_not_result_observation_time"
+      }
+    }
+  },
+  "api_tennis": {
+    "unique_records": 396,
+    "by_event_type": {
+      "Atp Doubles": {
+        "records": 9,
+        "with_statistics": 7,
+        "with_point_rows": 7,
+        "point_completeness": "not_certified"
+      },
+      "Atp Singles": {
+        "records": 13,
+        "with_statistics": 11,
+        "with_point_rows": 11,
+        "point_completeness": "not_certified"
+      },
+      "Challenger Men Doubles": {
+        "records": 18,
+        "with_statistics": 18,
+        "with_point_rows": 18,
+        "point_completeness": "not_certified"
+      },
+      "Challenger Men Singles": {
+        "records": 26,
+        "with_statistics": 24,
+        "with_point_rows": 24,
+        "point_completeness": "not_certified"
+      },
+      "Itf Men Doubles": {
+        "records": 50,
+        "with_statistics": 0,
+        "with_point_rows": 31,
+        "point_completeness": "not_certified"
+      },
+      "Itf Men Singles": {
+        "records": 104,
+        "with_statistics": 0,
+        "with_point_rows": 93,
+        "point_completeness": "not_certified"
+      },
+      "Itf Women Doubles": {
+        "records": 47,
+        "with_statistics": 0,
+        "with_point_rows": 38,
+        "point_completeness": "not_certified"
+      },
+      "Itf Women Singles": {
+        "records": 108,
+        "with_statistics": 0,
+        "with_point_rows": 101,
+        "point_completeness": "not_certified"
+      },
+      "Teams Women": {
+        "records": 8,
+        "with_statistics": 0,
+        "with_point_rows": 0,
+        "point_completeness": "not_certified"
+      },
+      "Wta Doubles": {
+        "records": 5,
+        "with_statistics": 4,
+        "with_point_rows": 4,
+        "point_completeness": "not_certified"
+      },
+      "Wta Singles": {
+        "records": 8,
+        "with_statistics": 8,
+        "with_point_rows": 8,
+        "point_completeness": "not_certified"
+      }
+    }
+  },
+  "tennis_abstract": {
+    "ta_sinner": {
+      "rows": 34,
+      "latest_provider_date": "20181119",
+      "scope": "legacy_js_can_be_stale_do_not_guess_url"
+    },
+    "ta_swiatek_frag_retry": {
+      "rows": 23,
+      "latest_provider_date": "2026-10-12",
+      "stat_headers": [
+        "Date",
+        "Tournament",
+        "Surface",
+        "Rd",
+        "Rk",
+        "vRk",
+        "",
+        "Score",
+        "DR",
+        "A%",
+        "DF%",
+        "1stIn",
+        "1st%",
+        "2nd%",
+        "BPSvd",
+        "Time"
+      ],
+      "scope": "recent_results_not_full_career"
+    },
+    "ta_swiatek": {
+      "rows": 140,
+      "latest_provider_date": "20261012",
+      "scope": "legacy_js_can_be_stale_do_not_guess_url"
+    },
+    "ta_sinner_frag": {
+      "rows": 21,
+      "latest_provider_date": "2026-06-29",
+      "stat_headers": [
+        "Date",
+        "Tournament",
+        "Surface",
+        "Rd",
+        "Rk",
+        "vRk",
+        "",
+        "Score",
+        "DR",
+        "A%",
+        "DF%",
+        "1stIn",
+        "1st%",
+        "2nd%",
+        "BPSvd",
+        "Time"
+      ],
+      "scope": "recent_results_not_full_career"
+    }
+  },
+  "match_charting_project": {
+    "m": {
+      "metadata_matches": 7566,
+      "serve_total_rows": 15114,
+      "matches_with_two_serve_rows": 7531,
+      "latest_provider_date": "20260521",
+      "invalid_date_rows": 1,
+      "scope": "selected_charted_matches_not_a_complete_tour"
+    },
+    "w": {
+      "metadata_matches": 4264,
+      "serve_total_rows": 8512,
+      "matches_with_two_serve_rows": 4256,
+      "latest_provider_date": "20260909",
+      "invalid_date_rows": 18,
+      "scope": "selected_charted_matches_not_a_complete_tour"
+    }
+  },
+  "cohort": [
+    {
+      "tour": "atp",
+      "tournament": "Almaty",
+      "tournament_url": "/almaty/2026/atp-men/",
+      "source_match_id": "3355705",
+      "players": [
+        "Medvedev D.",
+        "Shimabukuro S."
+      ],
+      "profiles": [
+        "/player/medvedev-e0d2d/",
+        "/player/shimabukuro/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "MM58",
+          "SY67"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172778",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 70,
+        "source_entries": 15,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 85,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "D. Medvedev",
+          "metric": "Aces",
+          "api_tennis": "7",
+          "tml": "7",
+          "equal": true
+        },
+        {
+          "player": "D. Medvedev",
+          "metric": "Double Faults",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "S. Shimabukuro",
+          "metric": "Aces",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "S. Shimabukuro",
+          "metric": "Double Faults",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "atp",
+      "tournament": "Almaty",
+      "tournament_url": "/almaty/2026/atp-men/",
+      "source_match_id": "3356511",
+      "players": [
+        "Khachanov K.",
+        "Machac T."
+      ],
+      "profiles": [
+        "/player/khachanov/",
+        "/player/machac/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          4,
+          7
+        ],
+        [
+          2,
+          6,
+          6
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "KE29",
+          "M0FH"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173187",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 173,
+        "source_entries": 47,
+        "tiebreak_point_entries": 16,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 218,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": false
+      },
+      "statistics_comparison": [
+        {
+          "player": "T. Machac",
+          "metric": "Aces",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        },
+        {
+          "player": "T. Machac",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "K. Khachanov",
+          "metric": "Aces",
+          "api_tennis": "14",
+          "tml": "14",
+          "equal": true
+        },
+        {
+          "player": "K. Khachanov",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "atp",
+      "tournament": "Almaty",
+      "tournament_url": "/almaty/2026/atp-men/",
+      "source_match_id": "3356473",
+      "players": [
+        "Atmane T.",
+        "Bellucci M."
+      ],
+      "profiles": [
+        "/player/atmane/",
+        "/player/bellucci-47e7e/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          7,
+          7
+        ],
+        [
+          7,
+          6,
+          6
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "A0GC",
+          "B0GG"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173186",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 159,
+        "source_entries": 71,
+        "tiebreak_point_entries": 32,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 225,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": false
+      },
+      "statistics_comparison": [
+        {
+          "player": "T. Atmane",
+          "metric": "Aces",
+          "api_tennis": "7",
+          "tml": "7",
+          "equal": true
+        },
+        {
+          "player": "T. Atmane",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "M. Bellucci",
+          "metric": "Aces",
+          "api_tennis": "10",
+          "tml": "10",
+          "equal": true
+        },
+        {
+          "player": "M. Bellucci",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "atp",
+      "tournament": "Lyon",
+      "tournament_url": "/lyon/2026/atp-men/",
+      "source_match_id": "3356227",
+      "players": [
+        "Nakashima B.",
+        "Jacquet K."
+      ],
+      "profiles": [
+        "/player/nakashima-68876/",
+        "/player/jacquet-d2059/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "N0AE",
+          "J0AZ"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173106",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 110,
+        "source_entries": 19,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 129,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "K. Jacquet",
+          "metric": "Aces",
+          "api_tennis": "8",
+          "tml": "8",
+          "equal": true
+        },
+        {
+          "player": "K. Jacquet",
+          "metric": "Double Faults",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        },
+        {
+          "player": "B. Nakashima",
+          "metric": "Aces",
+          "api_tennis": "13",
+          "tml": "13",
+          "equal": true
+        },
+        {
+          "player": "B. Nakashima",
+          "metric": "Double Faults",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "atp",
+      "tournament": "Lyon",
+      "tournament_url": "/lyon/2026/atp-men/",
+      "source_match_id": "3356719",
+      "players": [
+        "Cobolli F.",
+        "Wawrinka S."
+      ],
+      "profiles": [
+        "/player/cobolli-d6311/",
+        "/player/wawrinka-ffdb9/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          2,
+          4
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "C0E9",
+          "W367"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173288",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 81,
+        "source_entries": 18,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 99,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "F. Cobolli",
+          "metric": "Aces",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        },
+        {
+          "player": "F. Cobolli",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "S. Wawrinka",
+          "metric": "Aces",
+          "api_tennis": "6",
+          "tml": "6",
+          "equal": true
+        },
+        {
+          "player": "S. Wawrinka",
+          "metric": "Double Faults",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "wta",
+      "tournament": "Ningbo WTA",
+      "tournament_url": "/ningbo-wta/2026/wta-women/",
+      "source_match_id": "3355691",
+      "players": [
+        "Shnaider D.",
+        "Eala A."
+      ],
+      "profiles": [
+        "/player/shnaider-51347/",
+        "/player/eala/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          7,
+          6
+        ],
+        [
+          5,
+          4
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "223670",
+          "223253"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172766",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 137,
+        "source_entries": 22,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 157,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": false
+      },
+      "statistics_comparison": [
+        {
+          "player": "A. Eala",
+          "metric": "Aces",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "A. Eala",
+          "metric": "Double Faults",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "D. Shnaider",
+          "metric": "Aces",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        },
+        {
+          "player": "D. Shnaider",
+          "metric": "Double Faults",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "wta",
+      "tournament": "Ningbo WTA",
+      "tournament_url": "/ningbo-wta/2026/wta-women/",
+      "source_match_id": "3355851",
+      "players": [
+        "Kawa K.",
+        "Bencic B."
+      ],
+      "profiles": [
+        "/player/kawa/",
+        "/player/bencic/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          7,
+          6
+        ],
+        [
+          5,
+          2
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "203514",
+          "202505"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172897",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 120,
+        "source_entries": 20,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 140,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "K. Kawa",
+          "metric": "Aces",
+          "api_tennis": "5",
+          "tml": "5",
+          "equal": true
+        },
+        {
+          "player": "K. Kawa",
+          "metric": "Double Faults",
+          "api_tennis": "9",
+          "tml": "9",
+          "equal": true
+        },
+        {
+          "player": "B. Bencic",
+          "metric": "Aces",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "B. Bencic",
+          "metric": "Double Faults",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "wta",
+      "tournament": "Ningbo WTA",
+      "tournament_url": "/ningbo-wta/2026/wta-women/",
+      "source_match_id": "3355725",
+      "players": [
+        "Jovic I.",
+        "Paolini J."
+      ],
+      "profiles": [
+        "/player/jovic-19208/",
+        "/player/paolini-4af25/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          4,
+          3
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "260300",
+          "211148"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172811",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 92,
+        "source_entries": 19,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 111,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "I. Jovic",
+          "metric": "Aces",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        },
+        {
+          "player": "I. Jovic",
+          "metric": "Double Faults",
+          "api_tennis": "6",
+          "tml": "6",
+          "equal": true
+        },
+        {
+          "player": "J. Paolini",
+          "metric": "Aces",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        },
+        {
+          "player": "J. Paolini",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "wta",
+      "tournament": "Osaka WTA",
+      "tournament_url": "/osaka-wta/2026/wta-women/",
+      "source_match_id": "3355727",
+      "players": [
+        "Siniakova K.",
+        "Linette M."
+      ],
+      "profiles": [
+        "/player/siniakova/",
+        "/player/linette/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          4,
+          1
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "211701",
+          "202663"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172812",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 87,
+        "source_entries": 17,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 104,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "M. Linette",
+          "metric": "Aces",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        },
+        {
+          "player": "M. Linette",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "K. Siniakova",
+          "metric": "Aces",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "K. Siniakova",
+          "metric": "Double Faults",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "wta",
+      "tournament": "Osaka WTA",
+      "tournament_url": "/osaka-wta/2026/wta-women/",
+      "source_match_id": "3355695",
+      "players": [
+        "Stoiana M.",
+        "Uchijima M."
+      ],
+      "profiles": [
+        "/player/stoiana/",
+        "/player/uchijima/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          2,
+          6
+        ],
+        [
+          2,
+          6,
+          3
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "269265",
+          "220416"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172767",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 129,
+        "source_entries": 25,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 154,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "M. Stoiana",
+          "metric": "Aces",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        },
+        {
+          "player": "M. Stoiana",
+          "metric": "Double Faults",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        },
+        {
+          "player": "M. Uchijima",
+          "metric": "Aces",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "M. Uchijima",
+          "metric": "Double Faults",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "challenger",
+      "tournament": "Lisbon challenger",
+      "tournament_url": "/lisbon-challenger/2026/atp-men/",
+      "source_match_id": "3356157",
+      "players": [
+        "Gulin S.",
+        "Martin A."
+      ],
+      "profiles": [
+        "/player/gulin-1ef00/",
+        "/player/martin-3dfa5/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          1,
+          6,
+          6
+        ],
+        [
+          6,
+          0,
+          2
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "G0J9",
+          "MF35"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172988",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 119,
+        "source_entries": 21,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 140,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "A. Martin",
+          "metric": "Aces",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "A. Martin",
+          "metric": "Double Faults",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "S. Gulin",
+          "metric": "Aces",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "S. Gulin",
+          "metric": "Double Faults",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "challenger",
+      "tournament": "Lisbon challenger",
+      "tournament_url": "/lisbon-challenger/2026/atp-men/",
+      "source_match_id": "3355783",
+      "players": [
+        "Ritschard A.",
+        "Brancaccio R."
+      ],
+      "profiles": [
+        "/player/ritschard/",
+        "/player/brancaccio/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          4,
+          6
+        ],
+        [
+          4,
+          6,
+          4
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "RC04",
+          "BV24"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172821",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 166,
+        "source_entries": 30,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 196,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "A. Ritschard",
+          "metric": "Aces",
+          "api_tennis": "5",
+          "tml": "5",
+          "equal": true
+        },
+        {
+          "player": "A. Ritschard",
+          "metric": "Double Faults",
+          "api_tennis": "5",
+          "tml": "5",
+          "equal": true
+        },
+        {
+          "player": "R. Brancaccio",
+          "metric": "Aces",
+          "api_tennis": "0",
+          "tml": "0",
+          "equal": true
+        },
+        {
+          "player": "R. Brancaccio",
+          "metric": "Double Faults",
+          "api_tennis": "5",
+          "tml": "5",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "challenger",
+      "tournament": "Cali challenger",
+      "tournament_url": "/cali-challenger/2026/atp-men/",
+      "source_match_id": "3356907",
+      "players": [
+        "Aboian V.",
+        "Soto M."
+      ],
+      "profiles": [
+        "/player/aboian-f7ddc/",
+        "/player/soto-fec8d/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "A0G7",
+          "S0EK"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173395",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 74,
+        "source_entries": 16,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 90,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": true
+      },
+      "statistics_comparison": [
+        {
+          "player": "V. Aboian",
+          "metric": "Aces",
+          "api_tennis": "12",
+          "tml": "12",
+          "equal": true
+        },
+        {
+          "player": "V. Aboian",
+          "metric": "Double Faults",
+          "api_tennis": "1",
+          "tml": "1",
+          "equal": true
+        },
+        {
+          "player": "M. Soto",
+          "metric": "Aces",
+          "api_tennis": "3",
+          "tml": "3",
+          "equal": true
+        },
+        {
+          "player": "M. Soto",
+          "metric": "Double Faults",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "challenger",
+      "tournament": "Cali challenger",
+      "tournament_url": "/cali-challenger/2026/atp-men/",
+      "source_match_id": "3356129",
+      "players": [
+        "Pucinelli De Almeida M.",
+        "Jarry N."
+      ],
+      "profiles": [
+        "/player/pucinelli-de-almeida/",
+        "/player/jarry/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          7,
+          6
+        ],
+        [
+          6,
+          4
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12172934",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 120,
+        "source_entries": 35,
+        "tiebreak_point_entries": 12,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    },
+    {
+      "tour": "challenger",
+      "tournament": "Cali challenger",
+      "tournament_url": "/cali-challenger/2026/atp-men/",
+      "source_match_id": "3356201",
+      "players": [
+        "Rodriguez Taverna S.",
+        "Bueno G."
+      ],
+      "profiles": [
+        "/player/rodriguez-taverna/",
+        "/player/bueno-01b7e/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          6,
+          6
+        ],
+        [
+          7,
+          4,
+          2
+        ]
+      ],
+      "tml": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_player_ids": [
+          "RH59",
+          "B0GR"
+        ],
+        "set_games_equal": true
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": true,
+        "source_match_id": "12173096",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 167,
+        "source_entries": 57,
+        "tiebreak_point_entries": 26,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true,
+        "serve_points_from_tml": 222,
+        "raw_rows_equal_serve_points": false,
+        "naive_rows_plus_one_per_source_entry_equal_serve_points": false
+      },
+      "statistics_comparison": [
+        {
+          "player": "S. Rodriguez Taverna",
+          "metric": "Aces",
+          "api_tennis": "7",
+          "tml": "7",
+          "equal": true
+        },
+        {
+          "player": "S. Rodriguez Taverna",
+          "metric": "Double Faults",
+          "api_tennis": "4",
+          "tml": "4",
+          "equal": true
+        },
+        {
+          "player": "G. Bueno",
+          "metric": "Aces",
+          "api_tennis": "2",
+          "tml": "2",
+          "equal": true
+        },
+        {
+          "player": "G. Bueno",
+          "metric": "Double Faults",
+          "api_tennis": "9",
+          "tml": "9",
+          "equal": true
+        }
+      ]
+    },
+    {
+      "tour": "itf",
+      "tournament": "Wrexham ITF",
+      "tournament_url": "/wrexham-itf/2026/wta-women/",
+      "source_match_id": "3355811",
+      "players": [
+        "Lamens S.",
+        "Blinkova A."
+      ],
+      "profiles": [
+        "/player/lamens/",
+        "/player/blinkova/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          3,
+          2
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": false,
+        "source_match_id": "12172906",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 88,
+        "source_entries": 17,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    },
+    {
+      "tour": "itf",
+      "tournament": "Wrexham ITF",
+      "tournament_url": "/wrexham-itf/2026/wta-women/",
+      "source_match_id": "3356753",
+      "players": [
+        "Burrage J.",
+        "Noha Akugue N."
+      ],
+      "profiles": [
+        "/player/burrage/",
+        "/player/noha-akugue/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          7
+        ],
+        [
+          1,
+          6
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": false,
+        "source_match_id": "12173320",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 104,
+        "source_entries": 40,
+        "tiebreak_point_entries": 20,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    },
+    {
+      "tour": "itf",
+      "tournament": "Wrexham ITF",
+      "tournament_url": "/wrexham-itf/2026/wta-women/",
+      "source_match_id": "3356717",
+      "players": [
+        "Klugman H.",
+        "Siskova A."
+      ],
+      "profiles": [
+        "/player/klugman/",
+        "/player/siskova/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          6
+        ],
+        [
+          2,
+          4
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": false,
+        "source_match_id": "12173291",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 100,
+        "source_entries": 18,
+        "tiebreak_point_entries": 0,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    },
+    {
+      "tour": "itf",
+      "tournament": "Futures 2026",
+      "tournament_url": "",
+      "source_match_id": "3356479",
+      "players": [
+        "Marterer M.",
+        "Bouquier A."
+      ],
+      "profiles": [
+        "/player/marterer/",
+        "/player/bouquier/"
+      ],
+      "sets": [
+        "2",
+        "0"
+      ],
+      "games": [
+        [
+          6,
+          7
+        ],
+        [
+          3,
+          6
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": false,
+        "source_match_id": "12173194",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 89,
+        "source_entries": 40,
+        "tiebreak_point_entries": 18,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    },
+    {
+      "tour": "itf",
+      "tournament": "Futures 2026",
+      "tournament_url": "",
+      "source_match_id": "3356481",
+      "players": [
+        "Wessels L.",
+        "de Schepper K."
+      ],
+      "profiles": [
+        "/player/wessels-3ac5c/",
+        "/player/de-schepper/"
+      ],
+      "sets": [
+        "2",
+        "1"
+      ],
+      "games": [
+        [
+          6,
+          3,
+          7
+        ],
+        [
+          3,
+          6,
+          6
+        ]
+      ],
+      "tml": {
+        "candidate_count": 0,
+        "identity_confirmed": false
+      },
+      "api_tennis": {
+        "candidate_count": 1,
+        "identity_confirmed": false,
+        "statistics": false,
+        "source_match_id": "12173195",
+        "status": "Finished",
+        "set_games_equal": true
+      },
+      "api_pbp_shape": {
+        "raw_point_rows": 150,
+        "source_entries": 40,
+        "tiebreak_point_entries": 9,
+        "game_end_scores_equal_final_sets": true,
+        "terminal_points_are_not_explicitly_certified": true
+      }
+    }
+  ],
+  "live_tennis_api_free": {
+    "catalog_matches": 33,
+    "by_tour": {
+      "itf": 25,
+      "wta": 1,
+      "challenger": 2,
+      "atp": 1,
+      "unknown": 4
+    },
+    "with_format_field": 33,
+    "format_source_basis_verified": false,
+    "statistics_error": "upgrade_required",
+    "points_error": "upgrade_required"
+  },
+  "livescore": {
+    "stages": 3,
+    "events": 5,
+    "category_names": [
+      "ATP 250",
+      "ATP Challenger",
+      "WTA 500"
+    ],
+    "statistics_or_full_point_tape_verified": false
+  },
+  "limits": [
+    "20 completed candidates from TennisExplorer 2026-10-22, five per tour; not an independent official score audit",
+    "Name/date/score concordance does not confirm production player identity",
+    "No source receives complete-PBP or point-in-time certification from these probes",
+    "Single-request latency is not a paired throughput benchmark or a 24-hour reliability result"
+  ]
+}

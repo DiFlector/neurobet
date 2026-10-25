@@ -50,8 +50,13 @@ flashscore_import_tasks: set[str] = set()
 _flashscore_lock_engine = None
 
 
-def _record_flashscore_throttle() -> None:
-    """Apply a conservative global cooldown after a source-side 403/429 signal."""
+def _record_flashscore_throttle(reason: str | None = None) -> datetime | None:
+    """Pause shared Flashscore egress after a throttle or an explicit challenge.
+
+    CAPTCHA challenges are a source-wide access denial, not a transient error
+    that another queued task should immediately repeat. Keep the cooldown in
+    PostgreSQL so every worker process observes the same circuit state.
+    """
     from sqlalchemy import text
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
@@ -60,13 +65,70 @@ def _record_flashscore_throttle() -> None:
     global _flashscore_lock_engine
     if _flashscore_lock_engine is None:
         _flashscore_lock_engine = create_engine(get_database_url(), poolclass=NullPool, pool_pre_ping=True)
+    captcha = "CAPTCHA" in str(reason or "").upper()
+    cooldown_seconds = _flashscore_captcha_cooldown_hours() * 3600 if captcha else 15 * 60
     with _flashscore_lock_engine.begin() as connection:
         connection.execute(text("""
             UPDATE flashscore_source_control
-            SET cooldown_until=greatest(coalesce(cooldown_until, now()), now()+interval '15 minutes'),
+            SET cooldown_until=greatest(coalesce(cooldown_until, now()), now()+make_interval(secs => :cooldown_seconds)),
                 last_throttle_at=now(), success_count=0, slot_limit=1, updated_at=now()
             WHERE id=1
-        """))
+        """), {"cooldown_seconds": cooldown_seconds})
+        return connection.execute(text(
+            "SELECT cooldown_until FROM flashscore_source_control WHERE id=1"
+        )).scalar()
+
+
+def _flashscore_source_cooldown_until(session=None) -> datetime | None:
+    """Return the durable source-wide cooldown, if it is still active."""
+    global _flashscore_lock_engine
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+    from db.connection import get_database_url
+    if session is not None:
+        return session.execute(text(
+            "SELECT cooldown_until FROM flashscore_source_control WHERE id=1"
+        )).scalar()
+    if _flashscore_lock_engine is None:
+        _flashscore_lock_engine = create_engine(get_database_url(), poolclass=NullPool, pool_pre_ping=True)
+    with _flashscore_lock_engine.connect() as connection:
+        return connection.execute(text(
+            "SELECT cooldown_until FROM flashscore_source_control WHERE id=1"
+        )).scalar()
+
+
+def _flashscore_source_paused(session=None, *, now: datetime | None = None) -> datetime | None:
+    now = now or datetime.now(timezone.utc)
+    until = _flashscore_source_cooldown_until(session)
+    return until if until and until > now else None
+
+
+def _flashscore_captcha_cooldown_hours() -> int:
+    try:
+        value = int(float(os.getenv("FLASHSCORE_CAPTCHA_COOLDOWN_HOURS", "6")))
+    except (TypeError, ValueError):
+        value = 6
+    return max(1, min(72, value))
+
+
+def _flashscore_captcha_retry_at(progress: dict[str, Any] | None) -> datetime | None:
+    raw = (progress or {}).get("captcha_retry_at")
+    if not raw:
+        return None
+    try:
+        value = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _flashscore_source_wait_seconds(priority: str) -> float:
+    """Bound queue occupancy, giving live PBP a shorter fail-fast wait."""
+    configured = max(1.0, float(os.getenv("FLASHSCORE_SOURCE_LOCK_WAIT_SECONDS", "300")))
+    if priority == "live":
+        live_configured = max(1.0, float(os.getenv("FLASHSCORE_LIVE_SOURCE_LOCK_WAIT_SECONDS", "60")))
+        return min(configured, live_configured)
+    return configured
 
 
 @contextmanager
@@ -80,6 +142,12 @@ def _flashscore_source_access(priority: str = "participant"):
     from db.connection import get_database_url
     if _flashscore_lock_engine is None:
         _flashscore_lock_engine = create_engine(get_database_url(), poolclass=NullPool, pool_pre_ping=True)
+    with _flashscore_lock_engine.connect() as connection:
+        cooldown_until = connection.execute(text(
+            "SELECT cooldown_until FROM flashscore_source_control WHERE id=1"
+        )).scalar()
+    if cooldown_until and cooldown_until > datetime.now(timezone.utc):
+        raise TimeoutError(f"FLASHSCORE_SOURCE_COOLDOWN:{cooldown_until.isoformat()}")
     request_id = uuid_module.uuid4()
     priorities = {"live": 0, "participant": 10, "archive": 20, "background_profile": 30}
     if priority not in priorities:
@@ -102,7 +170,7 @@ def _flashscore_source_access(priority: str = "participant"):
 
     heartbeat_thread = threading.Thread(target=heartbeat, name="flashscore-source-heartbeat", daemon=True)
     heartbeat_thread.start()
-    deadline = time.monotonic() + max(1.0, float(os.getenv("FLASHSCORE_SOURCE_LOCK_WAIT_SECONDS", "300")))
+    deadline = time.monotonic() + _flashscore_source_wait_seconds(priority)
     acquired = False
     try:
         while time.monotonic() < deadline:
@@ -139,8 +207,8 @@ def _flashscore_source_access(priority: str = "participant"):
             yield
         except BaseException as exc:
             detail = str(exc).upper()
-            if "429" in detail or "403" in detail or "BLOCKED" in detail or "RATE_LIMIT" in detail:
-                _record_flashscore_throttle()
+            if any(marker in detail for marker in ("429", "403", "BLOCKED", "RATE_LIMIT", "CAPTCHA")):
+                _record_flashscore_throttle(detail)
             raise
         else:
             with _flashscore_lock_engine.begin() as connection:
@@ -465,12 +533,17 @@ async def startup_event():
                 from db.models import FlashscoreImportJob
                 now = datetime.now(timezone.utc)
                 with SessionLocal() as session:
-                    pending = session.query(FlashscoreImportJob.id).filter(
+                    _park_stale_persistent_transport_imports(session, now)
+                    _resume_expired_captcha_imports(session, now)
+                    source_paused = _flashscore_source_paused(session, now=now)
+                    session.commit()
+                    pending = [] if source_paused else session.query(FlashscoreImportJob.id).filter(
                         FlashscoreImportJob.next_run_at <= now,
                         (FlashscoreImportJob.status == "queued") |
                         ((FlashscoreImportJob.status == "running") & (FlashscoreImportJob.lease_until <= now)),
                     ).order_by(FlashscoreImportJob.created_at).limit(4).all()
-                for (job_id,) in pending:
+                for row in pending:
+                    job_id = row[0]
                     key = str(job_id)
                     if key not in flashscore_import_tasks:
                         flashscore_import_tasks.add(key)
@@ -559,6 +632,128 @@ def cleanup_expired_predictions() -> Dict[str, Any]:
     return {"status": "ok", "deleted_expired_count": deleted}
 
 
+_FLASHSCORE_IMPORT_MANUAL_RETRY_REASONS = {
+    # These failures are stable until the caller, identity metadata, or source
+    # access changes. Repeating the same browser request cannot repair them.
+    "CAPTCHA_CHALLENGE_ABORTED",
+    "PLAYER_COUNTRY_CODE_UNRESOLVED",
+}
+
+
+def _flashscore_import_failure_schedule(reason: str | None, attempts: int, *,
+                                        progress: dict[str, Any] | None = None,
+                                        now: datetime | None = None,
+                                        created_at: datetime | None = None) -> tuple[str, int | None]:
+    """Park deterministic failures and back off transient archive failures."""
+    if reason in _FLASHSCORE_IMPORT_MANUAL_RETRY_REASONS:
+        return "blocked", None
+    if reason == "PERSISTENT_TRANSPORT_FAILURE":
+        now = now or datetime.now(timezone.utc)
+        first_failure = (progress or {}).get("first_failure_at")
+        if first_failure is None and int(attempts or 0) >= 3:
+            first_failure = created_at
+        if first_failure is not None:
+            try:
+                if not isinstance(first_failure, datetime):
+                    first_failure = datetime.fromisoformat(str(first_failure).replace("Z", "+00:00"))
+                if first_failure.tzinfo is None:
+                    first_failure = first_failure.replace(tzinfo=timezone.utc)
+                if now - first_failure >= timedelta(hours=24):
+                    return "blocked", None
+            except (TypeError, ValueError):
+                pass
+    normalized_reason = (reason or "").upper()
+    if normalized_reason.startswith("PROFILE_HTTP_FETCH_FAILED:") and any(
+        marker in normalized_reason
+        for marker in ("CONNECTERROR", "CONNECTTIMEOUT", "READTIMEOUT", "CONNECTION REFUSED")
+    ):
+        # Give short outages two spaced retries. Repeated transport failures
+        # cannot improve through unattended retries; retain the durable job
+        # and checkpoint for explicit recovery after source/network repair.
+        if int(attempts or 0) >= 3:
+            return "blocked", None
+        return "queued", 86400
+    if reason in {
+        "PAGINATION_NOT_CONFIRMED",
+        "pagination_control_missing_or_unknown",
+        "pagination_button_disabled_without_end_proof",
+        "source_returned_zero_but_button_remains",
+        "source_terminal_zero_and_button_hidden",
+        "source_terminal_zero_and_button_disabled",
+    }:
+        return "queued", 86400
+    # Keep transient failures automatic, but cap retries at the established
+    # hourly archive interval so repeated failures do not hot-loop the browser.
+    return "queued", min(3600, 30 * (2 ** min(max(int(attempts), 0), 10)))
+
+
+def _park_stale_persistent_transport_imports(session, now: datetime) -> int:
+    """Stop retrying archive jobs after a day of the same transport failure."""
+    from db.models import FlashscoreImportJob
+
+    jobs = session.query(FlashscoreImportJob).filter(
+        FlashscoreImportJob.status.in_(("queued", "retry")),
+        FlashscoreImportJob.last_error == "PERSISTENT_TRANSPORT_FAILURE",
+    ).with_for_update(skip_locked=True).all()
+    parked = 0
+    for job in jobs:
+        status, _retry_seconds = _flashscore_import_failure_schedule(
+            job.last_error, job.attempts, progress=job.progress_json,
+            now=now, created_at=job.created_at,
+        )
+        if status != "blocked":
+            continue
+        job.status = "blocked"
+        job.attempt_token = None
+        job.lease_until = None
+        job.attempt_started_at = None
+        job.progress_json = {
+            **dict(job.progress_json or {}),
+            "stage": "waiting_for_transport_recovery",
+            "reason": "PERSISTENT_TRANSPORT_FAILURE",
+        }
+        job.updated_at = now
+        parked += 1
+    return parked
+
+
+def _flashscore_failure_progress(progress: dict[str, Any] | None, previous_error: str | None,
+                                 error: str | None, now: datetime) -> dict[str, Any]:
+    """Keep the first-seen timestamp while the same transport failure persists."""
+    updated = dict(progress or {})
+    if error != "PERSISTENT_TRANSPORT_FAILURE":
+        updated.pop("first_failure_at", None)
+    elif previous_error != error or not updated.get("first_failure_at"):
+        updated["first_failure_at"] = now.isoformat()
+    return updated
+
+
+def _live_match_lookup_retry_delay(reason: str | None, attempts: int) -> timedelta:
+    """Back off absent live-match links so dispatch polling cannot repeat HTTP lookups."""
+    normalized = (reason or "").upper()
+    if "CAPTCHA" in normalized:
+        return timedelta(hours=_flashscore_captcha_cooldown_hours())
+    base_minutes = 15 if any(marker in normalized for marker in ("403", "429", "BLOCKED")) else 10
+    exponent = max(0, min(int(attempts or 1) - 1, 6))
+    return timedelta(minutes=min(base_minutes * (2 ** exponent), 360))
+
+
+def _match_lookup_retry_is_due(job, now: datetime) -> bool:
+    """A retry is not eligible until its durable next_run_at has elapsed."""
+    return bool(job and job.status == "retry" and job.next_run_at and job.next_run_at <= now)
+
+
+def _static_profile_import_is_authorized(job_key: str, progress: dict[str, Any] | None,
+                                         *, enabled: bool) -> bool:
+    """Require explicit intent for static Flashscore profile archive batches."""
+    if not str(job_key or "").startswith("profiles:"):
+        return True
+    origin = (progress or {}).get("request_origin")
+    if origin == "manual":
+        return True
+    return origin == "automatic_static" and enabled
+
+
 def _execute_flashscore_import_job(job_id) -> None:
     from db.connection import SessionLocal
     from db.models import FlashscoreImportJob
@@ -567,6 +762,19 @@ def _execute_flashscore_import_job(job_id) -> None:
     with SessionLocal() as session:
         job = session.query(FlashscoreImportJob).filter_by(id=job_id).with_for_update(skip_locked=True).first()
         if job is None or (job.status == "running" and job.lease_until and job.lease_until > now):
+            return
+        if not _static_profile_import_is_authorized(
+            job.job_key, job.progress_json,
+            enabled=config.flashscore_static_profile_archive_enabled,
+        ):
+            # Legacy hourly batches have no origin marker and are intentionally
+            # closed fail-closed. A real demand-driven refresh has its own queue.
+            job.status = "blocked"
+            job.last_error = "STATIC_PROFILE_ARCHIVE_DISABLED_OR_UNVERIFIED"
+            job.attempt_token = None
+            job.lease_until = None
+            job.updated_at = now
+            session.commit()
             return
         job.status, job.attempt_token = "running", token
         job.attempts += 1
@@ -600,6 +808,11 @@ def _execute_flashscore_import_job(job_id) -> None:
                 job_id, token, index, url,
                 (checkpoint.get("pages") or []) if is_compatible_profile_parser_version(checkpoint.get("parser_version")) else [],
             )
+            captcha_retry_at = None
+            scrape_reason = str(scrape_result.reason or scrape_result.status or "")
+            if "CAPTCHA" in scrape_reason.upper():
+                cooldown_until = _record_flashscore_throttle(scrape_reason)
+                captcha_retry_at = cooldown_until.isoformat() if cooldown_until else None
             # Source serialization ends as soon as the response pages are
             # archived. DB reconciliation can be expensive and must not block
             # live PBP requests from using the shared Flashscore slot.
@@ -635,6 +848,8 @@ def _execute_flashscore_import_job(job_id) -> None:
                 "archived_path": scrape_result.archived_path,
                 "archived_page_paths": list(scrape_result.archived_page_paths),
             }
+            if captcha_retry_at:
+                profile_result["captcha_retry_at"] = captcha_retry_at
             while len(results) <= index:
                 results.append({})
             results[index] = profile_result
@@ -660,11 +875,16 @@ def _execute_flashscore_import_job(job_id) -> None:
                 job.lease_until = datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=5)
                 job.updated_at = datetime.now(timezone.utc)
                 session.commit()
+            if captcha_retry_at:
+                # One challenge is enough evidence to pause the shared source;
+                # do not probe the remaining profiles in this batch.
+                break
         with SessionLocal() as session:
             job = session.query(FlashscoreImportJob).filter_by(
                 id=job_id, attempt_token=token, status="running"
             ).filter(FlashscoreImportJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
             if job:
+                previous_error = job.last_error
                 complete = len(results) == len(urls) and all(current_complete(x) for x in results)
                 job.status = "completed" if complete else "queued"
                 job.result_json = {"parser_version": PARSER_VERSION, "profiles": results}
@@ -688,22 +908,34 @@ def _execute_flashscore_import_job(job_id) -> None:
                     saved_progress.pop("last_archived_page", None)
                     checkpoints.clear()
                 saved_progress["page_checkpoints"] = checkpoints
-                job.progress_json = saved_progress
+                captcha_retry_at = next((x.get("captcha_retry_at") for x in results
+                                          if x.get("reason") == "CAPTCHA_CHALLENGE_ABORTED"
+                                          and x.get("captcha_retry_at")), None)
+                if captcha_retry_at:
+                    saved_progress["captcha_retry_at"] = captcha_retry_at
+                    saved_progress["stage"] = "waiting_for_captcha_cooldown"
                 if not complete:
-                    job.last_error = next((x.get("reason") or x.get("status") for x in results
-                                           if not current_complete(x)), "PROFILE_IMPORT_INCOMPLETE")
+                    next_error = next((x.get("reason") or x.get("status") for x in results
+                                       if not current_complete(x)), "PROFILE_IMPORT_INCOMPLETE")
+                    saved_progress = _flashscore_failure_progress(
+                        saved_progress, previous_error, next_error, datetime.now(timezone.utc)
+                    )
+                    job.last_error = next_error
                     # A non-visible/unconfirmed pager will not change within minutes.
                     # Keep it retryable, but do not repeatedly reload ten profiles.
-                    retry_seconds = (86400 if job.last_error in {
-                                         "PAGINATION_NOT_CONFIRMED",
-                                         "pagination_control_missing_or_unknown",
-                                         "pagination_button_disabled_without_end_proof",
-                                         "source_returned_zero_but_button_remains",
-                                         "source_terminal_zero_and_button_hidden",
-                                         "source_terminal_zero_and_button_disabled",
-                                     }
-                                     else min(3600, 30 * (2 ** min(job.attempts, 6))))
-                    job.next_run_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=retry_seconds)
+                    job.status, retry_seconds = _flashscore_import_failure_schedule(
+                        job.last_error, job.attempts, progress=saved_progress,
+                        now=datetime.now(timezone.utc), created_at=job.created_at,
+                    )
+                    if retry_seconds is not None:
+                        job.next_run_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=retry_seconds)
+                    elif job.last_error == "CAPTCHA_CHALLENGE_ABORTED":
+                        job.next_run_at = _flashscore_captcha_retry_at(saved_progress) or datetime.now(timezone.utc)
+                else:
+                    saved_progress = _flashscore_failure_progress(saved_progress, previous_error, None,
+                                                                   datetime.now(timezone.utc))
+                    job.last_error = None
+                job.progress_json = saved_progress
                 job.lease_until = None
                 job.updated_at = datetime.now(timezone.utc)
                 session.commit()
@@ -714,10 +946,15 @@ def _execute_flashscore_import_job(job_id) -> None:
                 id=job_id, attempt_token=token, status="running"
             ).filter(FlashscoreImportJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
             if job:
-                job.status = "queued"
+                previous_error = job.last_error
+                job.status, retry_seconds = _flashscore_import_failure_schedule(type(exc).__name__, job.attempts)
                 job.last_error = type(exc).__name__
+                job.progress_json = _flashscore_failure_progress(
+                    job.progress_json, previous_error, job.last_error, datetime.now(timezone.utc)
+                )
                 job.lease_until = None
-                job.next_run_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=min(3600, 30 * (2 ** min(job.attempts, 6))))
+                if retry_seconds is not None:
+                    job.next_run_at = datetime.now(timezone.utc) + __import__("datetime").timedelta(seconds=retry_seconds)
                 job.updated_at = datetime.now(timezone.utc)
                 session.commit()
     finally:
@@ -761,8 +998,10 @@ async def _run_flashscore_import(job_id, executor=None) -> None:
 
 
 @app.post("/api/tennis-history/flashscore/import")
-async def import_flashscore_tennis_history() -> Dict[str, Any]:
+async def import_flashscore_tennis_history(automatic: bool = False) -> Dict[str, Any]:
     """Import configured tennis player profiles; no URL is accepted from the caller."""
+    if automatic and not config.flashscore_static_profile_archive_enabled:
+        return {"status": "disabled", "reason": "STATIC_PROFILE_ARCHIVE_DISABLED", "profiles": []}
     if not config.flashscore_tennis_profile_urls:
         return {"status": "disabled", "reason": "FLASHSCORE_TENNIS_PROFILE_URLS is empty", "profiles": []}
     if len(config.flashscore_tennis_profile_urls) > 100:
@@ -775,7 +1014,8 @@ async def import_flashscore_tennis_history() -> Dict[str, Any]:
     urls_hash = hashlib.sha256(json.dumps(config.flashscore_tennis_profile_urls, sort_keys=True).encode()).hexdigest()[:16]
     # A parser/protocol revision must be able to schedule an explicit re-import
     # even if the same profile set already completed in this UTC hour.
-    job_key = f"profiles:{PARSER_VERSION}:{hour}:{urls_hash}"
+    request_origin = "automatic_static" if automatic else "manual"
+    job_key = f"profiles:{request_origin}:{PARSER_VERSION}:{hour}:{urls_hash}"
     with SessionLocal() as session:
         job = session.query(FlashscoreImportJob).filter_by(job_key=job_key).with_for_update().first()
         if job is None:
@@ -813,6 +1053,7 @@ async def import_flashscore_tennis_history() -> Dict[str, Any]:
                 if checkpoints:
                     progress = {"page_checkpoints": checkpoints,
                                 "archive_reuse_source_job_id": str(prior.id)}
+            progress["request_origin"] = request_origin
             job = FlashscoreImportJob(job_key=job_key, status="queued", profile_urls=config.flashscore_tennis_profile_urls,
                                      progress_json=progress, next_run_at=datetime.now(timezone.utc))
             session.add(job)
@@ -874,6 +1115,122 @@ def _save_player_identity_link(participant_id, source_player_id: str, status: st
         session.commit()
 
 
+_PLAYER_REFRESH_IDENTITY_WAIT_ERRORS = {
+    "PLAYER_COUNTRY_CODE_UNRESOLVED",
+    "SEARCH_CANDIDATES_REJECTED_BY_NAME",
+}
+
+
+def _flashscore_profile_job_outcome(status: str, error: str | None, progress: dict | None):
+    if status == "retry" and error == "CAPTCHA_CHALLENGE_ABORTED":
+        return "blocked", {**(progress or {}), "stage": "waiting_for_captcha_cooldown", "reason": error}
+    if status == "retry" and error in _PLAYER_REFRESH_IDENTITY_WAIT_ERRORS:
+        return "blocked", {**(progress or {}), "stage": "manual_retry_required", "reason": error}
+    return status, progress
+
+
+def _park_terminal_identity_refresh_jobs(session, now: datetime) -> int:
+    """Move legacy identity failures out of the runnable retry lane.
+
+    These failures need new identity metadata, not another Flashscore request.
+    Keep the durable job and its attempt history for an explicit recovery.
+    """
+    from db.models import TennisPlayerRefreshJob
+
+    jobs = session.query(TennisPlayerRefreshJob).filter(
+        TennisPlayerRefreshJob.status.in_(("queued", "retry")),
+        TennisPlayerRefreshJob.last_error.in_(_PLAYER_REFRESH_IDENTITY_WAIT_ERRORS),
+    ).with_for_update(skip_locked=True).all()
+    for job in jobs:
+        job.status = "blocked"
+        job.attempt_token = None
+        job.lease_until = None
+        job.attempt_started_at = None
+        job.progress_json = {
+            **dict(job.progress_json or {}),
+            "stage": "waiting_for_identity_data",
+            "reason": job.last_error,
+        }
+        job.updated_at = now
+    return len(jobs)
+
+
+def _resume_expired_captcha_player_jobs(session, now: datetime) -> int:
+    """Requeue parked profile work only after the shared Flashscore pause ends."""
+    from db.models import TennisPlayerRefreshJob
+
+    cooldown_until = _flashscore_source_cooldown_until(session)
+    if cooldown_until and cooldown_until > now:
+        return 0
+    jobs = session.query(TennisPlayerRefreshJob).filter(
+        TennisPlayerRefreshJob.status == "blocked",
+        TennisPlayerRefreshJob.last_error == "CAPTCHA_CHALLENGE_ABORTED",
+        TennisPlayerRefreshJob.next_run_at <= now,
+    ).with_for_update(skip_locked=True).all()
+    resumed = 0
+    for job in jobs:
+        retry_at = _flashscore_captcha_retry_at(job.progress_json)
+        if retry_at is None or retry_at > now:
+            continue
+        progress = dict(job.progress_json or {})
+        progress.update({
+            "stage": "queued_after_captcha_cooldown",
+            "previous_error": "CAPTCHA_CHALLENGE_ABORTED",
+            "captcha_cooldown_elapsed_at": now.isoformat(),
+        })
+        job.progress_json = progress
+        job.status = "queued"
+        job.last_error = None
+        job.next_run_at = now
+        job.completed_at = None
+        job.updated_at = now
+        resumed += 1
+    return resumed
+
+
+def _resume_expired_captcha_imports(session, now: datetime) -> int:
+    """Restore archived profile imports after cooldown without losing page checkpoints."""
+    from db.models import FlashscoreImportJob
+
+    cooldown_until = _flashscore_source_cooldown_until(session)
+    if cooldown_until and cooldown_until > now:
+        return 0
+    jobs = session.query(FlashscoreImportJob).filter(
+        FlashscoreImportJob.status == "blocked",
+        FlashscoreImportJob.last_error == "CAPTCHA_CHALLENGE_ABORTED",
+        FlashscoreImportJob.next_run_at <= now,
+    ).with_for_update(skip_locked=True).all()
+    resumed = 0
+    for job in jobs:
+        progress = dict(job.progress_json or {})
+        retry_at = _flashscore_captcha_retry_at(progress)
+        if retry_at is None or retry_at > now:
+            continue
+        progress.update({
+            "stage": "queued_after_captcha_cooldown",
+            "previous_error": "CAPTCHA_CHALLENGE_ABORTED",
+            "captcha_cooldown_elapsed_at": now.isoformat(),
+        })
+        job.progress_json = progress
+        job.status = "queued"
+        job.last_error = None
+        job.next_run_at = now
+        job.attempt_token = None
+        job.lease_until = None
+        job.attempt_started_at = None
+        job.updated_at = now
+        resumed += 1
+    return resumed
+
+
+def _player_refresh_retry_delay(error: str | None, attempts: int) -> timedelta:
+    if error == "SEARCH_COMPLETED_NO_MATCH":
+        return timedelta(days=7)
+    if error and any(marker in error.upper() for marker in ("403", "429", "BLOCKED")):
+        return timedelta(minutes=15)
+    return timedelta(minutes=min(360, 5 * (2 ** min(max(int(attempts or 1) - 1, 0), 6))))
+
+
 def _finish_player_refresh_job(participant_id, attempt_token: str, status: str, error: str | None, progress: dict | None = None) -> bool:
     from db.connection import SessionLocal
     from db.models import TennisPlayerRefreshJob
@@ -896,14 +1253,9 @@ def _finish_player_refresh_job(participant_id, attempt_token: str, status: str, 
             from datetime import timedelta
             job.lease_until = now + timedelta(minutes=5)
         elif status == "retry":
-            from datetime import timedelta
-            if error in {"SEARCH_COMPLETED_NO_MATCH", "SEARCH_CANDIDATES_REJECTED_BY_NAME"}:
-                delay = timedelta(hours=6)
-            elif error and ("403" in error or "429" in error or "BLOCKED" in error):
-                delay = timedelta(minutes=15)
-            else:
-                delay = timedelta(minutes=min(360, 5 * (2 ** min(max(job.attempts - 1, 0), 6))))
-            job.next_run_at = now + delay
+            job.next_run_at = now + _player_refresh_retry_delay(error, job.attempts)
+        elif status == "blocked" and error == "CAPTCHA_CHALLENGE_ABORTED":
+            job.next_run_at = _flashscore_captcha_retry_at(job.progress_json) or now
         else:
             job.next_run_at = now
         job.updated_at = now
@@ -1001,6 +1353,25 @@ def _completed_profile_archive_checkpoint(session, profile_url: str) -> list[dic
     return []
 
 
+def _player_needs_flashscore_identity_for_missing_pbp(session, participant_id) -> bool:
+    """Only resolve a Flashscore ID when an enrolled PBP gap requires it.
+
+    A stale or partial history snapshot remains usable by calculations and is
+    not, by itself, a reason to spend a Flashscore request. Identity lookup is
+    a separate fallback capability for an existing point-history job.
+    """
+    from sqlalchemy import or_
+    from db.models import Event, TennisPointRefreshJob
+
+    return session.query(TennisPointRefreshJob).join(
+        Event, Event.id == TennisPointRefreshJob.event_id,
+    ).filter(
+        or_(Event.participant_a_id == participant_id, Event.participant_b_id == participant_id),
+        TennisPointRefreshJob.status == "waiting_players",
+        TennisPointRefreshJob.last_error == "PLAYER_SOURCE_IDS_MISSING",
+    ).first() is not None
+
+
 def _prepare_one_player(participant_id, participant_name: str, attempt_token: str) -> None:
     from db.connection import SessionLocal
     from db.models import Participant, TennisPlayerMetricSnapshot, TennisPlayerProfile
@@ -1010,6 +1381,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
 
     importer = FlashscoreTennisImporter()
     had_cached_metrics = False
+    had_stored_history = False
     incremental_after = None
     full_scan = True
     resume_after_page = 0
@@ -1050,9 +1422,91 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 if latest_identity is not None and latest_identity.status == "confirmed"
                 else None
             )
-            if profile is not None and participant is not None and not profile.metrics_version:
-                seed_profile_from_archive(session, participant, profile)
-                session.commit()
+            needs_pbp_identity = (
+                _player_needs_flashscore_identity_for_missing_pbp(session, participant_id)
+                if profile is not None and participant is not None else False
+            )
+            if profile is not None and participant is not None:
+                from .player_data_coverage import fresh_coverage, source_capability_enabled
+                cached_history = fresh_coverage(
+                    session, participant_id, as_of=datetime.now(timezone.utc), capability="match_history"
+                )
+                from .player_data_coverage import fresh_partial_history_coverage
+                partial_cached_history = fresh_partial_history_coverage(
+                    session, participant_id, as_of=datetime.now(timezone.utc)
+                )
+                if profile.metrics_version <= 0 or cached_history is None:
+                    # Existing profiles predate the capability ledger; seed
+                    # them once after a fresh batch projection is available.
+                    seed_profile_from_archive(session, participant, profile)
+                    session.commit()
+                    cached_history = fresh_coverage(
+                        session, participant_id, as_of=datetime.now(timezone.utc), capability="match_history"
+                    )
+                    partial_cached_history = fresh_partial_history_coverage(
+                        session, participant_id, as_of=datetime.now(timezone.utc)
+                    )
+                usable_cached_history = cached_history or partial_cached_history
+                if (usable_cached_history and profile.metrics_version > 0 and profile.history_match_count > 0
+                        and profile.metrics_available_at
+                        and profile.metrics_available_at >= datetime.now(timezone.utc) - timedelta(days=7)
+                        and (confirmed_source_id or not needs_pbp_identity)):
+                    # Fresh external history satisfies this refresh job; avoid
+                    # resolving a Flashscore profile for the same archive.
+                    owner.status = "completed"
+                    owner.last_error = None
+                    owner.lease_until = None
+                    owner.progress_json = {
+                        **dict(owner.progress_json or {}),
+                        "stage": ("completed_from_external_cache" if cached_history
+                                  else "completed_from_partial_external_cache"),
+                        "source": usable_cached_history.source,
+                        "checked_at": usable_cached_history.checked_at.isoformat(),
+                        "history_complete": bool(cached_history),
+                    }
+                    profile.sync_status = "available" if cached_history else "partial"
+                    profile.sync_error = None if cached_history else "PARTIAL_HISTORY_COVERAGE"
+                    session.commit()
+                    from .source_metrics import try_record_source_metric
+                    try_record_source_metric(
+                        session.get_bind(), usable_cached_history.source,
+                        prevented_flashscore=1,
+                    )
+                    return
+                if (profile.metrics_version > 0 and profile.history_match_count > 0
+                        and (confirmed_source_id or not needs_pbp_identity)):
+                    # Existing history is still data even when its coverage is
+                    # stale or its provider did not publish a complete ledger
+                    # row. Keep it available to calculations and let the
+                    # low-priority external-source refresh update it; do not
+                    # launch a slow Flashscore scrape just to refresh old data.
+                    now = datetime.now(timezone.utc)
+                    owner.status = "completed"
+                    owner.last_error = None
+                    owner.lease_until = None
+                    owner.attempt_token = None
+                    owner.completed_at = now
+                    owner.progress_json = {
+                        **dict(owner.progress_json or {}),
+                        "stage": "completed_from_stored_history",
+                        "source": "stored_profile_metrics",
+                        "history_match_count": int(profile.history_match_count),
+                        "metrics_available_at": (
+                            profile.metrics_available_at.isoformat()
+                            if profile.metrics_available_at else None
+                        ),
+                        "flashscore_skipped_reason": "STORED_HISTORY_EXISTS",
+                        "pbp_identity_lookup_skipped": not bool(confirmed_source_id),
+                        "external_refresh_pending": True,
+                    }
+                    profile.sync_status = "stale"
+                    profile.sync_error = "STORED_HISTORY_USED_EXTERNAL_REFRESH_PENDING"
+                    session.commit()
+                    from .source_metrics import try_record_source_metric
+                    try_record_source_metric(
+                        session.get_bind(), "stored_profile_metrics", prevented_flashscore=1,
+                    )
+                    return
             identities = (profile.source_identities or {}) if profile else {}
             rejected_source_ids = {
                 row.source_player_id for row in session.query(TennisPlayerIdentityLink).filter_by(
@@ -1065,8 +1519,10 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 else None
             )
             had_cached_metrics = bool(profile and profile.metrics_version > 0)
+            had_stored_history = bool(
+                profile and profile.metrics_version > 0 and profile.history_match_count > 0
+            )
             if profile and profile.last_full_history_scan_at:
-                from datetime import timedelta
                 full_scan = datetime.now(timezone.utc) - profile.last_full_history_scan_at >= timedelta(days=30)
                 if not full_scan:
                     incremental_after = (profile.source_watermark or datetime.now(timezone.utc)) - timedelta(days=30)
@@ -1109,7 +1565,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                     job_progress = {
                         "stage": ("candidate_name_mismatch" if resolved_reason == "SEARCH_CANDIDATES_REJECTED_BY_NAME"
                                   else "confirmed_not_found"),
-                        "retry_after_hours": 6,
+                        "retry_after_hours": 24 * 7,
                         "excluded_rejected_candidates": len(rejected_source_ids),
                         "search_diagnostics": resolved.get("diagnostics", {}),
                     }
@@ -1175,7 +1631,34 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                         },
                         available_at=now,
                     ))
+                    if had_stored_history:
+                        # This refresh may still need an exact Flashscore ID
+                        # for a separate missing PBP capability, but the
+                        # profile's already stored history does not justify a
+                        # full results scrape.
+                        owner.status = "completed"
+                        owner.last_error = None
+                        owner.lease_until = None
+                        owner.attempt_token = None
+                        owner.completed_at = now
+                        owner.progress_json = {
+                            **dict(owner.progress_json or {}),
+                            "stage": "completed_from_stored_history",
+                            "source": "stored_profile_metrics",
+                            "history_match_count": int(profile.history_match_count),
+                            "flashscore_skipped_reason": "STORED_HISTORY_EXISTS",
+                            "identity_lookup_for": "MISSING_PBP_CAPABILITY",
+                            "external_refresh_pending": True,
+                        }
+                        profile.sync_status = "stale"
+                        profile.sync_error = "STORED_HISTORY_USED_EXTERNAL_REFRESH_PENDING"
                     session.commit()
+                    if had_stored_history:
+                        from .source_metrics import try_record_source_metric
+                        try_record_source_metric(
+                            session.get_bind(), "stored_profile_metrics", prevented_flashscore=1,
+                        )
+                        return
                 logger.info("Automatically confirmed Flashscore profile match method=%s participant=%s source_player=%s",
                             confirmation_method, participant_id, source_id)
             else:
@@ -1217,6 +1700,74 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                         "page_checkpoint": {"parser_version": PARSER_VERSION, "pages": resume_pages}}
         if not _finish_player_refresh_job(participant_id, attempt_token, "running", None, job_progress):
             return
+        # Alternative HTTP providers run independently from the Flashscore
+        # dispatcher. Recheck immediately before starting the expensive archive
+        # scrape: a provider may have published usable history while profile
+        # identity was being resolved. Stored history remains useful even when
+        # its coverage is stale; only a separate missing-PBP identity need can
+        # justify the preceding Flashscore identity lookup.
+        alternative_history_source = None
+        stored_history_available = False
+        with SessionLocal() as session:
+            from db.models import TennisPlayerRefreshJob
+            from .player_data_coverage import fresh_coverage, fresh_partial_history_coverage
+
+            owner = session.query(TennisPlayerRefreshJob).filter_by(
+                participant_id=participant_id, attempt_token=attempt_token, status="running"
+            ).filter(TennisPlayerRefreshJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
+            if owner is None:
+                return
+            profile = session.get(TennisPlayerProfile, participant_id, with_for_update=True)
+            participant = session.get(Participant, participant_id)
+            if profile is not None and participant is not None:
+                complete_coverage = fresh_coverage(
+                    session, participant_id, as_of=datetime.now(timezone.utc), capability="match_history"
+                )
+                partial_coverage = fresh_partial_history_coverage(
+                    session, participant_id, as_of=datetime.now(timezone.utc)
+                )
+                if (profile.metrics_version <= 0 or profile.history_match_count <= 0) and (
+                    complete_coverage or partial_coverage
+                ):
+                    seed_profile_from_archive(session, participant, profile)
+                stored_history_available = bool(
+                    profile.metrics_version > 0 and profile.history_match_count > 0
+                )
+                if stored_history_available:
+                    alternative_history_source = (
+                        complete_coverage.source if complete_coverage else
+                        partial_coverage.source if partial_coverage else
+                        "stored_profile_metrics"
+                    )
+                    owner.status = "completed"
+                    owner.last_error = None
+                    owner.lease_until = None
+                    owner.attempt_token = None
+                    owner.completed_at = datetime.now(timezone.utc)
+                    owner.progress_json = {
+                        **dict(owner.progress_json or {}),
+                        "stage": "completed_before_archive_from_alternative_history",
+                        "source": alternative_history_source,
+                        "history_match_count": int(profile.history_match_count),
+                        "flashscore_skipped_reason": "ALTERNATIVE_HISTORY_AVAILABLE",
+                    }
+                    profile.sync_status = (
+                        "available" if complete_coverage else
+                        "partial" if partial_coverage else "stale"
+                    )
+                    profile.sync_error = (
+                        None if complete_coverage else
+                        "PARTIAL_HISTORY_COVERAGE" if partial_coverage else
+                        "STORED_HISTORY_USED_EXTERNAL_REFRESH_PENDING"
+                    )
+                    session.commit()
+        if stored_history_available:
+            from .source_metrics import try_record_source_metric
+            try_record_source_metric(
+                session.get_bind(), alternative_history_source or "stored_profile_metrics",
+                prevented_flashscore=1,
+            )
+            return
         result = _scrape_player_profile_isolated(
             participant_id, attempt_token, profile_url, resume_pages, incremental_after
         )
@@ -1242,8 +1793,14 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
             job_status = "retry"
             job_error = result.reason or result.status
         throttle_signal = f"{getattr(result, 'status', '')} {getattr(result, 'reason', '')}".upper()
-        if any(marker in throttle_signal for marker in ("429", "403", "BLOCKED", "RATE_LIMIT")):
-            _record_flashscore_throttle()
+        if any(marker in throttle_signal for marker in ("429", "403", "BLOCKED", "RATE_LIMIT", "CAPTCHA")):
+            cooldown_until = _record_flashscore_throttle(throttle_signal)
+            if "CAPTCHA" in throttle_signal and cooldown_until:
+                job_progress = {
+                    **job_progress,
+                    "captcha_retry_at": cooldown_until.isoformat(),
+                    "stage": "waiting_for_captcha_cooldown",
+                }
         with SessionLocal() as session:
             from db.models import TennisPlayerRefreshJob
             owner = session.query(TennisPlayerRefreshJob).filter_by(participant_id=participant_id, attempt_token=attempt_token, status="running").filter(TennisPlayerRefreshJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
@@ -1315,6 +1872,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=1)
+        job_status, job_progress = _flashscore_profile_job_outcome(job_status, job_error, job_progress)
         _finish_player_refresh_job(participant_id, attempt_token, job_status, job_error, job_progress)
 
 
@@ -1324,11 +1882,18 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
     from datetime import timedelta
     from db.connection import SessionLocal
     from db.models import Event, Participant, TennisPlayerProfile, TennisPlayerRefreshJob
-    from .player_profiles import enqueue_player_refresh, resolve_participant
+    from .player_profiles import (
+        enqueue_player_refresh,
+        has_unmaterialized_external_results,
+        resolve_participant,
+        seed_profile_from_archive,
+    )
+    from .player_data_coverage import source_capability_enabled
     from .tennis_flashscore import is_doubles_player_display
 
     now = datetime.now(timezone.utc)
     outcomes: dict[str, Any] = {}
+    prevented_flashscore_by_source: dict[str, int] = {}
     with SessionLocal() as session:
         events = session.query(Event).filter(Event.id.in_(request.event_ids), Event.sport_code == "tennis").all()
         for event in events:
@@ -1349,30 +1914,116 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     profile = TennisPlayerProfile(participant_id=participant.id, sync_status="pending")
                     session.add(profile)
                     session.flush()
+                from .player_data_coverage import fresh_coverage
+                history_coverage = fresh_coverage(
+                    session, participant.id, as_of=now, capability="match_history"
+                )
+                from .player_data_coverage import fresh_partial_history_coverage
+                partial_history_coverage = fresh_partial_history_coverage(
+                    session, participant.id, as_of=now
+                )
+                if profile.metrics_version <= 0 or history_coverage is None:
+                    seed_profile_from_archive(session, participant, profile)
+                    history_coverage = fresh_coverage(
+                        session, participant.id, as_of=now, capability="match_history"
+                    )
+                    partial_history_coverage = fresh_partial_history_coverage(
+                        session, participant.id, as_of=now
+                    )
+                # Complete TML coverage can predate a fresh result projection
+                # from an external source. Materialize its confirmed canonical
+                # facts before deciding whether any Flashscore history is needed.
+                if has_unmaterialized_external_results(session, participant, profile):
+                    seed_profile_from_archive(session, participant, profile)
+                    history_coverage = fresh_coverage(
+                        session, participant.id, as_of=now, capability="match_history"
+                    )
+                    partial_history_coverage = fresh_partial_history_coverage(
+                        session, participant.id, as_of=now
+                    )
+                flashscore_fresh = bool(
+                    source_capability_enabled("flashscore", "match_history")
+                    and
+                    profile.last_success_at is not None
+                    and profile.last_success_at >= now - timedelta(days=7)
+                )
+                metrics_materialized_recently = bool(
+                    profile.metrics_available_at is not None
+                    and profile.metrics_available_at >= now - timedelta(days=7)
+                )
+                usable_history_source = (
+                    history_coverage or partial_history_coverage
+                    or ("flashscore" if flashscore_fresh else None)
+                ) if metrics_materialized_recently else None
                 retry_wait = timedelta(hours=6) if profile.sync_status in {"not_found", "ambiguous"} else timedelta(minutes=15)
                 attempt_recent = profile.last_attempt_at is not None and profile.last_attempt_at > now - retry_wait
-                needs_refresh = (
-                    not attempt_recent
-                    and profile.sync_status != "identity_confirmation_required"
-                    and (
-                        profile.metrics_version <= 0
-                        or profile.last_success_at is None
-                        or profile.last_success_at < now - timedelta(days=7)
-                    )
+                has_stored_history = bool(profile.metrics_version > 0 and profile.history_match_count > 0)
+                needs_pbp_identity = (
+                    _player_needs_flashscore_identity_for_missing_pbp(session, participant.id)
+                    if has_stored_history else False
+                )
+                from .player_data_coverage import profile_needs_history_refresh
+                needs_refresh = profile_needs_history_refresh(
+                    metrics_version=profile.metrics_version,
+                    metrics_available_at=profile.metrics_available_at,
+                    as_of=now,
+                    complete_coverage=history_coverage,
+                    partial_coverage=partial_history_coverage,
+                    flashscore_last_success_at=profile.last_success_at,
+                    identity_confirmation_required=(profile.sync_status == "identity_confirmation_required"),
+                    attempt_recent=attempt_recent,
                 )
                 job = session.get(TennisPlayerRefreshJob, participant.id, with_for_update=True)
                 job_active = bool(job and job.status in {"queued", "running", "waiting_confirmation"}
                                   and (job.status in {"queued", "waiting_confirmation"}
                                        or (job.lease_until and job.lease_until > now)))
-                if needs_refresh and not attempt_recent and not job_active:
-                    refresh_job = enqueue_player_refresh(
-                        session, participant.id,
-                        "new_event" if profile.last_success_at is None else "event_refresh",
+                if ((history_coverage or partial_history_coverage) and job
+                        and job.status in {"queued", "retry", "running", "blocked"}
+                        and not needs_pbp_identity):
+                    # Alternative history can appear after a Flashscore job
+                    # was queued or claimed. Revoke its fencing token and
+                    # close the obsolete work item before another source call
+                    # is dispatched; PBP identity work is handled separately.
+                    completed_source = history_coverage or partial_history_coverage
+                    job.status = "completed"
+                    job.last_error = None
+                    job.lease_until = None
+                    job.attempt_token = None
+                    job.completed_at = now
+                    job.progress_json = {
+                        **dict(job.progress_json or {}),
+                        "stage": "completed_from_external_cache",
+                        "source": completed_source.source,
+                        "checked_at": completed_source.checked_at.isoformat(),
+                        "history_complete": bool(history_coverage),
+                        "flashscore_skipped_reason": "ALTERNATIVE_HISTORY_AVAILABLE",
+                    }
+                    job.updated_at = now
+                    job_active = False
+                    source_name = completed_source.source
+                    prevented_flashscore_by_source[source_name] = (
+                        prevented_flashscore_by_source.get(source_name, 0) + 1
                     )
-                    if refresh_job.status != "waiting_confirmation":
-                        profile.sync_status = "running"
-                        profile.last_attempt_at = now
-                elif job_active and job.status != "waiting_confirmation":
+                if ((history_coverage or partial_history_coverage) and not job_active
+                        and profile.sync_status not in {"identity_confirmation_required", "ambiguous"}):
+                    profile.sync_status = "available" if history_coverage else "partial"
+                    profile.sync_error = None if history_coverage else "PARTIAL_HISTORY_COVERAGE"
+                if needs_refresh and not attempt_recent and not job_active:
+                    if has_stored_history and not needs_pbp_identity:
+                        # A stale snapshot remains useful; background providers
+                        # refresh it. Do not turn every new match into another
+                        # Flashscore profile search/scrape.
+                        profile.sync_status = "stale"
+                        profile.sync_error = "STORED_HISTORY_USED_EXTERNAL_REFRESH_PENDING"
+                    else:
+                        refresh_job = enqueue_player_refresh(
+                            session, participant.id,
+                            "new_event" if profile.last_success_at is None else "event_refresh",
+                        )
+                        if refresh_job.status != "waiting_confirmation":
+                            profile.sync_status = "running"
+                            profile.last_attempt_at = now
+                elif job_active and job.status != "waiting_confirmation" and usable_history_source is None:
                     profile.sync_status = "running"
                 key = str(participant.id)
                 sides.append({
@@ -1382,19 +2033,42 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     "history_match_count": profile.history_match_count,
                     "metrics_version": profile.metrics_version,
                     "metrics_available_at": profile.metrics_available_at.isoformat() if profile.metrics_available_at else None,
+                    "history_source": (history_coverage.source if history_coverage else
+                                       partial_history_coverage.source if partial_history_coverage else
+                                       "flashscore" if flashscore_fresh else
+                                       "stored_profile_metrics" if profile.history_match_count > 0 else None),
+                    "history_checked_at": (history_coverage.checked_at.isoformat() if history_coverage else
+                                            partial_history_coverage.checked_at.isoformat() if partial_history_coverage else
+                                            profile.last_success_at.isoformat() if flashscore_fresh else None),
+                    "history_source_watermark": (history_coverage.source_watermark.isoformat()
+                                                  if history_coverage and history_coverage.source_watermark else
+                                                  partial_history_coverage.source_watermark.isoformat()
+                                                  if partial_history_coverage and partial_history_coverage.source_watermark else None),
+                    "history_coverage_status": (history_coverage.status if history_coverage else
+                                                partial_history_coverage.status if partial_history_coverage else
+                                                "available" if flashscore_fresh else None),
+                    "history_complete": (history_coverage.complete if history_coverage else
+                                         partial_history_coverage.complete if partial_history_coverage else
+                                         True if flashscore_fresh else None),
                     "sync_error": profile.sync_error,
-                    # Partial first imports are not enough to claim we fetched the player's history.
-                    # Existing cached metrics remain usable when a later refresh is incomplete.
+                    # Partial profile snapshots can serve calculations, while their
+                    # incomplete coverage remains explicit in the API response.
                     "ready": bool(
                         profile.metrics_version > 0
                         and profile.history_match_count > 0
-                        and profile.last_success_at is not None
-                        and profile.last_success_at >= now - timedelta(days=7)
+                        and usable_history_source is not None
                     ),
                 })
             ready = any(side.get("ready", False) for side in sides)
             outcomes[str(event.id)] = {"ready": ready, "players": sides}
         session.commit()
+        if prevented_flashscore_by_source:
+            from .source_metrics import try_record_source_metric
+            engine = session.get_bind()
+            for source_name, count in prevented_flashscore_by_source.items():
+                try_record_source_metric(
+                    engine, source_name, prevented_flashscore=count,
+                )
     return {"events": outcomes, "ready_event_ids": [event_id for event_id, value in outcomes.items() if value["ready"]]}
 
 
@@ -1605,16 +2279,50 @@ def _player_refresh_claim_progress(progress: dict[str, Any] | None, attempt: int
     )
 
 
+def _record_history_cache_preventions(engine, source_counts: dict[str, int]) -> None:
+    """Count obsolete profile jobs satisfied before Flashscore dispatch."""
+    if not source_counts:
+        return
+    from .source_metrics import try_record_source_metric
+    for source, count in source_counts.items():
+        if count > 0:
+            try_record_source_metric(engine, source, prevented_flashscore=count)
+
+
+def _external_history_cache_job_filters(refresh_job, profile, coverage, now, coverage_filter):
+    """Eligibility for closing non-running work from fresh provider history.
+
+    Deliberately excludes ``next_run_at``: a retry delay controls when another
+    scrape may run, but must not delay completion once another source has met
+    the data need. A blocked job has no live lease and is obsolete under the
+    same capability conditions as queued/retry work.
+    """
+    cutoff = now - timedelta(days=7)
+    column = lambda model, name: getattr(model, name) if hasattr(model, name) else model.c[name]
+    return (
+        column(refresh_job, "status").in_(("queued", "retry", "blocked")),
+        column(profile, "metrics_version") > 0,
+        column(profile, "history_match_count") > 0,
+        column(profile, "metrics_available_at") >= cutoff,
+        column(coverage, "capability") == "match_history",
+        coverage_filter,
+        column(coverage, "checked_at") <= now,
+        column(coverage, "checked_at") >= cutoff,
+    )
+
+
 @app.post("/api/tennis-history/jobs/dispatch")
 async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]:
     """Claim durable profile jobs and hand them to the isolated scraper executor."""
     from datetime import timedelta
-    from sqlalchemy import func, or_, select, text
+    from sqlalchemy import and_, func, or_, select, text
     from db.connection import SessionLocal
     from db.models import (
         Event, ManualConfirmationDecision, ManualConfirmationRequest, Participant,
         TennisPlayerIdentityLink, TennisPlayerProfile, TennisPlayerRefreshJob,
+        TennisPointRefreshJob,
     )
+    from db.models.external_tennis import TennisPlayerDataCoverage
     from .player_profiles import enqueue_player_refresh
     from .tennis_flashscore import (
         is_auto_confirmable_player_match, is_doubles_player_display, is_exact_player_name_match,
@@ -1626,7 +2334,14 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
     skipped_doubles = 0
     auto_confirmed_exact = 0
     with SessionLocal() as session:
+        cache_preventions: dict[str, int] = {}
+
+        def record_cache_preventions() -> None:
+            _record_history_cache_preventions(session.get_bind(), cache_preventions)
+
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext('neurobet:tennis-player-dispatch'))"))
+        parked_identity_jobs = _park_terminal_identity_refresh_jobs(session, now)
+        resumed_captcha_jobs = _resume_expired_captcha_player_jobs(session, now)
         pending_confirmations = session.query(ManualConfirmationRequest).filter_by(
             kind="player_profile", status="pending"
         ).order_by(ManualConfirmationRequest.created_at, ManualConfirmationRequest.id).with_for_update(
@@ -1830,6 +2545,132 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
             resumed_orphaned_confirmations += int(
                 resume_player_job_after_closed_confirmation(job, profile, now)
             )
+        # Complete queued work from cache only when the matching source is
+        # enabled for match-history calculations. A disabled provider's fresh
+        # snapshot must not suppress a required fallback refresh.
+        from .player_data_coverage import cache_eligible_history_sources
+        enabled_history_sources, enabled_partial_sources = cache_eligible_history_sources()
+        cache_coverage_predicates = []
+        if enabled_history_sources:
+            cache_coverage_predicates.append(and_(
+                TennisPlayerDataCoverage.source.in_(enabled_history_sources),
+                TennisPlayerDataCoverage.status == "available",
+                TennisPlayerDataCoverage.complete.is_(True),
+            ))
+        if enabled_partial_sources:
+            cache_coverage_predicates.append(and_(
+                TennisPlayerDataCoverage.source.in_(enabled_partial_sources),
+                TennisPlayerDataCoverage.status == "partial",
+                TennisPlayerDataCoverage.complete.is_(False),
+            ))
+        # Batch-archive refreshes already satisfied by a recently checked
+        # enabled provider. Leave running jobs alone; their worker owns the live lease.
+        cached_jobs = session.query(TennisPlayerRefreshJob).join(
+            TennisPlayerProfile,
+            TennisPlayerProfile.participant_id == TennisPlayerRefreshJob.participant_id,
+        ).join(
+            TennisPlayerDataCoverage,
+            TennisPlayerDataCoverage.participant_id == TennisPlayerProfile.participant_id,
+        ).filter(*_external_history_cache_job_filters(
+            TennisPlayerRefreshJob,
+            TennisPlayerProfile,
+            TennisPlayerDataCoverage,
+            now,
+            or_(*cache_coverage_predicates) if cache_coverage_predicates else False,
+        )).with_for_update(of=TennisPlayerRefreshJob, skip_locked=True).all()
+        completed_from_cache = 0
+        for job in cached_jobs:
+            coverage_rows = session.query(TennisPlayerDataCoverage).filter(
+                TennisPlayerDataCoverage.participant_id == job.participant_id,
+                TennisPlayerDataCoverage.capability == "match_history",
+                TennisPlayerDataCoverage.checked_at >= now - timedelta(days=7),
+                TennisPlayerDataCoverage.checked_at <= now,
+                or_(*cache_coverage_predicates) if cache_coverage_predicates else False,
+            ).order_by(TennisPlayerDataCoverage.checked_at.desc()).all()
+            coverage = next((row for row in coverage_rows if (
+                row.status == "available" or
+                (row.evidence_json or {}).get("usable_for_metrics") is True
+            )), None)
+            if coverage is None:
+                # Another supported source may satisfy the query; retrieve the
+                # matching row rather than assuming TennisMyLife.
+                coverage = session.query(TennisPlayerDataCoverage).filter(
+                    TennisPlayerDataCoverage.participant_id == job.participant_id,
+                    TennisPlayerDataCoverage.capability == "match_history",
+                    TennisPlayerDataCoverage.status == "available",
+                    TennisPlayerDataCoverage.complete.is_(True),
+                    TennisPlayerDataCoverage.checked_at >= now - timedelta(days=7),
+                    TennisPlayerDataCoverage.checked_at <= now,
+                ).order_by(TennisPlayerDataCoverage.checked_at.desc()).first()
+            if coverage is None:
+                continue
+            job.status = "completed"
+            job.last_error = None
+            job.lease_until = None
+            job.attempt_token = None
+            job.completed_at = now
+            job.progress_json = {
+                **dict(job.progress_json or {}),
+                "stage": ("completed_from_external_cache" if coverage.status == "available"
+                          else "completed_from_partial_external_cache"),
+                "source": coverage.source, "checked_at": coverage.checked_at.isoformat(),
+                "history_complete": coverage.complete,
+            }
+            job.updated_at = now
+            profile = session.get(TennisPlayerProfile, job.participant_id)
+            if profile and profile.sync_status not in {"identity_confirmation_required", "ambiguous"}:
+                profile.sync_status = "available" if coverage.complete else "partial"
+                profile.sync_error = None if coverage.complete else "PARTIAL_HISTORY_COVERAGE"
+            completed_from_cache += 1
+            cache_preventions[coverage.source] = cache_preventions.get(coverage.source, 0) + 1
+        # Existing history is still usable when its coverage is stale. Close
+        # queued profile work immediately unless a concrete PBP gap needs a
+        # Flashscore identity; this avoids draining the backlog through no-op
+        # scraper attempts one player at a time.
+        pbp_identity_demand = select(TennisPointRefreshJob.event_id).join(
+            Event, Event.id == TennisPointRefreshJob.event_id,
+        ).where(
+            or_(Event.participant_a_id == TennisPlayerRefreshJob.participant_id,
+                Event.participant_b_id == TennisPlayerRefreshJob.participant_id),
+            TennisPointRefreshJob.status == "waiting_players",
+            TennisPointRefreshJob.last_error == "PLAYER_SOURCE_IDS_MISSING",
+        ).correlate(TennisPlayerRefreshJob).exists()
+        stored_history_jobs = session.query(TennisPlayerRefreshJob).join(
+            TennisPlayerProfile,
+            TennisPlayerProfile.participant_id == TennisPlayerRefreshJob.participant_id,
+        ).filter(
+            TennisPlayerRefreshJob.status.in_(("queued", "retry", "blocked")),
+            TennisPlayerProfile.metrics_version > 0,
+            TennisPlayerProfile.history_match_count > 0,
+            ~pbp_identity_demand,
+            ~TennisPlayerRefreshJob.participant_id.in_(pending_player_ids or {uuid.UUID(int=0)}),
+        ).with_for_update(of=TennisPlayerRefreshJob, skip_locked=True).all()
+        completed_from_stored_history = 0
+        for job in stored_history_jobs:
+            profile = session.get(TennisPlayerProfile, job.participant_id, with_for_update=True)
+            job.status = "completed"
+            job.last_error = None
+            job.attempt_token = None
+            job.lease_until = None
+            job.completed_at = now
+            job.progress_json = {
+                **dict(job.progress_json or {}),
+                "stage": "completed_from_stored_history",
+                "source": "stored_profile_metrics",
+                "history_match_count": int(profile.history_match_count),
+                "metrics_available_at": profile.metrics_available_at.isoformat()
+                    if profile.metrics_available_at else None,
+                "flashscore_skipped_reason": "STORED_HISTORY_EXISTS",
+                "external_refresh_pending": True,
+            }
+            job.updated_at = now
+            if profile and profile.sync_status not in {"identity_confirmation_required", "ambiguous"}:
+                profile.sync_status = "stale"
+                profile.sync_error = "STORED_HISTORY_USED_EXTERNAL_REFRESH_PENDING"
+            completed_from_stored_history += 1
+            cache_preventions["stored_profile_metrics"] = (
+                cache_preventions.get("stored_profile_metrics", 0) + 1
+            )
         # If every profile slot is occupied by an old event, revoke those
         # leases before dispatching current-event work. The isolated scraper
         # checks its fencing token while navigating and terminates its child;
@@ -1869,11 +2710,14 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
                     preempted_stale_jobs += 1
         if preempted_stale_jobs:
             session.commit()
+            record_cache_preventions()
             return {"status": "dispatched", "claimed_count": 0, "active_count": 0,
                     "preempted_stale_jobs": preempted_stale_jobs,
+                    "parked_identity_jobs": parked_identity_jobs,
                     "skipped_doubles": skipped_doubles,
                     "auto_confirmed_exact": auto_confirmed_exact,
                     "resumed_orphaned_confirmations": resumed_orphaned_confirmations,
+                    "completed_from_stored_history": completed_from_stored_history,
                     "concurrency_limit": config.flashscore_tennis_profile_concurrency}
         active = session.query(func.count(TennisPlayerRefreshJob.participant_id)).filter(
             TennisPlayerRefreshJob.status == "running",
@@ -1882,7 +2726,8 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
         # ``limit`` caps claims by this dispatch call; the configured value caps
         # leases across the current-match and backlog executors together.
         concurrency = max(1, config.flashscore_tennis_profile_concurrency)
-        slots = max(0, min(limit, concurrency - active))
+        source_cooldown_until = _flashscore_source_paused(session, now=now)
+        slots = 0 if source_cooldown_until else max(0, min(limit, concurrency - active))
         jobs_query = select(TennisPlayerRefreshJob).where(
                 or_(
                     TennisPlayerRefreshJob.status == "queued",
@@ -1941,6 +2786,7 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
             job.updated_at = now
             claimed.append((participant.id, participant.canonical_name, job.attempt_token))
         session.commit()
+        record_cache_preventions()
     for participant_id, participant_name, attempt_token in claimed:
         from .flashscore_executor_context import submit_blocking
         submit_blocking(_prepare_one_player, participant_id, participant_name, attempt_token)
@@ -1949,6 +2795,11 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
             "auto_confirmed_exact": auto_confirmed_exact,
             "preempted_stale_jobs": 0,
             "resumed_orphaned_confirmations": resumed_orphaned_confirmations,
+            "completed_from_external_cache": completed_from_cache,
+            "completed_from_stored_history": completed_from_stored_history,
+            "parked_identity_jobs": parked_identity_jobs,
+            "resumed_captcha_jobs": resumed_captcha_jobs,
+            "source_cooldown_until": source_cooldown_until.isoformat() if source_cooldown_until else None,
             "concurrency_limit": concurrency}
 
 
@@ -1994,9 +2845,19 @@ def _run_point_refresh(event_id: str, token: str) -> None:
         result = collect_event_point_history(
             event_id, token, source_access=partial(_flashscore_source_access, source_priority)
         )
-        error = None if result.get("status") == "available" else str(
+        cached_alternative = bool(
+            result.get("cached") and result.get("source")
+            and result.get("status") in {"available", "partial"}
+        )
+        error = None if result.get("status") == "available" or cached_alternative else str(
             result.get("reason") or result.get("status") or "unavailable"
         )
+        if error is None and cached_alternative:
+            # Keep avoided Flashscore calls visible in the same rolling source
+            # metrics used for external player-history cache hits.
+            from .source_metrics import try_record_prevented_flashscore
+            with SessionLocal() as metric_session:
+                try_record_prevented_flashscore(metric_session.get_bind(), result["source"])
     except Exception as exc:
         logger.exception("Tennis point history refresh failed event=%s", event_id)
         result, error = {}, type(exc).__name__
@@ -2010,21 +2871,35 @@ def _run_point_refresh(event_id: str, token: str) -> None:
         if job is None:
             return
         finalized = bool(event and event.finished_at is not None and error is None)
-        blocked = bool(error and ("BLOCKED" in error.upper() or "429" in error or "403" in error))
+        blocked = bool(error and ("BLOCKED" in error.upper() or "429" in error or "403" in error
+                                  or "CAPTCHA" in error.upper()))
         waiting_confirmation = error in {"ambiguous", "waiting_confirmation"}
+        source_cooldown_until = None
         if blocked:
-            _record_flashscore_throttle()
+            source_cooldown_until = _record_flashscore_throttle(error)
         job.status = ("waiting_confirmation" if waiting_confirmation else
                       "finalized" if finalized else
-                      "completed" if error is None else ("blocked" if blocked else "retry"))
+                      "completed" if error is None else
+                      ("blocked" if blocked or error == "SOURCE_CAPABILITY_DISABLED" else "retry"))
+        partial_alternative = bool(
+            result.get("cached") and result.get("status") == "partial"
+            and result.get("source")
+        )
         job.last_error = ("MATCH_CONFIRMATION_REQUIRED" if waiting_confirmation else
-                          "FINALIZED" if finalized else (error[:128] if error else None))
+                          "FINALIZED_WITH_PARTIAL_ALTERNATIVE" if finalized and partial_alternative else
+                          "FINALIZED" if finalized else
+                          "ALTERNATIVE_PBP_PARTIAL" if partial_alternative else
+                          (error[:128] if error else None))
         job.attempt_token = None
         job.lease_until = None
         from .config import config
-        backoff = 900 if blocked else min(900, config.flashscore_tennis_point_poll_seconds * (2 ** min(job.attempts, 5)))
-        job.next_run_at = (datetime.now(timezone.utc) if waiting_confirmation else
-                           datetime.now(timezone.utc) + timedelta(seconds=config.flashscore_tennis_point_poll_seconds if error is None else backoff))
+        backoff = (6 * 3600 if error == "SOURCE_CAPABILITY_DISABLED" else
+                   900 if blocked else
+                   min(900, config.flashscore_tennis_point_poll_seconds * (2 ** min(job.attempts, 5))))
+        retry_at = (datetime.now(timezone.utc) + timedelta(seconds=backoff))
+        if source_cooldown_until and "CAPTCHA" in str(error or "").upper():
+            retry_at = max(retry_at, source_cooldown_until)
+        job.next_run_at = datetime.now(timezone.utc) if waiting_confirmation else retry_at
         job.updated_at = datetime.now(timezone.utc)
         _record_point_job_event(session, job, job.updated_at, result.get("source_match_id"))
         session.commit()
@@ -2060,12 +2935,10 @@ def _enqueue_source_point_refresh(session, source_match_id: str, source_url: str
         ))
     elif job.status != "completed":
         job.source_url = normalized_url
-        if job.status != "running":
-            job.status = "queued"
-            job.next_run_at = now
-            job.last_error = None
-            job.attempt_token = None
-            job.lease_until = None
+        # Coalescing a new match observation must not bypass a retry backoff or
+        # reopen a terminal/blocked job. The worker owns transitions out of
+        # queued/retry; explicit operator actions own transitions out of
+        # blocked/failed.
         job.updated_at = now
     return True
 
@@ -2083,6 +2956,8 @@ def _claim_source_point_history_jobs() -> list[tuple[str, str, str]]:
     claimed: list[tuple[str, str, str]] = []
     with SessionLocal() as session:
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext('neurobet:tennis-source-point-dispatch'))"))
+        if _flashscore_source_paused(session, now=now):
+            return []
         # Source-only PBP uses the background browser lane. Leave live PBP on
         # its reserved lane and don't claim work behind another long browser job.
         # Worker lane ownership already prevents a second source task from
@@ -2170,6 +3045,16 @@ def _finish_source_point_refresh_job(
         return True
 
 
+def _source_point_refresh_retry_delay(reason: str, attempts: int) -> timedelta:
+    """Back off repeated source misses/contention without polling every event tick."""
+    normalized = (reason or "").upper()
+    if "CAPTCHA" in normalized:
+        return timedelta(hours=_flashscore_captcha_cooldown_hours())
+    base_minutes = 15 if "BLOCKED" in normalized or "429" in normalized or "403" in normalized else 5
+    exponent = max(0, min(int(attempts or 1) - 1, 4))
+    return timedelta(minutes=min(base_minutes * (2 ** exponent), 60))
+
+
 def _run_source_point_refresh(source_match_id: str, source_url: str, token: str) -> None:
     from .point_history import collect_source_point_history
     stop = threading.Event()
@@ -2177,23 +3062,44 @@ def _run_source_point_refresh(source_match_id: str, source_url: str, token: str)
         target=_run_source_point_heartbeat, args=(source_match_id, token, stop), daemon=True
     )
     heartbeat.start()
+    source_cooldown_until = None
     try:
         result = collect_source_point_history(
             source_match_id, source_url, token,
             source_access=partial(_flashscore_source_access, "live"),
         )
         result_status = str(result.get("status") or "unavailable")
+        reason = str(result.get("reason") or result_status)
+        if "CAPTCHA" in reason.upper():
+            source_cooldown_until = _record_flashscore_throttle(reason)
         if result_status == "available":
             status, error, retry_after = "completed", None, None
         elif result_status == "rejected":
             status, error, retry_after = "failed", str(result.get("reason") or result_status), None
         else:
             status = "retry"
-            error = str(result.get("reason") or result_status)
-            retry_after = timedelta(minutes=15 if "BLOCKED" in error.upper() or "429" in error or "403" in error else 5)
+            error = reason
+            from db.connection import SessionLocal
+            from db.models import TennisPointSourceRefreshJob
+            with SessionLocal() as session:
+                job = session.query(TennisPointSourceRefreshJob).filter_by(
+                    source_match_id=source_match_id, attempt_token=token, status="running"
+                ).first()
+                attempts = job.attempts if job is not None else 1
+            retry_after = _source_point_refresh_retry_delay(error, attempts)
+            if source_cooldown_until:
+                retry_after = max(retry_after, source_cooldown_until - datetime.now(timezone.utc))
     except Exception as exc:
         logger.exception("Source-keyed PBP refresh failed source_match_id=%s", source_match_id)
-        status, error, retry_after = "retry", type(exc).__name__, timedelta(minutes=5)
+        from db.connection import SessionLocal
+        from db.models import TennisPointSourceRefreshJob
+        with SessionLocal() as session:
+            job = session.query(TennisPointSourceRefreshJob).filter_by(
+                source_match_id=source_match_id, attempt_token=token, status="running"
+            ).first()
+            attempts = job.attempts if job is not None else 1
+        status, error = "retry", type(exc).__name__
+        retry_after = _source_point_refresh_retry_delay(error, attempts)
     finally:
         stop.set()
         heartbeat.join(timeout=1)
@@ -2315,6 +3221,18 @@ def auto_resolve_exact_match_confirmations(limit: int = 100) -> dict[str, int]:
     return {"resolved": resolved, "left_for_review": skipped}
 
 
+def _stale_match_lookup_is_live_again(job, event, now: datetime) -> bool:
+    """A stale lookup is resumable only when its exact Fonbet event is fresh live again."""
+    return bool(
+        job is not None and event is not None
+        and job.status == "waiting_match"
+        and job.last_error == "EVENT_NO_LONGER_FRESH_LIVE"
+        and event.is_live and event.finished_at is None
+        and event.last_seen_at is not None
+        and event.last_seen_at >= now - timedelta(seconds=90)
+    )
+
+
 def _run_match_lookup(event_id: str, token: str) -> None:
     from datetime import timedelta
     from db.connection import SessionLocal
@@ -2341,7 +3259,10 @@ def _run_match_lookup(event_id: str, token: str) -> None:
         if (not event.is_live or event.finished_at is not None or not event.last_seen_at
                 or event.last_seen_at < now - timedelta(seconds=90)):
             job.status = "waiting_match"; job.last_error = "EVENT_NO_LONGER_FRESH_LIVE"
-            job.next_run_at = now + timedelta(minutes=10); job.attempt_token = None; job.lease_until = None
+            # This is a dependency wait, not a timed retry. The dispatcher
+            # watches active Fonbet events and will resume this job if the
+            # same event becomes fresh live again.
+            job.next_run_at = now; job.attempt_token = None; job.lease_until = None
             job.updated_at = now; session.commit(); return
         player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
         player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
@@ -2413,9 +3334,15 @@ def _run_match_lookup(event_id: str, token: str) -> None:
         else:
             job.status = "retry"
             job.last_error = error or ("NO_ALTERNATIVE_MATCH_DATA" if require_manual_confirmation else "LIVE_MATCH_NOT_FOUND")
-            job.next_run_at = now + (timedelta(minutes=15) if error and ("403" in error or "429" in error or "BLOCKED" in error)
-                                     else timedelta(hours=6) if require_manual_confirmation and not error
-                                     else timedelta(seconds=60))
+            if "CAPTCHA" in str(job.last_error).upper():
+                cooldown_until = _record_flashscore_throttle(job.last_error)
+            else:
+                cooldown_until = None
+            retry_at = now + (
+                timedelta(hours=6) if require_manual_confirmation and not error
+                else _live_match_lookup_retry_delay(job.last_error, job.attempts)
+            )
+            job.next_run_at = max(retry_at, cooldown_until) if cooldown_until else retry_at
         job.attempt_token = None; job.lease_until = None; job.updated_at = now
         session.commit()
 
@@ -2424,9 +3351,12 @@ def _run_match_lookup(event_id: str, token: str) -> None:
 async def dispatch_tennis_match_search(limit: int = 8) -> Dict[str, Any]:
     """Create, coalesce, and dispatch durable lookups for live tennis matches."""
     from datetime import timedelta
-    from sqlalchemy import func, or_, select, text
+    from sqlalchemy import case, func, or_, select, text
     from db.connection import SessionLocal
     from db.models import Event, ManualConfirmationRequest, TennisMatchLookupJob, TennisPointMatchLink
+    from .player_data_coverage import source_capability_enabled
+    if not source_capability_enabled("flashscore", "point_by_point"):
+        return {"status": "source_disabled", "claimed_count": 0, "active_count": 0}
     now = datetime.now(timezone.utc)
     claimed = []
     with SessionLocal() as session:
@@ -2457,12 +3387,26 @@ async def dispatch_tennis_match_search(limit: int = 8) -> Dict[str, Any]:
                 continue
             if job is None:
                 initial_status = "queued" if player_a_id and player_b_id and not has_source else ("matched" if has_source else "waiting_players")
-                job = TennisMatchLookupJob(event_id=event.id, status=initial_status, next_run_at=now)
+                job = TennisMatchLookupJob(event_id=event.id, status=initial_status,
+                    last_error="PLAYER_SOURCE_IDS_MISSING" if initial_status == "waiting_players" else None,
+                    next_run_at=now)
                 session.add(job); session.flush()
             elif has_source:
                 job.status = "matched"; job.last_error = None
+            elif _stale_match_lookup_is_live_again(job, event, now):
+                if player_a_id and player_b_id:
+                    # Preserve the stale reason through enqueue so this retry
+                    # stays behind every ordinary live lookup in the ordering.
+                    job.status = "queued"; job.next_run_at = now; job.updated_at = now
+                else:
+                    job.status = "waiting_players"; job.last_error = "PLAYER_SOURCE_IDS_MISSING"
+                    job.next_run_at = now; job.updated_at = now
             elif job.status == "waiting_players" and player_a_id and player_b_id:
-                job.status = "queued"; job.next_run_at = now; job.updated_at = now
+                job.status = "queued"; job.last_error = None
+                job.next_run_at = now; job.updated_at = now
+            elif job.status == "waiting_players" and not job.last_error:
+                job.last_error = "PLAYER_SOURCE_IDS_MISSING"
+                job.updated_at = now
             elif job.status == "retry" and job.next_run_at <= now:
                 job.status = "queued"; job.next_run_at = now; job.updated_at = now
             elif job.status == "waiting_confirmation":
@@ -2477,11 +3421,20 @@ async def dispatch_tennis_match_search(limit: int = 8) -> Dict[str, Any]:
         active = session.query(func.count(TennisMatchLookupJob.event_id)).filter(
             TennisMatchLookupJob.status == "running", TennisMatchLookupJob.lease_until > now).scalar() or 0
         concurrency = min(2, max(1, limit))
-        slots = max(0, min(max(1, min(limit, 20)), concurrency - active))
+        source_cooldown_until = _flashscore_source_paused(session, now=now)
+        slots = 0 if source_cooldown_until else max(
+            0, min(max(1, min(limit, 20)), concurrency - active)
+        )
+        stale_live_priority = case(
+            (TennisMatchLookupJob.last_error == "EVENT_NO_LONGER_FRESH_LIVE", 1),
+            else_=0,
+        )
         jobs = session.execute(select(TennisMatchLookupJob).where(
             or_(TennisMatchLookupJob.status == "queued",
                 (TennisMatchLookupJob.status == "running") & (TennisMatchLookupJob.lease_until <= now)),
-            TennisMatchLookupJob.next_run_at <= now).order_by(TennisMatchLookupJob.next_run_at)
+            TennisMatchLookupJob.next_run_at <= now).order_by(
+                stale_live_priority, TennisMatchLookupJob.next_run_at
+            )
             .limit(slots).with_for_update(skip_locked=True)).scalars().all() if slots else []
         for job in jobs:
             job.status = "running"; job.attempts += 1; job.attempt_token = str(uuid.uuid4())
@@ -2491,12 +3444,36 @@ async def dispatch_tennis_match_search(limit: int = 8) -> Dict[str, Any]:
     for event_id, token in claimed:
         from .flashscore_executor_context import submit_blocking
         submit_blocking(_run_match_lookup, event_id, token)
-    return {"status": "dispatched", "claimed_count": len(claimed), "active_count": active + len(claimed)}
+    return {"status": "source_cooldown" if source_cooldown_until else "dispatched",
+            "claimed_count": len(claimed), "active_count": active + len(claimed),
+            "source_cooldown_until": source_cooldown_until.isoformat() if source_cooldown_until else None}
+
+
+def _finalize_historical_alternative_pbp(session, event, job, alternative, now):
+    """Close an archive PBP demand from a verified local alternative tape."""
+    from db.models import TennisPointRefreshJob
+
+    if job is not None and job.status == "running":
+        # An active lease owns the completion path and will observe the same
+        # local archive before it can issue a Flashscore request.
+        return job
+    if job is None:
+        job = TennisPointRefreshJob(event_id=event.id, status="finalized",
+            next_run_at=now, updated_at=now)
+        session.add(job)
+    else:
+        job.status = "finalized"
+        job.attempt_token = None
+        job.lease_until = None
+        job.updated_at = now
+    partial = alternative.get("status") != "available"
+    job.last_error = "FINALIZED_WITH_PARTIAL_ALTERNATIVE" if partial else "FINALIZED_WITH_ALTERNATIVE_PBP"
+    return job
 
 
 @app.post("/api/tennis-history/archive-backfill/dispatch")
 async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
-    """Enrol completed Fonbet singles whose Flashscore result history is known.
+    """Enrol completed Fonbet singles, preferring stored alternative PBP first.
 
     This is deliberately a database-only scheduling step. The existing durable
     point-refresh queue performs browser work, with archive priority and the
@@ -2518,7 +3495,8 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     limit = max(1, min(limit, 20))
     counts = {"scanned": 0, "queued": 0, "waiting_players": 0,
-              "waiting_match": 0, "waiting_confirmation": 0, "already_complete": 0}
+              "waiting_match": 0, "waiting_confirmation": 0, "already_complete": 0,
+              "alternative_pbp": 0, "alternative_pbp_partial": 0}
     with SessionLocal() as session:
         # The full completed archive is eligible for training-data collection;
         # the +6h forecasting window does not apply to this historical queue.
@@ -2644,6 +3622,21 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
             if job and job.status == "finalized":
                 counts["already_complete"] += 1
                 continue
+            # The archive route used to demand Flashscore player IDs before
+            # attempting the stored API-Tennis/MCP tapes. Resolve those local
+            # archives first so a complete alternative never creates a slow
+            # Flashscore profile/search job. The linker is fail-closed on
+            # canonical participants, date/tournament evidence and orientation.
+            from .point_history import usable_alternative_history_for_event
+            alternative = usable_alternative_history_for_event(session, event, as_of=now)
+            if alternative:
+                job = _finalize_historical_alternative_pbp(session, event, job, alternative, now)
+                jobs[event.id] = job
+                partial = alternative.get("status") != "available"
+                if job.status == "finalized":
+                    _record_point_job_event(session, job, now, alternative.get("source_match_id"))
+                counts["alternative_pbp_partial" if partial else "alternative_pbp"] += 1
+                continue
             current_links = links_by_event.get(event.id, {})
             pending_confirmation = str(event.id) in pending_confirmation_event_ids
             if pending_confirmation:
@@ -2761,6 +3754,39 @@ async def dispatch_live_point_history(limit: int = 8) -> Dict[str, Any]:
     return await _dispatch_live_point_history(limit)
 
 
+def _resume_source_disabled_point_jobs(session, now: datetime) -> int:
+    """Requeue attempts parked only because the Flashscore PBP gate was off."""
+    from db.models import TennisPointRefreshJob
+    jobs = session.query(TennisPointRefreshJob).filter_by(
+        status="blocked", last_error="SOURCE_CAPABILITY_DISABLED"
+    ).with_for_update(skip_locked=True).all()
+    for job in jobs:
+        job.status = "queued"
+        job.last_error = None
+        job.next_run_at = now
+        job.updated_at = now
+    return len(jobs)
+
+
+def _park_point_jobs_waiting_for_player_ids(session, now: datetime) -> int:
+    """Move legacy runnable PBP jobs with missing player IDs to dependency wait."""
+    from datetime import timedelta
+    from db.models import TennisPointRefreshJob
+
+    jobs = session.query(TennisPointRefreshJob).filter(
+        TennisPointRefreshJob.last_error == "PLAYER_SOURCE_IDS_MISSING",
+        TennisPointRefreshJob.status.in_(("queued", "retry", "blocked")),
+    ).with_for_update(skip_locked=True).all()
+    for job in jobs:
+        job.status = "waiting_players"
+        job.attempt_token = None
+        job.lease_until = None
+        job.attempt_started_at = None
+        job.next_run_at = now + timedelta(minutes=10)
+        job.updated_at = now
+    return len(jobs)
+
+
 async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[str, Any]:
     """Queue eligible live match PBP and dispatch due durable jobs."""
     from datetime import timedelta
@@ -2768,12 +3794,19 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
     from db.connection import SessionLocal
     from db.models import (Event, ManualConfirmationRequest, TennisMatchLookupJob,
                            TennisPointMatchLink, TennisPointRefreshJob)
+    from .player_data_coverage import source_capability_enabled
+    if not source_capability_enabled("flashscore", "point_by_point"):
+        return {"status": "source_disabled", "claimed_count": 0,
+                "active_count": 0, "concurrency_limit": config.flashscore_tennis_point_concurrency}
     now = datetime.now(timezone.utc)
     limit = max(1, min(limit, 30))
     claimed = []
+    alternative_cache_hits = 0
     with SessionLocal() as session:
         # Serialize dispatchers so the database-wide active count is a real cap.
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext('neurobet:tennis-point-dispatch'))"))
+        _resume_source_disabled_point_jobs(session, now)
+        parked_missing_identity_jobs = _park_point_jobs_waiting_for_player_ids(session, now)
         live_events = session.query(Event).filter(
             Event.sport_code == "tennis", Event.is_live.is_(True),
             Event.last_seen_at >= now - timedelta(seconds=90),
@@ -2782,6 +3815,30 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
             ~Event.participant_b_name.contains("/"),
         ).order_by(Event.last_seen_at.desc()).all()
         for event in live_events:
+            from .point_history import usable_alternative_history_for_event
+            alternative = usable_alternative_history_for_event(session, event, as_of=now)
+            if alternative:
+                point_job = session.get(TennisPointRefreshJob, event.id, with_for_update=True)
+                if point_job is None:
+                    alternative_cache_hits += 1
+                    continue
+                if point_job.status == "running" and point_job.lease_until and point_job.lease_until > now:
+                    # The running collector checks this same cache before
+                    # issuing a Flashscore request; preserve its active lease.
+                    alternative_cache_hits += 1
+                    continue
+                point_job.status = "completed"
+                point_job.last_error = (
+                    "ALTERNATIVE_PBP_AVAILABLE" if alternative.get("status") == "available"
+                    else "ALTERNATIVE_PBP_PARTIAL"
+                )
+                point_job.attempt_token = None
+                point_job.lease_until = None
+                point_job.next_run_at = now + timedelta(seconds=15)
+                point_job.updated_at = now
+                _record_point_job_event(session, point_job, now)
+                alternative_cache_hits += 1
+                continue
             player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
             player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
             links = session.query(TennisPointMatchLink).filter_by(fonbet_event_id=event.id).order_by(
@@ -2825,7 +3882,7 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
                     lookup = session.get(TennisMatchLookupJob, event.id, with_for_update=True)
                     if lookup is None:
                         session.add(TennisMatchLookupJob(event_id=event.id, status="queued", next_run_at=now))
-                    elif lookup.status in {"waiting_players", "retry"}:
+                    elif lookup.status == "waiting_players" or _match_lookup_retry_is_due(lookup, now):
                         lookup.status = "queued"; lookup.next_run_at = now; lookup.updated_at = now
                 continue
             elif job.status in {"waiting_players", "waiting_match"} or (job.status in {"completed", "retry", "blocked", "queued"} and job.next_run_at <= now):
@@ -2839,7 +3896,9 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
         ).order_by(Event.finished_at.desc()).all()
         for event in finished:
             job = session.get(TennisPointRefreshJob, event.id)
-            if job and job.status in {"completed", "retry", "blocked"} and job.last_error != "FINALIZED" and job.next_run_at <= now:
+            if (job and job.status in {"completed", "retry", "blocked"}
+                    and job.last_error not in {"FINALIZED", "PLAYER_SOURCE_IDS_MISSING"}
+                    and job.next_run_at <= now):
                 job.status = "queued"; job.next_run_at = now; job.last_requested_at = now
                 _record_point_job_event(session, job, now)
         session.flush()
@@ -2847,10 +3906,14 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
             TennisPointRefreshJob.status == "running",
             TennisPointRefreshJob.lease_until > now,
         ).scalar() or 0
-        slots = max(0, min(limit, config.flashscore_tennis_point_concurrency - active))
+        source_cooldown_until = _flashscore_source_paused(session, now=now)
+        slots = 0 if source_cooldown_until else max(
+            0, min(limit, config.flashscore_tennis_point_concurrency - active)
+        )
         jobs = session.execute(select(TennisPointRefreshJob).where(
             or_(TennisPointRefreshJob.status == "queued",
                 (TennisPointRefreshJob.status == "running") & (TennisPointRefreshJob.lease_until <= now)),
+            TennisPointRefreshJob.last_error != "PLAYER_SOURCE_IDS_MISSING",
             TennisPointRefreshJob.next_run_at <= now).join(
                 Event, Event.id == TennisPointRefreshJob.event_id
             ).order_by(Event.is_live.desc(), TennisPointRefreshJob.next_run_at,
@@ -2875,7 +3938,10 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
         else:
             loop.run_in_executor(executor, _run_point_refresh, event_id, token)
     return {"status": "dispatched", "claimed_count": len(claimed),
-            "active_count": active + len(claimed), "concurrency_limit": config.flashscore_tennis_point_concurrency}
+            "active_count": active + len(claimed),
+            "parked_missing_identity_jobs": parked_missing_identity_jobs,
+            "alternative_pbp_cache_hits": alternative_cache_hits,
+            "concurrency_limit": config.flashscore_tennis_point_concurrency}
 
 
 

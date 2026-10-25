@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+import gzip
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from .config import config
@@ -90,4 +91,43 @@ class ResearchStorage:
             return document if isinstance(document, dict) else None
         except Exception as exc:
             logger.warning("Could not read archived document %s: %s", key, exc)
+            return None
+
+    def archive_raw_bytes(self, source: str, partition: str, body: bytes, content_hash: str) -> Optional[str]:
+        """Store the exact provider response, compressed and addressed by content hash."""
+        client = self._get_client()
+        if not client:
+            return None
+        safe_source = "".join(ch for ch in source.lower() if ch.isalnum() or ch in "-_")[:48]
+        safe_partition = "".join(ch for ch in partition if ch.isalnum() or ch in "-_: ")[:64].strip().replace(" ", "_")
+        compressed = gzip.compress(body, compresslevel=6, mtime=0)
+        key = f"snapshots/external-tennis/{safe_source}/{safe_partition}/{content_hash}.json.gz"
+        try:
+            client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=compressed,
+                ContentType="application/json",
+                ContentEncoding="gzip",
+                Metadata={"sha256": content_hash, "source": safe_source, "raw-bytes": str(len(body)),
+                         "fetched-at": datetime.now(timezone.utc).isoformat()},
+            )
+            return key
+        except Exception as exc:
+            logger.warning("Could not persist raw external tennis response source=%s hash=%s: %s", safe_source, content_hash, exc)
+            return None
+
+    def read_external_raw_bytes(self, key: str) -> Optional[bytes]:
+        """Read a previously archived compressed provider response for offline reparse."""
+        if not key.startswith("snapshots/external-tennis/") or not key.endswith(".json.gz"):
+            return None
+        client = self._get_client()
+        if not client:
+            return None
+        try:
+            response = client.get_object(Bucket=self.bucket, Key=key)
+            compressed = response["Body"].read()
+            return gzip.decompress(compressed)
+        except Exception as exc:
+            logger.warning("Could not read archived external tennis response %s: %s", key, exc)
             return None

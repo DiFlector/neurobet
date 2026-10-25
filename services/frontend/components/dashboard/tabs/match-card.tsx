@@ -55,6 +55,12 @@ const OUTCOME_MARK: Record<BetOutcomeTone, string> = {
   void: "/diflector/neurobet/brand/void.svg",
 };
 
+const POINT_HISTORY_SOURCE_LABEL: Record<string, string> = {
+  flashscore: "Flashscore",
+  api_tennis: "API-Tennis",
+  match_charting_project: "Match Charting Project",
+};
+
 function matchesParticipant(
   outcomeStr: string,
   rawName: string,
@@ -548,7 +554,8 @@ export function MatchCard({
           <div className="space-y-2 rounded-md border border-border/50 bg-muted/20 p-2.5">
             <div className="text-[11px] font-semibold text-foreground">Независимый прогноз · без коэффициентов</div>
             {(isLive || event.point_history) && <div className="text-[10px] text-muted-foreground">
-              Flashscore PBP: {event.point_history?.confirmed_points ?? "—"} подтверждённых очков · {event.point_history_status || "не запущен"}
+              {POINT_HISTORY_SOURCE_LABEL[event.point_history?.source || ""] || event.point_history?.source || "PBP"}: {event.point_history?.confirmed_points ?? "—"} подтверждённых очков
+              {event.point_history ? ` · ${event.point_history.complete ? "полная лента" : "частичная лента"}` : ""} · {event.point_history_status || "не запущен"}
               {event.point_history?.retrieved_at ? ` · обновлено ${new Date(event.point_history.retrieved_at).toLocaleTimeString()}` : ""}
               {event.point_history?.gaps?.length ? ` · разрывов ${event.point_history.gaps.length}` : ""}
             </div>}

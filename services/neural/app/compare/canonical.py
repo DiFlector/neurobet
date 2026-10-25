@@ -1,8 +1,9 @@
 """Merge raw tennis results that describe the same match.
 
-Sackmann and TML rows that share player ids collapse first. Other files join
-by surname, initial, gender and surface when the dates sit inside 14 days and
-the scores do not disagree. An empty score joins only when one such match exists.
+Sackmann, TML, API-Tennis and TennisExplorer rows that share provider player
+ids collapse first. Other files join by surname, initial, gender and surface
+when the dates sit inside 14 days and the scores do not disagree. An empty
+score joins only when one such match exists.
 """
 
 from datetime import datetime
@@ -12,9 +13,9 @@ from typing import Dict, List, Optional, Sequence
 
 from tennis_adapter.external_names import surname_and_initial
 
-SACKMANN_SOURCES = {"tml", "sackmann_sqlite"}
+PLAYER_ID_SOURCES = {"tml", "sackmann_sqlite", "api_tennis", "tennis_explorer"}
 ODDS_SOURCES = ("atp_odds", "ten")
-SERVE_SOURCES = ("sackmann_sqlite", "tml", "ten")
+SERVE_SOURCES = ("sackmann_sqlite", "tml", "ten", "api_tennis")
 
 
 @dataclass
@@ -151,11 +152,12 @@ def pair_keys(match: RawMatch) -> List[tuple]:
 
 
 def id_key(match: RawMatch):
-    if match.source not in SACKMANN_SOURCES:
+    if match.source not in PLAYER_ID_SOURCES:
         return None
     if not match.winner_player_id or not match.loser_player_id:
         return None
-    return tuple(sorted((str(match.winner_player_id), str(match.loser_player_id))))
+    # Provider identifiers are only unique inside their own namespace.
+    return (match.source, *sorted((str(match.winner_player_id), str(match.loser_player_id))))
 
 
 def _place(clusters: List[List[RawMatch]], match: RawMatch, require_unique: bool) -> None:

@@ -18,8 +18,32 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 logger = logging.getLogger("research.browser_pool")
+
+
+def playwright_browser_endpoint() -> str | None:
+    return os.getenv("PLAYWRIGHT_WS_ENDPOINT") or None
+
+
+def browser_context_proxy_options() -> dict[str, Any]:
+    """Build Playwright context proxy settings from the shared source proxy URL."""
+    proxy_url = os.getenv("RESEARCH_HTTP_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+    if not proxy_url:
+        return {}
+    parsed = urlsplit(proxy_url)
+    if not parsed.scheme or not parsed.hostname:
+        return {"proxy": {"server": proxy_url}}
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    server = urlunsplit((parsed.scheme, f"{host}:{parsed.port}" if parsed.port else host,
+                         "", "", ""))
+    proxy: dict[str, str] = {"server": server}
+    if parsed.username is not None:
+        proxy["username"] = unquote(parsed.username)
+    if parsed.password is not None:
+        proxy["password"] = unquote(parsed.password)
+    return {"proxy": proxy}
 
 
 @dataclass
@@ -123,7 +147,9 @@ class ThreadLocalChromium:
             playwright = None
             try:
                 playwright = sync_playwright().start()
-                browser = playwright.chromium.launch(**launch_options)
+                endpoint = playwright_browser_endpoint()
+                browser = (playwright.chromium.connect(endpoint, timeout=30000)
+                           if endpoint else playwright.chromium.launch(**launch_options))
             except Exception:
                 try:
                     if playwright is not None:
@@ -156,6 +182,8 @@ class ThreadLocalChromium:
     def context(self, launch_options: dict[str, Any], **context_options: Any) -> Iterator[tuple[Any, Any]]:
         """Yield ``(browser, context)`` and always discard the job context."""
         state = self._state(launch_options)
+        if playwright_browser_endpoint():
+            context_options.setdefault("proxy", browser_context_proxy_options().get("proxy"))
         try:
             context = state.browser.new_context(**context_options)
         except Exception:
