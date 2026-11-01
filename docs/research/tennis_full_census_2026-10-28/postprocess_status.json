@@ -1,0 +1,9 @@
+{
+  "status": "complete",
+  "audit_status": "blocked",
+  "effective_admission": "blocked",
+  "checkpoint_copy": "/srv/neurobet/docs/research/tennis_full_census_2026-10-28/checkpoint_copy_y405527b/checkpoint",
+  "neural_accepted": 470898,
+  "neural_rejected": 0,
+  "finished_at": "2026-10-29T06:48:23.512640+00:00"
+}

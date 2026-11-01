@@ -49,6 +49,36 @@ def test_current_live_and_prematch_players_precede_stale_archive_backlog():
     assert result == ["live", "prematch", "archive-old", "archive-new"]
 
 
+def test_unconfirmed_doubles_identity_players_precede_historical_singles_backlog():
+    engine = create_engine("sqlite://")
+    jobs = Table(
+        "jobs",
+        MetaData(),
+        Column("participant_id", String, primary_key=True),
+        Column("requested_order", Integer, nullable=False),
+    )
+    jobs.create(engine)
+    with engine.begin() as connection:
+        connection.execute(insert(jobs), [
+            {"participant_id": "old-singles", "requested_order": 1},
+            {"participant_id": "doubles-player", "requested_order": 2},
+            {"participant_id": "live", "requested_order": 3},
+        ])
+        result = connection.execute(
+            select(jobs.c.participant_id).order_by(
+                _tennis_player_dispatch_priority(
+                    jobs.c.participant_id,
+                    {"live"},
+                    {"live"},
+                    {"doubles-player"},
+                ),
+                jobs.c.requested_order,
+            )
+        ).scalars().all()
+
+    assert result == ["live", "doubles-player", "old-singles"]
+
+
 def test_only_unexpired_noneligible_running_jobs_are_preemptible():
     now = datetime.now(timezone.utc)
     engine = create_engine("sqlite://")

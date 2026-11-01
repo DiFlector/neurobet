@@ -1,0 +1,3456 @@
+{
+  "audit": "manual_legacy_tennis_identity_adjudication",
+  "reviewed_at": "2026-10-25T11:46:45.375775+00:00",
+  "source": "saved Flashscore player registry and immutable match observations",
+  "scope": {
+    "legacy_fact_versions": 7865,
+    "distinct_participant_source_id_pairs": 86
+  },
+  "decisions": {
+    "confirmed": 15,
+    "rejected": 71,
+    "facts_updated": 0
+  },
+  "items": [
+    {
+      "participant_name": "Alcaraz C",
+      "participant_id": "8420bf6e-b6fa-42c6-9224-903e2d310006",
+      "source_player_id": "UkhgIFEq",
+      "decision": "confirmed",
+      "legacy_fact_versions": 499,
+      "legacy_valid_fact_versions": 484,
+      "legacy_distinct_match_ids": 484,
+      "source_player_registry_name": "Carlos Alcaraz",
+      "profile_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+      "source_observation_match_ids_reviewed": 484,
+      "source_observation_match_ids_with_exact_side_id": 484,
+      "sample_source_evidence": [
+        {
+          "observation_id": "ebeeb455-75a2-4201-abe6-4de17948d887",
+          "source_match_id": "04AcO34n",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:11764adee9ed000ddff2a6554f620ae007357f8f08a2f3af0e666050420188e8",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Alcaraz C.",
+          "away_name": "Monfils G.",
+          "home_player_id": "UkhgIFEq",
+          "away_player_id": "fm7G8o0m",
+          "available_at": "2026-10-20 17:01:57.467531+00:00"
+        },
+        {
+          "observation_id": "922a75ff-1bf0-4bc8-b005-9e60f922e15a",
+          "source_match_id": "04fiFFIS",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:11764adee9ed000ddff2a6554f620ae007357f8f08a2f3af0e666050420188e8",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Tsitsipas S.",
+          "away_name": "Alcaraz C.",
+          "home_player_id": "hb6oWfc6",
+          "away_player_id": "UkhgIFEq",
+          "available_at": "2026-10-20 17:01:57.467531+00:00"
+        },
+        {
+          "observation_id": "bacb7dc0-7835-4add-8134-ae16d5a354b7",
+          "source_match_id": "0AqrlMzT",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:b67cf73414f90abf64f180264efba38efc6e12ed40058f2bb14a040e89fe1804",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Skatov T.",
+          "away_name": "Alcaraz C.",
+          "home_player_id": "h6n0i9iE",
+          "away_player_id": "UkhgIFEq",
+          "available_at": "2026-10-20 05:09:59.345937+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Antonius M.",
+      "participant_id": "01b09cf6-4dec-4596-92d6-920b70088f95",
+      "source_player_id": "nB7oqApL",
+      "decision": "confirmed",
+      "legacy_fact_versions": 46,
+      "legacy_valid_fact_versions": 42,
+      "legacy_distinct_match_ids": 40,
+      "source_player_registry_name": "Michael Antonius",
+      "profile_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+      "source_observation_match_ids_reviewed": 40,
+      "source_observation_match_ids_with_exact_side_id": 40,
+      "sample_source_evidence": [
+        {
+          "observation_id": "5b60d181-0b04-4427-bbd8-847540edd0a7",
+          "source_match_id": "0MTrWQAG",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:43d51ab09ee50db0c215a5861888a6cad990a44e46d803edbbb059897f8bd0e7",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Antonius M.",
+          "away_name": "Johnson A.",
+          "home_player_id": "nB7oqApL",
+          "away_player_id": "I18JMi8s",
+          "available_at": "2026-10-22 09:49:51.593967+00:00"
+        },
+        {
+          "observation_id": "c1e05421-4763-4c91-ae0f-d700dd342a47",
+          "source_match_id": "2mW9A5Vi",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:f6bcd8b9eb90f63923e2127584d137f7da28d3f3f69b8c74587d9d4d12c4ae4d",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Antonius M.",
+          "away_name": "Lawlor R.",
+          "home_player_id": "nB7oqApL",
+          "away_player_id": "fLnp2cTI",
+          "available_at": "2026-10-21 22:22:44.176763+00:00"
+        },
+        {
+          "observation_id": "5cda5449-1a6c-4833-98f0-250541837f50",
+          "source_match_id": "CfepZ6x0",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:43d51ab09ee50db0c215a5861888a6cad990a44e46d803edbbb059897f8bd0e7",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Tortora D.",
+          "away_name": "Antonius M.",
+          "home_player_id": "INhIPMMF",
+          "away_player_id": "nB7oqApL",
+          "available_at": "2026-10-22 09:49:51.593967+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Davidovich Fokina A.",
+      "participant_id": "156587f8-9544-40d8-8101-12fbabd4fcc3",
+      "source_player_id": "0zQXLfz4",
+      "decision": "rejected",
+      "legacy_fact_versions": 50,
+      "legacy_valid_fact_versions": 50,
+      "legacy_distinct_match_ids": 31,
+      "source_player_registry_name": "Davidovich Fokina A.",
+      "profile_url": null,
+      "source_observation_match_ids_reviewed": 31,
+      "source_observation_match_ids_with_exact_side_id": 31,
+      "sample_source_evidence": [
+        {
+          "observation_id": "1a9b23a6-18cc-4068-b5a9-bdf6db52257e",
+          "source_match_id": "2D6CUPpg",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:1780109cc706ff1cf59d203da05229a087cb620b507aa668a7e27cadb0ed5ee5",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Fritz T.",
+          "away_name": "Davidovich Fokina A.",
+          "home_player_id": "UH09iaZ6",
+          "away_player_id": "0zQXLfz4",
+          "available_at": "2026-10-20 17:05:46.535728+00:00"
+        },
+        {
+          "observation_id": "7a29faa2-563f-4c3e-b386-39828779e1a1",
+          "source_match_id": "46WAmfE1",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:1780109cc706ff1cf59d203da05229a087cb620b507aa668a7e27cadb0ed5ee5",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Fritz T.",
+          "away_name": "Davidovich Fokina A.",
+          "home_player_id": "UH09iaZ6",
+          "away_player_id": "0zQXLfz4",
+          "available_at": "2026-10-20 17:05:46.535728+00:00"
+        },
+        {
+          "observation_id": "c9c23bc5-ab23-473f-be08-0ad5fb7b7a45",
+          "source_match_id": "4YYMSOa9",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:11764adee9ed000ddff2a6554f620ae007357f8f08a2f3af0e666050420188e8",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Alcaraz C.",
+          "away_name": "Davidovich Fokina A.",
+          "home_player_id": "UkhgIFEq",
+          "away_player_id": "0zQXLfz4",
+          "available_at": "2026-10-20 17:01:57.467531+00:00"
+        }
+      ],
+      "reason": "Davidovich Fokina source identity belongs to a separate correctly confirmed participant; this legacy owner is a duplicate participant."
+    },
+    {
+      "participant_name": "Dimitrov G",
+      "participant_id": "92825a0a-8ca6-4e4a-9fe2-a576d804d1bc",
+      "source_player_id": "SQgEEKh4",
+      "decision": "confirmed",
+      "legacy_fact_versions": 76,
+      "legacy_valid_fact_versions": 76,
+      "legacy_distinct_match_ids": 50,
+      "source_player_registry_name": "Dimitrov G.",
+      "profile_url": null,
+      "source_observation_match_ids_reviewed": 50,
+      "source_observation_match_ids_with_exact_side_id": 50,
+      "sample_source_evidence": [
+        {
+          "observation_id": "4411a32b-7c95-45f9-88c9-d167ff5f4534",
+          "source_match_id": "0hY1pL1A",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:06bbbdf885a240075310d21eb69ab92867ba854385a48914ede691b4acc0e658",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Djokovic N.",
+          "away_name": "Dimitrov G.",
+          "home_player_id": "AZg49Et9",
+          "away_player_id": "SQgEEKh4",
+          "available_at": "2026-10-20 17:01:27.924864+00:00"
+        },
+        {
+          "observation_id": "04aa50c7-72b4-495f-962e-fdfef7bc1b84",
+          "source_match_id": "2TlDeT4d",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:11764adee9ed000ddff2a6554f620ae007357f8f08a2f3af0e666050420188e8",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Alcaraz C.",
+          "away_name": "Dimitrov G.",
+          "home_player_id": "UkhgIFEq",
+          "away_player_id": "SQgEEKh4",
+          "available_at": "2026-10-20 17:01:57.467531+00:00"
+        },
+        {
+          "observation_id": "93d0741c-fcc9-4607-b716-111be0903721",
+          "source_match_id": "2g8cX6Z4",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:06bbbdf885a240075310d21eb69ab92867ba854385a48914ede691b4acc0e658",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Djokovic N.",
+          "away_name": "Dimitrov G.",
+          "home_player_id": "AZg49Et9",
+          "away_player_id": "SQgEEKh4",
+          "available_at": "2026-10-20 17:01:27.924864+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "2Nq3ecTS/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "fd5ce8e3-3885-4c69-b6f0-ffb3264406fe",
+          "source_match_id": "0zgObD0a",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Herbert P./Mahut N.",
+          "home_player_id": "2Nq3ecTS/AZg49Et9",
+          "away_player_id": "vD0zNRBM/6eIyTBO6",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "cc06624d-8d51-4820-aa60-434a84be05fc",
+          "source_match_id": "QFyQBkLC",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Auger-Aliassime F./Shapovalov D.",
+          "home_player_id": "2Nq3ecTS/AZg49Et9",
+          "away_player_id": "CzXh4LAb/zXddgn9o",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "84b8e050-2a47-40fb-940b-fa969735b7d1",
+          "source_match_id": "pxUY5ZY8",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Peya A.",
+          "away_name": "Anderson K./Djokovic N.",
+          "home_player_id": "zeaASGsD/8AW99zjB",
+          "away_player_id": "2Nq3ecTS/AZg49Et9",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "4GGnypTh/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "09af7268-2051-4356-a690-721a44b60cb3",
+          "source_match_id": "WpC0soZI",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Bopanna R./Nestor D.",
+          "home_player_id": "4GGnypTh/AZg49Et9",
+          "away_player_id": "t6Kb5X76/StCDFO5j",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "842UkMWL/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 16,
+      "legacy_valid_fact_versions": 8,
+      "legacy_distinct_match_ids": 8,
+      "source_player_registry_name": "Ivanovic A./Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 8,
+      "source_observation_match_ids_with_exact_side_id": 8,
+      "sample_source_evidence": [
+        {
+          "observation_id": "db3ed579-717c-4b9b-b068-85375495e3d5",
+          "source_match_id": "2qmmtbu3",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Maria T./Kokkinakis T.",
+          "home_player_id": "842UkMWL/AZg49Et9",
+          "away_player_id": "OGYNaUZG/rBm7dcxH",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "cf8370b3-3023-4741-9fb5-692ac7c2072b",
+          "source_match_id": "8QmyyzZu",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Medina Garrigues A./Verdasco F.",
+          "home_player_id": "842UkMWL/AZg49Et9",
+          "away_player_id": "QTIrkawm/hfRTC1Nu",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "f752a1e4-288e-499f-af73-b9216135fdd1",
+          "source_match_id": "Is917uJG",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Molik A./Hewitt L.",
+          "home_player_id": "842UkMWL/AZg49Et9",
+          "away_player_id": "2HXjr1nO/t4WYF3mC",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "AZg49Et9",
+      "decision": "confirmed",
+      "legacy_fact_versions": 2515,
+      "legacy_valid_fact_versions": 2504,
+      "legacy_distinct_match_ids": 1424,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1424,
+      "source_observation_match_ids_with_exact_side_id": 1424,
+      "sample_source_evidence": [
+        {
+          "observation_id": "9cf4b3cf-1cea-4ae7-ada4-52c06094c22b",
+          "source_match_id": "06TuJLJM",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:6bc118ff8402f4dc7460280ef9d2cf4bcf6c29d3d831a7ed0823cad12e33cc3e",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": null,
+          "away_name": null,
+          "home_player_id": null,
+          "away_player_id": null,
+          "available_at": "2026-10-23 04:19:51.421671+00:00"
+        },
+        {
+          "observation_id": "a28b0875-6411-4e9a-9c35-62691aac1a02",
+          "source_match_id": "06VCIzZK",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:06bbbdf885a240075310d21eb69ab92867ba854385a48914ede691b4acc0e658",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Verdasco F.",
+          "away_name": "Djokovic N.",
+          "home_player_id": "hfRTC1Nu",
+          "away_player_id": "AZg49Et9",
+          "available_at": "2026-10-20 17:01:27.924864+00:00"
+        },
+        {
+          "observation_id": "d61094b0-b7b8-4a19-9d19-eb9eb1a97bc9",
+          "source_match_id": "080L1Ov6",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:06bbbdf885a240075310d21eb69ab92867ba854385a48914ede691b4acc0e658",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Djokovic N.",
+          "away_name": "Berdych T.",
+          "home_player_id": "AZg49Et9",
+          "away_player_id": "QoCtDNN6",
+          "available_at": "2026-10-20 17:01:27.924864+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "KONG5bAS/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 8,
+      "legacy_valid_fact_versions": 4,
+      "legacy_distinct_match_ids": 4,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 4,
+      "source_observation_match_ids_with_exact_side_id": 4,
+      "sample_source_evidence": [
+        {
+          "observation_id": "780131b0-a3d7-4b97-88f0-b77707f07296",
+          "source_match_id": "4GRJv3lM",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Williams S./Fish M.",
+          "home_player_id": "KONG5bAS/AZg49Et9",
+          "away_player_id": "ttsu68nH/YDngYBUS",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "1570ddcb-baf1-4ba4-ad9e-eb296317fbc4",
+          "source_match_id": "W2TBtPJ9",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Dulko G./Chela J. I.",
+          "home_player_id": "KONG5bAS/AZg49Et9",
+          "away_player_id": "nkwNAUjk/hSZwPTBf",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "f473a971-4031-454b-ad40-3ef9992ddbe6",
+          "source_match_id": "hdtpSP4G",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Hsieh S-W./Lu Y.H.",
+          "home_player_id": "KONG5bAS/AZg49Et9",
+          "away_player_id": "xEwwLD1l/ARyoJiW0",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "OhwtM7N8/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "6ce837be-c63d-4f65-87ec-4efe64346d7b",
+          "source_match_id": "joswlcYo",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "De Minaur A./Sock J.",
+          "home_player_id": "OhwtM7N8/AZg49Et9",
+          "away_player_id": "EZgZ9Xfh/MPH9qGmL",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "QeTA3F0B/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "b26351eb-1753-4fb2-86c4-c2c8d0445566",
+          "source_match_id": "vuLOxzz7",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Coetzee J./Kerr J.",
+          "home_player_id": "QeTA3F0B/AZg49Et9",
+          "away_player_id": "2eJHCHt6/AqpQCvWT",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "WMpU6BsS/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "b0ee850e-716a-4dd0-bd8a-1e8704190ed7",
+          "source_match_id": "EmtDnUgi",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Allegro Y./Kohlmann M.",
+          "home_player_id": "WMpU6BsS/AZg49Et9",
+          "away_player_id": "rsVrFHSs/Y7qf9LBc",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "f7w06Ogh/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 12,
+      "legacy_valid_fact_versions": 6,
+      "legacy_distinct_match_ids": 6,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 6,
+      "source_observation_match_ids_with_exact_side_id": 6,
+      "sample_source_evidence": [
+        {
+          "observation_id": "04d7ecb4-c2f5-42a5-b4c6-fab6490d71a8",
+          "source_match_id": "0Ics5J5G",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Goffin D./Herbert P.",
+          "home_player_id": "f7w06Ogh/AZg49Et9",
+          "away_player_id": "bqic8RxG/vD0zNRBM",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "fb7198b0-b4df-4fb7-bfa6-7460e305cd06",
+          "source_match_id": "4IInIvyS",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Lajovic D.",
+          "away_name": "Djokovic M./Djokovic N.",
+          "home_player_id": "hMrlbuuQ/bJf33z45",
+          "away_player_id": "f7w06Ogh/AZg49Et9",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "97d0316e-a1f4-41c3-a58f-9d45d900a86f",
+          "source_match_id": "8bmBaCFe",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Cabal J. S./Farah R.",
+          "home_player_id": "f7w06Ogh/AZg49Et9",
+          "away_player_id": "8dao1191/0puo1Oj0",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "hrCHnAGi/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "99e04ce3-31e4-49cf-b8c4-3bd78d7b6e8a",
+          "source_match_id": "697e0fRA",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Krawietz K.",
+          "away_name": "Stojanovic N./Djokovic N.",
+          "home_player_id": "ETkoNgxJ/EwLaAdNP",
+          "away_player_id": "hrCHnAGi/AZg49Et9",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "dc3aa850-a077-4ac9-961e-1ea9231651ef",
+          "source_match_id": "AiJHOdIc",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Karatsev A.",
+          "away_name": "Stojanovic N./Djokovic N.",
+          "home_player_id": "rmjaSOvE/WYVhbvBF",
+          "away_player_id": "hrCHnAGi/AZg49Et9",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "668bc0a0-f97e-4218-86ed-133dfcfc700c",
+          "source_match_id": "OvFBJcC8",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Stefani L./Melo M.",
+          "home_player_id": "hrCHnAGi/AZg49Et9",
+          "away_player_id": "0K1SsbQq/b1jOW5ZN",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "rqvYHHbs/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Troicki V./Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "84838461-4a51-428b-8107-a5b2546225a2",
+          "source_match_id": "MXiBvzUp",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Nestor D./Zimonjic N.",
+          "home_player_id": "rqvYHHbs/AZg49Et9",
+          "away_player_id": "StCDFO5j/rm6b4eo5",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Djokovic N",
+      "participant_id": "52846b82-2208-4a64-a58f-3131e06742f1",
+      "source_player_id": "tYtfyK1b/AZg49Et9",
+      "decision": "rejected",
+      "legacy_fact_versions": 10,
+      "legacy_valid_fact_versions": 5,
+      "legacy_distinct_match_ids": 5,
+      "source_player_registry_name": "Djokovic N.",
+      "profile_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+      "source_observation_match_ids_reviewed": 5,
+      "source_observation_match_ids_with_exact_side_id": 5,
+      "sample_source_evidence": [
+        {
+          "observation_id": "4f33faeb-e40c-48a6-bda2-ed44e8bb36e4",
+          "source_match_id": "A7Z1J04r",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Machac T./Pavlasek A.",
+          "home_player_id": "tYtfyK1b/AZg49Et9",
+          "away_player_id": "S44E7UYr/EmouDEJm",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "0b4eb1f1-f3ea-4352-81d5-3c352c585fcf",
+          "source_match_id": "ENAZK9yj",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Murray J./Venus M.",
+          "home_player_id": "tYtfyK1b/AZg49Et9",
+          "away_player_id": "CIM2Gb22/0dIN6cMO",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        },
+        {
+          "observation_id": "8e925c13-4b10-4cd1-92fd-5724b0f5be57",
+          "source_match_id": "lpXLlePI",
+          "source_url": "https://www.flashscore.com/player/djokovic-novak/AZg49Et9/results/",
+          "source_content_hash": "sha256:3c4f2413a5cb3d13e45b9a74177c56224934a0cc5dcdced8e5948a77098aaa09",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Djokovic N.",
+          "away_name": "Golubev A./Nedovyesov A.",
+          "home_player_id": "tYtfyK1b/AZg49Et9",
+          "away_player_id": "8lY9FUTP/EkFHPEtE",
+          "available_at": "2026-10-20 04:55:21.300008+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "0lJNLkQD/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "638f9380-cbae-4345-8c5e-6a6d16464e1a",
+          "source_match_id": "CAStkEin",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Gojowczyk P./Paire B.",
+          "home_player_id": "0lJNLkQD/UH09iaZ6",
+          "away_player_id": "8pY23HI2/CMfsaHsr",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "7a97ab35-3a7a-4474-8e14-f05965181ecf",
+          "source_match_id": "CG5kOIHl",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Murray J./Soares B.",
+          "home_player_id": "0lJNLkQD/UH09iaZ6",
+          "away_player_id": "CIM2Gb22/400aqQlU",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "67EJxseJ/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "bad79ab1-61c0-43e3-b07b-0b7bc64a649a",
+          "source_match_id": "S6bTM9QP",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Delbonis F./Schwartzman D.",
+          "home_player_id": "67EJxseJ/UH09iaZ6",
+          "away_player_id": "E10L2won/lxOVoutC",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "8KHYNHRA/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "56be3e05-2a7b-485b-9b38-1c0e1d6a8150",
+          "source_match_id": "t0Vpm4OR",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Hingis M./Paes L.",
+          "home_player_id": "8KHYNHRA/UH09iaZ6",
+          "away_player_id": "6J0pscT7/zBEc9pRA",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "CzXh4LAb/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "7e748c59-3652-41bb-8846-8da50519c17a",
+          "source_match_id": "roqN3SBE",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Cerretani J./Van der Duim A.",
+          "home_player_id": "CzXh4LAb/UH09iaZ6",
+          "away_player_id": "2odtG8n7/vcIncgFG",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "KdojxrAR/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 8,
+      "legacy_valid_fact_versions": 4,
+      "legacy_distinct_match_ids": 4,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 4,
+      "source_observation_match_ids_with_exact_side_id": 4,
+      "sample_source_evidence": [
+        {
+          "observation_id": "a976e8cd-7948-49bd-afbc-1e8ba103a6b4",
+          "source_match_id": "0zkCPKUn",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Kubot L.",
+          "away_name": "Pegula J./Fritz T.",
+          "home_player_id": "481cQkCC/voAHjP8p",
+          "away_player_id": "KdojxrAR/UH09iaZ6",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "37240290-2ab5-4a40-9036-aedca3edaaaa",
+          "source_match_id": "69LBSAhh",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Boulter K./Skupski N.",
+          "home_player_id": "KdojxrAR/UH09iaZ6",
+          "away_player_id": "0SeXj3jT/KUAXIw8j",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "54a81d16-3c92-4a98-9e00-b317d07c03a7",
+          "source_match_id": "IJVeG6zb",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Bouzkova M./Lehecka J.",
+          "home_player_id": "KdojxrAR/UH09iaZ6",
+          "away_player_id": "WMS3AdAb/6PlgfXKR",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "UH09iaZ6",
+      "decision": "confirmed",
+      "legacy_fact_versions": 1173,
+      "legacy_valid_fact_versions": 1163,
+      "legacy_distinct_match_ids": 771,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 771,
+      "source_observation_match_ids_with_exact_side_id": 771,
+      "sample_source_evidence": [
+        {
+          "observation_id": "af5dc0c8-8e63-4b45-a984-fa126101ee84",
+          "source_match_id": "00Co3WSm",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:1780109cc706ff1cf59d203da05229a087cb620b507aa668a7e27cadb0ed5ee5",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Coria F.",
+          "away_name": "Fritz T.",
+          "home_player_id": "vJdE1Bg7",
+          "away_player_id": "UH09iaZ6",
+          "available_at": "2026-10-20 17:05:46.535728+00:00"
+        },
+        {
+          "observation_id": "95151a46-a5b7-4453-b7d5-8b6f430d3903",
+          "source_match_id": "00rgz6Eg",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Krajicek A.",
+          "away_name": "Fritz T.",
+          "home_player_id": "x2H3WGyJ",
+          "away_player_id": "UH09iaZ6",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "1d6ad40b-4b14-418e-a258-9b68e80ec3c5",
+          "source_match_id": "023ORCe3",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:1780109cc706ff1cf59d203da05229a087cb620b507aa668a7e27cadb0ed5ee5",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Berrettini M.",
+          "away_name": "Fritz T.",
+          "home_player_id": "OhwtM7N8",
+          "away_player_id": "UH09iaZ6",
+          "available_at": "2026-10-20 17:05:46.535728+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "f5BXmEH6/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "e7b26f3e-4a4c-4c15-9876-bab8fe69fb34",
+          "source_match_id": "MDst3Umo",
+          "source_url": "https://www.flashscore.com/player/gauff-coco/f5BXmEH6/results/",
+          "source_content_hash": "sha256:4b4c3117615509f9ba48727d1e81b64f65cf9f4e8dc818fd1883108256066f5e",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Marcinko P./Dodig I.",
+          "home_player_id": "f5BXmEH6/UH09iaZ6",
+          "away_player_id": "2J180sTE/I57stMx7",
+          "available_at": "2026-10-20 05:56:33.000874+00:00"
+        },
+        {
+          "observation_id": "1fbae5da-094b-43b9-a679-c7c89b2a8c85",
+          "source_match_id": "d49SSE7j",
+          "source_url": "https://www.flashscore.com/player/gauff-coco/f5BXmEH6/results/",
+          "source_content_hash": "sha256:4b4c3117615509f9ba48727d1e81b64f65cf9f4e8dc818fd1883108256066f5e",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Fernandez L./Auger-Aliassime F.",
+          "home_player_id": "f5BXmEH6/UH09iaZ6",
+          "away_player_id": "8EI3pJOd/CzXh4LAb",
+          "available_at": "2026-10-20 05:56:33.000874+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "nRBUSXk3/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "b30fc5f0-2b78-476a-9995-26de696b4d53",
+          "source_match_id": "UX5q8UMp",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Paes L.",
+          "away_name": "Fratangelo B./Fritz T.",
+          "home_player_id": "ARyoJiW0/zBEc9pRA",
+          "away_player_id": "nRBUSXk3/UH09iaZ6",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "82a17064-cb4b-4482-86e8-bb1cc79b7985",
+          "source_match_id": "fmJ4XWWJ",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Molchanov D./Nedovyesov A.",
+          "home_player_id": "nRBUSXk3/UH09iaZ6",
+          "away_player_id": "KSX2xKhA/EkFHPEtE",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Fritz T",
+      "participant_id": "6fcefd12-ecaa-4802-bc9a-7d4815a9e724",
+      "source_player_id": "zmURig8o/UH09iaZ6",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Fritz T.",
+      "profile_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "2f894012-8e6c-4004-8f14-ba58b8263872",
+          "source_match_id": "6scsQLEt",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Fritz T.",
+          "away_name": "Nestor D./Pospisil V.",
+          "home_player_id": "zmURig8o/UH09iaZ6",
+          "away_player_id": "StCDFO5j/xdHXH2G1",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Massellani S.",
+      "participant_id": "16b6219a-11c4-4518-863b-8d13b3f081d7",
+      "source_player_id": "UFYJFyIs",
+      "decision": "confirmed",
+      "legacy_fact_versions": 1,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Massellani S.",
+      "profile_url": "https://www.flashscore.com/player/massellani-simone/UFYJFyIs/results/",
+      "source_observation_match_ids_reviewed": 19,
+      "source_observation_match_ids_with_exact_side_id": 19,
+      "sample_source_evidence": [
+        {
+          "observation_id": "5137b168-0aba-4ff5-bdb7-e3b9d011659d",
+          "source_match_id": "0A2H4i9E",
+          "source_url": "https://www.flashscore.com/player/massellani-simone/UFYJFyIs/results/",
+          "source_content_hash": "sha256:15e2ca70f982e4f660590d14852d469fa2c6cdbfd9761f0113179af9b40f4324",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Massellani S.",
+          "away_name": "Gschwendtner J.",
+          "home_player_id": "UFYJFyIs",
+          "away_player_id": "jsSzo7Us",
+          "available_at": "2026-10-22 10:16:05.941974+00:00"
+        },
+        {
+          "observation_id": "d6dc39dd-a4f4-4c48-ab3f-750543664e67",
+          "source_match_id": "4dIZXmx3",
+          "source_url": "https://www.flashscore.com/player/massellani-simone/UFYJFyIs/results/",
+          "source_content_hash": "sha256:15e2ca70f982e4f660590d14852d469fa2c6cdbfd9761f0113179af9b40f4324",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Massellani S.",
+          "away_name": "Cacao T.",
+          "home_player_id": "UFYJFyIs",
+          "away_player_id": "0jYR0TS7",
+          "available_at": "2026-10-22 10:16:05.941974+00:00"
+        },
+        {
+          "observation_id": "8a0df56d-6fd4-490f-9549-2f8cf089a600",
+          "source_match_id": "8nhONt1M",
+          "source_url": "https://www.flashscore.com/player/massellani-simone/UFYJFyIs/results/",
+          "source_content_hash": "sha256:15e2ca70f982e4f660590d14852d469fa2c6cdbfd9761f0113179af9b40f4324",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Massellani S.",
+          "away_name": "Bosio G.",
+          "home_player_id": "UFYJFyIs",
+          "away_player_id": "z3kBxqS5",
+          "available_at": "2026-10-22 10:16:05.941974+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "2odtG8n7/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "0239e4b3-0d88-4ce7-ada4-a8de8ef3e306",
+          "source_match_id": "p4AJfXol",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Cabal J. S./Farah R.",
+          "home_player_id": "2odtG8n7/O8qG0Nhb",
+          "away_player_id": "8dao1191/0puo1Oj0",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "4bNPtZT5/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 10,
+      "legacy_valid_fact_versions": 5,
+      "legacy_distinct_match_ids": 5,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 5,
+      "source_observation_match_ids_with_exact_side_id": 5,
+      "sample_source_evidence": [
+        {
+          "observation_id": "a2f91098-ada4-4805-8bcb-8eb87537a244",
+          "source_match_id": "IcYchwg7",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Koolhof W./Tsitsipas S.",
+          "home_player_id": "4bNPtZT5/O8qG0Nhb",
+          "away_player_id": "SGFFwNuD/hb6oWfc6",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "290211e4-2966-49cb-98e6-439d1ea2bfe5",
+          "source_match_id": "KWgkDLQc",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:db3e2f0addf8fb2e621dbcdb484a9ab85dbf20aefb5a138994c1a795ce5dc2e1",
+          "parser_version": "flashscore-tennis-player-v10",
+          "home_name": "Medvedev D.",
+          "away_name": "Bolelli S./Lorenzi P.",
+          "home_player_id": "4bNPtZT5/O8qG0Nhb",
+          "away_player_id": "zuYo8TE1/8MVbgF3n",
+          "available_at": "2026-10-25 09:27:32.366762+00:00"
+        },
+        {
+          "observation_id": "7058f537-a8da-4617-a763-620a2467eb38",
+          "source_match_id": "r1gQfaKa",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:db3e2f0addf8fb2e621dbcdb484a9ab85dbf20aefb5a138994c1a795ce5dc2e1",
+          "parser_version": "flashscore-tennis-player-v10",
+          "home_name": "Medvedev D.",
+          "away_name": "Krajicek A./Ram R.",
+          "home_player_id": "4bNPtZT5/O8qG0Nhb",
+          "away_player_id": "x2H3WGyJ/ImuEo0yQ",
+          "available_at": "2026-10-25 09:27:32.365351+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "CzXh4LAb/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "c373836a-551d-443c-9f8c-5d1837be18cb",
+          "source_match_id": "xW2smq1P",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Arevalo M./Rojer J.",
+          "home_player_id": "CzXh4LAb/O8qG0Nhb",
+          "away_player_id": "zLNFemL9/ImVMGqSp",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "I1mux0lj/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Marozsan F./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "aaa19c7e-b513-43b2-be73-098a224f3603",
+          "source_match_id": "jykdV74n",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Nys H./Roger-Vasselin E.",
+          "home_player_id": "I1mux0lj/O8qG0Nhb",
+          "away_player_id": "vBi1DH5S/tGqyUJBE",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "ce45f8a9-8c1c-4ee4-b96d-65a5e6aaf2d8",
+          "source_match_id": "lxlEs1Dl",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Olivetti A.",
+          "away_name": "Marozsan F./Medvedev D.",
+          "home_player_id": "2TsRnnT8/fR5wj1tE",
+          "away_player_id": "I1mux0lj/O8qG0Nhb",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "O8qG0Nhb",
+      "decision": "confirmed",
+      "legacy_fact_versions": 1155,
+      "legacy_valid_fact_versions": 1149,
+      "legacy_distinct_match_ids": 760,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 760,
+      "source_observation_match_ids_with_exact_side_id": 760,
+      "sample_source_evidence": [
+        {
+          "observation_id": "e589bc88-4b81-4dfd-bce2-9428775417a4",
+          "source_match_id": "00zU9FJO",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:7019dba0fabb416996368061d22663d44b09b873bc2831dbb396e6b47afec61a",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Medvedev D.",
+          "away_name": "Van De Zandschulp B.",
+          "home_player_id": "O8qG0Nhb",
+          "away_player_id": "YwiLpILD",
+          "available_at": "2026-10-20 17:03:20.287732+00:00"
+        },
+        {
+          "observation_id": "4909b684-ebb2-4f87-8f23-80741e82a780",
+          "source_match_id": "02q5muGL",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:a994f92d3dd1b3a8b4b5a3f61a17bf8bbf046d392c61322051b82b06f7c4b68e",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Sinner J.",
+          "away_name": "Medvedev D.",
+          "home_player_id": "6HdC3z4H",
+          "away_player_id": "O8qG0Nhb",
+          "available_at": "2026-10-20 17:02:12.936652+00:00"
+        },
+        {
+          "observation_id": "bd88ff19-3080-43a9-b3bd-9e267237745b",
+          "source_match_id": "083IAvCE",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:7019dba0fabb416996368061d22663d44b09b873bc2831dbb396e6b47afec61a",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Medvedev D.",
+          "away_name": "Humbert U.",
+          "home_player_id": "O8qG0Nhb",
+          "away_player_id": "O4ywE5Ah",
+          "available_at": "2026-10-20 17:03:20.287732+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "OnoPKE7m/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "000cddac-c50a-46c5-aaf4-1c12340ccb09",
+          "source_match_id": "jgmyjof6",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Huey T./Shamasdin A.",
+          "home_player_id": "OnoPKE7m/O8qG0Nhb",
+          "away_player_id": "vJXoZA81/6D8ElRKe",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "WYVhbvBF/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Karatsev A./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "d48c419f-e0c5-404e-9692-d258280200e9",
+          "source_match_id": "fZ73Uusj",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Klein L./Polasek F.",
+          "home_player_id": "WYVhbvBF/O8qG0Nhb",
+          "away_player_id": "O49b2LJR/E7b2zNPT",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "a161a2dc-2447-47c1-8241-1447eb5934cb",
+          "source_match_id": "xvo3euOn",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Albot R./Cermak F.",
+          "home_player_id": "WYVhbvBF/O8qG0Nhb",
+          "away_player_id": "OnoPKE7m/6Nd4qrHU",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "YV9SNJCL/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Elgin M./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "b3068b97-26ad-4ef6-b5d9-b4eb5bccb759",
+          "source_match_id": "ld3At3qB",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Molchanov D.",
+          "away_name": "Elgin M./Medvedev D.",
+          "home_player_id": "8dao1191/KSX2xKhA",
+          "away_player_id": "YV9SNJCL/O8qG0Nhb",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "929d146d-6693-4751-bb87-078635f66129",
+          "source_match_id": "pfNGbq4m",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Bublik A./Kukushkin M.",
+          "home_player_id": "YV9SNJCL/O8qG0Nhb",
+          "away_player_id": "t0WN9vR6/OSUB7Jy0",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "dbMa7RZA/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Karlovskiy E./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "b2eb4607-7d15-4e84-a681-9815b72d2612",
+          "source_match_id": "UytaojnJ",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Krajicek A./Ram R.",
+          "home_player_id": "dbMa7RZA/O8qG0Nhb",
+          "away_player_id": "x2H3WGyJ/ImuEo0yQ",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "fLOdtByM/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "51c41d3e-dbdd-4111-bf45-1ccaaa9ad708",
+          "source_match_id": "tU4ktEW8",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Bopanna R./Roger-Vasselin E.",
+          "home_player_id": "fLOdtByM/O8qG0Nhb",
+          "away_player_id": "t6Kb5X76/tGqyUJBE",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "nJ2qlJH6/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 18,
+      "legacy_valid_fact_versions": 9,
+      "legacy_distinct_match_ids": 9,
+      "source_player_registry_name": "Demoliner M./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 9,
+      "source_observation_match_ids_with_exact_side_id": 9,
+      "sample_source_evidence": [
+        {
+          "observation_id": "439e43bb-1518-4e0c-a3ca-811868fa3654",
+          "source_match_id": "21vIKxZm",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Munar J.",
+          "away_name": "Demoliner M./Medvedev D.",
+          "home_player_id": "hj8fIZPg/zZieQm4D",
+          "away_player_id": "nJ2qlJH6/O8qG0Nhb",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "74f26582-5913-45f3-a9f5-72150ebf4b76",
+          "source_match_id": "8pbTf7N1",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Haase R./Koolhof W.",
+          "home_player_id": "nJ2qlJH6/O8qG0Nhb",
+          "away_player_id": "2Txcqx1b/SGFFwNuD",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        },
+        {
+          "observation_id": "137eb2fd-4a6f-4a08-b39a-d778e14f4124",
+          "source_match_id": "KSg0mJMf",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Cabal J. S./Farah R.",
+          "home_player_id": "nJ2qlJH6/O8qG0Nhb",
+          "away_player_id": "8dao1191/0puo1Oj0",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "t0WN9vR6/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Bublik A./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "ce191e0e-9426-439c-9acb-1248985620e0",
+          "source_match_id": "roi4JS3n",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Shyla Y./Vasilevski A.",
+          "home_player_id": "t0WN9vR6/O8qG0Nhb",
+          "away_player_id": "CbeHrM4a/z7VRhOfS",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "tWyNGHvd/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Istomin D./Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "2dcc529f-b8e4-473a-a5e2-7f17954e3d28",
+          "source_match_id": "bVGYyaAl",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Brands D./Moser F.",
+          "home_player_id": "tWyNGHvd/O8qG0Nhb",
+          "away_player_id": "WbmmNxVk/0EgeleU0",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Medvedev D",
+      "participant_id": "652c1c89-6819-4e88-93b5-1dcf6d3242eb",
+      "source_player_id": "x0NY3l0D/O8qG0Nhb",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Medvedev D.",
+      "profile_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "370365ca-bd4e-421b-a1df-ab38dec95702",
+          "source_match_id": "b7NEDisB",
+          "source_url": "https://www.flashscore.com/player/medvedev-daniil/O8qG0Nhb/results/",
+          "source_content_hash": "sha256:9f16bdabacdfd0c382cb169f74af172637a1d6d59b81016f16f53a2e3e008d96",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Medvedev D.",
+          "away_name": "Bublik A./Shelton B.",
+          "home_player_id": "x0NY3l0D/O8qG0Nhb",
+          "away_player_id": "t0WN9vR6/QNuG0Gzb",
+          "available_at": "2026-10-20 05:59:04.115981+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Rune H",
+      "participant_id": "338ccbb0-8c01-4973-a2b9-901a7836a072",
+      "source_player_id": "2kRS8swG",
+      "decision": "confirmed",
+      "legacy_fact_versions": 40,
+      "legacy_valid_fact_versions": 40,
+      "legacy_distinct_match_ids": 24,
+      "source_player_registry_name": "Rune H.",
+      "profile_url": "https://www.flashscore.com/player/rune-holger/2kRS8swG/results/",
+      "source_observation_match_ids_reviewed": 434,
+      "source_observation_match_ids_with_exact_side_id": 434,
+      "sample_source_evidence": [
+        {
+          "observation_id": "c13b1080-3536-4dfd-9108-81e0b5cf7c72",
+          "source_match_id": "06BNmWef",
+          "source_url": "https://www.flashscore.com/player/rune-holger/2kRS8swG/results/",
+          "source_content_hash": "sha256:66cf9b788efda56ee2d7297fbe210773ed989cc1c4d6a456352bf7aef3c59665",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Draper J.",
+          "away_name": "Rune H.",
+          "home_player_id": "SWxNhpmK",
+          "away_player_id": "2kRS8swG",
+          "available_at": "2026-10-20 18:58:37.833122+00:00"
+        },
+        {
+          "observation_id": "c373d24b-5080-4b3e-b03f-b04af4f99ff7",
+          "source_match_id": "0EeKiVml",
+          "source_url": "https://www.flashscore.com/player/rune-holger/2kRS8swG/results/",
+          "source_content_hash": "sha256:66cf9b788efda56ee2d7297fbe210773ed989cc1c4d6a456352bf7aef3c59665",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Rune H.",
+          "away_name": "Ymer E.",
+          "home_player_id": "2kRS8swG",
+          "away_player_id": "GhVfMwlD",
+          "available_at": "2026-10-20 18:58:37.833122+00:00"
+        },
+        {
+          "observation_id": "449e8217-1803-4345-acb4-16f4c862987f",
+          "source_match_id": "0KUGvRIC",
+          "source_url": "https://www.flashscore.com/player/rune-holger/2kRS8swG/results/",
+          "source_content_hash": "sha256:66cf9b788efda56ee2d7297fbe210773ed989cc1c4d6a456352bf7aef3c59665",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Rune H.",
+          "away_name": "Baez S.",
+          "home_player_id": "2kRS8swG",
+          "away_player_id": "dd8jLjtO",
+          "available_at": "2026-10-20 18:58:37.833122+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Rune H",
+      "participant_id": "338ccbb0-8c01-4973-a2b9-901a7836a072",
+      "source_player_id": "UH09iaZ6/2kRS8swG",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Fritz T./Rune H.",
+      "profile_url": "https://www.flashscore.com/player/rune-holger/2kRS8swG/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "59d55294-7b35-4842-a006-cc61c962da9f",
+          "source_match_id": "EZUT83RF",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:336fe5ec483bba6928bf2a5cf7cdf549d6c6fb41751a096a99b20be87c803c6e",
+          "parser_version": "flashscore-tennis-player-v5",
+          "home_name": "Zverev A.",
+          "away_name": "Fritz T./Rune H.",
+          "home_player_id": "b1jOW5ZN/dGbUhw9m",
+          "away_player_id": "UH09iaZ6/2kRS8swG",
+          "available_at": "2026-10-20 16:09:20.474605+00:00"
+        },
+        {
+          "observation_id": "c61594c6-46b2-4a80-abb1-699c2f090e2b",
+          "source_match_id": "Yo2YSSUF",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Rune H.",
+          "away_name": "Koolhof W./Mektic N.",
+          "home_player_id": "UH09iaZ6/2kRS8swG",
+          "away_player_id": "SGFFwNuD/zeaASGsD",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Selekhmeteva O.",
+      "participant_id": "1e00df18-223f-4017-bbc9-0901b1d0ba38",
+      "source_player_id": "v7vDWRvO",
+      "decision": "confirmed",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Selekhmeteva O.",
+      "profile_url": "https://www.flashscore.com/player/selekhmeteva-oksana/v7vDWRvO/results/",
+      "source_observation_match_ids_reviewed": 330,
+      "source_observation_match_ids_with_exact_side_id": 330,
+      "sample_source_evidence": [
+        {
+          "observation_id": "07574bba-eb5b-4fb5-98d9-e1ad8081fa08",
+          "source_match_id": "06WeVVZF",
+          "source_url": "https://www.flashscore.com/player/selekhmeteva-oksana/v7vDWRvO/results/",
+          "source_content_hash": "sha256:3964bc9aa1527e902e1602afd995403b0057be607d3fdfcd15a506202d88d260",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Selekhmeteva O.",
+          "away_name": "Jeanjean L.",
+          "home_player_id": "v7vDWRvO",
+          "away_player_id": "EDBO32wT",
+          "available_at": "2026-10-20 20:06:04.222427+00:00"
+        },
+        {
+          "observation_id": "61d5b86b-0063-48d9-9fb6-bbbe752f7c21",
+          "source_match_id": "0CQOiLEl",
+          "source_url": "https://www.flashscore.com/player/selekhmeteva-oksana/v7vDWRvO/results/",
+          "source_content_hash": "sha256:3964bc9aa1527e902e1602afd995403b0057be607d3fdfcd15a506202d88d260",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Tomova V.",
+          "away_name": "Selekhmeteva O.",
+          "home_player_id": "Ova6pdYE",
+          "away_player_id": "v7vDWRvO",
+          "available_at": "2026-10-20 20:06:04.222427+00:00"
+        },
+        {
+          "observation_id": "5a5f3ef8-5b24-40b5-92ef-5937680cdade",
+          "source_match_id": "0G6rmVzC",
+          "source_url": "https://www.flashscore.com/player/selekhmeteva-oksana/v7vDWRvO/results/",
+          "source_content_hash": "sha256:3964bc9aa1527e902e1602afd995403b0057be607d3fdfcd15a506202d88d260",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Selekhmeteva O.",
+          "away_name": "Helmi O.",
+          "home_player_id": "v7vDWRvO",
+          "away_player_id": "b7Jv6ogd",
+          "available_at": "2026-10-20 20:06:04.222427+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "6HdC3z4H",
+      "decision": "confirmed",
+      "legacy_fact_versions": 840,
+      "legacy_valid_fact_versions": 834,
+      "legacy_distinct_match_ids": 531,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 531,
+      "source_observation_match_ids_with_exact_side_id": 531,
+      "sample_source_evidence": [
+        {
+          "observation_id": "4909b684-ebb2-4f87-8f23-80741e82a780",
+          "source_match_id": "02q5muGL",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:a994f92d3dd1b3a8b4b5a3f61a17bf8bbf046d392c61322051b82b06f7c4b68e",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Sinner J.",
+          "away_name": "Medvedev D.",
+          "home_player_id": "6HdC3z4H",
+          "away_player_id": "O8qG0Nhb",
+          "available_at": "2026-10-20 17:02:12.936652+00:00"
+        },
+        {
+          "observation_id": "4567a2de-a5f9-41b4-a9ec-a0a39cd6f922",
+          "source_match_id": "06DAG2Wh",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:a994f92d3dd1b3a8b4b5a3f61a17bf8bbf046d392c61322051b82b06f7c4b68e",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Sinner J.",
+          "away_name": "Navone M.",
+          "home_player_id": "6HdC3z4H",
+          "away_player_id": "YoPUeL3o",
+          "available_at": "2026-10-20 17:02:12.936652+00:00"
+        },
+        {
+          "observation_id": "f720096a-7a27-4941-9005-52fbcd3cfe1a",
+          "source_match_id": "0EJy8DqQ",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:a994f92d3dd1b3a8b4b5a3f61a17bf8bbf046d392c61322051b82b06f7c4b68e",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Monfils G.",
+          "away_name": "Sinner J.",
+          "home_player_id": "fm7G8o0m",
+          "away_player_id": "6HdC3z4H",
+          "available_at": "2026-10-20 17:02:12.936652+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "6NnuYxEB/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "adee5981-a734-4883-bcb9-04f399e12708",
+          "source_match_id": "AkKv9vG4",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Pavic M.",
+          "away_name": "Lopez F./Sinner J.",
+          "home_player_id": "zeaASGsD/2Dnk4gai",
+          "away_player_id": "6NnuYxEB/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "1be264f5-28da-48e1-98b6-052378e0944c",
+          "source_match_id": "th3MWFsF",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Evans D./O'Mara J.",
+          "home_player_id": "6NnuYxEB/6HdC3z4H",
+          "away_player_id": "Ya9jkSU5/pf2V1HOl",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "8MVbgF3n/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Lorenzi P./Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "69742e7a-ed3d-4b2f-bfdc-768d6b75b699",
+          "source_match_id": "r9yrNDNM",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Mies A.",
+          "away_name": "Lorenzi P./Sinner J.",
+          "home_player_id": "EwLaAdNP/4MUKYp1l",
+          "away_player_id": "8MVbgF3n/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "7626ae68-9c99-4f48-9090-d65bf88c1f21",
+          "source_match_id": "xfBViMJr",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Cuevas P./Gonzalez M.",
+          "home_player_id": "8MVbgF3n/6HdC3z4H",
+          "away_player_id": "S6bHHtiI/nJMJsuq6",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "EZgZ9Xfh/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "733f71ff-b5a6-449c-bb54-b836dbf1d3d4",
+          "source_match_id": "lrrbhxf3",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Gonzalez S./Roger-Vasselin E.",
+          "home_player_id": "EZgZ9Xfh/6HdC3z4H",
+          "away_player_id": "IHpNzfLP/tGqyUJBE",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "ded2b4f7-630b-4537-b325-6a22102713d0",
+          "source_match_id": "pn3a6lFM",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zeballos H.",
+          "away_name": "De Minaur A./Sinner J.",
+          "home_player_id": "2B5Hvd1l/Eecas9kD",
+          "away_player_id": "EZgZ9Xfh/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "d629973a-7265-4dd4-8bb5-eb7a99f5f982",
+          "source_match_id": "vu5obfPM",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Arevalo M./Rojer J.",
+          "home_player_id": "EZgZ9Xfh/6HdC3z4H",
+          "away_player_id": "zLNFemL9/ImVMGqSp",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "GnIfbWHR/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "4ebab285-8539-4ea7-a45f-dd60b4b16d2e",
+          "source_match_id": "Ioj6xK5M",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Pellegrino A./Vavassori A.",
+          "home_player_id": "GnIfbWHR/6HdC3z4H",
+          "away_player_id": "ENPUiYgk/EVknmLDE",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "OEmFxtMq/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "da6cb15c-6ed2-42f5-894a-cfa20c18e46a",
+          "source_match_id": "48RDQJZf",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Mektic N./Pavic M.",
+          "home_player_id": "OEmFxtMq/6HdC3z4H",
+          "away_player_id": "zeaASGsD/2Dnk4gai",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "OhwtM7N8/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "cafb4e37-9c21-4577-86b9-cf8829d5fb51",
+          "source_match_id": "0Manrsm1",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:5c9147f4e3001883eb520b6978d01c58c14d86f288dd070b63170942abc3abdb",
+          "parser_version": "flashscore-tennis-player-v10",
+          "home_name": "Safiullin R.",
+          "away_name": "Berrettini M./Sinner J.",
+          "home_player_id": "O8qG0Nhb/IBpggNog",
+          "away_player_id": "OhwtM7N8/6HdC3z4H",
+          "available_at": "2026-10-25 09:27:32.357168+00:00"
+        },
+        {
+          "observation_id": "dbba1597-3976-409e-99e0-712f90632028",
+          "source_match_id": "KhHSqdpR",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Gonzalez M./Molteni A.",
+          "home_player_id": "OhwtM7N8/6HdC3z4H",
+          "away_player_id": "nJMJsuq6/GYEQr3W3",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "1f719ced-d200-4c5b-bf73-e5813a04f4bf",
+          "source_match_id": "vFR4AbdF",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:5c9147f4e3001883eb520b6978d01c58c14d86f288dd070b63170942abc3abdb",
+          "parser_version": "flashscore-tennis-player-v10",
+          "home_name": "Sinner J.",
+          "away_name": "Martin F./Roger-Vasselin E.",
+          "home_player_id": "OhwtM7N8/6HdC3z4H",
+          "away_player_id": "xIoPwcCT/tGqyUJBE",
+          "available_at": "2026-10-25 09:27:32.369824+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "SWxNhpmK/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "f26fa624-f889-4ce7-bf4a-00c55b5c5cfb",
+          "source_match_id": "8bRYTAx2",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Gille S./Vliegen J.",
+          "home_player_id": "SWxNhpmK/6HdC3z4H",
+          "away_player_id": "EZyz7Jle/K8zhJsFb",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "6ca0db1a-7e2d-488d-a94c-4e1230ae777c",
+          "source_match_id": "M9R9Xi8C",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Shelton B.",
+          "away_name": "Draper J./Sinner J.",
+          "home_player_id": "t0WN9vR6/QNuG0Gzb",
+          "away_player_id": "SWxNhpmK/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "SYklCTPO/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 8,
+      "legacy_valid_fact_versions": 4,
+      "legacy_distinct_match_ids": 4,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 4,
+      "source_observation_match_ids_with_exact_side_id": 4,
+      "sample_source_evidence": [
+        {
+          "observation_id": "5bb1ffb4-895e-4b0c-abdb-c411f38772e0",
+          "source_match_id": "0EqBewFR",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Paire B./Withrow J.",
+          "home_player_id": "SYklCTPO/6HdC3z4H",
+          "away_player_id": "CMfsaHsr/f5OXuAOb",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "4f2b9d8e-647a-40c4-a49a-51cd15c9d3b9",
+          "source_match_id": "0jqLwh78",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Kyrgios N./Tiafoe F.",
+          "home_player_id": "SYklCTPO/6HdC3z4H",
+          "away_player_id": "fudxgwDF/AHDLJaph",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "9549b890-066a-449d-9018-775120504569",
+          "source_match_id": "EkRdFsDr",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Farah R.",
+          "away_name": "Korda S./Sinner J.",
+          "home_player_id": "8dao1191/0puo1Oj0",
+          "away_player_id": "SYklCTPO/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "SbeTx1o8/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "c1bd99a0-2e0b-4474-a695-22b7feaade82",
+          "source_match_id": "G49re6n2",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Machac T./Ruud C.",
+          "home_player_id": "SbeTx1o8/6HdC3z4H",
+          "away_player_id": "S44E7UYr/zN9UpRqp",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "U5M8lpkl/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "f5e2e0e6-c13d-4a8e-9f4b-63d42800361a",
+          "source_match_id": "M7KykjyL",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Arends S./Pel D.",
+          "home_player_id": "U5M8lpkl/6HdC3z4H",
+          "away_player_id": "tSxO13Qj/bqQtB0Na",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "UXJlgz7L/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Caruso S./Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "ccd354ea-f7f8-4626-841c-eddeddf96249",
+          "source_match_id": "fPCc9VUq",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Gille S./Vliegen J.",
+          "home_player_id": "UXJlgz7L/6HdC3z4H",
+          "away_player_id": "EZyz7Jle/K8zhJsFb",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "fqKkCJdJ/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 10,
+      "legacy_valid_fact_versions": 5,
+      "legacy_distinct_match_ids": 5,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 5,
+      "source_observation_match_ids_with_exact_side_id": 5,
+      "sample_source_evidence": [
+        {
+          "observation_id": "efeeba90-edcb-4a52-85a6-93120b0dcbdf",
+          "source_match_id": "27JeXczs",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Paire B.",
+          "away_name": "Opelka R./Sinner J.",
+          "home_player_id": "vJXoZA81/CMfsaHsr",
+          "away_player_id": "fqKkCJdJ/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "b3a40d77-7613-4edc-92bf-6e6a6fe974b3",
+          "source_match_id": "QewpuE8d",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Reyes-Varela M. A.",
+          "away_name": "Opelka R./Sinner J.",
+          "home_player_id": "zLNFemL9/bouYdZj2",
+          "away_player_id": "fqKkCJdJ/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "2940e332-c97a-4cf1-b1c1-39d74a9c66d2",
+          "source_match_id": "Ua6POtB1",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Thompson J.",
+          "away_name": "Opelka R./Sinner J.",
+          "home_player_id": "fD42B7Fh/8pwfoWMP",
+          "away_player_id": "fqKkCJdJ/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "lxOVoutC/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "8cb7d091-5404-48d5-b87b-ba021315811b",
+          "source_match_id": "QiTXW3O7",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Granollers M./Zeballos H.",
+          "home_player_id": "lxOVoutC/6HdC3z4H",
+          "away_player_id": "2B5Hvd1l/Eecas9kD",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "006e36d6-77b6-49a3-bb5a-fd39188a2db4",
+          "source_match_id": "S6K75yGB",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Mies A.",
+          "away_name": "Schwartzman D./Sinner J.",
+          "home_player_id": "xIoPwcCT/4MUKYp1l",
+          "away_player_id": "lxOVoutC/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Sinner J",
+      "participant_id": "0c655806-f062-41be-b272-65db013b3ce5",
+      "source_player_id": "zuHOBnY9/6HdC3z4H",
+      "decision": "rejected",
+      "legacy_fact_versions": 24,
+      "legacy_valid_fact_versions": 12,
+      "legacy_distinct_match_ids": 12,
+      "source_player_registry_name": "Sinner J.",
+      "profile_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+      "source_observation_match_ids_reviewed": 12,
+      "source_observation_match_ids_with_exact_side_id": 12,
+      "sample_source_evidence": [
+        {
+          "observation_id": "15dc50ce-c629-4e78-9a20-ceb43960ddd4",
+          "source_match_id": "8WO8kqC6",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Bublik A./Celikbilek A.",
+          "home_player_id": "zuHOBnY9/6HdC3z4H",
+          "away_player_id": "t0WN9vR6/Offsrwmn",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "96252b1b-4c43-4857-aa7d-462b657c20a3",
+          "source_match_id": "ADnpCNUs",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sinner J.",
+          "away_name": "Puodziunas S./Puttergill C.",
+          "home_player_id": "zuHOBnY9/6HdC3z4H",
+          "away_player_id": "WQYKsfNE/KIcmw5ym",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "64a11a20-107a-458e-b47c-ab88845f49db",
+          "source_match_id": "Cxe9MKT8",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Kontinen H.",
+          "away_name": "Hurkacz H./Sinner J.",
+          "home_player_id": "vD0zNRBM/tzxEOHd9",
+          "away_player_id": "zuHOBnY9/6HdC3z4H",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Tiafoe F",
+      "participant_id": "085db666-3f3a-4f27-b604-7ed5293f62ca",
+      "source_player_id": "6HdC3z4H/AHDLJaph",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Tiafoe F.",
+      "profile_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "250b5d7a-d80c-44c0-8ecc-f00f8c5eb767",
+          "source_match_id": "INLQ1EhA",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Tiafoe F.",
+          "away_name": "Polmans M./Reid M.",
+          "home_player_id": "6HdC3z4H/AHDLJaph",
+          "away_player_id": "2TDsBEcH/v3IfrROQ",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        },
+        {
+          "observation_id": "101bb229-3a13-4cef-81b6-2a91c62b46a8",
+          "source_match_id": "UJvAHYWo",
+          "source_url": "https://www.flashscore.com/player/sinner-jannik/6HdC3z4H/results/",
+          "source_content_hash": "sha256:8c5c35552b7ac376fd743ed6b2429a163601ea2d63eea890cb3e33f3a456fa01",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Caruso S.",
+          "away_name": "Sinner J./Tiafoe F.",
+          "home_player_id": "2m1zUJJf/UXJlgz7L",
+          "away_player_id": "6HdC3z4H/AHDLJaph",
+          "available_at": "2026-10-20 05:16:14.130539+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Tiafoe F",
+      "participant_id": "085db666-3f3a-4f27-b604-7ed5293f62ca",
+      "source_player_id": "AHDLJaph",
+      "decision": "confirmed",
+      "legacy_fact_versions": 60,
+      "legacy_valid_fact_versions": 60,
+      "legacy_distinct_match_ids": 42,
+      "source_player_registry_name": "Tiafoe F.",
+      "profile_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+      "source_observation_match_ids_reviewed": 704,
+      "source_observation_match_ids_with_exact_side_id": 704,
+      "sample_source_evidence": [
+        {
+          "observation_id": "3df71368-2af6-4864-bf07-9710a3dca80a",
+          "source_match_id": "02TYqfx7",
+          "source_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+          "source_content_hash": "sha256:a429045c8c3b5793c52f82ca9401beb083532dd5b62f3e6d0b49cba9acbf5f69",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Tiafoe F.",
+          "away_name": "Korda S.",
+          "home_player_id": "AHDLJaph",
+          "away_player_id": "SYklCTPO",
+          "available_at": "2026-10-20 17:52:53.978651+00:00"
+        },
+        {
+          "observation_id": "21c93a5b-a1ca-4638-be9f-6240c5c01d21",
+          "source_match_id": "086IbVie",
+          "source_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+          "source_content_hash": "sha256:a429045c8c3b5793c52f82ca9401beb083532dd5b62f3e6d0b49cba9acbf5f69",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Tiafoe F.",
+          "away_name": "Tsitsipas S.",
+          "home_player_id": "AHDLJaph",
+          "away_player_id": "hb6oWfc6",
+          "available_at": "2026-10-20 17:52:53.978651+00:00"
+        },
+        {
+          "observation_id": "695dc48d-2dc9-4b70-b5c3-bf7df5bc36df",
+          "source_match_id": "08bazdQB",
+          "source_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+          "source_content_hash": "sha256:a429045c8c3b5793c52f82ca9401beb083532dd5b62f3e6d0b49cba9acbf5f69",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Tiafoe F.",
+          "away_name": "Kubler J.",
+          "home_player_id": "AHDLJaph",
+          "away_player_id": "Ua0d9NLL",
+          "available_at": "2026-10-20 17:52:53.978651+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Tiafoe F",
+      "participant_id": "085db666-3f3a-4f27-b604-7ed5293f62ca",
+      "source_player_id": "UH09iaZ6/AHDLJaph",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Tiafoe F.",
+      "profile_url": "https://www.flashscore.com/player/tiafoe-frances/AHDLJaph/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "448b39f5-f730-4707-867a-71cbf05dbc55",
+          "source_match_id": "I73afnX3",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Tiafoe F.",
+          "away_name": "Arevalo M./Rojer J.",
+          "home_player_id": "UH09iaZ6/AHDLJaph",
+          "away_player_id": "zLNFemL9/ImVMGqSp",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "201f3c03-f9cb-4bbe-ad75-1c66b55d484c",
+          "source_match_id": "lbSDp6mD",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Tiafoe F.",
+          "away_name": "Bopanna R./Roger-Vasselin E.",
+          "home_player_id": "UH09iaZ6/AHDLJaph",
+          "away_player_id": "t6Kb5X76/tGqyUJBE",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        },
+        {
+          "observation_id": "aaff1066-0160-4b32-9a7e-04b3bfa1aaec",
+          "source_match_id": "rmCxAnT1",
+          "source_url": "https://www.flashscore.com/player/fritz-taylor/UH09iaZ6/results/",
+          "source_content_hash": "sha256:e40cc28eca6f35e8ec2b98f340bd3bd0277e5b595159620dc142ecc7a97f3c5b",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Tiafoe F.",
+          "away_name": "Norrie C./Paul T.",
+          "home_player_id": "UH09iaZ6/AHDLJaph",
+          "away_player_id": "pvzhJGY8/pd3ye1BS",
+          "available_at": "2026-10-20 06:04:41.547181+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "2Txcqx1b/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "95242882-8cce-4bb9-a6fc-2a6e686c44aa",
+          "source_match_id": "46W844OO",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Bopanna R./Ebden M.",
+          "home_player_id": "2Txcqx1b/dGbUhw9m",
+          "away_player_id": "t6Kb5X76/0lJNLkQD",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "4SwMutAe/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "6a611bb6-6fca-4248-bc4b-59c7f82c69be",
+          "source_match_id": "8Sz1OzTa",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Cerretani J./Delgado J.",
+          "home_player_id": "4SwMutAe/dGbUhw9m",
+          "away_player_id": "2odtG8n7/htIYvXmo",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "8lY9FUTP/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 8,
+      "legacy_valid_fact_versions": 4,
+      "legacy_distinct_match_ids": 4,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 4,
+      "source_observation_match_ids_with_exact_side_id": 4,
+      "sample_source_evidence": [
+        {
+          "observation_id": "383d296c-0fa7-415e-9319-6d437d1c1a86",
+          "source_match_id": "0WQm57Di",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Sock J.",
+          "away_name": "Golubev A./Zverev A.",
+          "home_player_id": "Ym1rWFYa/MPH9qGmL",
+          "away_player_id": "8lY9FUTP/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "0f6e6923-0a8a-4994-809f-135707197f1d",
+          "source_match_id": "KfI7J9El",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Paul T.",
+          "away_name": "Golubev A./Zverev A.",
+          "home_player_id": "UH09iaZ6/pd3ye1BS",
+          "away_player_id": "8lY9FUTP/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "86402bfb-2f4b-4f3c-90ab-42e34ea8eff6",
+          "source_match_id": "ruYn5u5M",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Arevalo M./Rojer J.",
+          "home_player_id": "8lY9FUTP/dGbUhw9m",
+          "away_player_id": "zLNFemL9/ImVMGqSp",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "AeAn4gP0/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 12,
+      "legacy_valid_fact_versions": 6,
+      "legacy_distinct_match_ids": 6,
+      "source_player_registry_name": "Rublev A./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 6,
+      "source_observation_match_ids_with_exact_side_id": 6,
+      "sample_source_evidence": [
+        {
+          "observation_id": "969312e1-84ef-4700-ada3-b45e69248f49",
+          "source_match_id": "29GgLoRM",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Shapovalov D.",
+          "away_name": "Rublev A./Zverev A.",
+          "home_player_id": "fqKkCJdJ/zXddgn9o",
+          "away_player_id": "AeAn4gP0/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "2e7acdd9-2699-4ea5-a43d-0ccd528a7213",
+          "source_match_id": "IZi6jW9Q",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Schnur B.",
+          "away_name": "Rublev A./Zverev A.",
+          "home_player_id": "06EmvY0Q/xUMvcln6",
+          "away_player_id": "AeAn4gP0/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "719401bf-c337-4ada-87f0-0a06eb4eb512",
+          "source_match_id": "M5kicBPs",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Hanfmann Y./Koepfer D.",
+          "home_player_id": "AeAn4gP0/dGbUhw9m",
+          "away_player_id": "zLJYYbhm/AmrI05YH",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "CUhEqGYo/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 10,
+      "legacy_valid_fact_versions": 5,
+      "legacy_distinct_match_ids": 5,
+      "source_player_registry_name": "Puetz T./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 5,
+      "source_observation_match_ids_with_exact_side_id": 5,
+      "sample_source_evidence": [
+        {
+          "observation_id": "e62d295c-a8d3-4c4a-ad3a-6d0db11a4a3d",
+          "source_match_id": "AegkAVZk",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Mmoh M.",
+          "away_name": "Puetz T./Zverev A.",
+          "home_player_id": "SYklCTPO/dCvHbO15",
+          "away_player_id": "CUhEqGYo/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "c6b160e8-bf0c-45a9-a2bc-7176bebe9b20",
+          "source_match_id": "UiWSTUkg",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Melo M./Rojer J.",
+          "home_player_id": "CUhEqGYo/dGbUhw9m",
+          "away_player_id": "b1jOW5ZN/ImVMGqSp",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "c2b4f671-925e-46a3-9841-c8326032aec3",
+          "source_match_id": "WMTAbTY3",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Granollers M./Zeballos H.",
+          "home_player_id": "CUhEqGYo/dGbUhw9m",
+          "away_player_id": "2B5Hvd1l/Eecas9kD",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "ETkoNgxJ/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 14,
+      "legacy_valid_fact_versions": 7,
+      "legacy_distinct_match_ids": 7,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 7,
+      "source_observation_match_ids_with_exact_side_id": 7,
+      "sample_source_evidence": [
+        {
+          "observation_id": "d3fcb760-61a8-45ef-81f5-403b84a14248",
+          "source_match_id": "2HSwVn45",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zhang Z.",
+          "away_name": "Siegemund L./Zverev A.",
+          "home_player_id": "OY0ZExo5/IFKEHRGG",
+          "away_player_id": "ETkoNgxJ/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "50c6c687-93e9-4c80-bf28-fd65fa47afb4",
+          "source_match_id": "6DD3y22n",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Hurkacz H.",
+          "away_name": "Siegemund L./Zverev A.",
+          "home_player_id": "jNyZsXZe/zuHOBnY9",
+          "away_player_id": "ETkoNgxJ/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "f0f891f4-f5f2-4764-81c5-04e8edef89f3",
+          "source_match_id": "Em0qo5pA",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Bouzkova M./Lehecka J.",
+          "home_player_id": "ETkoNgxJ/dGbUhw9m",
+          "away_player_id": "WMS3AdAb/6PlgfXKR",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "Ek3bDDo2/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 10,
+      "legacy_valid_fact_versions": 5,
+      "legacy_distinct_match_ids": 5,
+      "source_player_registry_name": "Struff J-L./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 5,
+      "source_observation_match_ids_with_exact_side_id": 5,
+      "sample_source_evidence": [
+        {
+          "observation_id": "e6aa2f61-8ffa-4e15-aae9-76e9aebf093a",
+          "source_match_id": "CG5QnZlG",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Soares B.",
+          "away_name": "Struff J-L./Zverev A.",
+          "home_player_id": "CIM2Gb22/400aqQlU",
+          "away_player_id": "Ek3bDDo2/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "5346e449-f601-4e68-aaac-534929dfdba3",
+          "source_match_id": "Ea8JvQ4c",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Hurkacz H./Kubot L.",
+          "home_player_id": "Ek3bDDo2/dGbUhw9m",
+          "away_player_id": "zuHOBnY9/voAHjP8p",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "80be08c6-c864-424c-ad73-34a808ff6ca4",
+          "source_match_id": "Qu7R3YGK",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Bopanna R./Shapovalov D.",
+          "home_player_id": "Ek3bDDo2/dGbUhw9m",
+          "away_player_id": "t6Kb5X76/zXddgn9o",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "EwLaAdNP/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Krawietz K./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "819dc72e-dcc5-4852-bb7d-6fd96f517264",
+          "source_match_id": "KtmQvznJ",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:bede92764efa71ebb741c60454467c9c662cccff9e8e046ee145b76ed9e1deff",
+          "parser_version": "flashscore-tennis-player-v10",
+          "home_name": "Zverev A.",
+          "away_name": "Evans D./Murray J.",
+          "home_player_id": "EwLaAdNP/dGbUhw9m",
+          "away_player_id": "Ya9jkSU5/CIM2Gb22",
+          "available_at": "2026-10-25 09:27:32.371316+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "GrsQDFC0/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Federer R./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "04ad871e-0ce6-4d07-9c61-420c86cfe7e4",
+          "source_match_id": "bmYM0bFn",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Shapovalov D./Sock J.",
+          "home_player_id": "GrsQDFC0/dGbUhw9m",
+          "away_player_id": "zXddgn9o/MPH9qGmL",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "OOSYhmDq/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "a32b7277-39d4-4033-ae89-49965d7dba6d",
+          "source_match_id": "4njKzRPl",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Alund M./Ghem A.",
+          "home_player_id": "OOSYhmDq/dGbUhw9m",
+          "away_player_id": "4612wZcE/QurUyruC",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "UTu7grNI/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "ab5b7c5c-1155-445b-8233-8a40e41d7c71",
+          "source_match_id": "AXKynjZh",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Bopanna R./Ebden M.",
+          "home_player_id": "UTu7grNI/dGbUhw9m",
+          "away_player_id": "t6Kb5X76/0lJNLkQD",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "UkhgIFEq/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "04c853bc-43ad-40ac-810a-37c714b49c19",
+          "source_match_id": "zqGCTHm4",
+          "source_url": "https://www.flashscore.com/player/alcaraz-garfia-carlos/UkhgIFEq/results/",
+          "source_content_hash": "sha256:b67cf73414f90abf64f180264efba38efc6e12ed40058f2bb14a040e89fe1804",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Fritz T./Shelton B.",
+          "home_player_id": "UkhgIFEq/dGbUhw9m",
+          "away_player_id": "UH09iaZ6/QNuG0Gzb",
+          "available_at": "2026-10-20 05:09:59.345937+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "Ym1rWFYa/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 6,
+      "legacy_valid_fact_versions": 3,
+      "legacy_distinct_match_ids": 3,
+      "source_player_registry_name": "Isner J./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 3,
+      "source_observation_match_ids_with_exact_side_id": 3,
+      "sample_source_evidence": [
+        {
+          "observation_id": "cf0f31b0-9751-45c8-9094-053a832435f6",
+          "source_match_id": "CdB9WRqP",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Rublev A.",
+          "away_name": "Isner J./Zverev A.",
+          "home_player_id": "4bNPtZT5/AeAn4gP0",
+          "away_player_id": "Ym1rWFYa/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "cc2fc44f-eff1-4942-b038-8c9716f73087",
+          "source_match_id": "x0WDLjyl",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Krawietz K./Mies A.",
+          "home_player_id": "Ym1rWFYa/dGbUhw9m",
+          "away_player_id": "EwLaAdNP/4MUKYp1l",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "1b4b9214-506a-4378-8a50-06f80aff9ecf",
+          "source_match_id": "zFnPwrAq",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Mergea F./Tecau H.",
+          "home_player_id": "Ym1rWFYa/dGbUhw9m",
+          "away_player_id": "6NKdXvGF/CQrnHCpr",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "b1jOW5ZN/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 120,
+      "legacy_valid_fact_versions": 60,
+      "legacy_distinct_match_ids": 60,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 60,
+      "source_observation_match_ids_with_exact_side_id": 60,
+      "sample_source_evidence": [
+        {
+          "observation_id": "1cad601b-b421-497d-978f-bab2234a7484",
+          "source_match_id": "02Ddo0xe",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Etcheverry T. M.",
+          "away_name": "Melo M./Zverev A.",
+          "home_player_id": "lWQ3G6gB/AXL5qpKa",
+          "away_player_id": "b1jOW5ZN/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "9d27d2f5-f818-4b51-95b2-fa5721788568",
+          "source_match_id": "46bIjWAa",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Cash J./Glasspool L.",
+          "home_player_id": "b1jOW5ZN/dGbUhw9m",
+          "away_player_id": "pIrfiAIF/tObvrnaN",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "eb50f12f-1935-4f94-a6c7-a3995e18ba2a",
+          "source_match_id": "4lTWFOZ1",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Lammons N./Withrow J.",
+          "home_player_id": "b1jOW5ZN/dGbUhw9m",
+          "away_player_id": "hUvZFis6/f5OXuAOb",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "dGbUhw9m",
+      "decision": "confirmed",
+      "legacy_fact_versions": 942,
+      "legacy_valid_fact_versions": 933,
+      "legacy_distinct_match_ids": 933,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 933,
+      "source_observation_match_ids_with_exact_side_id": 933,
+      "sample_source_evidence": [
+        {
+          "observation_id": "fd1217ea-b084-4eb9-870e-034f7b566472",
+          "source_match_id": "00YlPVke",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:58249e437d5910aa16d127d6dc1d8a9a529d3ee794ebd9766295157ee78f4d61",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Edmund K.",
+          "away_name": "Zverev A.",
+          "home_player_id": "E3lS9LXS",
+          "away_player_id": "dGbUhw9m",
+          "available_at": "2026-10-20 17:03:40.812668+00:00"
+        },
+        {
+          "observation_id": "4c8099c3-519b-41f6-a941-c9fa59d01861",
+          "source_match_id": "02s556Ja",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:58249e437d5910aa16d127d6dc1d8a9a529d3ee794ebd9766295157ee78f4d61",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Zverev A.",
+          "away_name": "Thompson J.",
+          "home_player_id": "dGbUhw9m",
+          "away_player_id": "8pwfoWMP",
+          "available_at": "2026-10-20 17:03:40.812668+00:00"
+        },
+        {
+          "observation_id": "8b08159d-ed51-4f11-94c2-868f9408c017",
+          "source_match_id": "04OLdQzO",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:58249e437d5910aa16d127d6dc1d8a9a529d3ee794ebd9766295157ee78f4d61",
+          "parser_version": "flashscore-tennis-player-v7",
+          "home_name": "Zverev A.",
+          "away_name": "Thiem D.",
+          "home_player_id": "dGbUhw9m",
+          "away_player_id": "dtwmvonR",
+          "available_at": "2026-10-20 17:03:40.812668+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "dtwmvonR/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 8,
+      "legacy_valid_fact_versions": 4,
+      "legacy_distinct_match_ids": 4,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 4,
+      "source_observation_match_ids_with_exact_side_id": 4,
+      "sample_source_evidence": [
+        {
+          "observation_id": "7a3a8f28-6921-44a1-8ee1-df058de9752a",
+          "source_match_id": "IJF52Jnn",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Kas C./Kohlschreiber P.",
+          "home_player_id": "dtwmvonR/dGbUhw9m",
+          "away_player_id": "t6QkoMlD/UguOwYIu",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "a207ad41-b9b7-45d8-9eda-8a5e0ca11b00",
+          "source_match_id": "SYhTE2C2",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Rublev A.",
+          "away_name": "Thiem D./Zverev A.",
+          "home_player_id": "OhwtM7N8/AeAn4gP0",
+          "away_player_id": "dtwmvonR/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "0038bed0-5a36-492a-afb1-6f23cee4cf40",
+          "source_match_id": "WrNpVOKI",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Lopez M.",
+          "away_name": "Thiem D./Zverev A.",
+          "home_player_id": "6NnuYxEB/W2Zjdrgt",
+          "away_player_id": "dtwmvonR/dGbUhw9m",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "rBm7dcxH/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "a6ae4ec8-8070-451f-be0b-3b256477edd8",
+          "source_match_id": "rHTBws3f",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Peers J./Thompson J.",
+          "home_player_id": "rBm7dcxH/dGbUhw9m",
+          "away_player_id": "MNcbg3cc/8pwfoWMP",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "rZqZwGkb/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "f1280b43-eb22-496e-9ec1-796dcac54fd4",
+          "source_match_id": "KQn41lpJ",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Peers J./Polasek F.",
+          "home_player_id": "rZqZwGkb/dGbUhw9m",
+          "away_player_id": "MNcbg3cc/E7b2zNPT",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "t207Vw7F/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "178fae29-15b5-4721-bb30-0f878429c7e0",
+          "source_match_id": "Ao0s185i",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Betov S./Bury A.",
+          "home_player_id": "t207Vw7F/dGbUhw9m",
+          "away_player_id": "McIzdmCA/hb8Fg4uM",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "xUR0yjI4/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 4,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Berrer M./Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "c92f7224-2277-4755-b135-00dedecac583",
+          "source_match_id": "pbkdaUbd",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Kowalczyk M./Sitak A.",
+          "home_player_id": "xUR0yjI4/dGbUhw9m",
+          "away_player_id": "YPltaUBD/vqyzTq42",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        },
+        {
+          "observation_id": "773348f7-bded-4751-afe6-3e6463de7dfa",
+          "source_match_id": "rFn8OdpM",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Cermak F./Rosol L.",
+          "home_player_id": "xUR0yjI4/dGbUhw9m",
+          "away_player_id": "6Nd4qrHU/pllyVfHb",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "zBEc9pRA/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "84977fee-a028-4e90-b6ee-7f65c54593e9",
+          "source_match_id": "4pD1vle9",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Lopez F./Lopez M.",
+          "home_player_id": "zBEc9pRA/dGbUhw9m",
+          "away_player_id": "6NnuYxEB/W2Zjdrgt",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Zverev A",
+      "participant_id": "49317b10-cbb1-47d5-ab39-41fa9c2ddc39",
+      "source_player_id": "zN9UpRqp/dGbUhw9m",
+      "decision": "rejected",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Zverev A.",
+      "profile_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "5b22ccde-5fe5-4a02-872b-15fe19efbb76",
+          "source_match_id": "2aQk5IfA",
+          "source_url": "https://www.flashscore.com/player/zverev-alexander/dGbUhw9m/results/",
+          "source_content_hash": "sha256:629f0fc0e308b0e888a1391e49c82a9142afca8aa0e6fd0e4b3f68b71f3b94ff",
+          "parser_version": "flashscore-tennis-player-v4",
+          "home_name": "Zverev A.",
+          "away_name": "Bublik A./Nakashima B.",
+          "home_player_id": "zN9UpRqp/dGbUhw9m",
+          "away_player_id": "t0WN9vR6/ETGnbrpH",
+          "available_at": "2026-10-20 06:01:34.777845+00:00"
+        }
+      ],
+      "reason": "Composite doubles-side ID, not a unique individual player identity; saved match observations show the pair/team side."
+    },
+    {
+      "participant_name": "Крюгер М",
+      "participant_id": "c70c58a9-5a4a-4db3-9bcf-c9ed6c1d62b2",
+      "source_player_id": "j9Kf20T0",
+      "decision": "confirmed",
+      "legacy_fact_versions": 1,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Крюгер М.",
+      "profile_url": null,
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "785a9fef-40f0-45b5-ad36-b9627faecb25",
+          "source_match_id": "bsKreOcc",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:f6bcd8b9eb90f63923e2127584d137f7da28d3f3f69b8c74587d9d4d12c4ae4d",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Antonius M.",
+          "away_name": "Krueger M.",
+          "home_player_id": "nB7oqApL",
+          "away_player_id": "j9Kf20T0",
+          "available_at": "2026-10-21 22:22:44.176763+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Маккормик Т",
+      "participant_id": "06bc5ad8-0fe1-4778-ba83-7bae92afd9f9",
+      "source_player_id": "vFQc2kkD",
+      "decision": "confirmed",
+      "legacy_fact_versions": 1,
+      "legacy_valid_fact_versions": 1,
+      "legacy_distinct_match_ids": 1,
+      "source_player_registry_name": "Маккормик Т.",
+      "profile_url": null,
+      "source_observation_match_ids_reviewed": 1,
+      "source_observation_match_ids_with_exact_side_id": 1,
+      "sample_source_evidence": [
+        {
+          "observation_id": "2adb10dd-50ae-4f13-abb5-3cfb735e33b7",
+          "source_match_id": "f38icxQj",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:f6bcd8b9eb90f63923e2127584d137f7da28d3f3f69b8c74587d9d4d12c4ae4d",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "McCormick T.",
+          "away_name": "Antonius M.",
+          "home_player_id": "vFQc2kkD",
+          "away_player_id": "nB7oqApL",
+          "available_at": "2026-10-21 22:22:44.176763+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    },
+    {
+      "participant_name": "Ханс К",
+      "participant_id": "9a63fcab-4099-417c-9b58-b97d12e2f73c",
+      "source_player_id": "fBNhbUlg",
+      "decision": "confirmed",
+      "legacy_fact_versions": 2,
+      "legacy_valid_fact_versions": 2,
+      "legacy_distinct_match_ids": 2,
+      "source_player_registry_name": "Ханс К.",
+      "profile_url": null,
+      "source_observation_match_ids_reviewed": 2,
+      "source_observation_match_ids_with_exact_side_id": 2,
+      "sample_source_evidence": [
+        {
+          "observation_id": "1ed1650e-1d68-4734-90f3-5b5ff5e3d8c3",
+          "source_match_id": "hxgVvwNt",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:f6bcd8b9eb90f63923e2127584d137f7da28d3f3f69b8c74587d9d4d12c4ae4d",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Hance K.",
+          "away_name": "Antonius M.",
+          "home_player_id": "fBNhbUlg",
+          "away_player_id": "nB7oqApL",
+          "available_at": "2026-10-21 22:22:44.176763+00:00"
+        },
+        {
+          "observation_id": "6e0136de-2d2b-46db-839d-0106767072b4",
+          "source_match_id": "lQs7VHuJ",
+          "source_url": "https://www.flashscore.com.ua/player/antonius-michael/nB7oqApL/results/",
+          "source_content_hash": "sha256:f6bcd8b9eb90f63923e2127584d137f7da28d3f3f69b8c74587d9d4d12c4ae4d",
+          "parser_version": "flashscore-tennis-player-v8",
+          "home_name": "Hance K.",
+          "away_name": "Antonius M.",
+          "home_player_id": "fBNhbUlg",
+          "away_player_id": "nB7oqApL",
+          "available_at": "2026-10-21 22:22:44.176763+00:00"
+        }
+      ],
+      "reason": "Flashscore player registry name and ID, saved match side observations, and current profile identity corroborate this participant-to-player link. Available from review time only."
+    }
+  ]
+}

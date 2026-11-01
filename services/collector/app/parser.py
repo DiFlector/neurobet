@@ -297,7 +297,8 @@ class FonbetLiveTennisParser:
             return str(info.get("scoreComment") or "")
 
     @classmethod
-    def from_line_feed(cls, feed: Dict[str, Any]) -> Dict[str, Any]:
+    def from_line_feed(cls, feed: Dict[str, Any], *, include_prematch: bool = False,
+                        observed_at=None, prematch_horizon_hours: int = 48) -> Dict[str, Any]:
         """
         Reduce the official line list payload to live tennis cards.
 
@@ -420,7 +421,115 @@ class FonbetLiveTennisParser:
                 if isinstance(sport, dict) and sport.get("id") in selected_sport_ids
             ],
         }
-        return {"events": cards, "_source_payload": source_payload}
+        result = {"events": cards, "_source_payload": source_payload}
+        if include_prematch:
+            prematch_events, prematch_source = cls.parse_prematch_line_feed(
+                feed, observed_at=observed_at, horizon_hours=prematch_horizon_hours
+            )
+            result["prematch_events"] = prematch_events
+            result["_prematch_source_payload"] = prematch_source
+        return result
+
+    @classmethod
+    def parse_prematch_line_feed(cls, feed: Dict[str, Any], *, observed_at=None,
+                                 horizon_hours: int = 48) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse tennis events in the next bounded window without treating them as live.
+
+        The same Fonbet line endpoint carries all sports and both ``line`` and
+        ``live`` events. Keep only future tennis parent events and archive the
+        exact source rows plus the market rows used for the normalized prices.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        observed = observed_at or datetime.now(timezone.utc)
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        observed = observed.astimezone(timezone.utc)
+        try:
+            horizon = max(1, min(int(horizon_hours), 168))
+        except (TypeError, ValueError):
+            horizon = 48
+        start_min = int(observed.timestamp())
+        start_max = int((observed + timedelta(hours=horizon)).timestamp())
+
+        sports = {item.get("id"): item for item in feed.get("sports") or []
+                  if isinstance(item, dict)}
+        tennis_ids = {sport_id for sport_id in sports
+                      if cls._root_sport_id(sports, sport_id) in FONBET_TENNIS_SPORT_IDS}
+        parents = []
+        for event in feed.get("events") or []:
+            if not isinstance(event, dict) or event.get("place") != "line":
+                continue
+            if event.get("parentId") or event.get("sportId") not in tennis_ids:
+                continue
+            if not event.get("team1") or not event.get("team2"):
+                continue
+            try:
+                start_time = int(event.get("startTime"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if not start_min <= start_time <= start_max:
+                continue
+            parents.append(event)
+
+        parent_ids = {event.get("id") for event in parents}
+        factors_by_event = {item.get("e"): item.get("factors") or []
+                            for item in feed.get("customFactors") or []
+                            if isinstance(item, dict) and item.get("e") in parent_ids}
+        cards = []
+        for event in parents:
+            source_id = str(event.get("id"))
+            sport = sports.get(event.get("sportId")) or {}
+            player_a, player_b = str(event["team1"]).strip(), str(event["team2"]).strip()
+            is_doubles = "/" in player_a or "/" in player_b
+            factors = factors_by_event.get(event.get("id"), [])
+            prices = cls._two_sided_prices(factors)
+            markets = []
+            if prices:
+                market = cls._winner_market(source_id, "match_winner", "Победитель матча",
+                                            player_a, player_b, prices[0], prices[1], None)
+                if market:
+                    markets.append(market)
+            cards.append({
+                "event_id": f"fonbet_{source_id}", "source": "fonbet",
+                "source_event_id": source_id, "sport_code": "tennis",
+                "is_live": False, "status": "prematch",
+                "scheduled_start": datetime.fromtimestamp(int(event["startTime"]), timezone.utc).isoformat(),
+                "tournament": sport.get("name") or "Теннис",
+                "participant_a": player_a, "participant_b": player_b,
+                "tennis_discipline": "unknown_doubles" if is_doubles else "singles",
+                "doubles_roster_pending": is_doubles,
+                "score_state": {"raw_score_string": "", "sets_a": 0, "sets_b": 0,
+                                "current_set": 0, "current_game_a": 0, "current_game_b": 0,
+                                "points_a": "0", "points_b": "0", "server": None},
+                "markets": markets,
+            })
+
+        selected_sport_ids = {event.get("sportId") for event in parents}
+        pending = list(selected_sport_ids)
+        while pending:
+            sport = sports.get(pending.pop())
+            parent = sport.get("parentId") if sport else None
+            if parent is not None and parent not in selected_sport_ids:
+                selected_sport_ids.add(parent)
+                pending.append(parent)
+        versions = ("fromVersion", "packetVersion", "catalogEventViewVersion",
+                    "catalogTablesVersion", "factorsVersion", "independentFactorsVersion",
+                    "sportBasicFactorsVersion", "sportBasicMarketsVersion")
+        source_payload = {
+            "capture_scope": "verbatim future Fonbet tennis singles event rows, sport ancestors, and match-winner factors",
+            "feed_versions": {key: feed[key] for key in versions if key in feed},
+            "events": parents,
+            "sports": [sport for sport in feed.get("sports") or [] if isinstance(sport, dict)
+                       and sport.get("id") in selected_sport_ids],
+            "customFactors": [
+                {"e": item.get("e"), "factors": [factor for factor in item.get("factors") or []
+                                                   if isinstance(factor, dict) and factor.get("f") in (921, 923)]}
+                for item in feed.get("customFactors") or []
+                if isinstance(item, dict) and item.get("e") in parent_ids
+            ],
+        }
+        return cards, source_payload
 
     @staticmethod
     def _set_number(event: Dict[str, Any]) -> Optional[int]:

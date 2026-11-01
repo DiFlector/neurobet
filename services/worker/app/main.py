@@ -59,9 +59,23 @@ def _post_json(url: str, timeout: float = 60.0) -> dict:
 
 def process_fonbet_raw(envelope: MessageEnvelope) -> None:
     """Write a collector snapshot into events. Raises so the consumer can retry."""
-    from .ingest import persist_fonbet_snapshot
+    from .ingest import persist_fonbet_snapshot, source_payload_provenance
 
-    count = persist_fonbet_snapshot(envelope.payload or {})
+    payload = envelope.payload or {}
+    raw_observed_at = payload.get("collected_at")
+    try:
+        observed_at = datetime.fromisoformat(raw_observed_at.replace("Z", "+00:00")) \
+            if isinstance(raw_observed_at, str) else envelope.timestamp
+    except ValueError:
+        observed_at = envelope.timestamp
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=timezone.utc)
+    source_payload_hash, source_payload_raw_key = source_payload_provenance(payload)
+    count = persist_fonbet_snapshot(
+        payload, observed_at=observed_at.astimezone(timezone.utc),
+        source_payload_hash=source_payload_hash,
+        source_payload_raw_key=source_payload_raw_key,
+    )
     logger.info("Fonbet raw snapshot stored %d events (message %s).", count, envelope.message_id)
 
 

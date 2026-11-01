@@ -278,6 +278,41 @@ def _source_dom_side_orientation(document_html: str, participant_a_id: str, part
     return None
 
 
+def _source_dom_doubles_side_orientation(document_html: str, side_a_ids: list[str], side_b_ids: list[str]):
+    """Confirm both two-player rosters and their scoreboard sides from archived DOM."""
+    expected_a, expected_b = set(map(str, side_a_ids)), set(map(str, side_b_ids))
+    if len(expected_a) != 2 or len(expected_b) != 2 or expected_a & expected_b:
+        return None
+    if not document_html:
+        return None
+    try:
+        from lxml import html as lxml_html
+        tree = lxml_html.fromstring(document_html)
+    except Exception:
+        return None
+
+    def profile_ids(side: str) -> set[str]:
+        hrefs = tree.xpath(
+            f'//*[contains(concat(" ", normalize-space(@class), " "), " duelParticipant__{side} ")]'
+            '//a[contains(@href, "/player/")]/@href'
+        )
+        ids = set()
+        for href in hrefs:
+            match = re.search(r"/player/[^/]+/([A-Za-z0-9]+)/?$", urlparse(href).path)
+            if match:
+                ids.add(match.group(1))
+        return ids
+
+    home_ids, away_ids = profile_ids("home"), profile_ids("away")
+    if len(home_ids) != 2 or len(away_ids) != 2 or home_ids & away_ids:
+        return None
+    if home_ids == expected_a and away_ids == expected_b:
+        return True
+    if home_ids == expected_b and away_ids == expected_a:
+        return False
+    return None
+
+
 def _point_by_point_set_url(page_url: str, source_match_id: str, set_no: int) -> str:
     """Build the currently observed Flashscore PBP route as a fallback."""
     base = page_url.split("?", 1)[0]
@@ -471,9 +506,28 @@ def _match_url_has_player_ids(match_url: str, player_a_id: str, player_b_id: str
         for j, right in enumerate(slugs)
     )
 
-def _discover_live_match(player_a_id: str, player_b_id: str, source_access=None, excluded_match_ids=None):
-    """Find an exact two-player live match, reusing one source page for 30s."""
+
+def _match_url_has_doubles_player_ids(match_url: str, side_a_ids: list[str], side_b_ids: list[str]) -> bool:
+    """Use four IDs only to find candidates; URL order never proves team side or orientation."""
+    expected = set(map(str, side_a_ids)) | set(map(str, side_b_ids))
+    if len(set(side_a_ids)) != 2 or len(set(side_b_ids)) != 2 or len(expected) != 4:
+        return False
+    segments = [segment for segment in urlparse(match_url or "").path.split("/") if segment]
+    tennis_index = next((i for i, segment in enumerate(segments) if segment == "tennis"), None)
+    if tennis_index is None:
+        return False
+    ids_in_path = set()
+    for slug in segments[tennis_index + 1:]:
+        for player_id in expected:
+            if re.search(rf"(?:^|-){re.escape(player_id)}(?:-|$)", slug):
+                ids_in_path.add(player_id)
+    return ids_in_path == expected
+
+def _discover_live_match(player_a_id: str | tuple[str, str], player_b_id: str | tuple[str, str],
+                         source_access=None, excluded_match_ids=None):
+    """Find candidate links by confirmed player IDs, reusing one source page for 30s."""
     if not player_a_id or not player_b_id: return None
+    doubles = isinstance(player_a_id, tuple) and isinstance(player_b_id, tuple)
     excluded_match_ids = {str(value) for value in (excluded_match_ids or set())}
     with _LIVE_MATCH_CACHE_LOCK:
         links = _LIVE_MATCH_CACHE.get("links") or []
@@ -494,15 +548,26 @@ def _discover_live_match(player_a_id: str, player_b_id: str, source_access=None,
                 page.wait_for_timeout(800)
                 links = page.locator('a[href*="/match/tennis/"]').evaluate_all(
                     "els => els.map(a => ({href:a.href, text:(a.innerText||a.textContent||'').trim()}))")
-                _LIVE_MATCH_CACHE.update(links=links, expires=time.monotonic() + 30)
+                observed_at = datetime.now(timezone.utc)
+                html = page.content()
+                raw_hash = hashlib.sha256(html.encode()).hexdigest()
+                raw_key = ResearchStorage().archive_document("flashscore_live_board", raw_hash, {
+                    "source": "flashscore", "url": url, "html": html,
+                    "retrieved_at": observed_at.isoformat(), "content_hash": raw_hash,
+                })
+                _LIVE_MATCH_CACHE.update(links=links, expires=time.monotonic() + 30,
+                    raw_hash=raw_hash, raw_object_key=raw_key, observed_at=observed_at.isoformat())
         # The same live fixture can be exposed through more than one link (for
         # example, a pinned card and its normal event row). Treat repeated URLs
         # for one stable match ID as one candidate, not as an ambiguity.
         candidates_by_id = {}
         for item in links:
             href = item.get("href", "")
-            if (not _match_url_has_player_ids(href, player_a_id, player_b_id)
-                    or "/doubles/" in urlparse(href).path.casefold()):
+            if doubles:
+                ids_match = _match_url_has_doubles_player_ids(href, list(player_a_id), list(player_b_id))
+            else:
+                ids_match = _match_url_has_player_ids(href, str(player_a_id), str(player_b_id))
+            if not ids_match or (not doubles and "/doubles/" in urlparse(href).path.casefold()):
                 continue
             found = re.search(r"[?&]mid=([A-Za-z0-9]+)", href)
             if found and found.group(1) not in excluded_match_ids:
@@ -522,7 +587,147 @@ def _discover_live_match(player_a_id: str, player_b_id: str, source_access=None,
         if not ok: return None
         mid = re.search(r"[?&]mid=([A-Za-z0-9]+)", href)
         if not mid: return None
-        return {"status": "matched", "source_match_id":mid.group(1), "url":href.split("/summary",1)[0]+f"/summary/?{urlencode({'mid':mid.group(1)})}"}
+        return {"status": "matched", "source_match_id":mid.group(1), "url":href.split("/summary",1)[0]+f"/summary/?{urlencode({'mid':mid.group(1)})}",
+                "raw_hash": _LIVE_MATCH_CACHE.get("raw_hash"),
+                "raw_object_key": _LIVE_MATCH_CACHE.get("raw_object_key"),
+                "observed_at": _LIVE_MATCH_CACHE.get("observed_at")}
+
+
+def _discover_live_doubles_match(side_a_ids: list[str], side_b_ids: list[str],
+                                 source_access=None, excluded_match_ids=None):
+    """Return a live candidate containing all four IDs; callers must verify DOM rosters."""
+    if (len(set(side_a_ids)) != 2 or len(set(side_b_ids)) != 2
+            or set(side_a_ids) & set(side_b_ids)):
+        return None
+    # Share the bounded cached board and source request path with singles lookup.
+    return _discover_live_match(tuple(side_a_ids), tuple(side_b_ids), source_access, excluded_match_ids)
+
+
+def _find_doubles_archive_candidate(event_id, side_a_ids: tuple[str, str],
+                                    side_b_ids: tuple[str, str], *, as_of: datetime):
+    """Find a completed doubles candidate seen on all four confirmed player profiles.
+
+    Profile history is candidate evidence only. The caller must still confirm
+    both two-player teams from the match scoreboard DOM before linking it.
+    """
+    import uuid
+    from db.connection import SessionLocal
+    from db.models import Event, League, TennisDoublesMatchObservation
+
+    provider_ids = set(map(str, (*side_a_ids, *side_b_ids)))
+    if len(provider_ids) != 4:
+        return {"status": "unmatched", "reason": "DOUBLES_PROVIDER_IDS_NOT_UNIQUE"}
+    with SessionLocal() as session:
+        event = session.get(Event, uuid.UUID(str(event_id)))
+        event_time = (event.scheduled_start_at or event.finished_at) if event is not None else None
+        if event is None or event_time is None:
+            return {"status": "unmatched", "reason": "DOUBLES_EVENT_TIME_MISSING"}
+        observations = session.query(TennisDoublesMatchObservation).filter(
+            TennisDoublesMatchObservation.source == "flashscore",
+            TennisDoublesMatchObservation.source_profile_player_id.in_(provider_ids),
+            TennisDoublesMatchObservation.played_at.between(
+                event_time - timedelta(days=2),
+                event_time + timedelta(days=2),
+            ),
+            TennisDoublesMatchObservation.available_at <= as_of,
+        ).order_by(TennisDoublesMatchObservation.available_at.desc(),
+                   TennisDoublesMatchObservation.id.desc()).all()
+        by_match = _group_four_player_doubles_observations(observations, provider_ids)
+        candidates = []
+        league = session.get(League, event.league_id) if event.league_id else None
+        wanted = {token for token in re.findall(r"[a-z0-9]+", str(league.name if league else "").casefold())
+                  if len(token) > 3}
+        for match_id, player_rows in by_match.items():
+            rows = list(player_rows.values())
+            payloads = [row.payload or {} for row in rows]
+            tournaments = {str(payload.get("tournament") or "").strip() for payload in payloads}
+            tournaments.discard("")
+            if len(tournaments) > 1:
+                continue
+            tournament = next(iter(tournaments), "")
+            if wanted:
+                actual = set(re.findall(r"[a-z0-9]+", tournament.casefold()))
+                if not actual or not wanted.intersection(actual):
+                    continue
+            candidates.append({
+                "source_match_id": match_id,
+                "url": f"https://www.flashscore.com/match/tennis/summary/?{urlencode({'mid': match_id})}",
+                "provider_ids": sorted(provider_ids),
+                "observations": [{
+                    "profile_player_id": str(row.source_profile_player_id),
+                    "observation_hash": row.observation_hash,
+                    "source_content_hash": row.source_content_hash,
+                    "available_at": row.available_at.isoformat(),
+                    "played_at": row.played_at.isoformat(),
+                } for row in sorted(rows, key=lambda item: item.source_profile_player_id)],
+                "tournament": tournament or None,
+            })
+        if len(candidates) == 1:
+            return {"status": "matched", **candidates[0]}
+        if candidates:
+            return {"status": "ambiguous", "candidates": candidates,
+                    "reason": "MULTIPLE_DOUBLES_ARCHIVE_CANDIDATES"}
+        return {"status": "unmatched", "reason": "DOUBLES_ARCHIVE_MATCH_NOT_INDEXED"}
+
+
+def _fetch_scoreboard_evidence(summary_url: str, *, source_access=None) -> dict:
+    """Fetch and durably archive a summary DOM independently of PBP availability."""
+    allowed, reason = DomainFilter.is_allowed(summary_url)
+    if not allowed:
+        return {"status": "unavailable", "reason": f"SUMMARY_URL_REJECTED:{reason}"}
+    from .browser_pool import flashscore_chromium
+    from .tennis_flashscore import _install_flashscore_request_filter_sync
+
+    with flashscore_chromium.context(
+        _browser_launch_options(), locale="en-US", timezone_id="UTC"
+    ) as (_browser, context):
+        page = context.new_page()
+        _install_flashscore_request_filter_sync(page)
+        with (source_access or nullcontext)():
+            response = page.goto(summary_url, wait_until="domcontentloaded", timeout=25000)
+        observed_at = datetime.now(timezone.utc)
+        if response and response.status in (403, 429):
+            return {"status": "unavailable", "reason": f"HTTP_{response.status}_BLOCKED"}
+        if response and response.status >= 400:
+            return {"status": "unavailable", "reason": f"HTTP_{response.status}_MATCH_PAGE_UNAVAILABLE"}
+        final_url = page.url
+        allowed, reason = DomainFilter.is_allowed(final_url)
+        if not allowed:
+            return {"status": "unavailable", "reason": f"SUMMARY_REDIRECT_REJECTED:{reason}"}
+        try:
+            page.wait_for_selector(".duelParticipant__home, [data-testid='match-header']", timeout=8000)
+        except Exception:
+            pass
+        document_html = page.content()
+        from .flashscore_recovery import classify_response
+        challenge = classify_response(response.status if response else 200, document_html)
+        if challenge in {"browser_challenge", "interactive_captcha"}:
+            return {"status": "unavailable", "reason": "CAPTCHA_CHALLENGE_ABORTED"}
+    content_hash = hashlib.sha256(document_html.encode("utf-8")).hexdigest()
+    object_key = ResearchStorage().archive_document("flashscore_doubles_scoreboard", content_hash, {
+        "source": "flashscore", "source_match_id": parse_qs(urlparse(final_url).query).get("mid", [""])[0],
+        "url": final_url, "retrieved_at": observed_at.isoformat(),
+        "content_hash": content_hash, "html": document_html,
+    })
+    if not object_key:
+        return {"status": "unavailable", "reason": "SCOREBOARD_RAW_ARCHIVE_FAILED"}
+    return {"status": "available", "url": final_url, "html": document_html,
+            "retrieved_at": observed_at, "raw_hash": content_hash,
+            "raw_object_key": object_key}
+
+
+def _group_four_player_doubles_observations(observations, provider_ids: set[str]):
+    """Return matches seen on all confirmed profiles, keeping latest per profile."""
+    if len(provider_ids) != 4:
+        return {}
+    by_match: dict[str, dict[str, object]] = {}
+    for row in observations:
+        match_id = str(getattr(row, "source_match_id", "") or "")
+        profile_id = str(getattr(row, "source_profile_player_id", "") or "")
+        if match_id and profile_id in provider_ids:
+            by_match.setdefault(match_id, {}).setdefault(profile_id, row)
+    return {match_id: rows for match_id, rows in by_match.items()
+            if set(rows) == provider_ids}
 
 
 def _normalize_live_match_discovery(discovered: dict | None) -> dict:
@@ -608,6 +813,42 @@ def _persist_live_match_confirmations(event_uuid, attempt_token, event_names, ca
         session.commit()
     return persisted
 
+def _recover_point_documents(summary_url, source_access=None):
+    """Collect only source-published set tabs through the same solver session."""
+    from html import unescape
+    from urllib.parse import urljoin
+    from .flashscore_recovery import recover
+
+    result = recover(_preferred_point_history_url(summary_url), source_access=source_access)
+    if result is None or result.outcome != "recovered":
+        return [], "CAPTCHA_CHALLENGE_ABORTED"
+    mid = re.search(r"[?&]mid=([A-Za-z0-9]{5,32})(?:&|$)", summary_url)
+    if not mid:
+        return [], "MATCH_ID_MISSING"
+    links = [urljoin(result.url, unescape(href)) for href in
+             re.findall(r'href=[\"\']([^\"\']+)', result.body, re.I)]
+    set_urls = _point_by_point_set_tabs(links, mid.group(1))
+    if not set_urls:
+        return [], "POINT_HISTORY_RECOVERY_NO_SET_TABS"
+    documents = []
+    def finish(status):
+        for document in documents:
+            document["collection_status"] = status
+        return documents, status
+    for set_no, url in sorted(set_urls.items()):
+        page = recover(url, source_access=source_access, require_session=True)
+        if page is None or page.outcome != "recovered":
+            return finish("CAPTCHA_CHALLENGE_ABORTED")
+        parsed = parse_point_history_html(page.body)
+        if not parsed.get("events"):
+            return finish(f"EXPECTED_SET_{set_no}_HISTORY_NOT_AVAILABLE")
+        documents.append({"set": set_no, "url": page.url, "html": page.body,
+                          "parsed": None, "retrieved_at": datetime.now(timezone.utc),
+                          "http_status": page.status, "set_tab_confirmed": True,
+                          "collection_status": "complete", **page.diagnostics()})
+    return finish("complete")
+
+
 def fetch_point_documents(
     summary_url: str,
     fetcher=None,
@@ -624,10 +865,13 @@ def fetch_point_documents(
         mid = re.search(r"[?&]mid=([A-Za-z0-9]{5,32})(?:&|$)", summary_url)
         if mid:
             from .tennis_flashscore import _profile_http_get
+            from .flashscore_recovery import diagnostics
             feed_url = _point_history_feed_url(mid.group(1))
             status, body, final_url, error = _profile_http_get(
                 feed_url, source_access=source_access, feed=True,
             )
+            if error == "CAPTCHA_CHALLENGE_ABORTED":
+                return [], error
             if status in (403, 429):
                 from .main import _record_flashscore_throttle
                 _record_flashscore_throttle()
@@ -644,7 +888,8 @@ def fetch_point_documents(
                         "parsed": parsed,
                         "retrieved_at": datetime.now(timezone.utc),
                         "http_status": status,
-                        "fetch_transport": "http_feed",
+                        **diagnostics(),
+                        "fetch_transport": "flaresolverr" if diagnostics().get("fetch_transport") == "flaresolverr" else "http_feed",
                         "set_tab_confirmed": bool(parsed.get("sets")),
                         "collection_status": "complete" if quality.get("complete") else "partial",
                     }], "complete" if quality.get("complete") else "partial"
@@ -669,6 +914,11 @@ def fetch_point_documents(
         if navigation_error:
             flashscore_chromium.invalidate_current()
             return [], navigation_error
+        from .flashscore_recovery import classify_response
+        if classify_response(response.status if response else 200, page.content()) in {
+            "browser_challenge", "interactive_captcha"
+        }:
+            return _recover_point_documents(summary_url, source_access)
         if response and response.status in (403, 429): return [], f"HTTP_{response.status}_BLOCKED"
         if response and response.status >= 400: return [], f"HTTP_{response.status}_MATCH_PAGE_UNAVAILABLE"
         allowed, reason = DomainFilter.is_allowed(page.url)
@@ -678,8 +928,8 @@ def fetch_point_documents(
             timeout=5000,
         )
         body = page.locator("body").inner_text().casefold()
-        if any(x in body for x in ("captcha", "verify you are human", "checking your browser")):
-            return [], "BLOCKED"
+        if classify_response(200, body) in {"browser_challenge", "interactive_captcha"}:
+            return _recover_point_documents(summary_url, source_access)
         mid_match = re.search(r"[?&]mid=([A-Za-z0-9]+)", page.url)
         if mid_match: mid = mid_match.group(1)
         else:
@@ -875,6 +1125,8 @@ def collect_source_point_history(
             "fetch_status": doc.get("fetch_status"),
             "fetch_transport": doc.get("fetch_transport", "browser"),
             "fallback_reason": doc.get("fallback_reason"),
+            "challenge_type": doc.get("challenge_type"),
+            "recovery_result": doc.get("recovery_result"),
             "fonbet_link_status": "unlinked_at_retrieval",
         }
         parsed = doc.get("parsed") or parse_point_history_html(doc.get("html", ""))
@@ -890,6 +1142,7 @@ def collect_source_point_history(
             "source": "flashscore", "url": doc["url"], "source_match_id": source_match_id,
             "retrieved_at": retrieved_at.isoformat(), "http_status": doc.get("http_status"),
             "fetch_status": doc.get("fetch_status"), "fetch_transport": doc.get("fetch_transport", "browser"),
+            "challenge_type": doc.get("challenge_type"), "recovery_result": doc.get("recovery_result"),
             "parser_version": PARSER_VERSION, "retrospective": True,
             "fonbet_link_status": "unlinked_at_retrieval",
         }
@@ -981,10 +1234,15 @@ def _orient_alternative_point_events(events: list, *, source_first_is_fonbet_a: 
     for event in output:
         if not isinstance(event, dict):
             continue
-        for key in ("state_before", "state_after", "point_score", "game_score"):
+        for key in ("state_before", "state_after", "point_score", "game_score", "game_score_before"):
             values = event.get(key)
             if isinstance(values, list) and len(values) == 2:
                 event[key] = [values[1], values[0]]
+            elif isinstance(values, dict):
+                for nested in ("game_score", "game_result", "set_result"):
+                    pair = values.get(nested)
+                    if isinstance(pair, list) and len(pair) == 2:
+                        values[nested] = pair[::-1]
         for key in ("winner", "server"):
             value = event.get(key)
             if isinstance(value, int) and not isinstance(value, bool) and value in (0, 1):
@@ -999,6 +1257,11 @@ def _link_api_tennis_archive_for_event(session, event, *, as_of: datetime) -> di
     match in a one-day date window, and an exact provider first/second-player ID
     orientation. Name-only or score-only matches are never linked.
     """
+    if str(getattr(event, 'source_event_id', '')).isdigit():
+        from .tennis_history_linking import link_api_history
+        upgraded = link_api_history(session, event, as_of=as_of)
+        if upgraded is not None:
+            return upgraded
     from db.models import TennisPlayerProfile, TennisPointDocument, TennisPointHistoryVersion
     from db.models.external_tennis import (
         ExtTennisCanonicalMatch, ExtTennisMatch, ExtTennisMatchObservation,
@@ -1303,6 +1566,12 @@ def usable_alternative_history_for_event(session, event, *, as_of: datetime | No
                TennisPointHistoryVersion.id.desc()).all()
     for version, document in versions:
         quality = version.quality_json or {}
+        if (document.source == "api_tennis" and getattr(version, 'parser_version', '') == "api_tennis_pbp_link_v1"
+                and not is_live and str(getattr(event, 'source_event_id', '')).isdigit()):
+            from .tennis_history_linking import link_api_history
+            upgraded = link_api_history(session, event, as_of=cutoff)
+            if upgraded is not None:
+                return upgraded
         if _usable_alternative_point_version(
             source=document.source, events=version.events_json,
             quality=quality, available_at=version.available_at,
@@ -1328,11 +1597,14 @@ def usable_alternative_history_for_event(session, event, *, as_of: datetime | No
 
 def collect_event_point_history(event_id: str, attempt_token: str | None = None, source_access=None) -> dict:
     from db.connection import SessionLocal
-    from db.models import Event, ExtTennisMatch, ExtTennisMatchObservation, TennisPointDocument, TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJob
+    from db.models import Event, ExtTennisMatch, ExtTennisMatchObservation, TennisPointDocument, TennisPointHistoryVersion, TennisPointMatchLink, TennisPointRefreshJob, TennisDoublesRosterObservation
     import uuid
     now = datetime.now(timezone.utc)
     event_uuid = uuid.UUID(str(event_id))
     side_orientation_source = None
+    doubles_roster_ids = None
+    doubles_candidate_evidence = None
+    is_doubles = False
     with SessionLocal() as session:
         if attempt_token and session.query(TennisPointRefreshJob).filter_by(
             event_id=event_uuid, attempt_token=attempt_token, status="running"
@@ -1341,12 +1613,14 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
         event = session.get(Event, event_uuid)
         if event is None or event.sport_code != "tennis": return {"status": "not_found"}
         event_names = (event.participant_a_name, event.participant_b_name)
+        is_doubles = "/" in (event.participant_a_name or "") or "/" in (event.participant_b_name or "")
         is_live = bool(event.is_live and getattr(event, "finished_at", None) is None)
         alternative = usable_alternative_history_for_event(session, event, as_of=now)
         if alternative:
             if alternative.get("linked_version_created"):
                 session.commit()
-            return alternative
+            if alternative.get("status") == "available":
+                return alternative
         from .player_data_coverage import source_capability_enabled
         if not source_capability_enabled("flashscore", "point_by_point"):
             return {"status": "source_disabled", "reason": "SOURCE_CAPABILITY_DISABLED"}
@@ -1369,7 +1643,9 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
         rejected_source_ids = {link.source_match_id for link in latest_links.values()
                                if link.fonbet_event_id == event_uuid and link.status == "rejected"}
         match_query = session.query(ExtTennisMatch).filter(ExtTennisMatch.source == "flashscore")
-        if linked_source_ids:
+        if is_doubles:
+            matches = []
+        elif linked_source_ids:
             matches = match_query.filter(ExtTennisMatch.source_match_id.in_(linked_source_ids)).all()
         else:
             matches = match_query.filter(ExtTennisMatch.played_at.between(
@@ -1388,12 +1664,26 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             row.source_match_id: _external_match_state(row, observations_by_match.get(row.source_match_id, {}))
             for row in matches
         }
-        from db.models import TennisPlayerProfile, League
+        from db.models import League
         league = session.get(League, event.league_id) if event.league_id else None
-        profile_a = session.get(TennisPlayerProfile, event.participant_a_id) if event.participant_a_id else None
-        profile_b = session.get(TennisPlayerProfile, event.participant_b_id) if event.participant_b_id else None
-        flashscore_a = str((profile_a.source_identities or {}).get("flashscore") or "") if profile_a else ""
-        flashscore_b = str((profile_b.source_identities or {}).get("flashscore") or "") if profile_b else ""
+        from .main import _confirmed_flashscore_player_id
+        if is_doubles:
+            from .tennis_doubles import confirmed_provider_roster
+            roster_observation = session.query(TennisDoublesRosterObservation).filter(
+                TennisDoublesRosterObservation.event_id == event_uuid,
+                TennisDoublesRosterObservation.available_at <= now,
+            ).order_by(TennisDoublesRosterObservation.available_at.desc(),
+                       TennisDoublesRosterObservation.id.desc()).first()
+            doubles_roster_ids = (confirmed_provider_roster(
+                roster_observation.roster_json or {},
+                lambda participant_id: _confirmed_flashscore_player_id(session, participant_id),
+            ) if roster_observation else None)
+            flashscore_a = flashscore_b = ""
+        else:
+            flashscore_a = _confirmed_flashscore_player_id(session, event.participant_a_id) or ""
+            flashscore_b = _confirmed_flashscore_player_id(session, event.participant_b_id) or ""
+        if flashscore_a and flashscore_a == flashscore_b:
+            return {"status": "unmatched", "reason": "PLAYER_SOURCE_IDS_CONFLICT"}
         league_name = league.name if league else ""
         source_side_orientation = {}
         source_side_orientation_source = {}
@@ -1402,21 +1692,17 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                 return False
             if "/" in row.home_name or "/" in row.away_name:
                 return False
-            # Name-only matching is accepted only when both participants agree;
-            # side orientation is retained for label alignment.
+            # Candidate discovery requires two independently confirmed IDs.
+            # Scoreboard orientation is resolved only from retained source DOM.
+            if not all((flashscore_a, flashscore_b, row.home_player_id, row.away_player_id)):
+                return False
+            if flashscore_a == flashscore_b or row.home_player_id == row.away_player_id:
+                return False
             orientation = _external_home_is_fonbet_a(
                 event_names, (row.home_name, row.away_name),
-                (flashscore_a, flashscore_b) if flashscore_a and flashscore_b else None,
-                (row.home_player_id, row.away_player_id) if row.home_player_id and row.away_player_id else None,
+                (flashscore_a, flashscore_b), (row.home_player_id, row.away_player_id),
             )
             participants_ok = orientation is not None
-            if participants_ok:
-                source_side_orientation[row.source_match_id] = orientation
-                source_side_orientation_source[row.source_match_id] = (
-                    "flashscore_match_observation_player_ids"
-                    if row.home_player_id and row.away_player_id
-                    else "flashscore_match_observation_names"
-                )
             if not participants_ok: return False
             if league_name:
                 if not row.tournament:
@@ -1449,6 +1735,19 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
         else:
             confirmed_link_pages = []
             for link in confirmed_links:
+                if is_doubles:
+                    evidence = link.evidence_json or {}
+                    recorded = {side: tuple(str(value) for value in evidence.get(f"flashscore_side_{side.lower()}_ids", []))
+                                for side in ("A", "B")}
+                    same_rosters = bool(doubles_roster_ids and all(
+                        set(recorded[side]) == set(doubles_roster_ids[side]) for side in ("A", "B")))
+                    if (same_rosters
+                            and evidence.get("side_orientation_source") == "flashscore_scoreboard_dom_confirmed_four_profile_ids"
+                            and isinstance(evidence.get("external_home_is_fonbet_a"), bool)):
+                        resolved_url = evidence.get("source_url") or ""
+                        if resolved_url:
+                            confirmed_link_pages.append((link, resolved_url, evidence["external_home_is_fonbet_a"]))
+                    continue
                 resolved = _confirmed_link_page(link, flashscore_a, flashscore_b)
                 if resolved:
                     confirmed_link_pages.append((link, resolved[0], resolved[1]))
@@ -1462,12 +1761,42 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                     side_orientation_source = "explicit_manual_confirmation"
                 else:
                     link_method = "confirmed_link_source_url_without_history_import"
-                    side_orientation_source = None
+                    side_orientation_source = evidence.get("side_orientation_source")
             else:
                 source_match_id, url = "", None
                 link_method, external_home_is_a = "live_match_anchor_external_player_ids", None
                 side_orientation_source = None
-    if not url and flashscore_a and flashscore_b:
+    if not url and is_doubles and doubles_roster_ids:
+        discovered = (_discover_live_doubles_match(
+            doubles_roster_ids["A"], doubles_roster_ids["B"], source_access=source_access,
+            excluded_match_ids=rejected_source_ids) if is_live else None)
+        normalized = _normalize_live_match_discovery(discovered)
+        if normalized["status"] == "matched":
+            source_match_id, url = normalized["source_match_id"], normalized["url"]
+            link_method = "four_confirmed_player_ids_then_scoreboard_dom"
+            doubles_candidate_evidence = {"candidate_source": "live_board_four_confirmed_player_ids",
+                "live_board_raw_hash": normalized.get("raw_hash"),
+                "live_board_raw_object_key": normalized.get("raw_object_key"),
+                "live_board_observed_at": normalized.get("observed_at")}
+        else:
+            archive_candidate = _find_doubles_archive_candidate(
+                event_uuid, doubles_roster_ids["A"], doubles_roster_ids["B"], as_of=now)
+            if archive_candidate["status"] == "matched":
+                source_match_id, url = archive_candidate["source_match_id"], archive_candidate["url"]
+                link_method = "four_profile_archive_observations_then_scoreboard_dom"
+                doubles_candidate_evidence = {
+                    "candidate_source": "four_confirmed_profile_match_observations",
+                    "profile_match_observations": archive_candidate["observations"],
+                    "tournament": archive_candidate.get("tournament"),
+                }
+            elif normalized["status"] == "ambiguous" or archive_candidate["status"] == "ambiguous":
+                live_candidates = normalized.get("candidates", []) if normalized["status"] == "ambiguous" else []
+                archive_candidates = archive_candidate.get("candidates", []) if archive_candidate["status"] == "ambiguous" else []
+                return {"status": "ambiguous", "reason": "MULTIPLE_DOUBLES_MATCH_CANDIDATES",
+                        "candidate_count": max(len(live_candidates), len(archive_candidates)),
+                        "source_match_ids": sorted({str(row.get("source_match_id"))
+                            for row in (*live_candidates, *archive_candidates) if row.get("source_match_id")})}
+    elif not url and not is_doubles and flashscore_a and flashscore_b:
         discovered = _discover_live_match(flashscore_a, flashscore_b, source_access=source_access,
                                           excluded_match_ids=rejected_source_ids)
         normalized = _normalize_live_match_discovery(discovered)
@@ -1482,22 +1811,106 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             if saved:
                 return {"status": "ambiguous", "candidate_count": len(normalized["candidates"])}
     if not url:
+        if is_doubles and not doubles_roster_ids:
+            return {"status": "unmatched", "reason": "DOUBLES_ROSTER_PROVIDER_IDS_MISSING"}
         return {"status": "unmatched", "reason": "FLASHSCORE_MATCH_LINK_NOT_FOUND" if flashscore_a and flashscore_b else "PLAYER_SOURCE_IDS_MISSING"}
-    docs, status = fetch_point_documents(
-        url,
-        source_access=source_access,
-        # A just-started live match may have a valid HTTP response before its
-        # first point is published. Retry the feed later instead of opening a
-        # browser page that cannot add point history yet.
-        skip_browser_when_feed_empty=is_live,
-    )
-    if not docs: return {"status": status, "source_match_id": source_match_id}
-    if external_home_is_a is None:
+    docs, status = [], "not_requested"
+    if is_doubles and doubles_roster_ids:
+        if external_home_is_a is None:
+            scoreboard = _fetch_scoreboard_evidence(url, source_access=source_access)
+            if scoreboard.get("status") == "available":
+                external_home_is_a = _source_dom_doubles_side_orientation(
+                    scoreboard["html"], doubles_roster_ids["A"], doubles_roster_ids["B"])
+                if external_home_is_a is not None:
+                    side_orientation_source = "flashscore_scoreboard_dom_confirmed_four_profile_ids"
+                    source_match_id = str(parse_qs(urlparse(scoreboard["url"]).query).get("mid", [source_match_id])[0])
+                    if doubles_candidate_evidence is None:
+                        doubles_candidate_evidence = {"candidate_source": "unlinked_doubles_candidate"}
+                    doubles_candidate_evidence.update({"scoreboard_url": scoreboard["url"],
+                        "scoreboard_raw_hash": scoreboard["raw_hash"],
+                        "scoreboard_raw_object_key": scoreboard["raw_object_key"],
+                        "scoreboard_retrieved_at": scoreboard["retrieved_at"].isoformat()})
+                    from db.connection import SessionLocal
+                    from db.models import TennisPointMatchLink
+                    from sqlalchemy import text
+                    with SessionLocal() as session:
+                        session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                            {"key": "flashscore-pbp-link:" + source_match_id})
+                        current_rows = session.query(TennisPointMatchLink).filter_by(
+                            source_match_id=source_match_id).filter(
+                            TennisPointMatchLink.available_at <= scoreboard["retrieved_at"]
+                        ).order_by(TennisPointMatchLink.available_at.desc(),
+                                   TennisPointMatchLink.id.desc()).all()
+                        current = current_rows[0] if current_rows else None
+                        if current and current.status in {"matched", "manual"} and current.fonbet_event_id != event_uuid:
+                            return {"status": "unmatched", "reason": "SOURCE_MATCH_ALREADY_LINKED",
+                                    "source_match_id": source_match_id}
+                        if not current or current.status not in {"matched", "manual"} or current.fonbet_event_id != event_uuid:
+                            evidence = {"method": link_method,
+                                "fonbet_participants": list(event_names),
+                                "flashscore_side_a_ids": list(doubles_roster_ids["A"]),
+                                "flashscore_side_b_ids": list(doubles_roster_ids["B"]),
+                                "external_home_is_fonbet_a": external_home_is_a,
+                                "side_orientation_source": side_orientation_source,
+                                "source_url": scoreboard["url"],
+                                "raw_hash": scoreboard["raw_hash"],
+                                "raw_object_key": scoreboard["raw_object_key"],
+                                **doubles_candidate_evidence}
+                            session.add(TennisPointMatchLink(source_match_id=source_match_id,
+                                fonbet_event_id=event_uuid, status="matched", confidence=1.0,
+                                evidence_json=evidence, available_at=scoreboard["retrieved_at"]))
+                        session.commit()
+            docs, status = fetch_point_documents(
+                url, source_access=source_access,
+                skip_browser_when_feed_empty=is_live,
+            )
+            if external_home_is_a is None:
+                for doc in docs:
+                    if doc.get("html"):
+                        dom_orientation = _source_dom_doubles_side_orientation(
+                            doc["html"], doubles_roster_ids["A"], doubles_roster_ids["B"])
+                        if dom_orientation is not None:
+                            external_home_is_a = dom_orientation
+                            side_orientation_source = "flashscore_scoreboard_dom_confirmed_four_profile_ids"
+                            break
+        else:
+            docs, status = fetch_point_documents(
+                url, source_access=source_access,
+                skip_browser_when_feed_empty=is_live,
+            )
+            for doc in docs:
+                if doc.get("html"):
+                    dom_orientation = _source_dom_doubles_side_orientation(
+                        doc["html"], doubles_roster_ids["A"], doubles_roster_ids["B"])
+                    if dom_orientation is not None:
+                        external_home_is_a = dom_orientation
+                        side_orientation_source = "flashscore_scoreboard_dom_confirmed_four_profile_ids"
+                        break
+        if external_home_is_a is None:
+            if not docs:
+                return {"status": status, "reason": "DOUBLES_SCOREBOARD_EVIDENCE_UNAVAILABLE",
+                        "source_match_id": source_match_id}
+            return {"status": "unmatched", "reason": "DOUBLES_SCOREBOARD_SIDE_ORIENTATION_UNCONFIRMED",
+                    "source_match_id": source_match_id}
+        if not docs:
+            return {"status": status, "source_match_id": source_match_id,
+                    "match_link_confirmed": True}
+    elif external_home_is_a is None:
+        docs, status = fetch_point_documents(
+            url, source_access=source_access,
+            skip_browser_when_feed_empty=is_live,
+        )
+        if not docs: return {"status": status, "source_match_id": source_match_id}
         for doc in docs:
             external_home_is_a = _source_dom_side_orientation(doc.get("html", ""), flashscore_a, flashscore_b)
             if external_home_is_a is not None:
                 side_orientation_source = "flashscore_scoreboard_dom_confirmed_profile_ids"
                 break
+    else:
+        docs, status = fetch_point_documents(
+            url, source_access=source_access,
+            skip_browser_when_feed_empty=is_live,
+        )
     storage = ResearchStorage(); saved = 0; confirmed = 0; gaps = []
     # Flashscore does not timestamp individual points. Keep availability at
     # document receipt; only classify the document as observed when a fresh,
@@ -1513,6 +1926,8 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             "http_status": doc.get("http_status"), "fetch_status": doc.get("fetch_status"),
             "fetch_transport": doc.get("fetch_transport", "browser"),
             "fallback_reason": doc.get("fallback_reason"),
+            "challenge_type": doc.get("challenge_type"),
+            "recovery_result": doc.get("recovery_result"),
             "parser_version": PARSER_VERSION, "retrospective": retrospective}
         archive_payload["raw_feed" if doc.get("raw_feed") is not None else "html"] = raw_content
         archived = storage.archive_document(source_match_id, raw_hash, archive_payload)
@@ -1527,6 +1942,8 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
             "fetch_status": doc.get("fetch_status"),
             "fetch_transport": doc.get("fetch_transport", "browser"),
             "fallback_reason": doc.get("fallback_reason"),
+            "challenge_type": doc.get("challenge_type"),
+            "recovery_result": doc.get("recovery_result"),
         }
         if not parsed.get("events"):
             quality.setdefault("gaps", []).append("HISTORY_EMPTY_OR_UNRECOGNIZED")
@@ -1551,10 +1968,20 @@ def collect_event_point_history(event_id: str, attempt_token: str | None = None,
                 fonbet_event_id=event_uuid, parser_version=PARSER_VERSION, retrieved_at=doc["retrieved_at"],
                 parsed_at=parsed_at, available_at=datetime.now(timezone.utc), availability_status="known",
                 events_json=events, quality_json=quality, retrospective=retrospective))
+            prior_link = session.query(TennisPointMatchLink).filter_by(
+                source_match_id=source_match_id, fonbet_event_id=event_uuid,
+            ).filter(TennisPointMatchLink.available_at <= datetime.now(timezone.utc)).order_by(
+                TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()).first()
+            link_evidence = dict(prior_link.evidence_json or {}) if prior_link else {}
+            link_evidence.update({"method": link_method,
+                "fonbet_participants": list(event_names), "external_home_is_fonbet_a": external_home_is_a,
+                "side_orientation_source": side_orientation_source, "raw_hash": raw_hash,
+                "raw_object_key": archived, "source_url": doc["url"],
+                "flashscore_side_a_ids": list(doubles_roster_ids["A"]) if is_doubles and doubles_roster_ids else None,
+                "flashscore_side_b_ids": list(doubles_roster_ids["B"]) if is_doubles and doubles_roster_ids else None,
+                "source_retrieved_at": doc["retrieved_at"].isoformat()})
             session.add(TennisPointMatchLink(source_match_id=source_match_id, fonbet_event_id=event_uuid,
-                status="matched", confidence=1.0, evidence_json={"method": link_method,
-                    "fonbet_participants": list(event_names), "external_home_is_fonbet_a": external_home_is_a,
-                    "side_orientation_source": side_orientation_source},
+                status="matched", confidence=1.0, evidence_json=link_evidence,
                 available_at=datetime.now(timezone.utc)))
             session.commit(); saved += 1
         confirmed += quality["confirmed_points"]

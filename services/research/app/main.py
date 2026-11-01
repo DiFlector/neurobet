@@ -20,7 +20,7 @@ from .config import config
 from .service import WebResearchService
 from .tennis_flashscore import (
     FlashscoreTennisImporter, PARSER_VERSION, is_doubles_player_display,
-    is_compatible_profile_parser_version,
+    is_compatible_profile_parser_version, has_archived_profile_search_evidence,
 )
 
 # Application timestamps, DB availability times, and structured logs all use
@@ -65,6 +65,9 @@ def _record_flashscore_throttle(reason: str | None = None) -> datetime | None:
     global _flashscore_lock_engine
     if _flashscore_lock_engine is None:
         _flashscore_lock_engine = create_engine(get_database_url(), poolclass=NullPool, pool_pre_ping=True)
+    from .flashscore_recovery import source_cooldown_enabled
+    if not source_cooldown_enabled():
+        return None
     captcha = "CAPTCHA" in str(reason or "").upper()
     cooldown_seconds = _flashscore_captcha_cooldown_hours() * 3600 if captcha else 15 * 60
     with _flashscore_lock_engine.begin() as connection:
@@ -81,6 +84,9 @@ def _record_flashscore_throttle(reason: str | None = None) -> datetime | None:
 
 def _flashscore_source_cooldown_until(session=None) -> datetime | None:
     """Return the durable source-wide cooldown, if it is still active."""
+    from .flashscore_recovery import source_cooldown_enabled
+    if not source_cooldown_enabled():
+        return None
     global _flashscore_lock_engine
     from sqlalchemy import create_engine, text
     from sqlalchemy.pool import NullPool
@@ -146,7 +152,8 @@ def _flashscore_source_access(priority: str = "participant"):
         cooldown_until = connection.execute(text(
             "SELECT cooldown_until FROM flashscore_source_control WHERE id=1"
         )).scalar()
-    if cooldown_until and cooldown_until > datetime.now(timezone.utc):
+    from .flashscore_recovery import source_cooldown_enabled
+    if source_cooldown_enabled() and cooldown_until and cooldown_until > datetime.now(timezone.utc):
         raise TimeoutError(f"FLASHSCORE_SOURCE_COOLDOWN:{cooldown_until.isoformat()}")
     request_id = uuid_module.uuid4()
     priorities = {"live": 0, "participant": 10, "archive": 20, "background_profile": 30}
@@ -190,7 +197,7 @@ def _flashscore_source_access(priority: str = "participant"):
                     )
                 """), {"id": request_id, "archive_wait": max(1.0, float(os.getenv("FLASHSCORE_ARCHIVE_MAX_WAIT_SECONDS", "10")))}).scalar()
                 active = int(connection.execute(text("SELECT count(*) FROM flashscore_source_requests WHERE acquired_at IS NOT NULL AND lease_until > now() AND heartbeat_at >= now()-interval '15 seconds'")).scalar() or 0)
-                allowed = (not row["cooldown_until"] or row["cooldown_until"] <= datetime.now(timezone.utc))
+                allowed = (not source_cooldown_enabled() or not row["cooldown_until"] or row["cooldown_until"] <= datetime.now(timezone.utc))
                 due_start = row["next_start_at"] <= datetime.now(timezone.utc)
                 if has_priority and allowed and due_start and active < int(row["slot_limit"]):
                     slot_number = active + 1
@@ -645,6 +652,16 @@ def _flashscore_import_failure_schedule(reason: str | None, attempts: int, *,
                                         now: datetime | None = None,
                                         created_at: datetime | None = None) -> tuple[str, int | None]:
     """Park deterministic failures and back off transient archive failures."""
+    from .flashscore_recovery import source_cooldown_enabled, captcha_retry_seconds
+    if reason == "CAPTCHA_CHALLENGE_ABORTED" and not source_cooldown_enabled():
+        return "queued", captcha_retry_seconds()
+    if reason == "source_terminal_empty_response_count_mismatch_confirmed":
+        # The source repeatedly returned a stable terminal page while its
+        # advertised singles count still differs from the archived pages.
+        # Retry a few times for transient source inconsistencies, then retain
+        # the checkpoint for explicit/source-change recovery instead of
+        # spending the backlog lane on an unchanged profile indefinitely.
+        return ("blocked", None) if int(attempts or 0) >= 3 else ("queued", 3600)
     if reason in _FLASHSCORE_IMPORT_MANUAL_RETRY_REASONS:
         return "blocked", None
     if reason == "PERSISTENT_TRANSPORT_FAILURE":
@@ -717,6 +734,30 @@ def _park_stale_persistent_transport_imports(session, now: datetime) -> int:
     return parked
 
 
+def _park_stale_terminal_count_mismatch_imports(session, now: datetime) -> int:
+    """Park repeated, confirmed archive count mismatches without losing checkpoints."""
+    from db.models import FlashscoreImportJob
+
+    jobs = session.query(FlashscoreImportJob).filter(
+        FlashscoreImportJob.status.in_(("queued", "retry")),
+        FlashscoreImportJob.last_error == "source_terminal_empty_response_count_mismatch_confirmed",
+        FlashscoreImportJob.attempts >= 3,
+    ).with_for_update(skip_locked=True).all()
+    for job in jobs:
+        progress = dict(job.progress_json or {})
+        progress.update({
+            "stage": "waiting_for_source_count_reconciliation",
+            "reason": "source_terminal_empty_response_count_mismatch_confirmed",
+            "parked_at": now.isoformat(),
+        })
+        job.status = "blocked"
+        job.attempt_token = None
+        job.lease_until = None
+        job.progress_json = progress
+        job.updated_at = now
+    return len(jobs)
+
+
 def _flashscore_failure_progress(progress: dict[str, Any] | None, previous_error: str | None,
                                  error: str | None, now: datetime) -> dict[str, Any]:
     """Keep the first-seen timestamp while the same transport failure persists."""
@@ -732,7 +773,9 @@ def _live_match_lookup_retry_delay(reason: str | None, attempts: int) -> timedel
     """Back off absent live-match links so dispatch polling cannot repeat HTTP lookups."""
     normalized = (reason or "").upper()
     if "CAPTCHA" in normalized:
-        return timedelta(hours=_flashscore_captcha_cooldown_hours())
+        from .flashscore_recovery import source_cooldown_enabled, captcha_retry_seconds
+        return (timedelta(hours=_flashscore_captcha_cooldown_hours()) if source_cooldown_enabled()
+                else timedelta(seconds=captcha_retry_seconds()))
     base_minutes = 15 if any(marker in normalized for marker in ("403", "429", "BLOCKED")) else 10
     exponent = max(0, min(int(attempts or 1) - 1, 6))
     return timedelta(minutes=min(base_minutes * (2 ** exponent), 360))
@@ -826,8 +869,11 @@ def _execute_flashscore_import_job(job_id) -> None:
                 "reason": scrape_result.reason,
                 "fetch_transport": scrape_result.fetch_transport,
                 "fallback_reason": scrape_result.fallback_reason,
+                "challenge_type": scrape_result.challenge_type,
+                "recovery_result": scrape_result.recovery_result,
                 "player_id": scrape_result.profile.source_player_id if scrape_result.profile else None,
                 "matches_parsed": len(scrape_result.profile.matches) if scrape_result.profile else 0,
+                "doubles_results_archived": len(scrape_result.profile.doubles_matches) if scrape_result.profile else 0,
                 "matches_imported": matches_imported,
                 "matches_skipped": scrape_result.profile.skipped_rows if scrape_result.profile else 0,
                 "rows_skipped_by_reason": scrape_result.profile.skipped_row_reasons if scrape_result.profile else {},
@@ -1122,6 +1168,11 @@ _PLAYER_REFRESH_IDENTITY_WAIT_ERRORS = {
 
 
 def _flashscore_profile_job_outcome(status: str, error: str | None, progress: dict | None):
+    from .flashscore_recovery import source_cooldown_enabled
+    if status == "retry" and error == "CAPTCHA_CHALLENGE_ABORTED" and not source_cooldown_enabled():
+        updated = {**(progress or {}), "stage": "waiting_for_local_recovery_retry", "reason": error}
+        updated.pop("captcha_retry_at", None)
+        return "retry", updated
     if status == "retry" and error == "CAPTCHA_CHALLENGE_ABORTED":
         return "blocked", {**(progress or {}), "stage": "waiting_for_captcha_cooldown", "reason": error}
     if status == "retry" and error in _PLAYER_REFRESH_IDENTITY_WAIT_ERRORS:
@@ -1224,6 +1275,9 @@ def _resume_expired_captcha_imports(session, now: datetime) -> int:
 
 
 def _player_refresh_retry_delay(error: str | None, attempts: int) -> timedelta:
+    from .flashscore_recovery import source_cooldown_enabled, captcha_retry_seconds
+    if error == "CAPTCHA_CHALLENGE_ABORTED" and not source_cooldown_enabled():
+        return timedelta(seconds=captcha_retry_seconds())
     if error == "SEARCH_COMPLETED_NO_MATCH":
         return timedelta(days=7)
     if error and any(marker in error.upper() for marker in ("403", "429", "BLOCKED")):
@@ -1358,18 +1412,49 @@ def _player_needs_flashscore_identity_for_missing_pbp(session, participant_id) -
 
     A stale or partial history snapshot remains usable by calculations and is
     not, by itself, a reason to spend a Flashscore request. Identity lookup is
-    a separate fallback capability for an existing point-history job.
+    a separate fallback capability for an existing, currently active PBP job;
+    old waiting jobs must not keep profile work pinned to a live-only source.
     """
     from sqlalchemy import or_
     from db.models import Event, TennisPointRefreshJob
 
+    now = datetime.now(timezone.utc)
+    if _confirmed_flashscore_player_id(session, participant_id):
+        return False
     return session.query(TennisPointRefreshJob).join(
         Event, Event.id == TennisPointRefreshJob.event_id,
     ).filter(
         or_(Event.participant_a_id == participant_id, Event.participant_b_id == participant_id),
+        Event.first_seen_at >= now - timedelta(days=7),
         TennisPointRefreshJob.status == "waiting_players",
         TennisPointRefreshJob.last_error == "PLAYER_SOURCE_IDS_MISSING",
     ).first() is not None
+
+
+def _pbp_identity_retry_due(needs_pbp_identity: bool, job, last_attempt_at, now) -> bool:
+    """Retry a live PBP identity no-match at a bounded hourly cadence."""
+    return bool(
+        needs_pbp_identity and job
+        and job.status == "retry"
+        and job.last_error in {"SEARCH_COMPLETED_NO_MATCH", "NO_ALTERNATIVE_PROFILE_DATA"}
+        and last_attempt_at is not None
+        and last_attempt_at <= now - timedelta(hours=1)
+    )
+
+
+def _identity_matcher_update_due(job, profile, matcher_version: str) -> bool:
+    """Reopen one durable negative identity search after matching rules improve."""
+    if job is None or profile is None or job.status not in {"retry", "blocked", "failed"}:
+        return False
+    negative_results = {
+        "SEARCH_COMPLETED_NO_MATCH", "SEARCH_CANDIDATES_REJECTED_BY_NAME",
+        "NO_ALTERNATIVE_PROFILE_DATA",
+    }
+    if (job.last_error not in negative_results
+            and getattr(profile, "sync_error", None) not in negative_results):
+        return False
+    progress = getattr(job, "progress_json", None) or {}
+    return progress.get("identity_matcher_version") != matcher_version
 
 
 def _prepare_one_player(participant_id, participant_name: str, attempt_token: str) -> None:
@@ -1413,6 +1498,13 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
             canonical_participant_name = (
                 str(participant.canonical_name) if participant is not None else str(participant_name)
             )
+            canonical_identity_name = None
+            canonical_player_id = getattr(profile, "canonical_player_id", None) if profile is not None else None
+            if canonical_player_id:
+                from db.models.external_tennis import ExtTennisCanonicalPlayer
+                canonical_player = session.get(ExtTennisCanonicalPlayer, canonical_player_id)
+                if canonical_player is not None:
+                    canonical_identity_name = getattr(canonical_player, "display_name", None)
             from db.models import TennisPlayerIdentityLink
             latest_identity = session.query(TennisPlayerIdentityLink).filter_by(
                 participant_id=participant_id, source="flashscore"
@@ -1426,6 +1518,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 _player_needs_flashscore_identity_for_missing_pbp(session, participant_id)
                 if profile is not None and participant is not None else False
             )
+            needs_recent_match_search = getattr(owner, "requested_reason", None) == "recent_pbp_match_search"
             if profile is not None and participant is not None:
                 from .player_data_coverage import fresh_coverage, source_capability_enabled
                 cached_history = fresh_coverage(
@@ -1450,7 +1543,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 if (usable_cached_history and profile.metrics_version > 0 and profile.history_match_count > 0
                         and profile.metrics_available_at
                         and profile.metrics_available_at >= datetime.now(timezone.utc) - timedelta(days=7)
-                        and (confirmed_source_id or not needs_pbp_identity)):
+                        and (confirmed_source_id or not needs_pbp_identity) and not needs_recent_match_search):
                     # Fresh external history satisfies this refresh job; avoid
                     # resolving a Flashscore profile for the same archive.
                     owner.status = "completed"
@@ -1474,7 +1567,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                     )
                     return
                 if (profile.metrics_version > 0 and profile.history_match_count > 0
-                        and (confirmed_source_id or not needs_pbp_identity)):
+                        and (confirmed_source_id or not needs_pbp_identity) and not needs_recent_match_search):
                     # Existing history is still data even when its coverage is
                     # stale or its provider did not publish a complete ledger
                     # row. Keep it available to calculations and let the
@@ -1534,15 +1627,33 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 participant_id, attempt_token, "running", None, job_progress
             ):
                 return
+            from .tennis_flashscore import (
+                PLAYER_IDENTITY_MATCHER_VERSION, flashscore_identity_query_name,
+                is_canonical_full_player_name_match,
+                is_exact_player_name_match,
+            )
+            identity_query_name = flashscore_identity_query_name(
+                canonical_participant_name, canonical_identity_name
+            )
             resolved = importer.resolve_player_profile(
-                participant_name,
+                identity_query_name,
                 excluded_source_ids=rejected_source_ids,
                 source_access=lambda: _flashscore_source_access("background_profile"),
             )
             from .tennis_flashscore import is_auto_confirmable_player_match
-            exact_candidates = [candidate for candidate in (resolved.get("candidates") or [])
-                                if is_auto_confirmable_player_match(
-                                    participant_name, str(candidate.get("name") or ""))]
+            if canonical_identity_name and identity_query_name == canonical_identity_name:
+                exact_candidates = [candidate for candidate in (resolved.get("candidates") or [])
+                                    if is_canonical_full_player_name_match(
+                                        identity_query_name, str(candidate.get("name") or ""))]
+                resolved_candidate = resolved.get("candidate")
+                if (resolved.get("status") == "matched" and resolved_candidate
+                        and not is_canonical_full_player_name_match(
+                            identity_query_name, str(resolved_candidate.get("name") or ""))):
+                    resolved = {"status": "ambiguous", "candidates": resolved.get("candidates") or [resolved_candidate]}
+            else:
+                exact_candidates = [candidate for candidate in (resolved.get("candidates") or [])
+                                    if is_auto_confirmable_player_match(
+                                        participant_name, str(candidate.get("name") or ""))]
             if resolved.get("status") == "ambiguous" and len(exact_candidates) == 1:
                 exact = exact_candidates[0]
                 resolved = {"status": "matched", "candidate": exact,
@@ -1565,6 +1676,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                     job_progress = {
                         "stage": ("candidate_name_mismatch" if resolved_reason == "SEARCH_CANDIDATES_REJECTED_BY_NAME"
                                   else "confirmed_not_found"),
+                        "identity_query_name": identity_query_name,
                         "retry_after_hours": 24 * 7,
                         "excluded_rejected_candidates": len(rejected_source_ids),
                         "search_diagnostics": resolved.get("diagnostics", {}),
@@ -1573,6 +1685,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                     job_status = "retry"
                     job_error = resolved.get("reason") or resolved.get("status", "SOURCE_UNAVAILABLE")
                     job_progress = {"stage": "source_retry", "reason": job_error}
+                job_progress["identity_matcher_version"] = PLAYER_IDENTITY_MATCHER_VERSION
                 with SessionLocal() as session:
                     from db.models import TennisPlayerRefreshJob
                     owner = session.query(TennisPlayerRefreshJob).filter_by(participant_id=participant_id, attempt_token=attempt_token, status="running").filter(TennisPlayerRefreshJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
@@ -1592,15 +1705,21 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                                     upsert_manual_confirmation(session, kind="player_profile",
                                         subject_id=str(participant_id), candidate_id=source_player_id,
                                         evidence={"participant_name": canonical_participant_name,
-                                                  "candidate": candidate, "query_name": participant_name})
+                                                  "candidate": candidate, "query_name": identity_query_name})
                         session.commit()
                 return
             profile_url = resolved["profile_url"]
             source_id = resolved["candidate"]["source_player_id"]
             candidate_name = str(resolved["candidate"].get("name") or "")
             from .tennis_flashscore import is_auto_confirmable_player_match, is_exact_player_name_match
-            if is_auto_confirmable_player_match(participant_name, candidate_name):
+            canonical_name_confirmed = bool(
+                canonical_identity_name and identity_query_name == canonical_identity_name
+                and is_canonical_full_player_name_match(identity_query_name, candidate_name)
+            )
+            if (has_archived_profile_search_evidence(resolved.get("candidate")) and
+                    (canonical_name_confirmed or is_auto_confirmable_player_match(participant_name, candidate_name))):
                 confirmation_method = (
+                    "automatic_canonical_full_name" if canonical_name_confirmed else
                     "automatic_exact_full_name" if is_exact_player_name_match(participant_name, candidate_name)
                     else "automatic_full_surname_initial"
                 )
@@ -1628,9 +1747,11 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                             "participant_name": participant_name,
                             "candidate_name": candidate_name,
                             "profile_url": profile_url,
+                            "profile_search_evidence": resolved["candidate"].get("search_evidence", []),
                         },
                         available_at=now,
                     ))
+                    _wake_identity_dependent_matches(session, participant_id, now)
                     if had_stored_history:
                         # This refresh may still need an exact Flashscore ID
                         # for a separate missing PBP capability, but the
@@ -1733,7 +1854,7 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
                 stored_history_available = bool(
                     profile.metrics_version > 0 and profile.history_match_count > 0
                 )
-                if stored_history_available:
+                if stored_history_available and getattr(owner, "requested_reason", None) != "recent_pbp_match_search":
                     alternative_history_source = (
                         complete_coverage.source if complete_coverage else
                         partial_coverage.source if partial_coverage else
@@ -1876,12 +1997,20 @@ def _prepare_one_player(participant_id, participant_name: str, attempt_token: st
         _finish_player_refresh_job(participant_id, attempt_token, job_status, job_error, job_progress)
 
 
+def _load_locked_player_profile_state(session, participant_id, refresh_job_model, profile_model):
+    """Lock job before profile to match the refresh worker's write order."""
+    job = session.get(refresh_job_model, participant_id, with_for_update=True)
+    profile = session.get(profile_model, participant_id)
+    return profile, job
+
+
 @app.post("/api/tennis-history/prepare")
 async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dict[str, Any]:
     """Use fresh cached history immediately and enqueue due refreshes asynchronously."""
     from datetime import timedelta
     from db.connection import SessionLocal
-    from db.models import Event, Participant, TennisPlayerProfile, TennisPlayerRefreshJob
+    from db.models import Event, League, Participant, TennisPlayerProfile, TennisPlayerRefreshJob
+    from sqlalchemy import text
     from .player_profiles import (
         enqueue_player_refresh,
         has_unmaterialized_external_results,
@@ -1889,31 +2018,130 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
         seed_profile_from_archive,
     )
     from .player_data_coverage import source_capability_enabled
-    from .tennis_flashscore import is_doubles_player_display
+    from .tennis_doubles import parse_doubles_side, classify_doubles_discipline, event_discipline_source_facts
 
     now = datetime.now(timezone.utc)
     outcomes: dict[str, Any] = {}
     prevented_flashscore_by_source: dict[str, int] = {}
     with SessionLocal() as session:
+        # Serialize overlapping event batches across the API and Flashscore
+        # worker processes. Lock each refresh job before touching its profile,
+        # matching the order used by the refresh worker's completion path.
+        session.execute(text(
+            "SELECT pg_advisory_xact_lock(hashtext('neurobet:tennis-player-preparation'))"
+        ))
         events = session.query(Event).filter(Event.id.in_(request.event_ids), Event.sport_code == "tennis").all()
+        league_ids = {event.league_id for event in events if event.league_id is not None}
+        league_names = (dict(session.query(League.id, League.name).filter(League.id.in_(league_ids)).all())
+                        if league_ids else {})
         for event in events:
             sides = []
-            for participant_id, name in (
-                (event.participant_a_id, event.participant_a_name),
-                (event.participant_b_id, event.participant_b_name),
-            ):
-                if is_doubles_player_display(name):
-                    sides.append({"status": "unsupported_doubles", "reason": "SINGLES_ONLY", "name": name})
+            parsed_a = parse_doubles_side(event.participant_a_name)
+            parsed_b = parse_doubles_side(event.participant_b_name)
+            is_doubles = parsed_a is not None or parsed_b is not None
+            people = []
+            if is_doubles:
+                if parsed_a is None or parsed_b is None:
+                    outcomes[str(event.id)] = {
+                        "ready": False, "discipline": "unknown_doubles",
+                        "waiting_reason": "DOUBLES_ROSTER_INCOMPLETE", "players": [],
+                    }
+                    continue
+                from db.models import Participant
+                from .player_profiles import resolve_participant
+                for side_name, pair_names in (("A", parsed_a), ("B", parsed_b)):
+                    for name in pair_names:
+                        participant = resolve_participant(session, name)
+                        if participant is None:
+                            matches = session.query(Participant).filter(
+                                Participant.sport_code == "tennis",
+                                Participant.canonical_name == name,
+                            ).all()
+                        else:
+                            matches = [participant]
+                        if not matches:
+                            # Candidate profile row only: identity remains unconfirmed
+                            # until a provider ID is established by the normal resolver.
+                            participant = Participant(
+                                sport_code="tennis", canonical_name=name, is_team=False,
+                                metadata_json={"identity_status": "candidate", "candidate_origin": "fonbet_doubles_roster"},
+                            )
+                            session.add(participant)
+                            session.flush()
+                        elif participant is None and len(matches) == 1:
+                            participant = matches[0]
+                        else:
+                            participant = participant if len(matches) == 1 else None
+                        people.append((side_name, name, participant.id if participant else None))
+                discipline = classify_doubles_discipline(*event_discipline_source_facts(
+                    event, league_names.get(event.league_id)))
+                import hashlib, json
+                from db.models import TennisDoublesRosterObservation
+                roster_players = []
+                for side_name, name, participant_id in people:
+                    profile = session.get(TennisPlayerProfile, participant_id) if participant_id else None
+                    canonical_id = str(profile.canonical_player_id) if profile and profile.canonical_player_id else None
+                    roster_players.append({
+                        "side": side_name, "display_name": name,
+                        "participant_id": str(participant_id) if participant_id else None,
+                        "canonical_player_id": canonical_id,
+                        "identity_confirmed": canonical_id is not None,
+                    })
+                roster_payload = {
+                    "A": [player for player in roster_players if player["side"] == "A"],
+                    "B": [player for player in roster_players if player["side"] == "B"],
+                }
+                evidence_hash = hashlib.sha256(json.dumps(
+                    {"discipline": discipline, "roster": roster_payload},
+                    ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                ).encode("utf-8")).hexdigest()
+                confirmed_count = sum(player["identity_confirmed"] for player in roster_players)
+                existing_roster = session.query(TennisDoublesRosterObservation).filter_by(
+                    event_id=event.id, evidence_hash=evidence_hash
+                ).first()
+                if existing_roster is None:
+                    session.add(TennisDoublesRosterObservation(
+                        event_id=event.id, discipline=discipline, roster_json=roster_payload,
+                        scoring_rules_json={},
+                        confirmation_status="identities_confirmed" if confirmed_count == 4 else "pending",
+                        source="fonbet",
+                        source_record_id=str(event.source_event_id or ""), available_at=now,
+                        evidence_hash=evidence_hash,
+                        evidence_json={"stage": "individual_identity_resolution",
+                                       "identity_confirmed_count": confirmed_count,
+                                       "required_players": 4},
+                    ))
+            else:
+                discipline = "singles"
+                people = [(side_name, name, participant_id) for side_name, participant_id, name in (
+                    ("A", event.participant_a_id, event.participant_a_name),
+                    ("B", event.participant_b_id, event.participant_b_name),
+                )]
+            for side_name, name, participant_id in people:
+                if not participant_id:
+                    sides.append({"status": "participant_unlinked", "side": side_name, "name": name})
                     continue
                 participant = session.get(Participant, participant_id) if participant_id else resolve_participant(session, name)
                 if participant is None:
                     sides.append({"status": "participant_unlinked", "name": name})
                     continue
-                profile = session.get(TennisPlayerProfile, participant.id)
+                profile, job = _load_locked_player_profile_state(
+                    session, participant.id, TennisPlayerRefreshJob, TennisPlayerProfile
+                )
                 if profile is None:
                     profile = TennisPlayerProfile(participant_id=participant.id, sync_status="pending")
                     session.add(profile)
                     session.flush()
+                canonical_identity_name = None
+                if getattr(profile, "canonical_player_id", None):
+                    from db.models.external_tennis import ExtTennisCanonicalPlayer
+                    canonical_player = session.get(ExtTennisCanonicalPlayer, profile.canonical_player_id)
+                    if canonical_player is not None:
+                        canonical_identity_name = getattr(canonical_player, "display_name", None)
+                from .tennis_flashscore import flashscore_identity_query_name
+                identity_query_name = flashscore_identity_query_name(
+                    participant.canonical_name, canonical_identity_name
+                )
                 from .player_data_coverage import fresh_coverage
                 history_coverage = fresh_coverage(
                     session, participant.id, as_of=now, capability="match_history"
@@ -1955,12 +2183,29 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     history_coverage or partial_history_coverage
                     or ("flashscore" if flashscore_fresh else None)
                 ) if metrics_materialized_recently else None
-                retry_wait = timedelta(hours=6) if profile.sync_status in {"not_found", "ambiguous"} else timedelta(minutes=15)
-                attempt_recent = profile.last_attempt_at is not None and profile.last_attempt_at > now - retry_wait
                 has_stored_history = bool(profile.metrics_version > 0 and profile.history_match_count > 0)
-                needs_pbp_identity = (
-                    _player_needs_flashscore_identity_for_missing_pbp(session, participant.id)
-                    if has_stored_history else False
+                from .tennis_flashscore import PLAYER_IDENTITY_MATCHER_VERSION
+                identity_matcher_update_due = _identity_matcher_update_due(
+                    job, profile, PLAYER_IDENTITY_MATCHER_VERSION
+                )
+                needs_pbp_identity = _player_needs_flashscore_identity_for_missing_pbp(
+                    session, participant.id
+                )
+                retry_wait = (
+                    timedelta(hours=1) if needs_pbp_identity else
+                    timedelta(hours=6) if profile.sync_status in {"not_found", "ambiguous"} else
+                    timedelta(minutes=15)
+                )
+                attempt_recent = profile.last_attempt_at is not None and profile.last_attempt_at > now - retry_wait
+                identity_query_changed = bool(
+                    needs_pbp_identity
+                    and identity_query_name != participant.canonical_name
+                    and job
+                    and job.last_error in {"SEARCH_COMPLETED_NO_MATCH", "NO_ALTERNATIVE_PROFILE_DATA"}
+                    and (job.progress_json or {}).get("identity_query_name") != identity_query_name
+                )
+                identity_retry_due = _pbp_identity_retry_due(
+                    needs_pbp_identity, job, profile.last_attempt_at, now
                 )
                 from .player_data_coverage import profile_needs_history_refresh
                 needs_refresh = profile_needs_history_refresh(
@@ -1972,14 +2217,13 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     flashscore_last_success_at=profile.last_success_at,
                     identity_confirmation_required=(profile.sync_status == "identity_confirmation_required"),
                     attempt_recent=attempt_recent,
-                )
-                job = session.get(TennisPlayerRefreshJob, participant.id, with_for_update=True)
+                ) or needs_pbp_identity
                 job_active = bool(job and job.status in {"queued", "running", "waiting_confirmation"}
                                   and (job.status in {"queued", "waiting_confirmation"}
                                        or (job.lease_until and job.lease_until > now)))
                 if ((history_coverage or partial_history_coverage) and job
                         and job.status in {"queued", "retry", "running", "blocked"}
-                        and not needs_pbp_identity):
+                        and not needs_pbp_identity and getattr(job, "requested_reason", None) != "recent_pbp_match_search"):
                     # Alternative history can appear after a Flashscore job
                     # was queued or claimed. Revoke its fencing token and
                     # close the obsolete work item before another source call
@@ -2008,7 +2252,8 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                         and profile.sync_status not in {"identity_confirmation_required", "ambiguous"}):
                     profile.sync_status = "available" if history_coverage else "partial"
                     profile.sync_error = None if history_coverage else "PARTIAL_HISTORY_COVERAGE"
-                if needs_refresh and not attempt_recent and not job_active:
+                if needs_refresh and (not attempt_recent or identity_query_changed or identity_retry_due
+                                      or identity_matcher_update_due) and not job_active:
                     if has_stored_history and not needs_pbp_identity:
                         # A stale snapshot remains useful; background providers
                         # refresh it. Do not turn every new match into another
@@ -2018,8 +2263,22 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     else:
                         refresh_job = enqueue_player_refresh(
                             session, participant.id,
+                            "doubles_roster_identity" if is_doubles else
+                            "pbp_identity_query_changed" if identity_query_changed else
+                            "identity_matcher_updated" if identity_matcher_update_due else
+                            "pbp_identity_retry_due" if identity_retry_due else
                             "new_event" if profile.last_success_at is None else "event_refresh",
                         )
+                        if identity_matcher_update_due and refresh_job.status in {"queued", "retry"}:
+                            refresh_job.progress_json = {
+                                **dict(refresh_job.progress_json or {}),
+                                "identity_matcher_version": PLAYER_IDENTITY_MATCHER_VERSION,
+                            }
+                            # A version change is an explicit reason to retry a
+                            # formerly negative identity search now, regardless
+                            # of the ordinary no-match cooldown.
+                            refresh_job.next_run_at = now
+                            refresh_job.updated_at = now
                         if refresh_job.status != "waiting_confirmation":
                             profile.sync_status = "running"
                             profile.last_attempt_at = now
@@ -2028,7 +2287,10 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                 key = str(participant.id)
                 sides.append({
                     "participant_id": key,
+                    "side": side_name,
                     "name": participant.canonical_name,
+                    "canonical_player_id": str(profile.canonical_player_id) if profile.canonical_player_id else None,
+                    "identity_confirmed": bool(profile.canonical_player_id),
                     "status": profile.sync_status,
                     "history_match_count": profile.history_match_count,
                     "metrics_version": profile.metrics_version,
@@ -2059,8 +2321,22 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                         and usable_history_source is not None
                     ),
                 })
-            ready = any(side.get("ready", False) for side in sides)
-            outcomes[str(event.id)] = {"ready": ready, "players": sides}
+            players_ready = all(side.get("ready", False) and side.get("identity_confirmed", False)
+                                for side in sides) if is_doubles else any(
+                side.get("ready", False) for side in sides
+            )
+            outcomes[str(event.id)] = {
+                # Doubles must never be admitted to the singles forecast path.
+                "ready": players_ready if not is_doubles else False,
+                "players_ready": players_ready, "discipline": discipline,
+                "waiting_reason": ("DOUBLES_SOURCE_MATCH_LOOKUP_PENDING" if players_ready else
+                                   "DOUBLES_ROSTER_PENDING") if is_doubles else None,
+                "players": sides,
+                "roster_sides": {
+                    "A": [side.get("participant_id") for side in sides if side.get("side") == "A"],
+                    "B": [side.get("participant_id") for side in sides if side.get("side") == "B"],
+                } if is_doubles else None,
+            }
         session.commit()
         if prevented_flashscore_by_source:
             from .source_metrics import try_record_source_metric
@@ -2070,6 +2346,53 @@ async def prepare_tennis_event_players(request: TennisPreparationRequest) -> Dic
                     engine, source_name, prevented_flashscore=count,
                 )
     return {"events": outcomes, "ready_event_ids": [event_id for event_id, value in outcomes.items() if value["ready"]]}
+
+
+@app.get("/api/tennis-history/doubles/events/{event_id}")
+def get_tennis_doubles_event_status(event_id: uuid.UUID) -> Dict[str, Any]:
+    """Expose roster evidence separately from source match/PBP readiness."""
+    from db.connection import SessionLocal
+    from db.models import Event, TennisDoublesRosterObservation
+
+    with SessionLocal() as session:
+        event = session.get(Event, event_id)
+        if event is None or event.sport_code != "tennis":
+            raise HTTPException(status_code=404, detail="Tennis event not found")
+        roster = session.query(TennisDoublesRosterObservation).filter_by(
+            event_id=event_id
+        ).order_by(TennisDoublesRosterObservation.available_at.desc(),
+                   TennisDoublesRosterObservation.id.desc()).first()
+        if roster is None:
+            return {
+                "event_id": str(event_id), "discipline": "unknown_doubles",
+                "roster_status": "missing", "waiting_reason": "DOUBLES_ROSTER_PENDING",
+                "source_match_status": "pending", "point_history_status": "pending",
+                "targets": {"point": "pending_doubles_pbp", "game": "pending_doubles_pbp",
+                            "set": "pending_doubles_result"},
+            }
+        roster_json = roster.roster_json or {}
+        players = [player for side in ("A", "B") for player in roster_json.get(side, [])]
+        confirmed = sum(bool(player.get("canonical_player_id") and player.get("identity_confirmed"))
+                        for player in players)
+        return {
+            "event_id": str(event_id), "discipline": roster.discipline,
+            "roster_status": roster.confirmation_status,
+            "roster_sides": {"A": roster_json.get("A", []), "B": roster_json.get("B", [])},
+            "confirmed_player_count": confirmed, "required_player_count": 4,
+            "scoring_format": roster.scoring_rules_json or None,
+            "scoring_format_confirmed": bool(roster.scoring_rules_json),
+            "evidence": {
+                "source": roster.source, "source_record_id": roster.source_record_id,
+                "available_at": roster.available_at.isoformat(),
+                "raw_content_hash": roster.raw_content_hash, "evidence_hash": roster.evidence_hash,
+            },
+            "source_match_status": "pending",
+            "waiting_reason": ("DOUBLES_MATCH_LOOKUP_PENDING" if confirmed == 4
+                               else "DOUBLES_ROSTER_PENDING"),
+            "point_history_status": "pending",
+            "targets": {"point": "pending_doubles_pbp", "game": "pending_doubles_pbp",
+                        "set": "pending_doubles_result"},
+        }
 
 
 @app.get("/api/tennis-history/players/{participant_id}")
@@ -2242,14 +2565,17 @@ async def refresh_due_tennis_players(limit: int = 500) -> Dict[str, Any]:
     return {"status": "queued", "due_count": due_count, "scheduled_count": queued_count}
 
 
-def _tennis_player_dispatch_priority(participant_id_column, live_ids: set[Any], eligible_ids: set[Any]):
-    """Keep stale archive backlog from consuming the live/prematch profile slots."""
+def _tennis_player_dispatch_priority(participant_id_column, live_ids: set[Any], eligible_ids: set[Any],
+                                    doubles_identity_ids: set[Any] | None = None):
+    """Keep live work first while preventing the doubles identity queue starving behind old singles."""
     from sqlalchemy import case
 
+    doubles_identity_ids = doubles_identity_ids or set()
     return case(
         (participant_id_column.in_(live_ids), 0),
         (participant_id_column.in_(eligible_ids), 1),
-        else_=2,
+        (participant_id_column.in_(doubles_identity_ids), 2),
+        else_=3,
     )
 
 
@@ -2325,7 +2651,8 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
     from db.models.external_tennis import TennisPlayerDataCoverage
     from .player_profiles import enqueue_player_refresh
     from .tennis_flashscore import (
-        is_auto_confirmable_player_match, is_doubles_player_display, is_exact_player_name_match,
+        has_archived_profile_search_evidence, is_auto_confirmable_player_match,
+        is_doubles_player_display, is_exact_player_name_match,
     )
 
     limit = max(1, min(limit, 50))
@@ -2362,7 +2689,9 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
             if profile is None:
                 profile = TennisPlayerProfile(participant_id=participant_id)
                 session.add(profile)
-            exact = [row for row in confirmations if is_auto_confirmable_player_match(
+            exact = [row for row in confirmations if has_archived_profile_search_evidence(
+                (row.evidence_json or {}).get("candidate") or {}
+            ) and is_auto_confirmable_player_match(
                 participant.canonical_name,
                 str((row.evidence_json or {}).get("candidate", {}).get("name") or ""),
             )]
@@ -2412,8 +2741,10 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
                         "method": confirmation_method,
                         "participant_name": participant.canonical_name,
                         "candidate_name": candidate.get("name"), "profile_url": profile_url,
+                        "profile_search_evidence": candidate.get("search_evidence", []),
                     }, available_at=decision_time,
                 ))
+            _wake_identity_dependent_matches(session, participant_id, decision_time)
             prior_version = confirmation.version
             confirmation.status = "approved"
             confirmation.decided_at = decision_time
@@ -2580,6 +2911,10 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
         )).with_for_update(of=TennisPlayerRefreshJob, skip_locked=True).all()
         completed_from_cache = 0
         for job in cached_jobs:
+            if job.requested_reason == "recent_pbp_match_search":
+                continue
+            if _player_needs_flashscore_identity_for_missing_pbp(session, job.participant_id):
+                continue
             coverage_rows = session.query(TennisPlayerDataCoverage).filter(
                 TennisPlayerDataCoverage.participant_id == job.participant_id,
                 TennisPlayerDataCoverage.capability == "match_history",
@@ -2632,6 +2967,7 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
         ).where(
             or_(Event.participant_a_id == TennisPlayerRefreshJob.participant_id,
                 Event.participant_b_id == TennisPlayerRefreshJob.participant_id),
+            Event.first_seen_at >= now - timedelta(days=7),
             TennisPointRefreshJob.status == "waiting_players",
             TennisPointRefreshJob.last_error == "PLAYER_SOURCE_IDS_MISSING",
         ).correlate(TennisPlayerRefreshJob).exists()
@@ -2640,6 +2976,7 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
             TennisPlayerProfile.participant_id == TennisPlayerRefreshJob.participant_id,
         ).filter(
             TennisPlayerRefreshJob.status.in_(("queued", "retry", "blocked")),
+            TennisPlayerRefreshJob.requested_reason != "recent_pbp_match_search",
             TennisPlayerProfile.metrics_version > 0,
             TennisPlayerProfile.history_match_count > 0,
             ~pbp_identity_demand,
@@ -2728,6 +3065,21 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
         concurrency = max(1, config.flashscore_tennis_profile_concurrency)
         source_cooldown_until = _flashscore_source_paused(session, now=now)
         slots = 0 if source_cooldown_until else max(0, min(limit, concurrency - active))
+        roster_participant_ids = session.execute(text("""
+            SELECT DISTINCT player.value->>'participant_id'
+            FROM tennis_doubles_roster_observations AS roster
+            CROSS JOIN LATERAL jsonb_each(roster.roster_json) AS side(key, value)
+            CROSS JOIN LATERAL jsonb_array_elements(side.value) AS player(value)
+            WHERE roster.confirmation_status <> 'identities_confirmed'
+              AND COALESCE((player.value->>'identity_confirmed')::boolean, false) = false
+              AND NULLIF(player.value->>'participant_id', '') IS NOT NULL
+        """)).scalars().all()
+        doubles_identity_ids: set[Any] = set()
+        for participant_id in roster_participant_ids:
+            try:
+                doubles_identity_ids.add(uuid.UUID(str(participant_id)))
+            except (TypeError, ValueError):
+                continue
         jobs_query = select(TennisPlayerRefreshJob).where(
                 or_(
                     TennisPlayerRefreshJob.status == "queued",
@@ -2755,6 +3107,7 @@ async def dispatch_tennis_player_refresh_jobs(limit: int = 10) -> Dict[str, Any]
                     TennisPlayerRefreshJob.participant_id,
                     live_participant_ids,
                     eligible_participant_ids,
+                    doubles_identity_ids,
                 ),
                 TennisPlayerRefreshJob.next_run_at,
                 TennisPlayerRefreshJob.requested_at,
@@ -2829,11 +3182,23 @@ def _record_point_job_event(session, job, available_at: datetime, source_match_i
     ))
 
 
+def _next_post_match_retry(finished_at: datetime | None, now: datetime) -> datetime:
+    """Choose the next remaining completion-relative retry, without catch-up bursts."""
+    from datetime import timedelta
+    if finished_at is None:
+        return now + timedelta(hours=6)
+    for delay in (60, 300, 900, 3600, 21600, 86400, 259200):
+        candidate = finished_at + timedelta(seconds=delay)
+        if candidate > now:
+            return candidate
+    return now + timedelta(days=1)
+
+
 def _run_point_refresh(event_id: str, token: str) -> None:
     from datetime import timedelta
     from db.connection import SessionLocal
     from db.models import (Event, ManualConfirmationRequest, TennisMatchLookupJob,
-                           TennisPointMatchLink, TennisPointRefreshJob)
+                           TennisPointMatchLink, TennisPointRefreshJob, TennisDoublesRosterObservation)
     from .point_history import collect_event_point_history
     stop = threading.Event()
     heartbeat = threading.Thread(target=_run_point_heartbeat, args=(event_id, token, stop), daemon=True)
@@ -2841,7 +3206,10 @@ def _run_point_refresh(event_id: str, token: str) -> None:
     try:
         with SessionLocal() as session:
             source_event = session.get(Event, uuid.UUID(event_id))
-            source_priority = "live" if source_event and source_event.is_live else "archive"
+            now = datetime.now(timezone.utc)
+            source_priority = ("live" if source_event and source_event.is_live else
+                               "participant" if source_event and source_event.first_seen_at
+                               and source_event.first_seen_at >= now - timedelta(days=7) else "archive")
         result = collect_event_point_history(
             event_id, token, source_access=partial(_flashscore_source_access, source_priority)
         )
@@ -2897,6 +3265,8 @@ def _run_point_refresh(event_id: str, token: str) -> None:
                    900 if blocked else
                    min(900, config.flashscore_tennis_point_poll_seconds * (2 ** min(job.attempts, 5))))
         retry_at = (datetime.now(timezone.utc) + timedelta(seconds=backoff))
+        if event and event.finished_at and error and not waiting_confirmation:
+            retry_at = max(retry_at, _next_post_match_retry(event.finished_at, datetime.now(timezone.utc)))
         if source_cooldown_until and "CAPTCHA" in str(error or "").upper():
             retry_at = max(retry_at, source_cooldown_until)
         job.next_run_at = datetime.now(timezone.utc) if waiting_confirmation else retry_at
@@ -2911,12 +3281,161 @@ def _confirmed_flashscore_player_id(session, participant_id):
     from db.models import TennisPlayerIdentityLink
     rows = session.query(TennisPlayerIdentityLink).filter_by(
         participant_id=participant_id, source="flashscore"
-    ).order_by(TennisPlayerIdentityLink.available_at.desc(), TennisPlayerIdentityLink.id.desc()).limit(20).all()
+    ).filter(TennisPlayerIdentityLink.available_at <= datetime.now(timezone.utc)).order_by(
+        TennisPlayerIdentityLink.available_at.desc(), TennisPlayerIdentityLink.id.desc()).all()
     latest = {}
     for row in rows:
         latest.setdefault(row.source_player_id, row)
     confirmed = [row.source_player_id for row in latest.values() if row.status == "confirmed"]
     return confirmed[0] if len(confirmed) == 1 else None
+
+
+def _current_event_source_links(session, event_id, now):
+    """Resolve a source match globally, so reassignment invalidates its old event."""
+    from db.models import TennisPointMatchLink
+    sources = session.query(TennisPointMatchLink.source_match_id).filter(
+        TennisPointMatchLink.fonbet_event_id == event_id,
+        TennisPointMatchLink.available_at <= now,
+    ).distinct().all()
+    source_ids = [row[0] for row in sources]
+    if not source_ids:
+        return {}
+    rows = session.query(TennisPointMatchLink).filter(
+        TennisPointMatchLink.source_match_id.in_(source_ids), TennisPointMatchLink.available_at <= now,
+    ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+    latest = {row.source_match_id: row for row in rows}
+    return {key: row for key, row in latest.items() if row.fonbet_event_id == event_id}
+
+
+def _wake_identity_dependent_matches(session, participant_id, now):
+    """Wake the next durable stage in the identity confirmation transaction."""
+    from sqlalchemy import or_
+    from db.models import (
+        Event, TennisDoublesRosterObservation, TennisMatchLookupJob,
+        TennisPlayerProfile, TennisPointHistoryVersion, TennisPointRefreshJob,
+    )
+    import hashlib, json
+    session.flush()
+    profile = session.get(TennisPlayerProfile, participant_id)
+    if profile and profile.canonical_player_id:
+        participant_key = str(participant_id)
+        doubles_ready_event_ids = set()
+        candidates = session.query(TennisDoublesRosterObservation).filter(
+            TennisDoublesRosterObservation.confirmation_status == "pending",
+            or_(
+                TennisDoublesRosterObservation.roster_json["A"].contains([{"participant_id": participant_key}]),
+                TennisDoublesRosterObservation.roster_json["B"].contains([{"participant_id": participant_key}]),
+            ),
+        ).order_by(TennisDoublesRosterObservation.event_id,
+                   TennisDoublesRosterObservation.available_at.desc(),
+                   TennisDoublesRosterObservation.id.desc()).all()
+        latest_rosters = {}
+        for observation in candidates:
+            latest_rosters.setdefault(observation.event_id, observation)
+        for observation in latest_rosters.values():
+            from .tennis_doubles import confirm_roster_player
+            roster_payload, confirmed_count, matched = confirm_roster_player(
+                observation.roster_json or {}, participant_key, str(profile.canonical_player_id)
+            )
+            if not matched:
+                continue
+            evidence_hash = hashlib.sha256(json.dumps(
+                {"discipline": observation.discipline, "roster": roster_payload},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()
+            if session.query(TennisDoublesRosterObservation.id).filter_by(
+                event_id=observation.event_id, evidence_hash=evidence_hash
+            ).first():
+                continue
+            session.add(TennisDoublesRosterObservation(
+                event_id=observation.event_id, discipline=observation.discipline,
+                roster_json=roster_payload, scoring_rules_json=observation.scoring_rules_json or {},
+                confirmation_status="identities_confirmed" if confirmed_count == 4 else "pending",
+                source="fonbet_identity_resolution", source_record_id=observation.source_record_id,
+                available_at=now, raw_object_key=observation.raw_object_key,
+                raw_content_hash=observation.raw_content_hash, evidence_hash=evidence_hash,
+                evidence_json={"stage": "identity_confirmed", "parent_observation_id": str(observation.id),
+                               "parent_evidence_hash": observation.evidence_hash,
+                               "identity_confirmed_at": now.isoformat(),
+                               "identity_confirmed_count": confirmed_count, "required_players": 4},
+            ))
+            if confirmed_count == 4:
+                doubles_ready_event_ids.add(observation.event_id)
+        session.flush()
+        roster_rows = session.query(TennisDoublesRosterObservation).filter(
+            or_(
+                TennisDoublesRosterObservation.roster_json["A"].contains([{"participant_id": participant_key}]),
+                TennisDoublesRosterObservation.roster_json["B"].contains([{"participant_id": participant_key}]),
+            ),
+            TennisDoublesRosterObservation.available_at <= now,
+        ).order_by(TennisDoublesRosterObservation.event_id,
+                   TennisDoublesRosterObservation.available_at.desc(),
+                   TennisDoublesRosterObservation.id.desc()).all()
+        for observation in roster_rows:
+            doubles_ready_event_ids.add(observation.event_id)
+        latest_rosters = {}
+        for observation in roster_rows:
+            latest_rosters.setdefault(observation.event_id, observation)
+        for event_id in doubles_ready_event_ids:
+            latest_roster = latest_rosters.get(event_id) or session.query(TennisDoublesRosterObservation).filter(
+                TennisDoublesRosterObservation.event_id == event_id,
+                TennisDoublesRosterObservation.available_at <= now,
+            ).order_by(TennisDoublesRosterObservation.available_at.desc(),
+                       TennisDoublesRosterObservation.id.desc()).first()
+            from .tennis_doubles import confirmed_provider_roster
+            provider_roster = (confirmed_provider_roster(
+                latest_roster.roster_json or {},
+                lambda player_id: _confirmed_flashscore_player_id(session, player_id),
+            ) if latest_roster else None)
+            point_job = session.get(TennisPointRefreshJob, event_id, with_for_update=True)
+            if point_job is None:
+                point_job = TennisPointRefreshJob(event_id=event_id,
+                    status="queued" if provider_roster else "waiting_players",
+                    last_error=None if provider_roster else "DOUBLES_ROSTER_PROVIDER_IDS_MISSING",
+                    next_run_at=now if provider_roster else now + timedelta(hours=6), updated_at=now)
+                session.add(point_job)
+            elif point_job.status not in {"running", "finalized"}:
+                point_job.status = "queued" if provider_roster else "waiting_players"
+                point_job.last_error = None if provider_roster else "DOUBLES_ROSTER_PROVIDER_IDS_MISSING"
+                point_job.next_run_at = now if provider_roster else now + timedelta(hours=6)
+                point_job.attempt_token = None; point_job.lease_until = None
+                point_job.updated_at = now
+            elif point_job.status == "finalized" and provider_roster:
+                prior_versions = session.query(TennisPointHistoryVersion.quality_json).filter(
+                    TennisPointHistoryVersion.fonbet_event_id == event_id,
+                    TennisPointHistoryVersion.available_at <= now,
+                    TennisPointHistoryVersion.availability_status == "known",
+                ).all()
+                has_complete = any((quality or {}).get("complete") is True and not (quality or {}).get("gaps")
+                                   for (quality,) in prior_versions)
+                if not has_complete:
+                    point_job.status = "queued"; point_job.last_error = None
+                    point_job.next_run_at = now; point_job.attempt_token = None
+                    point_job.lease_until = None; point_job.updated_at = now
+    events = session.query(Event).filter(
+        Event.first_seen_at >= now - timedelta(days=7),
+        or_(Event.participant_a_id == participant_id, Event.participant_b_id == participant_id),
+    ).all()
+    for event in events:
+        player_a = _confirmed_flashscore_player_id(session, event.participant_a_id)
+        player_b = _confirmed_flashscore_player_id(session, event.participant_b_id)
+        if not player_a or not player_b or player_a == player_b:
+            continue
+        point = session.get(TennisPointRefreshJob, event.id, with_for_update=True)
+        lookup = session.get(TennisMatchLookupJob, event.id, with_for_update=True)
+        if point is None or point.status != "waiting_players" or point.last_error != "PLAYER_SOURCE_IDS_MISSING":
+            continue
+        if event.is_live and event.finished_at is None and event.last_seen_at and event.last_seen_at >= now - timedelta(seconds=90):
+            if lookup and lookup.status == "waiting_players":
+                lookup.status = "queued"; lookup.last_error = None
+                lookup.next_run_at = now; lookup.updated_at = now
+            point.status = "waiting_match"; point.last_error = "FLASHSCORE_MATCH_LINK_PENDING"
+        elif event.finished_at is not None:
+            point.last_error = "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED"
+        else:
+            continue
+        point.next_run_at = now; point.updated_at = now
+        _record_point_job_event(session, point, now)
 
 
 def _enqueue_source_point_refresh(session, source_match_id: str, source_url: str, now: datetime) -> bool:
@@ -2945,7 +3464,7 @@ def _enqueue_source_point_refresh(session, source_match_id: str, source_url: str
 
 def _claim_source_point_history_jobs() -> list[tuple[str, str, str]]:
     """Claim source-only PBP work when the shared background browser lane is free."""
-    from sqlalchemy import func, or_, select, text
+    from sqlalchemy import case, func, or_, select, text
     from db.connection import SessionLocal
     from db.models import (
         FlashscoreImportJob, TennisMatchLookupJob, TennisPlayerRefreshJob,
@@ -3049,7 +3568,9 @@ def _source_point_refresh_retry_delay(reason: str, attempts: int) -> timedelta:
     """Back off repeated source misses/contention without polling every event tick."""
     normalized = (reason or "").upper()
     if "CAPTCHA" in normalized:
-        return timedelta(hours=_flashscore_captcha_cooldown_hours())
+        from .flashscore_recovery import source_cooldown_enabled, captcha_retry_seconds
+        return (timedelta(hours=_flashscore_captcha_cooldown_hours()) if source_cooldown_enabled()
+                else timedelta(seconds=captcha_retry_seconds()))
     base_minutes = 15 if "BLOCKED" in normalized or "429" in normalized or "403" in normalized else 5
     exponent = max(0, min(int(attempts or 1) - 1, 4))
     return timedelta(minutes=min(base_minutes * (2 ** exponent), 60))
@@ -3118,9 +3639,9 @@ def auto_resolve_exact_match_confirmations(limit: int = 100) -> dict[str, int]:
     from db.connection import SessionLocal
     from db.models import (
         Event, ManualConfirmationDecision, ManualConfirmationRequest,
-        TennisMatchLookupJob, TennisPointMatchLink, TennisPointRefreshJob,
+        TennisMatchLookupJob, TennisPointDocument, TennisPointMatchLink, TennisPointRefreshJob,
     )
-    from .confirmation_recovery import exact_confirmed_match_orientation
+    from .confirmation_recovery import exact_confirmed_match_url
     from .domain_filter import DomainFilter
 
     now = datetime.now(timezone.utc)
@@ -3158,10 +3679,34 @@ def auto_resolve_exact_match_confirmations(limit: int = 100) -> dict[str, int]:
             candidate = evidence.get("candidate") or {}
             source_url = str(candidate.get("url") or evidence.get("source_url") or "")
             allowed, _reason = DomainFilter.is_allowed(source_url) if source_url else (False, "missing_url")
-            orientation = exact_confirmed_match_orientation(
+            matching_url = exact_confirmed_match_url(
                 source_url, item.candidate_id, player_a_id, player_b_id, int(candidate_count)
-            ) if allowed else None
-            if orientation is None:
+            ) if allowed else False
+            if not matching_url or player_a_id == player_b_id:
+                skipped += 1
+                continue
+            # URL slugs prove the pair only. Their order is not scoreboard
+            # orientation; use a retained source document with two profile IDs.
+            import hashlib
+            from .point_history import _source_dom_side_orientation
+            from .storage import ResearchStorage
+            orientation = None
+            orientation_doc = None
+            source_docs = session.query(TennisPointDocument).filter_by(
+                source="flashscore", source_match_id=item.candidate_id
+            ).filter(TennisPointDocument.available_at <= now, TennisPointDocument.archived_path.is_not(None)
+            ).order_by(TennisPointDocument.available_at.desc(), TennisPointDocument.id.desc()).yield_per(100)
+            storage = ResearchStorage()
+            for document in source_docs:
+                raw = storage.read_document(document.archived_path) or {}
+                html = raw.get("html")
+                if not isinstance(html, str) or hashlib.sha256(html.encode()).hexdigest() != document.content_hash:
+                    continue
+                orientation = _source_dom_side_orientation(html, player_a_id, player_b_id)
+                if orientation is not None:
+                    orientation_doc = document
+                    break
+            if orientation_doc is None:
                 skipped += 1
                 continue
 
@@ -3178,13 +3723,21 @@ def auto_resolve_exact_match_confirmations(limit: int = 100) -> dict[str, int]:
                 skipped += 1
                 continue
 
-            if not (latest_link and latest_link.status in {"matched", "manual"} and latest_link.fonbet_event_id == event_id):
+            current_evidence = (latest_link.evidence_json or {}) if latest_link else {}
+            needs_orientation_version = (
+                current_evidence.get("side_orientation_source") != "flashscore_scoreboard_dom_confirmed_profile_ids"
+                or current_evidence.get("external_home_is_fonbet_a") is not orientation
+            )
+            if not (latest_link and latest_link.status in {"matched", "manual"} and latest_link.fonbet_event_id == event_id) or needs_orientation_version:
                 session.add(TennisPointMatchLink(
                     source_match_id=item.candidate_id, fonbet_event_id=event_id,
                     status="matched", confidence=1.0,
                     evidence_json={"method": "automatic_exact_confirmed_player_ids",
                         "request_id": str(item.id), "flashscore_player_ids": [player_a_id, player_b_id],
-                        "source_url": source_url, "external_home_is_fonbet_a": orientation},
+                        "source_url": source_url, "external_home_is_fonbet_a": orientation,
+                        "side_orientation_source": "flashscore_scoreboard_dom_confirmed_profile_ids",
+                        "raw_hash": orientation_doc.content_hash,
+                        "raw_object_key": orientation_doc.archived_path},
                     available_at=now,
                 ))
             lookup = session.get(TennisMatchLookupJob, event_id, with_for_update=True)
@@ -3233,11 +3786,25 @@ def _stale_match_lookup_is_live_again(job, event, now: datetime) -> bool:
     )
 
 
+def _has_live_board_evidence(match) -> bool:
+    import re
+    digest = str(match.get("raw_hash") or "")
+    key = str(match.get("raw_object_key") or "")
+    try:
+        observed = datetime.fromisoformat(str(match.get("observed_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return bool(re.fullmatch(r"[a-f0-9]{64}", digest)
+                and key.startswith("snapshots/research/") and digest in key
+                and observed.tzinfo is not None and observed <= datetime.now(timezone.utc))
+
+
 def _run_match_lookup(event_id: str, token: str) -> None:
     from datetime import timedelta
+    from sqlalchemy import text
     from db.connection import SessionLocal
-    from db.models import (Event, ManualConfirmationRequest, TennisMatchLookupJob,
-                           TennisPointMatchLink, TennisPointRefreshJob)
+    from db.models import (Event, ManualConfirmationRequest, TennisDoublesRosterObservation,
+                           TennisMatchLookupJob, TennisPointMatchLink, TennisPointRefreshJob)
     from .point_history import _discover_live_match
     now = datetime.now(timezone.utc)
     event_uuid = uuid.UUID(event_id)
@@ -3266,6 +3833,10 @@ def _run_match_lookup(event_id: str, token: str) -> None:
             job.updated_at = now; session.commit(); return
         player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
         player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
+        if player_a_id and player_a_id == player_b_id:
+            job.status = "waiting_players"; job.last_error = "PLAYER_SOURCE_IDS_CONFLICT"
+            job.next_run_at = now + timedelta(hours=6); job.attempt_token = None; job.lease_until = None
+            job.updated_at = now; session.commit(); return
         if not player_a_id or not player_b_id:
             job.status = "waiting_players"; job.last_error = "PLAYER_SOURCE_IDS_MISSING"
             job.next_run_at = now + timedelta(minutes=10); job.attempt_token = None; job.lease_until = None
@@ -3297,14 +3868,27 @@ def _run_match_lookup(event_id: str, token: str) -> None:
             match = {"status": "ambiguous", "candidates": [{
                 "source_match_id": match["source_match_id"], "url": match.get("url")
             }]}
+        if match and match.get("status") == "matched" and not _has_live_board_evidence(match):
+            match, error = None, "LIVE_BOARD_EVIDENCE_NOT_ARCHIVED"
         if match and match.get("status") == "matched":
             source_match_id = match["source_match_id"]
-            session.add(TennisPointMatchLink(source_match_id=source_match_id, fonbet_event_id=event_uuid,
-                status="matched", confidence=1.0, evidence_json={
+            session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                            {"key": "flashscore-pbp-link:" + source_match_id})
+            existing = session.query(TennisPointMatchLink).filter_by(source_match_id=source_match_id).order_by(
+                TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()).first()
+            if existing and existing.status in {"matched", "manual"} and existing.fonbet_event_id != event_uuid:
+                job.status = "waiting_confirmation"; job.last_error = "SOURCE_MATCH_ALREADY_LINKED"
+                job.attempt_token = None; job.lease_until = None; job.updated_at = now
+                session.commit(); return
+            if not existing or existing.status not in {"matched", "manual"} or existing.fonbet_event_id != event_uuid:
+                session.add(TennisPointMatchLink(source_match_id=source_match_id, fonbet_event_id=event_uuid,
+                    status="matched", confidence=1.0, evidence_json={
                     "method": "confirmed_flashscore_player_ids_on_live_page",
                     "flashscore_player_ids": [player_a_id, player_b_id],
                     "fonbet_participants": event_names, "source_url": match.get("url"),
-                }, available_at=now))
+                    "raw_hash": match["raw_hash"], "raw_object_key": match["raw_object_key"],
+                    "source_observed_at": match["observed_at"],
+                    }, available_at=now))
             job.status = "matched"; job.source_match_id = source_match_id; job.last_error = None
             point_job = session.get(TennisPointRefreshJob, event_uuid, with_for_update=True)
             if point_job:
@@ -3361,19 +3945,41 @@ async def dispatch_tennis_match_search(limit: int = 8) -> Dict[str, Any]:
     claimed = []
     with SessionLocal() as session:
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext('neurobet:tennis-match-lookup-dispatch'))"))
-        events = session.query(Event).filter(Event.sport_code == "tennis", Event.is_live.is_(True),
+        finished_waiting_lookups = session.query(TennisMatchLookupJob).join(
+            Event, Event.id == TennisMatchLookupJob.event_id
+        ).filter(
+            TennisMatchLookupJob.status == "waiting_match",
+            TennisMatchLookupJob.last_error == "EVENT_NO_LONGER_FRESH_LIVE",
+            Event.finished_at.is_not(None),
+        ).with_for_update(skip_locked=True).all()
+        for stale_job in finished_waiting_lookups:
+            # This lookup only runs for fresh live events. Once Fonbet has
+            # finalized the event, it can never satisfy that prerequisite;
+            # retain the durable row as skipped history instead of showing it
+            # forever as a deferred 999-priority task.
+            stale_job.status = "skipped"
+            stale_job.last_error = "EVENT_FINISHED_BEFORE_MATCH_LOOKUP"
+            stale_job.attempt_token = None
+            stale_job.lease_until = None
+            stale_job.updated_at = now
+        events = session.query(Event).filter(Event.sport_code == "tennis", Event.source == "fonbet",
+            Event.source_event_id.op("~")(r"^[0-9]+$"), Event.is_live.is_(True),
             Event.finished_at.is_(None), Event.last_seen_at >= now - timedelta(seconds=90),
             ~Event.participant_a_name.contains("/"), ~Event.participant_b_name.contains("/")).all()
         for event in events:
             player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
             player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
-            source_links = session.query(TennisPointMatchLink).filter_by(fonbet_event_id=event.id).order_by(
-                TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()).limit(20).all()
-            latest_sources = {}
-            for link in source_links:
-                latest_sources.setdefault(link.source_match_id, link)
+            latest_sources = _current_event_source_links(session, event.id, now)
             has_source = any(link.status in {"matched", "manual"} for link in latest_sources.values())
             job = session.get(TennisMatchLookupJob, event.id, with_for_update=True)
+            if player_a_id and player_a_id == player_b_id:
+                if job is None:
+                    session.add(TennisMatchLookupJob(event_id=event.id, status="waiting_players",
+                        last_error="PLAYER_SOURCE_IDS_CONFLICT", next_run_at=now + timedelta(hours=6)))
+                elif job.status not in {"running", "matched"}:
+                    job.status = "waiting_players"; job.last_error = "PLAYER_SOURCE_IDS_CONFLICT"
+                    job.next_run_at = now + timedelta(hours=6); job.updated_at = now
+                continue
             pending_confirmation = session.query(ManualConfirmationRequest.id).filter_by(
                 kind="event_match", source="flashscore", subject_id=str(event.id), status="pending"
             ).first() is not None
@@ -3472,7 +4078,7 @@ def _finalize_historical_alternative_pbp(session, event, job, alternative, now):
 
 
 @app.post("/api/tennis-history/archive-backfill/dispatch")
-async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
+async def dispatch_tennis_archive_backfill(limit: int = 4, recent_only: bool = False) -> Dict[str, Any]:
     """Enrol completed Fonbet singles, preferring stored alternative PBP first.
 
     This is deliberately a database-only scheduling step. The existing durable
@@ -3481,11 +4087,11 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
     """
     from datetime import timedelta
     import re
-    from sqlalchemy import or_
+    from sqlalchemy import case, or_, text
     from db.connection import SessionLocal
     from db.models import (
         Event, ExtTennisMatch, League, ManualConfirmationRequest,
-        TennisPlayerProfile, TennisPlayerRefreshJob, TennisPointDocument,
+        TennisPlayerIdentityLink, TennisPlayerProfile, TennisPlayerRefreshJob, TennisPointDocument,
         TennisPointMatchLink, TennisPointRefreshJob,
     )
     from .player_profiles import enqueue_player_refresh, _post_match_profile_refresh_due
@@ -3498,15 +4104,24 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
               "waiting_match": 0, "waiting_confirmation": 0, "already_complete": 0,
               "alternative_pbp": 0, "alternative_pbp_partial": 0}
     with SessionLocal() as session:
+        if not session.execute(text(
+            "SELECT pg_try_advisory_xact_lock(hashtext('neurobet:tennis-archive-enrollment'))"
+        )).scalar():
+            return {"status": "already_running", "recent_only": recent_only}
         # The full completed archive is eligible for training-data collection;
         # the +6h forecasting window does not apply to this historical queue.
         events = session.query(Event).filter(
             Event.sport_code == "tennis", Event.source == "fonbet",
             Event.status == "finished", Event.finished_at.is_not(None),
             Event.source_event_id.op("~")(r"^[0-9]+$"),
+            (Event.first_seen_at >= now - timedelta(days=7)) if recent_only else True,
             ~Event.participant_a_name.contains("/"),
             ~Event.participant_b_name.contains("/"),
-        ).order_by(Event.finished_at.asc(), Event.id.asc()).all()
+        ).order_by(
+            case((Event.first_seen_at >= now - timedelta(days=7), 0), else_=1),
+            case((Event.first_seen_at >= now - timedelta(days=7), Event.finished_at), else_=None).desc(),
+            Event.finished_at.asc(), Event.id.asc(),
+        ).all()
         counts["scanned"] = len(events)
         event_ids = [event.id for event in events]
         event_subject_ids = [str(event_id) for event_id in event_ids]
@@ -3530,9 +4145,17 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
         refresh_jobs = {row.participant_id: row for row in session.query(TennisPlayerRefreshJob).filter(
             TennisPlayerRefreshJob.participant_id.in_(participant_ids)
         ).all()} if participant_ids else {}
-        source_ids = {str((profiles.get(pid).source_identities or {}).get("flashscore"))
-                      for pid in participant_ids if profiles.get(pid)
-                      and (profiles[pid].source_identities or {}).get("flashscore")}
+        identity_rows = session.query(TennisPlayerIdentityLink).filter(
+            TennisPlayerIdentityLink.participant_id.in_(participant_ids) if participant_ids else False,
+            TennisPlayerIdentityLink.source == "flashscore", TennisPlayerIdentityLink.available_at <= now,
+        ).order_by(TennisPlayerIdentityLink.available_at, TennisPlayerIdentityLink.id).all()
+        latest_identities = {(row.participant_id, row.source_player_id): row for row in identity_rows}
+        confirmed_by_player = {}
+        for (participant_id, source_id), row in latest_identities.items():
+            if row.status == "confirmed":
+                confirmed_by_player.setdefault(participant_id, []).append(source_id)
+        confirmed_by_player = {pid: ids[0] for pid, ids in confirmed_by_player.items() if len(ids) == 1}
+        source_ids = set(confirmed_by_player.values())
         if source_ids:
             low = min(event.scheduled_start_at for event in events) - timedelta(days=2)
             high = max(event.scheduled_start_at for event in events) + timedelta(days=2)
@@ -3551,10 +4174,17 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                     frozenset((str(match.winner_player_id), str(match.loser_player_id))), []
                 ).append(match)
 
-        links = session.query(TennisPointMatchLink).filter(
+        event_links = session.query(TennisPointMatchLink).filter(
             TennisPointMatchLink.fonbet_event_id.in_(event_ids),
             TennisPointMatchLink.available_at <= now,
-        ).order_by(TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()).all() if events else []
+        ).all() if events else []
+        event_source_ids = {link.source_match_id for link in event_links}
+        all_source_links = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.source_match_id.in_(event_source_ids), TennisPointMatchLink.available_at <= now,
+        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all() if event_source_ids else []
+        latest_source_links = {link.source_match_id: link for link in all_source_links}
+        event_id_set = set(event_ids)
+        links = [link for link in latest_source_links.values() if link.fonbet_event_id in event_id_set]
         links_by_event: dict[Any, dict[str, Any]] = {}
         for link in links:
             event_links = links_by_event.setdefault(link.fonbet_event_id, {})
@@ -3619,6 +4249,12 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                     or str(official.get("winner") or "").casefold() not in {"player_a", "player_b"}):
                 continue
             job = jobs.get(event.id)
+            if (job and job.status == "finalized" and job.last_error == "FINALIZED_WITH_PARTIAL_ALTERNATIVE"
+                    and event.first_seen_at >= now - timedelta(days=7)):
+                job.status = "waiting_players"
+                job.last_error = "PLAYER_SOURCE_IDS_MISSING"
+                job.next_run_at = now
+                job.updated_at = now
             if job and job.status == "finalized":
                 counts["already_complete"] += 1
                 continue
@@ -3629,7 +4265,7 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
             # canonical participants, date/tournament evidence and orientation.
             from .point_history import usable_alternative_history_for_event
             alternative = usable_alternative_history_for_event(session, event, as_of=now)
-            if alternative:
+            if alternative and alternative.get("status") == "available":
                 job = _finalize_historical_alternative_pbp(session, event, job, alternative, now)
                 jobs[event.id] = job
                 partial = alternative.get("status") != "available"
@@ -3637,6 +4273,8 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                     _record_point_job_event(session, job, now, alternative.get("source_match_id"))
                 counts["alternative_pbp_partial" if partial else "alternative_pbp"] += 1
                 continue
+            if alternative:
+                counts["alternative_pbp_partial"] += 1
             current_links = links_by_event.get(event.id, {})
             pending_confirmation = str(event.id) in pending_confirmation_event_ids
             if pending_confirmation:
@@ -3658,9 +4296,25 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                     counts["already_complete"] += 1
                     continue
 
+            # A confirmed link is sufficient to try PBP even when the source
+            # match is absent from the separately imported profile index.
+            if confirmed_source_ids and not any(source_id in documented_sources for source_id in confirmed_source_ids):
+                if job is None:
+                    job = TennisPointRefreshJob(event_id=event.id, status="queued", next_run_at=now,
+                        last_error=None, updated_at=now)
+                    session.add(job); jobs[event.id] = job
+                    counts["queued"] += 1
+                elif job.status not in {"running", "finalized", "waiting_confirmation"} and job.next_run_at <= now:
+                    job.status = "queued"; job.last_error = None; job.next_run_at = now; job.updated_at = now
+                    counts["queued"] += 1
+                continue
+
             profile_a, profile_b = profiles.get(event.participant_a_id), profiles.get(event.participant_b_id)
-            flashscore_a = str((profile_a.source_identities or {}).get("flashscore") or "") if profile_a else ""
-            flashscore_b = str((profile_b.source_identities or {}).get("flashscore") or "") if profile_b else ""
+            flashscore_a = confirmed_by_player.get(event.participant_a_id, "")
+            flashscore_b = confirmed_by_player.get(event.participant_b_id, "")
+            identity_conflict = bool(flashscore_a and flashscore_a == flashscore_b)
+            if identity_conflict:
+                flashscore_a = flashscore_b = ""
             candidates = []
             if flashscore_a and flashscore_b:
                 candidates = [match for match in matches_by_players.get(frozenset((flashscore_a, flashscore_b)), [])
@@ -3716,10 +4370,18 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                     if not participant_id:
                         continue
                     refresh_job = refresh_jobs.get(participant_id)
-                    if (_post_match_profile_refresh_due(profile, refresh_job, event.finished_at, now)
+                    recent_pbp_search = bool(
+                        event.first_seen_at >= now - timedelta(days=7) and job
+                        and job.next_run_at <= now and flashscore_a and flashscore_b
+                        and (refresh_job is None or (
+                            refresh_job.status in {"completed", "idle", "failed"}
+                            and (refresh_job.updated_at is None or refresh_job.updated_at <= now - timedelta(minutes=5))
+                        ))
+                    )
+                    if ((_post_match_profile_refresh_due(profile, refresh_job, event.finished_at, now) or recent_pbp_search)
                             and profiles_to_refresh < limit * 2):
                         refresh_jobs[participant_id] = enqueue_player_refresh(
-                            session, participant_id, "historical_pbp_backfill"
+                            session, participant_id, "recent_pbp_match_search" if recent_pbp_search else "historical_pbp_backfill"
                         )
                         profiles_to_refresh += 1
                 if job is None:
@@ -3727,10 +4389,13 @@ async def dispatch_tennis_archive_backfill(limit: int = 4) -> Dict[str, Any]:
                         next_run_at=now + timedelta(hours=6), last_error="HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED",
                         updated_at=now))
                     jobs[event.id] = True
-                elif job.status not in {"running", "finalized"}:
-                    job.status = "waiting_players"; job.last_error = "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED"
-                    job.next_run_at = now + timedelta(hours=6); job.attempt_token = None; job.lease_until = None
-                    job.updated_at = now
+                elif job.status not in {"running", "finalized"} and job.next_run_at <= now:
+                    job.status = "waiting_players"
+                    job.last_error = ("PLAYER_SOURCE_IDS_CONFLICT" if identity_conflict else
+                                      "PLAYER_SOURCE_IDS_MISSING" if not flashscore_a or not flashscore_b
+                                      else "HISTORICAL_FLASHSCORE_MATCH_NOT_INDEXED")
+                    job.next_run_at = _next_post_match_retry(event.finished_at, now)
+                    job.attempt_token = None; job.lease_until = None; job.updated_at = now
                 counts["waiting_players"] += 1
                 continue
 
@@ -3787,13 +4452,19 @@ def _park_point_jobs_waiting_for_player_ids(session, now: datetime) -> int:
     return len(jobs)
 
 
+def _point_job_identity_ready(job):
+    """A NULL error is a healthy queued job, not an unknown SQL predicate."""
+    from sqlalchemy import or_
+    return or_(job.last_error.is_(None), job.last_error != "PLAYER_SOURCE_IDS_MISSING")
+
+
 async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[str, Any]:
     """Queue eligible live match PBP and dispatch due durable jobs."""
     from datetime import timedelta
-    from sqlalchemy import func, or_, select, text
+    from sqlalchemy import case, func, or_, select, text
     from db.connection import SessionLocal
-    from db.models import (Event, ManualConfirmationRequest, TennisMatchLookupJob,
-                           TennisPointMatchLink, TennisPointRefreshJob)
+    from db.models import (Event, ManualConfirmationRequest, TennisDoublesRosterObservation,
+                           TennisMatchLookupJob, TennisPointMatchLink, TennisPointRefreshJob)
     from .player_data_coverage import source_capability_enabled
     if not source_capability_enabled("flashscore", "point_by_point"):
         return {"status": "source_disabled", "claimed_count": 0,
@@ -3808,16 +4479,15 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
         _resume_source_disabled_point_jobs(session, now)
         parked_missing_identity_jobs = _park_point_jobs_waiting_for_player_ids(session, now)
         live_events = session.query(Event).filter(
-            Event.sport_code == "tennis", Event.is_live.is_(True),
+            Event.sport_code == "tennis", Event.source == "fonbet",
+            Event.source_event_id.op("~")(r"^[0-9]+$"), Event.is_live.is_(True),
             Event.last_seen_at >= now - timedelta(seconds=90),
             Event.finished_at.is_(None),
-            ~Event.participant_a_name.contains("/"),
-            ~Event.participant_b_name.contains("/"),
         ).order_by(Event.last_seen_at.desc()).all()
         for event in live_events:
             from .point_history import usable_alternative_history_for_event
             alternative = usable_alternative_history_for_event(session, event, as_of=now)
-            if alternative:
+            if alternative and alternative.get("status") == "available":
                 point_job = session.get(TennisPointRefreshJob, event.id, with_for_update=True)
                 if point_job is None:
                     alternative_cache_hits += 1
@@ -3839,14 +4509,31 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
                 _record_point_job_event(session, point_job, now)
                 alternative_cache_hits += 1
                 continue
-            player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
-            player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
-            links = session.query(TennisPointMatchLink).filter_by(fonbet_event_id=event.id).order_by(
-                TennisPointMatchLink.available_at.desc(), TennisPointMatchLink.id.desc()).limit(20).all()
-            latest_links = {}
-            for link in links:
-                latest_links.setdefault(link.source_match_id, link)
+            is_doubles = "/" in (event.participant_a_name or "") or "/" in (event.participant_b_name or "")
+            if is_doubles:
+                from .tennis_doubles import confirmed_provider_roster
+                roster_observation = session.query(TennisDoublesRosterObservation).filter(
+                    TennisDoublesRosterObservation.event_id == event.id,
+                    TennisDoublesRosterObservation.available_at <= now,
+                ).order_by(TennisDoublesRosterObservation.available_at.desc(),
+                           TennisDoublesRosterObservation.id.desc()).first()
+                doubles_ids = (confirmed_provider_roster(
+                    roster_observation.roster_json or {},
+                    lambda participant_id: _confirmed_flashscore_player_id(session, participant_id),
+                ) if roster_observation else None)
+                player_a_id = player_b_id = None
+                identities_ready = doubles_ids is not None
+            else:
+                doubles_ids = None
+                player_a_id = _confirmed_flashscore_player_id(session, event.participant_a_id)
+                player_b_id = _confirmed_flashscore_player_id(session, event.participant_b_id)
+                identities_ready = bool(player_a_id and player_b_id)
+            latest_links = _current_event_source_links(session, event.id, now)
             has_source = any(link.status in {"matched", "manual"} for link in latest_links.values())
+            if is_doubles and identities_ready:
+                # The PBP collector performs four-ID candidate search and only
+                # confirms the link after reading the source scoreboard DOM.
+                has_source = True
             job = session.get(TennisPointRefreshJob, event.id)
             pending_match_confirmation = session.query(ManualConfirmationRequest.id).filter_by(
                 kind="event_match", source="flashscore", subject_id=str(event.id), status="pending"
@@ -3860,6 +4547,12 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
                 )
                 session.add(job); session.flush()
                 _record_point_job_event(session, job, now)
+            if not is_doubles and player_a_id and player_a_id == player_b_id:
+                if job.status not in {"running", "finalized"}:
+                    job.status = "waiting_players"; job.last_error = "PLAYER_SOURCE_IDS_CONFLICT"
+                    job.next_run_at = now + timedelta(hours=6); job.updated_at = now
+                    _record_point_job_event(session, job, now)
+                continue
             if pending_match_confirmation:
                 if job.status != "waiting_confirmation" or job.last_error != "MATCH_CONFIRMATION_REQUIRED":
                     job.status = "waiting_confirmation"; job.last_error = "MATCH_CONFIRMATION_REQUIRED"
@@ -3872,13 +4565,14 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
                     lookup.updated_at = now
                 continue
             if not has_source:
-                waiting_status = "waiting_match" if player_a_id and player_b_id else "waiting_players"
-                waiting_reason = "FLASHSCORE_MATCH_LINK_PENDING" if player_a_id and player_b_id else "PLAYER_SOURCE_IDS_MISSING"
+                waiting_status = "waiting_match" if identities_ready else "waiting_players"
+                waiting_reason = ("DOUBLES_MATCH_LINK_PENDING" if is_doubles else "FLASHSCORE_MATCH_LINK_PENDING") if identities_ready else (
+                    "DOUBLES_ROSTER_PROVIDER_IDS_MISSING" if is_doubles else "PLAYER_SOURCE_IDS_MISSING")
                 if job.status != waiting_status or job.last_error != waiting_reason:
                     job.status = waiting_status; job.last_error = waiting_reason
                     job.attempt_token = None; job.lease_until = None; job.next_run_at = now + timedelta(minutes=10)
                     job.updated_at = now; _record_point_job_event(session, job, now)
-                if player_a_id and player_b_id:
+                if identities_ready and not is_doubles:
                     lookup = session.get(TennisMatchLookupJob, event.id, with_for_update=True)
                     if lookup is None:
                         session.add(TennisMatchLookupJob(event_id=event.id, status="queued", next_run_at=now))
@@ -3890,17 +4584,25 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
                     job.status = "queued"
                     job.last_requested_at = now
                     _record_point_job_event(session, job, now)
-        finished = session.query(Event).filter(
-            Event.sport_code == "tennis", Event.finished_at.isnot(None),
-            Event.finished_at >= now - timedelta(days=30),
-        ).order_by(Event.finished_at.desc()).all()
-        for event in finished:
-            job = session.get(TennisPointRefreshJob, event.id)
-            if (job and job.status in {"completed", "retry", "blocked"}
-                    and job.last_error not in {"FINALIZED", "PLAYER_SOURCE_IDS_MISSING"}
-                    and job.next_run_at <= now):
-                job.status = "queued"; job.next_run_at = now; job.last_requested_at = now
-                _record_point_job_event(session, job, now)
+        # Drain retryable PBP jobs over the full completed archive. The old
+        # 30-day filter left older doubles/singles archives stranded forever.
+        finished_jobs = session.query(TennisPointRefreshJob).join(
+            Event, Event.id == TennisPointRefreshJob.event_id
+        ).filter(
+            Event.sport_code == "tennis", Event.finished_at.is_not(None),
+            TennisPointRefreshJob.status.in_(("completed", "retry", "blocked")),
+            or_(TennisPointRefreshJob.last_error.is_(None),
+                TennisPointRefreshJob.last_error.notin_((
+                    "FINALIZED", "FINALIZED_WITH_ALTERNATIVE_PBP",
+                    "FINALIZED_WITH_PARTIAL_ALTERNATIVE", "PLAYER_SOURCE_IDS_MISSING",
+                    "DOUBLES_ROSTER_PROVIDER_IDS_MISSING",
+                ))),
+            TennisPointRefreshJob.next_run_at <= now,
+        ).order_by(TennisPointRefreshJob.next_run_at,
+                   Event.finished_at.asc()).limit(500).with_for_update(skip_locked=True).all()
+        for job in finished_jobs:
+            job.status = "queued"; job.next_run_at = now; job.last_requested_at = now
+            _record_point_job_event(session, job, now)
         session.flush()
         active = session.query(func.count(TennisPointRefreshJob.event_id)).filter(
             TennisPointRefreshJob.status == "running",
@@ -3913,10 +4615,12 @@ async def _dispatch_live_point_history(limit: int = 8, executor=None) -> Dict[st
         jobs = session.execute(select(TennisPointRefreshJob).where(
             or_(TennisPointRefreshJob.status == "queued",
                 (TennisPointRefreshJob.status == "running") & (TennisPointRefreshJob.lease_until <= now)),
-            TennisPointRefreshJob.last_error != "PLAYER_SOURCE_IDS_MISSING",
+            _point_job_identity_ready(TennisPointRefreshJob),
             TennisPointRefreshJob.next_run_at <= now).join(
                 Event, Event.id == TennisPointRefreshJob.event_id
-            ).order_by(Event.is_live.desc(), TennisPointRefreshJob.next_run_at,
+            ).order_by(Event.is_live.desc(),
+                       case((Event.first_seen_at >= now - timedelta(days=7), 0), else_=1),
+                       TennisPointRefreshJob.next_run_at,
                        TennisPointRefreshJob.last_requested_at).limit(slots)
             .with_for_update(skip_locked=True)).scalars().all() if slots else []
         for job in jobs:

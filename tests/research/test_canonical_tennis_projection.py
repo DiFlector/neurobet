@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.canonical_tennis_projection import choose_existing_match
+from app.canonical_tennis_projection import choose_existing_match, resolve_api_tennis_player_identity
 
 
 def test_incremental_projection_merges_only_same_result_and_tournament():
@@ -41,6 +41,32 @@ def test_incremental_projection_refuses_score_corrections_as_duplicate_candidate
     )
 
     assert choose_existing_match([prior], item) is False
+
+
+def test_api_identity_resolver_uses_a_unique_established_provider_card():
+    placeholder = SimpleNamespace(id="api-only", surname_key="eala", initial="a", gender="w",
+                                  source_ids={"api_tennis": "3490"})
+    established = SimpleNamespace(id="canonical", surname_key="eala", initial="a", gender="w",
+                                  source_ids={"tml": "223253", "tennis_explorer": "eala"})
+    person, proof = resolve_api_tennis_player_identity(
+        "3490", ("eala", "a", "w"), exact_candidates=[placeholder],
+        peer_candidates=[placeholder, established], named_people=[placeholder, established])
+    assert person is established
+    assert proof["method"] == "exact_api_id_plus_unique_established_peer"
+
+
+def test_api_identity_resolver_keeps_ambiguous_api_only_identity_unresolved():
+    placeholder = SimpleNamespace(id="api-only", surname_key="smith", initial="a", gender="w",
+                                  source_ids={"api_tennis": "999"})
+    peer1 = SimpleNamespace(id="peer-1", surname_key="smith", initial="a", gender="w",
+                            source_ids={"tml": "p1"})
+    peer2 = SimpleNamespace(id="peer-2", surname_key="smith", initial="a", gender="w",
+                            source_ids={"tml": "p2"})
+    person, proof = resolve_api_tennis_player_identity(
+        "999", ("smith", "a", "w"), exact_candidates=[placeholder],
+        peer_candidates=[placeholder, peer1, peer2], named_people=[placeholder, peer1, peer2])
+    assert person is placeholder
+    assert proof["method"] == "exact_api_id_only"
 
 
 def test_score_key_ignores_tiebreak_annotations_on_either_side_of_set_score():

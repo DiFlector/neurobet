@@ -1,0 +1,8 @@
+{
+  "cutoff": "2026-10-28T09:53:30.390353+00:00",
+  "event_batch_size": 5,
+  "snapshot_page_size": 5000,
+  "query_timeout_seconds": 30,
+  "max_runtime_seconds": 900,
+  "scope": "all_saved_fonbet_tennis_events"
+}

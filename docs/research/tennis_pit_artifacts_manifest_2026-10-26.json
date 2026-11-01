@@ -1,0 +1,106 @@
+{
+  "created_at": "2026-10-26T19:16:37.540931+00:00",
+  "contract": "tennis_odds_free_v1",
+  "input_examples": 7792,
+  "accepted_examples": 0,
+  "training_gate": "blocked",
+  "required_unique_matches": {
+    "initial_train": 500,
+    "each_of_four_validation": 100,
+    "holdout": 200
+  },
+  "training_started": false,
+  "holdout_quality_opened": false,
+  "artifacts": [
+    {
+      "path": "docs/research/tennis_training_examples_77927850ad23.jsonl",
+      "bytes": 16652989,
+      "sha256": "2d59c48ffdceb2334b1a799db39ca5129a0cdf7576294c7f8a88107b0abd9c8d"
+    },
+    {
+      "path": "docs/research/tennis_label_audit_2026-10-26_rehydrated.json",
+      "bytes": 61904,
+      "sha256": "08893e8f9578d09c85ac44abf9e6d306b166883bffd37ce6e8d36f9fb4b9df7a"
+    },
+    {
+      "path": "docs/research/tennis_training_examples_59716ea5191b.jsonl",
+      "bytes": 23190700,
+      "sha256": "85e2ace0ba76c3ccc422e07900627d02178775403f5569e6374fa952a3ec5cd2"
+    },
+    {
+      "path": "docs/research/tennis_dataset_rehydrated_2026-10-26.jsonl.gz",
+      "bytes": 30873816,
+      "sha256": "be695270db38615162b103b7c1649f1805c2cd23fea039a4702c10547929a38a"
+    },
+    {
+      "path": "docs/research/tennis_dataset_rehydrated_2026-10-26.jsonl.gz.summary.json",
+      "bytes": 1627,
+      "sha256": "916046de79d6a867776b435db4c84d39e82a173269e44aac548c179ca30d8432"
+    },
+    {
+      "path": "docs/research/tennis_training_manifest_881d63945cf8.json",
+      "bytes": 971915,
+      "sha256": "0c8d2626d7077d43311b9c3bf38f275cfbb8abdbd8ec903643c410723b0d8efe"
+    },
+    {
+      "path": "docs/research/tennis_pit_gap_matrix_2026-10-26.json",
+      "bytes": 20653,
+      "sha256": "79d986b4a4eea4ffb524b789adaee32b879c39839f8a3b0477fd05311f2ac02c"
+    },
+    {
+      "path": "docs/research/tennis_admission_rehydrated_2026-10-26.json",
+      "bytes": 63850,
+      "sha256": "fa22754272f3ff48ad1bc6879ca75a037d5836a74d220b60530630fb5d7e52cf"
+    },
+    {
+      "path": "docs/research/tennis_catalog_evidence_dry_run_2026-10-26.json",
+      "bytes": 4543,
+      "sha256": "6c1b37b37191e54a4dd8180813a8bf2bc5b2c483597e881a4c03eff7e17688c0"
+    },
+    {
+      "path": "docs/research/tennis_catalog_evidence_commit_2026-10-26.json",
+      "bytes": 4542,
+      "sha256": "f3c3939c07c1fb4a3af4f5fb27b04f0dd2f4ff27fc65d3c29c29e714b24bf7b9"
+    },
+    {
+      "path": "docs/research/tennis_catalog_evidence_repeat_2026-10-26.json",
+      "bytes": 4542,
+      "sha256": "7e85ce20e5b85c9e518d91f518b23fb3b2a0b4a5daa6643d27cb14a168e66203"
+    },
+    {
+      "path": "packages/contracts/src/contracts/tennis_pit.py",
+      "bytes": 8329,
+      "sha256": "50206e94ea0ae672d17a6448c7048e3f36945a7130ea5ebd451df1530713909a"
+    },
+    {
+      "path": "scripts/research/tennis_label_audit.py",
+      "bytes": 96160,
+      "sha256": "12a8bbe3069e12f9c1968cf74b0c9db9de4710e3fb66a27c4f13aaae75f9dfa4"
+    },
+    {
+      "path": "scripts/research/run_tennis_label_audit.py",
+      "bytes": 1607,
+      "sha256": "17616a16bbeeacd3d6cdd1f7b5a941bfdb34a2e05fd6583f4df1e6c4bfac69f4"
+    },
+    {
+      "path": "scripts/research/replay_tennis_catalog_evidence.py",
+      "bytes": 2354,
+      "sha256": "5a32129239a7f992cd3cddf5d0400bcbe223ee6a362be91219574d31db30fca3"
+    },
+    {
+      "path": "services/research/app/external_tennis_sources.py",
+      "bytes": 207942,
+      "sha256": "49a07840abeacaa7b67f93fefbd4745c1fb1ba17d8d4f76c95ac812e77edd57b"
+    },
+    {
+      "path": "services/neural/app/odds_free_dataset.py",
+      "bytes": 8622,
+      "sha256": "f39fd22d68a172fb5d6073f2600a0b6e4c114e7669e703231117f708044b559a"
+    },
+    {
+      "path": "services/neural/app/tennis_forecast.py",
+      "bytes": 55373,
+      "sha256": "cd0ffa10c2c96112326a16b451061bdb2919cc48d0b90f2e6a33c8299fb7e626"
+    }
+  ]
+}

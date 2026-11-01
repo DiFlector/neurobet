@@ -5,18 +5,143 @@ import json
 import sys
 from types import SimpleNamespace
 from uuid import UUID
+from pathlib import Path
 
-sys.path.insert(0, "/srv/neurobet/scripts/research")
+_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "scripts"))
+sys.path.insert(0, str(_ROOT / "scripts" / "research"))
 from tennis_label_audit import (_utc_result_time, _validate_feature_availability,
+                                _latest_identity_link_as_of,
                                 _temporal_precedence, _causal_training_membership,
                                 _walk_forward_admission, _window_summary,
-                                _official_winner,
+                                _official_winner, _official_set_scores, _snapshot_set_number,
+                                _missing_feature_values, ODDS_FREE_V2_FEATURE_NAMES,
                                 _source_point_key, _snapshot_matches_source_point,
+                                _point_events_for_alignment, _validated_terminal_game,
+                                _snapshot_game_state,
+                                _history_versions_by_id,
                                 _training_gate_status, _tour, _tour_source,
                                 _external_tour_level, _resolve_result_availability,
                                 _result_score_snapshot_evidence, _score_token_pattern,
                                 _summarize_feature_availability,
-                                _snapshot_search_lower_bound, _write_training_examples)
+                                _snapshot_search_lower_bound, _write_training_examples,
+                                _write_snapshot_source_coverage,
+                                _summarize_snapshot_source_coverage,
+                                _materialize_odds_free_feature_values,
+                                _doubles_subdiscipline,
+                                _read_saved_snapshot_cohort, _indexed_result_snapshot_evidence,
+                                _select_pre_result_snapshot, _event_state_source_evidence)
+
+
+def test_identity_resolution_uses_latest_decision_available_at_snapshot():
+    cutoff = datetime(2026, 10, 27, 7, 17, tzinfo=timezone.utc)
+    candidate = SimpleNamespace(id="1", status="candidate", available_at=cutoff - timedelta(days=6))
+    confirmed = SimpleNamespace(id="2", status="confirmed", available_at=cutoff - timedelta(days=5))
+    future_revocation = SimpleNamespace(id="3", status="revoked", available_at=cutoff + timedelta(seconds=1))
+
+    assert _latest_identity_link_as_of(
+        [candidate, confirmed, future_revocation], cutoff) is confirmed
+
+
+def test_doubles_subdiscipline_uses_explicit_source_facts_and_keeps_unknown():
+    event = SimpleNamespace(metadata_json={"fonbet_official_result": {"discipline": "Mixed Doubles"}})
+    assert _doubles_subdiscipline(event, "ITF") == "mixed_doubles"
+    event.metadata_json = {"fonbet_official_result": {"gender": "women"}}
+    assert _doubles_subdiscipline(event, "WTA Doubles") == "womens_doubles"
+    event.metadata_json = {}
+    assert _doubles_subdiscipline(event, "Doubles") == "unknown_doubles"
+
+
+def test_match_tiebreak_terminal_score_is_not_emitted_as_game_or_set():
+    item = {"confirmed": True, "winner": 0, "quality": "terminal_from_tiebreak_result",
+            "set": 3, "game_score": [10, 8]}
+    assert _validated_terminal_game(item, True, [(6, 4), (4, 6), (10, 8)]) is None
+
+
+def test_representative_snapshot_prefers_timely_evidence_before_result_only():
+    at = datetime(2026, 10, 26, 10, tzinfo=timezone.utc)
+    rows = [SimpleNamespace(id=i, observed_at=at + timedelta(minutes=i), status="live", score="0:0")
+            for i in range(4)]
+    def check(row):
+        return {"missing_sources": ["event_format"] if row.id == 0 else []}
+    assert _select_pre_result_snapshot(rows, feature_check=check,
+                                      label_available_at=rows[2].observed_at).id == 1
+    rows[1].score = "2:0 (6-4, 6-3)"
+    assert _select_pre_result_snapshot(rows, feature_check=check,
+        label_available_at=rows[2].observed_at, final_score=rows[1].score).id == 0
+    assert _select_pre_result_snapshot(rows, feature_check=check, label_available_at=at) is None
+
+
+def test_archived_event_state_witness_preserves_its_original_available_time():
+    witness_at = datetime(2026, 10, 26, 10, 0, tzinfo=timezone.utc)
+    snapshot_at = witness_at + timedelta(seconds=2)
+    key = f"fonbet/tennis/{witness_at.date()}/aaaa/{'a' * 64}.json"
+    row = SimpleNamespace(
+        raw_evidence_id=UUID(int=3), raw_evidence_available_at=witness_at,
+        raw_hash="a" * 64, raw_object_key=key,
+        raw_evidence_hash="b" * 64, raw_evidence_json={"parser_version": "test-v1"},
+    )
+    evidence = _event_state_source_evidence(row, UUID(int=2), snapshot_at)
+    assert evidence["source"] == "fonbet_archived_live_snapshot"
+    assert evidence["available_at"] == witness_at.isoformat()
+    assert evidence["raw_object_key"] == key
+    assert evidence["parser_version"] == "test-v1"
+
+
+def test_saved_snapshot_cohort_is_only_a_deduplicated_primary_key_index(tmp_path):
+    event_id, snapshot_id = UUID(int=1), UUID(int=2)
+    at = "2026-10-26T10:00:00+00:00"
+    row = {"fonbet_event_id": str(event_id), "snapshot_id": str(snapshot_id),
+           "snapshot_observed_at": at, "feature_values": {"forged": 123}}
+    path = tmp_path / "examples.jsonl"
+    path.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n")
+    cohort = _read_saved_snapshot_cohort(str(path))
+    assert cohort["examples"] == 2
+    assert cohort["event_ids"] == {event_id}
+    assert len(cohort["keys"]) == 1
+    assert cohort["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert "feature_values" not in cohort
+
+
+def test_saved_snapshot_cohort_rejects_conflicting_event_for_one_snapshot(tmp_path):
+    import pytest
+    row = {"fonbet_event_id": str(UUID(int=1)), "snapshot_id": str(UUID(int=2)),
+           "snapshot_observed_at": "2026-10-26T10:00:00+00:00"}
+    path = tmp_path / "examples.jsonl"
+    path.write_text(json.dumps(row) + "\n" + json.dumps({**row, "fonbet_event_id": str(UUID(int=3))}))
+    with pytest.raises(ValueError, match="conflicting_event"):
+        _read_saved_snapshot_cohort(str(path))
+
+
+def test_indexed_result_time_requires_exact_saved_final_score():
+    event_id = UUID(int=1)
+    at = datetime(2026, 10, 26, 10, tzinfo=timezone.utc)
+    event = SimpleNamespace(metadata_json={"fonbet_official_result": {"final_score": "2:0 (6-4, 6-3)"}})
+    row = SimpleNamespace(id=UUID(int=2), event_id=event_id, observed_at=at,
+                          status="live", score="2:0 (6-4, 6-3)")
+    evidence = _indexed_result_snapshot_evidence({event_id: event}, [row])
+    assert evidence[event_id]["observed_at"] == at
+    row.score = "1:0 (6-4, 5-3)"
+    assert _indexed_result_snapshot_evidence({event_id: event}, [row]) == {}
+
+
+def test_result_witness_recovers_earlier_receipt_even_with_late_import_time():
+    event_id = UUID(int=1)
+    at = datetime(2026, 10, 13, 10, tzinfo=timezone.utc)
+    event = SimpleNamespace(metadata_json={"fonbet_official_result": {
+        "final_score": "2:0 (6-4, 6-3)", "available_at": "2026-10-21T12:00:00Z"}})
+    def row(number, observed, score="2-0 (6-4, 6-3)"):
+        return SimpleNamespace(id=UUID(int=number), event_id=event_id,
+                               observed_at=observed, score=score, status="live")
+    witnesses = [row(4, at+timedelta(hours=1)), row(2, at),
+                 row(3, at-timedelta(hours=1), "1-0 (6-4, 5-3)"),
+                 row(5, at+timedelta(days=20))]
+    evidence = _indexed_result_snapshot_evidence({event_id: event}, witnesses,
+                                                cutoff=at+timedelta(days=1))
+    assert evidence[event_id]["snapshot_id"] == str(UUID(int=2))
+    assert _resolve_result_availability(_utc_result_time(event), evidence[event_id]) == (
+        at, "fonbet_exact_final_score_snapshot")
+    assert _indexed_result_snapshot_evidence({event_id: event}, [witnesses[-1]], cutoff=at) == {}
 
 
 def test_official_match_labels_require_a_consistent_definitive_score():
@@ -49,6 +174,50 @@ def test_training_examples_manifest_hashes_serialized_file_bytes(tmp_path):
     assert manifest["sha256"] != manifest["logical_digest"]
 
 
+def test_audit_materializes_ordered_odds_free_values_from_snapshot_cutoff():
+    cutoff = datetime(2026, 10, 26, 11, tzinfo=timezone.utc)
+    event = SimpleNamespace(metadata_json={
+        "best_of": 3, "best_of_available_at": "2026-10-26T10:00:00Z",
+        "surface": "clay", "surface_available_at": "2026-10-26T10:00:00Z",
+    })
+    snapshot = SimpleNamespace(
+        score_detail={"stats": {"sets_a": 1, "sets_b": 0,
+                                "set_lines": [{"games_a": 3, "games_b": 2, "live": True}]},
+                      "current_game": {"points_a": "30", "points_b": "15"},
+                      "server": "player_a"},
+        sport_state={},
+    )
+    player_metrics = {
+        "a": {"elo": {"overall": 1600}, "recent": {"days_90": {"wins": 8, "matches": 10}},
+              "overall": {"matches": 30}},
+        "b": {"elo": {"overall": 1400}, "recent": {"days_90": {"wins": 2, "matches": 10}},
+              "overall": {"matches": 20}},
+    }
+
+    values = _materialize_odds_free_feature_values(event, snapshot, cutoff, player_metrics,
+                                                    {"a": (100, 70), "b": (100, 60)})
+
+    assert values["elo_diff"] == 200
+    assert values["sets_to_win"] == 2
+    assert values["match_format_known"] == 1.0
+    assert values["points_a"] == 2
+    assert values["server_a"] == 1.0
+    assert not any(name.startswith("surface_") for name in values)
+    assert values["serve_probability_a"] == (70 + 0.62 * 200) / 300
+    assert "odds_a" not in values
+
+
+def test_audit_does_not_fill_unobserved_or_late_format():
+    cutoff = datetime(2026, 10, 26, 11, tzinfo=timezone.utc)
+    event = SimpleNamespace(metadata_json={"best_of": 5, "best_of_available_at": "2026-10-26T12:00:00Z"})
+    snapshot = SimpleNamespace(score_detail={}, sport_state={})
+
+    values = _materialize_odds_free_feature_values(event, snapshot, cutoff, {}, {})
+
+    assert values["sets_to_win"] == 0
+    assert values["match_format_known"] == 0.0
+
+
 def test_tour_uses_confirmed_flashscore_category_only_as_report_metadata():
     assert _tour("local event", external_tour="itf") == "itf"
     assert _tour("local event", external_tour="challenger") == "challenger"
@@ -65,6 +234,16 @@ def test_external_mixed_and_female_challenger_categories_use_match_gender():
     assert _external_tour_level("atp_wta", "unknown") == "unknown"
     assert _external_tour_level("challenger", "female") == "wta"
     assert _external_tour_level("challenger", "male") == "challenger"
+    assert _external_tour_level("itf", "female", "J300 Girls") == "junior"
+    assert _external_tour_level("itf", "male", "U18 Boys") == "junior"
+    assert _external_tour_level("challenger", "male", "Menorca") == "challenger"
+    assert _external_tour_level("atp_wta", "unknown", "ATP Cup") == "atp"
+
+
+def test_junior_markers_are_classified_before_itf_and_gender_names():
+    assert _tour("J300 Boys") == "junior"
+    assert _tour("ITF U18 Girls") == "junior"
+    assert _tour("ITF M15 Antalya") == "itf"
 
 
 def test_window_minimum_counts_only_matches_with_target_labels():
@@ -303,24 +482,125 @@ def test_known_source_server_must_agree_and_duplicate_states_remain_ambiguous():
     assert _snapshot_matches_source_point((1, (2, 3), (2, 1), 1, False), signature) is False
 
 
+def test_official_set_scores_are_accepted_without_external_pbp():
+    event = SimpleNamespace(status="finished", metadata_json={"fonbet_official_result": {
+        "status": "FINISHED", "winner": "player_a", "final_score": "2:0 (6-4, 7-6)",
+    }})
+    assert _official_set_scores(event) == ([(6, 4), (7, 6)], "confirmed")
+
+
+def test_intermediate_game_result_need_not_equal_the_finished_set():
+    terminal = {"set": 1, "game_score": [3, 2], "confirmed": True, "winner": 0,
+                "quality": "terminal_from_game_result"}
+    assert _validated_terminal_game(terminal, True, [(6, 4)]) == (1, (2, 2), 0, False)
+    assert _validated_terminal_game(terminal, False, [(4, 6)]) == (1, (2, 2), 1, False)
+    assert _validated_terminal_game({**terminal, "set": 2}, True, [(6, 4)]) is None
+    assert _validated_terminal_game({**terminal, "game_score": [6, 3]}, True, [(6, 4)]) is None
+    assert _validated_terminal_game({**terminal, "game_score": [3, 5]}, True, [(6, 4)]) is None
+
+
+def test_flashscore_points_align_to_the_game_before_its_confirmed_result():
+    point = {"set": 1, "game_score": [3, 2], "state_before": ["30", "15"],
+             "winner": 0, "server": 0, "confirmed": True, "quality": "confirmed"}
+    terminal = {"set": 1, "game_score": [3, 2], "state_after": {"game_result": [3, 2]},
+                "winner": 0, "confirmed": True, "quality": "terminal_from_game_result"}
+    prepared = _point_events_for_alignment([point, terminal], "flashscore-point-history-v7")
+    signature = _source_point_key(prepared[0], True)
+    assert signature == (1, (2, 2), (2, 1), 0, False)
+    assert _snapshot_matches_source_point((1, (2, 2), (2, 1), 0, False), signature)
+    assert not _snapshot_matches_source_point((1, (3, 2), (2, 1), 0, False), signature)
+    assert _source_point_key(prepared[0], False) == (1, (2, 2), (1, 2), 1, False)
+    assert "game_score_before" not in point
+    assert _source_point_key(_point_events_for_alignment([point], "flashscore-point-history-v7")[0], True) is None
+    conflict = {**terminal, "winner": 1}
+    assert _source_point_key(_point_events_for_alignment([point, terminal, conflict],
+                                                       "flashscore-point-history-v7")[0], True) is None
+
+
+def test_game_label_alignment_does_not_require_point_fields():
+    snapshot = SimpleNamespace(current_period=1, sport_state={}, score_detail={
+        "stats": {"set_lines": [{"games_a": 2, "games_b": 2, "live": True}]}})
+    assert _snapshot_game_state(snapshot) == (1, (2, 2))
+    snapshot.current_period = 2
+    assert _snapshot_game_state(snapshot) is None
+
+
+def test_parser_to_audit_round_trip_uses_pre_game_fonbet_state():
+    from tennis_adapter.point_history import PARSER_VERSION, parse_point_history_html
+    html = '''<div class="matchHistoryRowWrapper"><div class="sectionHeader">Point by point - Set 1</div>
+      <div class="matchHistoryRow"><div class="matchHistoryRow__scoreBox"><span>1</span><span>0</span></div></div>
+      <div class="matchHistoryRow__fifteens"><div class="matchHistoryRow__fifteen">15:0</div>
+      <div class="matchHistoryRow__fifteen">30:0</div><div class="matchHistoryRow__fifteen">40:0</div>
+      <div class="matchHistoryRow__gameResult">GAME 1-0</div></div></div>'''
+    parsed = parse_point_history_html(html)
+    assert parsed["events"][0]["game_score"] == [1, 0]
+    prepared = _point_events_for_alignment(parsed["events"], PARSER_VERSION)
+    signature = _source_point_key(prepared[0], True)
+    assert _snapshot_matches_source_point((1, (0, 0), (0, 0), None, False), signature)
+    assert not _snapshot_matches_source_point((1, (1, 0), (0, 0), None, False), signature)
+
+
+def test_history_pk_pages_preserve_asof_order_and_reject_missing_evidence():
+    import pytest
+    ids = [UUID(int=i) for i in (1, 2, 3)]
+    responses = [[SimpleNamespace(id=ids[1]), SimpleNamespace(id=ids[0])],
+                 [SimpleNamespace(id=ids[2])]]
+    class Query:
+        def filter(self, _): return self
+        def all(self): return responses.pop(0)
+    class Session:
+        def query(self, _): return Query()
+    assert [row.id for row in _history_versions_by_id(Session(), ids, batch_size=2)] == ids
+    responses[:] = [[]]
+    with pytest.raises(ValueError, match="history_version_primary_key_missing"):
+        list(_history_versions_by_id(Session(), ids[:1]))
+
+
+def test_official_set_scores_reject_retirement_and_inconsistent_winner():
+    retired = SimpleNamespace(status="finished", metadata_json={"fonbet_official_result": {
+        "status": "FINISHED", "winner": "player_a", "is_retired": True,
+        "final_score": "1:0 (6-4, 2-1)",
+    }})
+    assert _official_set_scores(retired) == (None, "walkover_or_retirement")
+    mismatch = SimpleNamespace(status="finished", metadata_json={"fonbet_official_result": {
+        "status": "FINISHED", "winner": "player_a", "final_score": "2:0 (6-4, 2-6, 6-3)",
+    }})
+    assert _official_set_scores(mismatch) == (None, "match_score_disagrees_with_sets")
+
+
+def test_set_number_can_be_read_without_point_state():
+    snapshot = SimpleNamespace(current_period=None,
+        score_detail={"stats": {"set_lines": [{"live": False}, {"live": True}]}},
+        sport_state={})
+    assert _snapshot_set_number(snapshot) == 2
+
+
+def test_feature_materialization_must_contain_every_contract_value():
+    values = {name: 0.0 for name in ODDS_FREE_V2_FEATURE_NAMES}
+    assert _missing_feature_values(values) == []
+    values.pop("points_a")
+    assert _missing_feature_values(values) == ["points_a"]
+    assert len(_missing_feature_values(None)) == len(ODDS_FREE_V2_FEATURE_NAMES)
+
+
 def test_feature_availability_fails_closed_for_missing_or_future_sources():
     cutoff = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
     complete = {name: cutoff.isoformat() for name in (
-        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_format", "event_surface")}
+        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_format")}
     assert _validate_feature_availability(cutoff, complete)["certified"] is True
     complete["serve_metrics_a"] = (cutoff + timedelta(seconds=1)).isoformat()
     result = _validate_feature_availability(cutoff, complete)
     assert result["certified"] is False
     assert result["future_sources"] == ["serve_metrics_a"]
-    complete.pop("event_surface")
+    complete.pop("event_format")
     result = _validate_feature_availability(cutoff, complete)
-    assert result["missing_sources"] == ["event_surface"]
+    assert result["missing_sources"] == []
 
 
 def test_explicit_contract_default_is_causal_without_inventing_source_timestamp():
     cutoff = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
     complete = {name: cutoff.isoformat() for name in (
-        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_format", "event_surface")}
+        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_format")}
     complete["serve_metrics_a"] = None
     result = _validate_feature_availability(cutoff, complete, {"serve_metrics_a"})
     assert result["certified"] is True
@@ -328,13 +608,16 @@ def test_explicit_contract_default_is_causal_without_inventing_source_timestamp(
     assert result["missing_sources"] == []
 
 
-def test_event_format_is_mandatory_and_cannot_be_contract_defaulted():
+def test_unknown_event_format_is_optional_but_late_known_format_fails():
     cutoff = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
     sources = {name: cutoff.isoformat() for name in (
-        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state", "event_surface")}
+        "player_metrics", "serve_metrics_a", "serve_metrics_b", "event_state")}
     result = _validate_feature_availability(cutoff, sources, {"event_format"})
-    assert result["certified"] is False
-    assert result["missing_sources"] == ["event_format"]
+    assert result["certified"] is True
+    assert result["missing_sources"] == []
+    late = _validate_feature_availability(cutoff, {**sources, "event_format": (cutoff + timedelta(seconds=1)).isoformat()})
+    assert late["certified"] is False
+    assert late["future_sources"] == ["event_format"]
 
 
 def test_feature_availability_summary_distinguishes_observed_values_from_contract_defaults():
@@ -349,6 +632,8 @@ def test_feature_availability_summary_distinguishes_observed_values_from_contrac
         "uncertified_examples": 1,
         "fully_source_observed_examples": 1,
         "contract_defaulted_examples": 1,
+        "allowed_player_prior_examples": 0,
+        "allowed_serve_prior_examples": 0,
     }
 
 
@@ -367,26 +652,32 @@ def test_training_labels_must_be_available_before_validation_forecasts():
     assert result["latest_train_label_available_at"] > result["earliest_validation_forecast_at"]
 
 
-def test_walk_forward_split_is_shared_and_excludes_undated_matches(tmp_path, monkeypatch):
+def test_walk_forward_split_keeps_undated_confirmed_labels_on_evaluation_timeline(tmp_path, monkeypatch):
     manifest_path = tmp_path / "manifest.json"
     monkeypatch.setenv("TENNIS_TRAINING_MANIFEST_PATH", str(manifest_path))
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     ids = [UUID(int=value) for value in range(1, 31)]
     event_times = {event_id: start + timedelta(days=index) for index, event_id in enumerate(ids)}
-    event_times.pop(ids[-1])
     rows = {
         "point": {(event_id, index % 2) for index, event_id in enumerate(ids[:10])},
         "game": {(event_id, index % 2) for index, event_id in enumerate(ids[:20])},
         "set": {(event_id, index % 2) for index, event_id in enumerate(ids[:25])},
-        "match": {(event_id, index % 2) for index, event_id in enumerate(ids[:29])},
+        "match": {(event_id, index % 2) for index, event_id in enumerate(ids)},
     }
-    report, metadata = _walk_forward_admission(rows, event_times)
-    assert metadata["matches"] == 29
+    temporal = {target: {event_id: {
+        "forecast_at": event_times[event_id],
+        "label_available_at": None if event_id == ids[-1] else event_times[event_id] + timedelta(hours=1),
+    } for event_id in ids} for target in rows}
+    report, metadata = _walk_forward_admission(rows, event_times, temporal)
+    assert metadata["matches"] == 30
     assert metadata["holdout_quality_metrics_opened"] is False
     for target in rows:
-        assert report[target]["manifest_matches"] == 29
+        assert report[target]["manifest_matches"] == 30
         assert report[target]["folds"][0]["train_candidates"]["candidate_matches"] == report["point"]["folds"][0]["train_candidates"]["candidate_matches"]
-    assert ids[-1] not in [UUID(value) for value in __import__("json").loads(manifest_path.read_text())["ordered_event_ids"]]
+    manifest = __import__("json").loads(manifest_path.read_text())
+    assert ids[-1] in [UUID(value) for value in manifest["ordered_event_ids"]]
+    assert ids[-1] in [UUID(value) for value in manifest["holdout_event_ids"]]
+    assert report["match"]["holdout"]["matches"] == 6
 
 
 def test_causal_training_membership_purges_late_and_unknown_labels():
@@ -436,8 +727,8 @@ def test_walk_forward_manifest_persists_target_specific_causal_training_ids(tmp_
     report, _ = _walk_forward_admission(rows, event_times, temporal)
     manifest = json.loads(manifest_path.read_text())
 
-    assert manifest["manifest_version"] == "tennis_shared_walk_forward_v2"
-    assert manifest["training_cutoff_policy"] == "target_label_available_at_or_before_earliest_validation_forecast"
+    assert manifest["manifest_version"] == "tennis_shared_walk_forward_v3"
+    assert manifest["training_cutoff_policy"] == "only_source_timed_labels_available_by_first_validation_forecast_enter_training"
     first_fold = manifest["folds"][0]
     assert str(ids[0]) not in first_fold["target_train_event_ids"]["match"]
     assert report["match"]["folds"][0]["training_filter"]["purged_future_label_matches"] == 1
@@ -467,3 +758,44 @@ def test_training_gate_opens_only_when_every_admission_check_passes():
     )
     assert status == "eligible_for_training_review"
     assert reasons == []
+
+
+def test_snapshot_source_coverage_manifest_includes_unlabelled_snapshot_provenance(tmp_path):
+    rows = [{
+        "fonbet_event_id": "event-1",
+        "snapshot_id": "snapshot-1",
+        "snapshot_observed_at": "2026-10-26T12:00:00+00:00",
+        "feature_availability": {"certified": False, "missing_sources": ["event_format"]},
+    }]
+
+    manifest = _write_snapshot_source_coverage(rows, str(tmp_path))
+
+    assert manifest["examples"] == 1
+    assert manifest["content_type"] == "jsonl"
+    assert Path(manifest["path"]).read_text().strip() == json.dumps(
+        rows[0], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def test_snapshot_coverage_counts_unverifiable_raw_evidence_as_missing():
+    result = _summarize_snapshot_source_coverage([{
+        "certified": False,
+        "source_available_at": {"event_state": "2026-10-26T12:00:00+00:00"},
+        "source_evidence": {"event_state": None},
+        "source_resolution": {"event_state": "observed_snapshot"},
+        "contract_defaulted_sources": [],
+        "missing_evidence": ["event_state"],
+    }])
+
+    assert result["source_groups"]["event_state"] == {
+        "available": 0, "contract_defaulted": 0, "missing_or_unverifiable": 1,
+    }
+    assert result["exclusions"] == {"event_state:missing_evidence": 1}
+
+
+def test_allowed_unknown_player_prior_is_not_reported_as_observed_history():
+    from tennis_label_audit import _summarize_feature_availability
+    result = _summarize_feature_availability([{
+        "certified": True, "player_history_fallback": {"a": "history_or_identity_unavailable"}}])
+    assert result["certified_examples"] == 1
+    assert result["fully_source_observed_examples"] == 0
+    assert result["allowed_player_prior_examples"] == 1

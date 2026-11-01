@@ -1,0 +1,398 @@
+{
+  "generated_at": "2026-10-25T07:57:01.080365+00:00",
+  "scope": "latest confirmed links and latest available parser version per set",
+  "interpretation": "automated consistency report; archived HTML still requires human review",
+  "summary": {
+    "unique_linked_matches_reviewed": 20,
+    "matches_with_parsed_points": 0,
+    "final_score_matches": 0,
+    "side_order_confirmed": 20,
+    "matches_with_gaps": 0,
+    "matches_with_transition_errors": 0,
+    "deuce_transitions": 0,
+    "tiebreak_points": 0,
+    "human_html_review_completed": false
+  },
+  "matches": [
+    {
+      "source_match_id": "jNgpb2at",
+      "fonbet_event_id": "3f2818ff-0344-4378-af65-d251f863ae7b",
+      "participants": [
+        "Медиорреал-ариас В",
+        "Уррутия М-ф"
+      ],
+      "fonbet_final_score": "0:2 (4-6 0-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "h8LO17tg",
+      "fonbet_event_id": "35f87b06-1a5a-490d-82fa-bfe13c0b4d8a",
+      "participants": [
+        "Циципас Петрос",
+        "Валес А"
+      ],
+      "fonbet_final_score": "0:2 (5-7 1-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "0rANrMk1",
+      "fonbet_event_id": "70fbc6c9-1dee-4e5b-9614-6dcdbf0a88b7",
+      "participants": [
+        "Хорвит М",
+        "Секеркова В"
+      ],
+      "fonbet_final_score": "0:2 (2-6 3-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "OY4QrM5m",
+      "fonbet_event_id": "852a198b-d87f-4d1a-bb66-ec5161a4558f",
+      "participants": [
+        "Сакамото П",
+        "Бруна Н"
+      ],
+      "fonbet_final_score": "2:0 (6-4 6-4)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "hhwOtEun",
+      "fonbet_event_id": "ad290142-a21e-4b7b-9a8f-a929ca6e13e8",
+      "participants": [
+        "Мехротра А",
+        "Киркин Э"
+      ],
+      "fonbet_final_score": "0:2 (2-6 0-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "4dlglQzK",
+      "fonbet_event_id": "b2f57d39-4d4f-4a29-9e30-b2d5d9f43e12",
+      "participants": [
+        "Диабате Э",
+        "Альхуссейн Абдель-азиз Л"
+      ],
+      "fonbet_final_score": "0:2 (3-6 3-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "KWE3dtuf",
+      "fonbet_event_id": "b68898c6-7ddf-48bd-8921-1470dd197144",
+      "participants": [
+        "Аяла Л",
+        "Бернардес Б"
+      ],
+      "fonbet_final_score": "2:1 (4-6 6-2 6-2)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "0KqNR9Dj",
+      "fonbet_event_id": "239681ef-96e4-48ac-9185-eaa9ee9df287",
+      "participants": [
+        "Гарсия-патрон Канальс A",
+        "Паскуаль-монтальво И"
+      ],
+      "fonbet_final_score": "0:2 (3-6 3-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "IRjLM3El",
+      "fonbet_event_id": "53171f52-13bd-4b13-890b-3d768a58a42c",
+      "participants": [
+        "Балан С-в",
+        "Эбстер А-л"
+      ],
+      "fonbet_final_score": "2:1 (6-2 6-7 6-0)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "AHDzd3aT",
+      "fonbet_event_id": "d4b3b20d-9ea2-4411-a432-cd5e1b0451bc",
+      "participants": [
+        "Сантуш-гава К-л",
+        "Бруна Н"
+      ],
+      "fonbet_final_score": "1:2 (6-4 3-6 6-7)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "nNliaWlm",
+      "fonbet_event_id": "6acda045-2487-4b40-a593-bed89ba20cdb",
+      "participants": [
+        "Купарев А",
+        "Олимжанова С"
+      ],
+      "fonbet_final_score": "2:1 (2-6 6-1 6-3)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "dI1TK15L",
+      "fonbet_event_id": "c2837af2-393c-4df9-a9be-00751a6b55e8",
+      "participants": [
+        "Фонтес-даморим Ф",
+        "Де Ла Пена Б"
+      ],
+      "fonbet_final_score": "0:2 (6-7 1-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "EJFnl3Uq",
+      "fonbet_event_id": "a152b09d-a2c0-437b-810a-49e96712f15b",
+      "participants": [
+        "Басель В",
+        "Сакамото П"
+      ],
+      "fonbet_final_score": "0:2 (6-7 2-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "QJn14fYN",
+      "fonbet_event_id": "220e9211-b022-451c-b0b3-c167d6a4e8fe",
+      "participants": [
+        "Осорио Х-с",
+        "Маккормик Т"
+      ],
+      "fonbet_final_score": "2:0 (6-3 7-5)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "0ItWvhAb",
+      "fonbet_event_id": "acbc03bc-e081-407b-8146-e442803ff876",
+      "participants": [
+        "Огура К",
+        "Ватанабэ-эрикссон А"
+      ],
+      "fonbet_final_score": "2:0 (6-4 6-2)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "jo8Oh16M",
+      "fonbet_event_id": "71d24f3f-9642-4769-a7d1-9ed3654a3529",
+      "participants": [
+        "Кацуда Т",
+        "Хашимото Х"
+      ],
+      "fonbet_final_score": "0:2 (3-6 0-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "6ol5EpLq",
+      "fonbet_event_id": "2fc8fcb4-f7b4-4371-85a9-ff134d548bf0",
+      "participants": [
+        "Талан-лопатич Л",
+        "Валес А"
+      ],
+      "fonbet_final_score": "0:2 (2-6 3-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "nHDiv2iT",
+      "fonbet_event_id": "41ebdf20-b4e4-4478-85e9-f2545a3474d9",
+      "participants": [
+        "Танака Ю",
+        "Исомура К"
+      ],
+      "fonbet_final_score": "2:1 (4-6 6-3 6-0)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "bw8mYRzg",
+      "fonbet_event_id": "9c0effed-3cf0-457c-af72-2f28680d9e13",
+      "participants": [
+        "Чанта А",
+        "Аписа В"
+      ],
+      "fonbet_final_score": "0:2 (4-6 2-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    },
+    {
+      "source_match_id": "UXWDUTIt",
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "participants": [
+        "Дерепаско Т",
+        "Тамм К"
+      ],
+      "fonbet_final_score": "2:0 (7-5 7-6)",
+      "side_order_confirmed": true,
+      "parser_versions": [],
+      "sets_with_pbp": 0,
+      "confirmed_events": 0,
+      "gaps": 0,
+      "deuce_transitions": 0,
+      "tiebreak_points": 0,
+      "terminal_set_scores_fonbet_order": [],
+      "final_score_matches": false,
+      "transition_errors": []
+    }
+  ]
+}

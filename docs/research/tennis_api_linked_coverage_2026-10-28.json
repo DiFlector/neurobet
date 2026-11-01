@@ -1,0 +1,99 @@
+{
+  "alignment_policy": "confirmed_pre_game_score_v1",
+  "ambiguous_multi_source_events": 0,
+  "candidate_events": 1,
+  "completed_events": 1,
+  "cutoff": "2026-10-28T04:03:02+00:00",
+  "events": [
+    {
+      "aligned_examples": {
+        "game": 895,
+        "point": 682,
+        "set": 895
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "fcf2765e-5366-4288-9e75-2a3ae279937e",
+      "fonbet_source_event_id": "68911373",
+      "history_link_version_id": "8b311898-4b70-4922-b950-6bf21f0c25c1",
+      "index_path": "/tmp/tennis_api_linked_coverage_20261028/events/fcf2765e-5366-4288-9e75-2a3ae279937e.jsonl",
+      "index_sha256": "99d87b7aa91bf4351b4432456d42fdee2825ee7a8dd1f336796eb4d19d8bfdf9",
+      "link_available_at": "2026-10-28T04:01:46.116432+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 899,
+      "source": "api_tennis",
+      "source_match_id": "12170521"
+    }
+  ],
+  "expanded_cohort": {
+    "added_snapshot_keys": 1,
+    "baseline_snapshot_keys": 6456,
+    "path": "/tmp/tennis_api_linked_coverage_20261028/expanded_snapshot_index.jsonl",
+    "sha256": "23270c08d420f207b063bbf100e8372e35eaff2eba3032a21566e9111b129469",
+    "snapshot_keys": 6457,
+    "unique_events": 3207
+  },
+  "last_error": null,
+  "reason_counts": {
+    "aligned_candidate": 1
+  },
+  "scope": "confirmed_oriented_source_links_only",
+  "snapshots_scanned": 899,
+  "source": "api_tennis",
+  "source_linked_events": 1,
+  "status": "complete",
+  "targets": {
+    "game": {
+      "added_by_full_tape": 0,
+      "event_ids": [
+        "fcf2765e-5366-4288-9e75-2a3ae279937e"
+      ],
+      "full_tape_matches": 1,
+      "new_event_ids": [],
+      "same_policy_baseline_matches": 1
+    },
+    "point": {
+      "added_by_full_tape": 1,
+      "event_ids": [
+        "fcf2765e-5366-4288-9e75-2a3ae279937e"
+      ],
+      "full_tape_matches": 1,
+      "new_event_ids": [
+        "fcf2765e-5366-4288-9e75-2a3ae279937e"
+      ],
+      "same_policy_baseline_matches": 0
+    },
+    "set": {
+      "added_by_full_tape": 0,
+      "event_ids": [
+        "fcf2765e-5366-4288-9e75-2a3ae279937e"
+      ],
+      "full_tape_matches": 1,
+      "new_event_ids": [],
+      "same_policy_baseline_matches": 1
+    }
+  },
+  "training_gate": {
+    "reason": "coverage_scan_only_not_feature_or_temporal_admission",
+    "status": "blocked"
+  },
+  "witness_cohort": {
+    "matches_with_complete_state_by_target": {
+      "game": 1,
+      "point": 1,
+      "set": 1
+    },
+    "path": "/tmp/tennis_api_linked_coverage_20261028/witness_snapshot_index.jsonl",
+    "purpose": "feature_PIT_verification_only_full_tapes_preserved_in_event_files",
+    "rows": 3,
+    "sha256": "0ea4f406ee1bd86d85e80ec75a96bb104e40e6d530035ce1ab07463332f5dd00"
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "as_of": "2026-10-27T13:58:34.970725+00:00",
+  "observed_lookback_minutes": 60,
+  "snapshots": 255,
+  "snapshots_with_optional_serve_policy": 21,
+  "certified_with_optional_serve_policy": 21,
+  "unique_events_with_optional_serve_policy": 16,
+  "newest_observed_at": "2026-10-27 13:54:47.526238+00:00",
+  "newest_created_at": "2026-10-27 13:57:10.475251+00:00",
+  "samples": [
+    {
+      "event_id": "00f2260e-5130-4c3d-8e20-7ca72e4734c2",
+      "observed_at": "2026-10-27 13:39:37.179717+00:00",
+      "created_at": "2026-10-27 13:50:47.857857+00:00",
+      "readiness": {
+        "status": "ready_for_labeled_pit",
+        "reasons": [],
+        "contract": "tennis_odds_free_v2",
+        "certified": true,
+        "validation": {
+          "as_of": "2026-10-27T13:39:37.179717+00:00",
+          "certified": true,
+          "future_sources": [],
+          "evidence_policy": "tennis_pit_db_state_v2",
+          "missing_sources": [],
+          "missing_evidence": [],
+          "evidence_after_cutoff": [],
+          "evidence_hash_missing": [],
+          "allowed_missing_sources": [],
+          "evidence_object_missing": [],
+          "evidence_source_missing": [],
+          "evidence_timestamp_missing": [],
+          "evidence_object_hash_mismatch": []
+        },
+        "snapshot_at": "2026-10-27T13:39:37.179717+00:00",
+        "label_status": "pending",
+        "source_evidence": {
+          "event_state": [
+            {
+              "source": "fonbet_event_state_snapshot",
+              "raw_hash": "c5b7cf894eb8aa4818b87356959cc64494fcdbcc568783f424979b40a4017c53",
+              "snapshot_id": "6be9ee0a-65ff-4bb8-951b-067ac1e8dfe7",
+              "available_at": "2026-10-27T13:39:37.179717+00:00",
+              "raw_object_key": "fonbet/tennis/2026-10-27/c5b7/c5b7cf894eb8aa4818b87356959cc64494fcdbcc568783f424979b40a4017c53.json"
+            }
+          ],
+          "event_format": [],
+          "player_metrics": {
+            "a": {
+              "source": "confirmed_flashscore_player_metrics",
+              "snapshot_id": "2525b542-35ce-4596-8375-8523cc6a832b",
+              "available_at": "2026-10-27T10:00:10.826282+00:00",
+              "history_digest": "263ebb370376cbaed0b8b0fa56f159c248da5523afb00c4ee4de44dbfe9f8ee3",
+              "source_player_id": "4bNPtZT5",
+              "identity_available_at": "2026-10-21T15:52:35.016239+00:00"
+            },
+            "b": {
+              "reason": "history_evidence_unverifiable",
+              "source": "unknown_player_history_v1",
+              "available_at": "2026-10-27T13:39:37.179717+00:00",
+              "history_status": "unknown",
+              "observation_kind": "contract_prior",
+              "discarded_source_evidence": {
+                "source": "confirmed_flashscore_player_metrics",
+                "snapshot_id": "a9e7155b-731a-4e93-a9ed-781828277dc8",
+                "available_at": "2026-10-20T16:59:29.530288+00:00",
+                "history_digest": "103a9a2989e7b6e6d691582027ae7a1914e188557ed25c4f564f6b0eba9001bf",
+                "source_player_id": null,
+                "identity_available_at": null
+              }
+            }
+          },
+          "serve_metrics_a": [
+            {
+              "source": "confirmed_canonical_serve_history",
+              "snapshot_id": "4f8e2089-b372-42f3-8152-b6824297c9bd",
+              "available_at": "2026-10-27T13:29:00.149385+00:00",
+              "serve_points": 413.0,
+              "history_digest": "037d80fe5129b9477c8a1af73db584ab023593e352281855cb4fee4b22b11384",
+              "source_player_id": "4bNPtZT5",
+              "identity_available_at": "2026-10-21T15:52:35.016239+00:00"
+            }
+          ],
+          "serve_metrics_b": [
+            {
+              "reason": "serve_evidence_unavailable",
+              "source": "unknown_serve_history_v1",
+              "available_at": "2026-10-27T13:39:37.179717+00:00",
+              "history_status": "unknown",
+              "observation_kind": "contract_prior",
+              "discarded_source_evidence": [
+                {}
+              ]
+            }
+          ]
+        },
+        "match_format_known": false,
+        "source_available_at": {
+          "event_state": "2026-10-27T13:39:37.179717+00:00",
+          "player_metrics": "2026-10-27T13:39:37.179717+00:00",
+          "serve_metrics_a": "2026-10-27T13:29:00.149385+00:00",
+          "serve_metrics_b": "2026-10-27T13:39:37.179717+00:00"
+        },
+        "format_unknown_reason": "no_timely_explicit_best_of",
+        "serve_history_missing": {
+          "a": false,
+          "b": true
+        },
+        "serve_history_fallback": {
+          "b": "serve_evidence_unavailable"
+        },
+        "player_history_fallback": {
+          "b": "history_evidence_unverifiable"
+        }
+      }
+    },
+    {
+      "event_id": "02687f0d-9a28-4624-801e-10c0ff0cc30e",
+      "observed_at": "2026-10-27 13:44:44.868168+00:00",
+      "created_at": "2026-10-27 13:51:27.184503+00:00",
+      "readiness": {
+        "status": "ready_for_labeled_pit",
+        "reasons": [],
+        "contract": "tennis_odds_free_v2",
+        "certified": true,
+        "validation": {
+          "as_of": "2026-10-27T13:44:44.868168+00:00",
+          "certified": true,
+          "future_sources": [],
+          "evidence_policy": "tennis_pit_db_state_v2",
+          "missing_sources": [],
+          "missing_evidence": [],
+          "evidence_after_cutoff": [],
+          "evidence_hash_missing": [],
+          "allowed_missing_sources": [],
+          "evidence_object_missing": [],
+          "evidence_source_missing": [],
+          "evidence_timestamp_missing": [],
+          "evidence_object_hash_mismatch": []
+        },
+        "snapshot_at": "2026-10-27T13:44:44.868168+00:00",
+        "label_status": "pending",
+        "source_evidence": {
+          "event_state": [
+            {
+              "source": "fonbet_event_state_snapshot",
+              "raw_hash": "31a4c413f16de3b8fd7bbbc2b801613c0dc645430929e6545f49c0051371c87f",
+              "snapshot_id": "df8f7d90-7fab-468e-9bce-b5b8dce3078c",
+              "available_at": "2026-10-27T13:44:44.868168+00:00",
+              "raw_object_key": "fonbet/tennis/2026-10-27/31a4/31a4c413f16de3b8fd7bbbc2b801613c0dc645430929e6545f49c0051371c87f.json"
+            }
+          ],
+          "event_format": [],
+          "player_metrics": {
+            "a": {
+              "reason": "history_or_identity_unavailable",
+              "source": "unknown_player_history_v1",
+              "available_at": "2026-10-27T13:44:44.868168+00:00",
+              "history_status": "unknown",
+              "observation_kind": "contract_prior",
+              "discarded_source_evidence": {}
+            },
+            "b": {
+              "source": "confirmed_flashscore_player_metrics",
+              "snapshot_id": "8b0ed9ac-4ff2-40ac-bae5-7a7986bdd949",
+              "available_at": "2026-10-25T18:17:07.687918+00:00",
+              "history_digest": "0a515de1f124885f756e8e8ceb5d2a3ed2d9eb20ca49a6751bb6368703f85b75",
+              "source_player_id": "QsVoilGt",
+              "identity_available_at": "2026-10-23T03:38:33.134424+00:00"
+            }
+          },
+          "serve_metrics_a": [
+            {
+              "reason": "serve_evidence_unavailable",
+              "source": "unknown_serve_history_v1",
+              "available_at": "2026-10-27T13:44:44.868168+00:00",
+              "history_status": "unknown",
+              "observation_kind": "contract_prior",
+              "discarded_source_evidence": [
+                {}
+              ]
+            }
+          ],
+          "serve_metrics_b": [
+            {
+              "reason": "serve_evidence_unavailable",
+              "source": "unknown_serve_history_v1",
+              "available_at": "2026-10-27T13:44:44.868168+00:00",
+              "history_status": "unknown",
+              "observation_kind": "contract_prior",
+              "discarded_source_evidence": [
+                {}
+              ]
+            }
+          ]
+        },
+        "match_format_known": false,
+        "source_available_at": {
+          "event_state": "2026-10-27T13:44:44.868168+00:00",
+          "player_metrics": "2026-10-27T13:44:44.868168+00:00",
+          "serve_metrics_a": "2026-10-27T13:44:44.868168+00:00",
+          "serve_metrics_b": "2026-10-27T13:44:44.868168+00:00"
+        },
+        "format_unknown_reason": "no_timely_explicit_best_of",
+        "serve_history_missing": {
+          "a": true,
+          "b": true
+        },
+        "serve_history_fallback": {
+          "a": "serve_evidence_unavailable",
+          "b": "serve_evidence_unavailable"
+        },
+        "player_history_fallback": {
+          "a": "history_or_identity_unavailable"
+        }
+      }
+    }
+  ]
+}

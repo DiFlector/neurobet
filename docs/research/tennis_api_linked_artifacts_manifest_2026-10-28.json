@@ -1,0 +1,73 @@
+{
+  "created_at": "2026-10-28T04:03:02Z",
+  "cutoff": "2026-10-28T04:03:02Z",
+  "audit_format_version": 4,
+  "history_link_schema": "provider_scoped_links_v2",
+  "files": [
+    {
+      "path": "docs/research/tennis_label_audit_api_linked_2026-10-28.json",
+      "bytes": 67886,
+      "sha256": "28eb488c69c6a9927d93c49b4d7b6d038e0cb7847915ef1d722fe6f821eab751"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_training_manifest_2026-10-28.json",
+      "bytes": 1106999,
+      "sha256": "a311af7abd0336bc4d5a983606f5ab445800f0e2a02a80e4f7b2a19cd615869c"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_coverage_2026-10-28.json",
+      "bytes": 2978,
+      "sha256": "244debc1a5566aaedcd19bdc4f64caeb2af7daf77ccaa3bbe62eea86e5bd9f72"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_snapshot_index_2026-10-28.jsonl",
+      "bytes": 1322395,
+      "sha256": "23270c08d420f207b063bbf100e8372e35eaff2eba3032a21566e9111b129469"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_witness_index_2026-10-28.jsonl",
+      "bytes": 1576,
+      "sha256": "0ea4f406ee1bd86d85e80ec75a96bb104e40e6d530035ce1ab07463332f5dd00"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_event_68911373_2026-10-28.jsonl",
+      "bytes": 725779,
+      "sha256": "99d87b7aa91bf4351b4432456d42fdee2825ee7a8dd1f336796eb4d19d8bfdf9"
+    },
+    {
+      "path": "docs/research/tennis_api_link_dry_run_2026-10-28.json",
+      "bytes": 243805,
+      "sha256": "fea98fb07d30c0292504f1fbf56cc19bbc8197d6c4ca9fff84e625c1a8862bdb"
+    },
+    {
+      "path": "docs/research/tennis_api_link_apply_2026-10-28.json",
+      "bytes": 3152,
+      "sha256": "2ccf7f126351b40016c54fa86f25c02132f781df95c708fb0c6860741bc0ae50"
+    },
+    {
+      "path": "docs/research/tennis_api_link_repeat_2026-10-28.json",
+      "bytes": 3152,
+      "sha256": "b4cbe351283df8a29a8d7f3448328b5a13ea21b3e72952a1d01edfdd2fac7cf0"
+    },
+    {
+      "path": "docs/research/tennis_training_examples_cea9183dbf51.jsonl",
+      "bytes": 63296915,
+      "sha256": "69c2df3ccd958bc21f338a4f2502584e3bc0af88099b7bf28d54ae76916c374f"
+    },
+    {
+      "path": "docs/research/tennis_match_target_diagnostics_9bd9ec6c88d5.jsonl",
+      "bytes": 1123946,
+      "sha256": "9bd9ec6c88d5adfad6fdf5e0737082dd9a1607d75df44b2bd60355c4802b040d"
+    },
+    {
+      "path": "docs/research/tennis_source_label_conflicts_e3b0c44298fc.jsonl",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/research/tennis_api_linked_point_game_artifacts_2026-10-28.tar.gz",
+      "bytes": 5012829,
+      "sha256": "a621e844412c8c1b7595460e1012bb49bd57ab54288147cd1b7698f912fcba33"
+    }
+  ]
+}

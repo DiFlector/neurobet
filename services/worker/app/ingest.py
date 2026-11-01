@@ -1,7 +1,7 @@
 """Persist Fonbet raw snapshots from Redis into sporting events."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List
 
 logger = logging.getLogger("worker.ingest")
@@ -13,7 +13,38 @@ def is_synthetic_source_id(source_event_id: str) -> bool:
     return source_event_id.startswith(SYNTHETIC_PREFIXES)
 
 
-def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
+def _observed_at(payload: Dict[str, Any], fallback: datetime | None = None) -> datetime:
+    """Read the collector timestamp without replacing it with replay time."""
+    raw = payload.get("collected_at")
+    try:
+        value = datetime.fromisoformat(raw.replace("Z", "+00:00")) if isinstance(raw, str) else fallback
+    except ValueError:
+        value = fallback
+    if value is None:
+        value = datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def source_payload_provenance(payload: Dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return the archived upstream payload digest and MinIO key from a feed envelope."""
+    digest = payload.get("source_payload_hash")
+    object_key = payload.get("source_payload_s3_key")
+    return (digest if isinstance(digest, str) else None,
+            object_key if isinstance(object_key, str) else None)
+
+
+def should_reconcile_live_board(payload: Dict[str, Any], *, current_snapshot: bool,
+                                seen_ids: Iterable[str]) -> bool:
+    """Only a current complete live-board snapshot can interrupt missing live events."""
+    return bool(seen_ids) and current_snapshot and payload.get("page_type", "live") == "live"
+
+
+def persist_fonbet_snapshot(
+    payload: Dict[str, Any], observed_at: datetime | None = None,
+    source_payload_hash: str | None = None, source_payload_raw_key: str | None = None,
+) -> int:
     """
     Upsert tennis events from a collector snapshot.
 
@@ -30,9 +61,12 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
 
     from db.connection import SessionLocal
     from db.models.events import Event
+    from db.tennis_enrollment import enroll_tennis_events
     from tennis_adapter.pipeline import TennisPipeline
 
     pipeline = TennisPipeline()
+    snapshot_at = observed_at or _observed_at(payload)
+    current_snapshot = snapshot_at >= datetime.now(timezone.utc) - timedelta(seconds=90)
     seen_ids: List[str] = []
     persisted = 0
 
@@ -47,7 +81,11 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
             if sport_code != "tennis":
                 continue
             try:
-                pipeline.process_and_persist(session, raw)
+                pipeline.process_and_persist(
+                    session, raw, observed_at=snapshot_at,
+                    source_payload_hash=source_payload_hash,
+                    source_payload_raw_key=source_payload_raw_key,
+                )
                 seen_ids.append(source_event_id)
                 persisted += 1
             except Exception as exc:
@@ -55,11 +93,24 @@ def persist_fonbet_snapshot(payload: Dict[str, Any]) -> int:
                 logger.exception("Failed to persist event %s: %s", source_event_id, exc)
 
         if seen_ids:
+            try:
+                event_ids = [row[0] for row in session.query(Event.id).filter(
+                    Event.source == "fonbet", Event.source_event_id.in_(seen_ids)
+                ).all()]
+                enroll_tennis_events(session, event_ids)
+                session.commit()
+            except Exception:
+                session.rollback()
+                # The checkpointed research reconciler repairs a missed batch.
+                logger.exception("Failed to enroll tennis snapshot in research queues")
+
+        # Prematch catalog snapshots are a separate event-discovery stream.
+        # They must never mark live events missing simply because the catalog
+        # and live board contain different cohorts.
+        if should_reconcile_live_board(payload, current_snapshot=current_snapshot, seen_ids=seen_ids):
             # Grace window: a single partial/jittered Fonbet poll must not wipe the board.
             # Only take live rows off the board after they have been unseen long enough.
             # Do not mark finished or wipe current_score — that requires official results.
-            from datetime import timedelta
-
             now = datetime.now(timezone.utc)
             stale_before = now - timedelta(seconds=90)
             awaiting = (

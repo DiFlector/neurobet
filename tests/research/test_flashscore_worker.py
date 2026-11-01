@@ -314,6 +314,27 @@ def test_routine_event_enqueue_does_not_defeat_profile_negative_result_backoff()
     assert not _preserve_player_refresh_backoff(SimpleNamespace(
         status="blocked", last_error="SEARCH_CANDIDATES_REJECTED_BY_NAME", next_run_at=now
     ), "manual_identity_resolution", now)
+    assert not _preserve_player_refresh_backoff(SimpleNamespace(
+        status="retry", last_error="SEARCH_COMPLETED_NO_MATCH", next_run_at=now + timedelta(days=6)
+    ), "pbp_identity_retry_due", now)
+    assert not _preserve_player_refresh_backoff(SimpleNamespace(
+        status="blocked", last_error="SEARCH_CANDIDATES_REJECTED_BY_NAME", next_run_at=now
+    ), "identity_matcher_updated", now)
+
+
+def test_improved_identity_matcher_retries_negative_result_only_once_per_version():
+    from types import SimpleNamespace
+    from app.main import _identity_matcher_update_due
+
+    profile = SimpleNamespace(sync_error="SEARCH_CANDIDATES_REJECTED_BY_NAME")
+    job = SimpleNamespace(status="blocked", last_error="SEARCH_CANDIDATES_REJECTED_BY_NAME",
+                          progress_json={"stage": "waiting_for_identity_data"})
+    assert _identity_matcher_update_due(job, profile, "flashscore_name_match_v3")
+    job.progress_json["identity_matcher_version"] = "flashscore_name_match_v3"
+    assert not _identity_matcher_update_due(job, profile, "flashscore_name_match_v3")
+    profile.sync_error = "HTTP_429_BLOCKED"
+    job.last_error = "HTTP_429_BLOCKED"
+    assert not _identity_matcher_update_due(job, profile, "flashscore_name_match_v3")
 
 
 def test_source_pbp_retries_back_off_and_cap_at_one_hour():

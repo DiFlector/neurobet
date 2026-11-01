@@ -6,6 +6,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import math
 from typing import Any, Iterable, Mapping, Optional
 
 from .policy import (
@@ -53,10 +54,10 @@ def _utc(value: Any) -> Optional[datetime]:
 
 
 def _price_pair(
-    rows: Iterable[Mapping[str, Any]], event_id: str, market: str, line: Optional[int], cutoff: datetime,
-    max_age_seconds: int,
+    rows: Iterable[Mapping[str, Any]], event_id: str, market: str, line: Optional[int], execution_at: datetime,
+    max_age_seconds: float,
 ) -> tuple[Optional[dict], Optional[str]]:
-    latest: dict[str, tuple[datetime, float]] = {}
+    latest: dict[str, tuple[datetime, str, Optional[float], str]] = {}
     for row in rows:
         if str(row.get("event_id") or "") != event_id:
             continue
@@ -68,31 +69,34 @@ def _price_pair(
             continue
         if row_line != line:
             continue
-        status = str(row.get("status") or "active").lower()
-        if status not in {"active", "open", ""}:
-            continue
         observed = _utc(row.get("observed_at"))
-        if observed is None or observed > cutoff:
+        if observed is None or observed > execution_at:
             continue
         outcome = str(row.get("outcome") or "").lower()
         side = "a" if outcome in {"a", "player_a", "home", "1"} else "b" if outcome in {"b", "player_b", "away", "2"} else None
         if side is None:
             continue
+        status = str(row.get("status") or "active").lower()
         try:
             odds = float(row.get("odds"))
         except (TypeError, ValueError):
-            continue
-        if odds <= 1.0:
-            continue
-        if side not in latest or observed > latest[side][0]:
-            latest[side] = (observed, odds)
+            odds = None
+        quote_id = str(row.get("quote_id") or row.get("id") or "")
+        prior = latest.get(side)
+        if prior is None or (observed, quote_id) > (prior[0], prior[3]):
+            latest[side] = (observed, status, odds, quote_id)
     if len(latest) != 2:
         return None, "TWO_SIDED_PRICE_MISSING"
-    oldest = min(latest["a"][0], latest["b"][0])
-    if (cutoff - oldest).total_seconds() > max_age_seconds:
+    if any(latest[side][1] not in {"active", "open", ""} for side in ("a", "b")):
+        return None, "MARKET_NOT_ACTIVE"
+    if any(latest[side][2] is None or latest[side][2] <= 1.0 for side in ("a", "b")):
+        return None, "INVALID_ODDS"
+    if any((execution_at - latest[side][0]).total_seconds() > max_age_seconds for side in ("a", "b")):
         return None, "PRICE_STALE"
     return {
-        "a": latest["a"][1], "b": latest["b"][1],
+        "a": latest["a"][2], "b": latest["b"][2],
+        "a_observed_at": latest["a"][0].isoformat(),
+        "b_observed_at": latest["b"][0].isoformat(),
         "observed_at": max(latest["a"][0], latest["b"][0]).isoformat(),
     }, None
 
@@ -103,15 +107,22 @@ def replay_odds_free_forecasts(
     *,
     policy: Optional[TennisPolicy] = None,
     confirm_positive_ev: bool = False,
-    max_odds_age_seconds: Optional[int] = None,
+    max_odds_age_seconds: Optional[float] = None,
 ) -> dict:
     """Replay configured market gates without writing bets or bankroll entries.
 
     Forecast JSON remains odds-free. Odds are joined only after the forecast's
-    calculation time and are used solely to evaluate a paper signal.
+    simulated execution time and are used solely to evaluate a paper signal.
+    Signals never become proposals or bypass the live bet-manager pipeline.
     """
     selected_policy = policy or load_tennis_policy()
-    max_age = int(max_odds_age_seconds or selected_policy.max_context_age_seconds)
+    max_age = float(selected_policy.max_odds_staleness_sec if max_odds_age_seconds is None
+                    else max_odds_age_seconds)
+    latency = float(selected_policy.execution_latency_sec)
+    if not math.isfinite(latency) or latency < 0:
+        raise ValueError("execution_latency_sec must be finite and non-negative")
+    if not math.isfinite(max_age) or max_age <= 0:
+        raise ValueError("max_odds_staleness_sec must be finite and positive")
     odds = list(odds_snapshots)
     ordered = sorted(
         forecasts,
@@ -140,6 +151,7 @@ def replay_odds_free_forecasts(
             reset_model(model_key)
             counts["FORECAST_TIME_MISSING"] += 1
             continue
+        execution_at = as_of + timedelta(seconds=latency)
         probabilities = row.get("probabilities") if isinstance(row.get("probabilities"), Mapping) else {}
         state = row.get("state") if isinstance(row.get("state"), Mapping) else {}
         try:
@@ -150,7 +162,13 @@ def replay_odds_free_forecasts(
         if not model_key[0]:
             counts["EVENT_ID_MISSING"] += 1
             continue
-        markets = [("match_winner", None, probabilities.get("match_a"))]
+        markets = []
+        if "match_a" in probabilities:
+            markets.append(("match_winner", None, probabilities.get("match_a")))
+        else:
+            # The live forecaster deliberately omits match probability when
+            # best-of is unknown; replay must preserve that missingness.
+            counts["MATCH_FORMAT_UNKNOWN"] += 1
         if set_number > 0:
             markets.append((f"set_winner:{set_number}", set_number, probabilities.get("current_set_a")))
 
@@ -179,7 +197,7 @@ def replay_odds_free_forecasts(
                 continue
             pair, price_error = _price_pair(
                 odds, model_key[0], "match_winner" if line is None else "set_winner",
-                line, as_of, max_age,
+                line, execution_at, max_age,
             )
             if pair is None:
                 watches.pop(key, None)
@@ -227,7 +245,9 @@ def replay_odds_free_forecasts(
                 "probability": round(candidate["probability"], 6), "odds": candidate["odds"],
                 "edge": round(candidate["edge"], 6), "expected_value": round(candidate["expected_value"], 6),
                 "confirmations": count, "required_confirmations": limits["confirmations"],
-                "forecast_as_of": as_of.isoformat(), "odds_as_of": pair["observed_at"],
+                "forecast_as_of": as_of.isoformat(), "execution_at": execution_at.isoformat(),
+                "execution_latency_sec": latency, "odds_as_of": pair["observed_at"],
+                "odds_a_as_of": pair["a_observed_at"], "odds_b_as_of": pair["b_observed_at"],
                 "data_quality": round(data_quality, 2),
                 "confirmation_mode": "positive_ev" if confirm_positive_ev else "policy",
             })
@@ -249,4 +269,7 @@ def replay_odds_free_forecasts(
         "signals": signals,
         "writes_bets": False,
         "writes_bankroll": False,
+        "writes_proposals": False,
+        "calls_bet_manager": False,
+        "live_proposals_require_bet_manager_validation": True,
     }

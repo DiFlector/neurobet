@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-10-26T00:54:34.729371Z",
+  "scope": "read-only production census; no synthetic metadata, forecast, or training",
+  "collector_normalized_latest_100": {
+    "events": 100,
+    "best_of_present": 0,
+    "best_of_available_at_present": 0,
+    "event_format_present": 0,
+    "newest_last_seen_at": "2026-10-26T00:54:34.729371Z"
+  },
+  "current_live_targets": [
+    {
+      "fonbet_event_id": "69304418",
+      "participants": ["Уиллверт Б", "Чан Дункан"],
+      "status": "live",
+      "best_of": null,
+      "best_of_available_at": null,
+      "confirmed_identity_links": 0,
+      "confirmed_match_links": 0,
+      "player_metric_snapshots": 0
+    },
+    {
+      "fonbet_event_id": "69304369",
+      "participants": ["Буле Дж", "Доминко С"],
+      "status": "live",
+      "best_of": null,
+      "best_of_available_at": null,
+      "confirmed_identity_links": 0,
+      "confirmed_match_links": 0,
+      "player_metric_snapshots": 0
+    }
+  ],
+  "historical_raw_source_audit": {
+    "checked_at": "2026-10-22T15:40:00Z",
+    "payloads": 50,
+    "event_rows": 3079,
+    "explicit_best_of_rows": 0,
+    "sha256": "d2c6313309b53041e2e42b360be2a2b0123b2a0cf7bd54ffece397249ec9462c"
+  },
+  "decision": "open_no_current_explicit_source_format_example_or_e2e_target"
+}

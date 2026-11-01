@@ -17,7 +17,8 @@ from urllib.request import Request, urlopen
 
 def sample(url: str, timeout: float) -> dict:
     started = time.monotonic()
-    observed_at = datetime.now(timezone.utc).isoformat()
+    observed_now = datetime.now(timezone.utc)
+    observed_at = observed_now.isoformat()
     row = {"observed_at": observed_at}
     try:
         request = Request(url, headers={"Accept": "application/json"})
@@ -47,12 +48,41 @@ def sample(url: str, timeout: float) -> dict:
                         payload.get("items", []), key=lambda item: int(item.get("wait_seconds") or 0), reverse=True
                     ) if item.get("wait_seconds") is not None
                 ), None),
+                "live_pbp_backlog": _live_pbp_backlog(payload.get("items", []), observed_now),
             })
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
         row.update({"http_status": getattr(exc, "code", None),
                     "latency_seconds": round(time.monotonic() - started, 3),
                     "error": type(exc).__name__})
     return row
+
+
+def _live_pbp_backlog(items: list[dict], observed_now: datetime) -> dict:
+    rows = [item for item in items if item.get("kind") == "pbp" and item.get("mode") == "live"]
+    states: dict[str, int] = {}
+    ages: list[tuple[int, dict]] = []
+    for item in rows:
+        status = str(item.get("status") or "unknown")
+        states[status] = states.get(status, 0) + 1
+        raw = item.get("last_activity_at")
+        if raw:
+            try:
+                activity = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if activity.tzinfo is None:
+                    activity = activity.replace(tzinfo=timezone.utc)
+                age = max(0, int((observed_now - activity.astimezone(timezone.utc)).total_seconds()))
+                ages.append((age, item))
+            except (TypeError, ValueError):
+                continue
+    oldest_age, oldest = max(ages, key=lambda pair: pair[0], default=(None, {}))
+    return {
+        "count": len(rows),
+        "by_status": states,
+        "oldest_activity_age_seconds": oldest_age,
+        "oldest_activity_reason": oldest.get("reason") or oldest.get("last_error"),
+        "oldest_item": {key: oldest.get(key) for key in
+                        ("id", "event_id", "label", "status", "wait_seconds", "reason", "last_error", "last_activity_at")},
+    }
 
 
 def main() -> None:

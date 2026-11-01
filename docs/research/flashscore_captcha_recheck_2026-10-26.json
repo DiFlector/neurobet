@@ -1,0 +1,55 @@
+{
+  "started_at": "2026-10-26T00:49:06.648330+00:00",
+  "profile_url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+  "result": {
+    "parser_version": "flashscore-tennis-player-v10",
+    "profiles": [
+      {
+        "url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+        "status": "partial",
+        "reason": "source_terminal_empty_response_count_mismatch_confirmed",
+        "fetch_transport": "http",
+        "fallback_reason": null,
+        "player_id": "AROuX8tf",
+        "matches_parsed": 271,
+        "matches_imported": 0,
+        "matches_skipped": 340,
+        "rows_skipped_by_reason": {
+          "doubles_excluded_from_singles": 314,
+          "score_does_not_prove_match_winner": 9
+        },
+        "duplicate_source_rows": 19,
+        "pagination_complete": false,
+        "history_scope": "partial",
+        "pagination_reason": "source_terminal_empty_response_count_mismatch_confirmed",
+        "terminal_probe_count": 2,
+        "advertised_event_count": 281,
+        "observed_unique_event_count": 592,
+        "observed_unique_singles_event_count": 280,
+        "advertised_count_matches_singles": false,
+        "content_hash": "sha256:aa69c0d8bf5c00e140a6fd8285756acbe92535dfd35cd12bee2bad7766041472",
+        "archived_path": "snapshots/research/2026-10-26/AROuX8tf/aa69c0d8bf5c00e140a6fd8285756acbe92535dfd35cd12bee2bad7766041472-004947242748-d20f9c8841c24961be36eefdac3ba15b.json",
+        "archived_page_paths": [
+          "snapshots/research/2026-10-26/AROuX8tf/6690d31e54d63351620b1e68243e5dd6e6dfdf1e98a38fd334ad30268362f8b8-004909410915-ce830243a1e7446a957ab7d4e0367685.json",
+          "snapshots/research/2026-10-26/AROuX8tf/a6b529464dcc435b1a287c247fd3e34e655ea442b3aab9e6953edf43ceca8f45-004913698841-790bb69152b942349b46b06ecda9ebea.json",
+          "snapshots/research/2026-10-26/AROuX8tf/2f193726eb3094a1d3879a0f298bd8f6a316ceea77453abb189c979d6375777a-004915746799-ad239df664d8476395b3403c2bd9d995.json",
+          "snapshots/research/2026-10-26/AROuX8tf/68fb1d7d8151466c0449602d016b222b9168aef4a7893ccf4ea12fc411f627ae-004917771837-e363e2b5af4a4c649f6a32091cd1a615.json",
+          "snapshots/research/2026-10-26/AROuX8tf/9b8c5ffadf572c515a62d107e73e55e3b87a08477c0609ca67b97bc55e648422-004919720674-f4bdd3b655064a9297940d7cc8d0e0fe.json",
+          "snapshots/research/2026-10-26/AROuX8tf/e825b4fe95fdf8006109ef3acf5e8c2e232528d314ff3668d9c8ab422b759f85-004921952429-59d66a8de8c14a17a65e01ab7df6920d.json",
+          "snapshots/research/2026-10-26/AROuX8tf/c01497e666041f805df44d91e8adca99bfa75d06f9595cd5cf92596885940ef7-004924075850-328d214774564a1c9537ca750b7a660d.json",
+          "snapshots/research/2026-10-26/AROuX8tf/0f27d09090df1d8a5f1e8f3f22051fb3baf467448d38690cb11f7c74568fb0f0-004926341647-7acae8de1da641d6a092b4142c14d98c.json",
+          "snapshots/research/2026-10-26/AROuX8tf/5c7935b7f39bf00de943ab7d611c2c83c51e5a7712cf1761223688fbece45131-004928251063-66c64bc3e9894d06917af333e1288220.json",
+          "snapshots/research/2026-10-26/AROuX8tf/3a049c409b5d09659574c186f6d342ca9df46b0897bb14619dbaad260e1fcc7b-004930400326-7124f9df80f347dc85c057b5506f6756.json",
+          "snapshots/research/2026-10-26/AROuX8tf/e93f26864d88c6f3a3b733c57fa79b098c4c137749e46226fe1196c976e1a3a1-004932401126-236e2bb1889443a5897a34520dc891cb.json",
+          "snapshots/research/2026-10-26/AROuX8tf/9e687254f0e4248179a5e5f6291addf4dafe33ad85470e05f503bab55774959b-004934592593-7eb49721669b4370b81811cfa50ccc2b.json",
+          "snapshots/research/2026-10-26/AROuX8tf/1cbf1fa866a39f8949d15844cde2cba67054f12b6e3588917822dc0e4624dfca-004938766774-231e15c57e6a4d508fa30bcd9591063b.json",
+          "snapshots/research/2026-10-26/AROuX8tf/b18b7514340eec4f159f5ebebb668cb2b42b2b4948137baf67d82f0dd0ec7b82-004940774108-c8d613edde264bd299da42a9203bc7dc.json",
+          "snapshots/research/2026-10-26/AROuX8tf/9416cef8055ca11e3ea156fc8df5abfd21b465880df17f28a103ea419e4df186-004942833129-2bd42f5750114ca883c04644cfe4d1bf.json",
+          "snapshots/research/2026-10-26/AROuX8tf/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855-004947079956-054913bd21e340848f8de5dd2b065cb1.json"
+        ]
+      }
+    ]
+  },
+  "status": "partial",
+  "finished_at": "2026-10-26T00:49:59.727216+00:00"
+}

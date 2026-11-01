@@ -1,0 +1,457 @@
+{
+  "generated_at": "2026-10-25T09:36:20.567510+00:00",
+  "dry_run": false,
+  "scope": "Flashscore junior source-only retrospective PBP; no Fonbet links",
+  "matches": [
+    {
+      "source_match_id": "69i7EPGM",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-07T08:00:00+00:00",
+      "players": [
+        "Valentova T.",
+        "Brozova N."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/valentova-t-hWMZK1VQ/brozova-n-0MoKGcFb/summary/?mid=69i7EPGM"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "juGuZdcD",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-08T07:30:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Facek J."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/facek-j-EVSbhNWt/mrva-m-hMR2isnm/summary/?mid=juGuZdcD"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "G6caYpYa",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-10T08:05:00+00:00",
+      "players": [
+        "Valentova T.",
+        "Jandova N."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/valentova-t-hWMZK1VQ/jandova-n-ljn5emqj/summary/?mid=G6caYpYa"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "QyHsoOH5",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-10T11:00:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Donald M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/donald-m-CvEGpt6B/mrva-m-hMR2isnm/summary/?mid=QyHsoOH5"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "tMKYC6JO",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-11T08:10:00+00:00",
+      "players": [
+        "Nicod J.",
+        "Mrva M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/nicod-j-bXDP9OZ5/mrva-m-hMR2isnm/summary/?mid=tMKYC6JO"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "YmVNIktH",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-11T09:40:00+00:00",
+      "players": [
+        "Valentova T.",
+        "Forejtkova E."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/valentova-t-hWMZK1VQ/forejtkova-e-tpBr96Dk/summary/?mid=YmVNIktH"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "KQfHcXjH",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2022-08-12T09:10:00+00:00",
+      "players": [
+        "Valentova T.",
+        "Smekalova M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/valentova-t-hWMZK1VQ/smekalova-m-OxO0aq9j/summary/?mid=KQfHcXjH"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "x2DbP9la",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-07-30T09:30:00+00:00",
+      "players": [
+        "Klimas J.",
+        "Jurena M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/klimas-j-G84zExoJ/jurena-m-YJiAezUb/summary/?mid=x2DbP9la"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "UqhkYUDm",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-07-31T11:25:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Facek J."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/mrva-m-hMR2isnm/facek-j-EVSbhNWt/summary/?mid=UqhkYUDm"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "80QifDVb",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-08-01T08:05:00+00:00",
+      "players": [
+        "Klimas J.",
+        "Chodora R."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/klimas-j-G84zExoJ/chodora-r-xhMuteUB/summary/?mid=80QifDVb"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "fgnWDIM7",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-08-01T08:05:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Soukup A."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/mrva-m-hMR2isnm/soukup-a-0WxgWJ0m/summary/?mid=fgnWDIM7"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "rkLMa5VF",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-08-02T08:05:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Klimas J."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/mrva-m-hMR2isnm/klimas-j-G84zExoJ/summary/?mid=rkLMa5VF"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "dYQw8zQg",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2023-08-03T10:15:00+00:00",
+      "players": [
+        "Filip J.",
+        "Mrva M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/mrva-m-hMR2isnm/filip-j-biKHx2Io/summary/?mid=dYQw8zQg"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "6J6Ae8sA",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-21T10:15:00+00:00",
+      "players": [
+        "Sekerkova V.",
+        "Hutkova V."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/hutkova-v-bFCjeplE/sekerkova-v-MHB7ucU8/summary/?mid=6J6Ae8sA"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "CxcPkwBl",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-22T09:50:00+00:00",
+      "players": [
+        "Klimas J.",
+        "Frohlich J."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/klimas-j-G84zExoJ/frohlich-j-rwqi4Sek/summary/?mid=CxcPkwBl"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "IqFKsWXO",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-22T12:00:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Novotny A."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/novotny-a-t68nI9bQ/mrva-m-hMR2isnm/summary/?mid=IqFKsWXO"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "8vRfqEq2",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-23T08:05:00+00:00",
+      "players": [
+        "Klimas J.",
+        "Petrofsky D."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/klimas-j-G84zExoJ/petrofsky-d-MoR1UcVa/summary/?mid=8vRfqEq2"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "WK0tWHlB",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-23T08:05:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Soukup A."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/soukup-a-0WxgWJ0m/mrva-m-hMR2isnm/summary/?mid=WK0tWHlB"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "r93TCqyR",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-23T09:35:00+00:00",
+      "players": [
+        "Krejcova T.",
+        "Sekerkova V."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/krejcova-t-61D9N5Sr/sekerkova-v-MHB7ucU8/summary/?mid=r93TCqyR"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "rujREseR",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-24T08:05:00+00:00",
+      "players": [
+        "Klimas J.",
+        "Doskocil M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/klimas-j-G84zExoJ/doskocil-m-hQmJxMNJ/summary/?mid=rujREseR"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "YqctrqKk",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-24T09:35:00+00:00",
+      "players": [
+        "Mrva M.",
+        "Chodora R."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/chodora-r-xhMuteUB/mrva-m-hMR2isnm/summary/?mid=YqctrqKk"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "ddLFnnGl",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-25T08:05:00+00:00",
+      "players": [
+        "Kumstat J.",
+        "Klimas J."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/kumstat-j-tpkd9exs/klimas-j-G84zExoJ/summary/?mid=ddLFnnGl"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    },
+    {
+      "source_match_id": "WbsgqxLG",
+      "tournament": "Pardubicka juniorka (Czech Republic)",
+      "played_at": "2024-07-25T10:55:00+00:00",
+      "players": [
+        "Petak D.",
+        "Mrva M."
+      ],
+      "gender": "unknown",
+      "source_match_urls": [
+        "https://www.flashscore.com/match/tennis/petak-d-0S2PwOHm/mrva-m-hMR2isnm/summary/?mid=WbsgqxLG"
+      ],
+      "source_url_provenance": "constructed_by_existing_flashscore_match_url_helper_from_archived_player_ids",
+      "existing_point_documents": 0,
+      "latest_document_quality": null,
+      "existing_job_status": null,
+      "enqueue_eligible": true
+    }
+  ],
+  "errors": [],
+  "source_paused_until": "2026-10-25 11:04:19.345574+00:00",
+  "enqueued_source_matches": [
+    "69i7EPGM",
+    "juGuZdcD",
+    "G6caYpYa",
+    "QyHsoOH5",
+    "tMKYC6JO",
+    "YmVNIktH",
+    "KQfHcXjH",
+    "x2DbP9la",
+    "UqhkYUDm",
+    "80QifDVb",
+    "fgnWDIM7",
+    "rkLMa5VF",
+    "dYQw8zQg",
+    "6J6Ae8sA",
+    "CxcPkwBl",
+    "IqFKsWXO",
+    "8vRfqEq2",
+    "WK0tWHlB",
+    "r93TCqyR",
+    "rujREseR",
+    "YqctrqKk",
+    "ddLFnnGl",
+    "WbsgqxLG"
+  ],
+  "summary": {
+    "junior_flashscore_matches": 23,
+    "existing_point_documents": 0,
+    "already_complete": 0,
+    "already_active_or_retrying": 0,
+    "eligible_source_only_jobs": 23,
+    "with_valid_source_match_url": 23,
+    "constructed_from_archived_player_ids": 23
+  }
+}

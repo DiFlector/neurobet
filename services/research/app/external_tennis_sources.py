@@ -8,16 +8,20 @@ from __future__ import annotations
 
 import asyncio
 import csv
+from difflib import SequenceMatcher
 import gzip
 import hashlib
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
 import time
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
 
@@ -31,6 +35,7 @@ logger = logging.getLogger("research.external_tennis_sources")
 UTC = timezone.utc
 API_TENNIS_URL = "https://api.api-tennis.com/tennis/"
 LIVE_TENNIS_BASE = "https://api.livetennisapi.com/api/public/v1"
+LIVE_TENNIS_PLAYER_PROFILE_PARSER_VERSION = "live_tennis_player_profile_v2"
 LIVESCORES_LIVE_TENNIS_URL = "https://prod-public-api.livescore.com/v1/api/app/live/tennis/0.00"
 MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 ARCHIVE_STOP_AT = datetime(2026, 11, 7, tzinfo=UTC)
@@ -39,6 +44,471 @@ TML_HISTORICAL_START_YEAR = {"atp": 1967, "wta": 1990, "challenger": 1978}
 TML_HISTORICAL_TOURS = ("atp", "wta", "challenger")
 TENNIS_EXPLORER_PROFILE_DAILY_BUDGET_DEFAULT = 20
 API_TENNIS_OFFLINE_BATCHES_PER_TICK_DEFAULT = 5
+
+
+def _live_catalog_format(row: Any) -> int | None:
+    """Parse only the provider's explicit BO3/BO5 field; never infer from score or event."""
+    if not isinstance(row, dict):
+        return None
+    raw = row.get("format")
+    if not isinstance(raw, str):
+        return None
+    match = re.fullmatch(r"\s*BO\s*([35])\s*", raw, flags=re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _live_catalog_surface(row: Any) -> str | None:
+    """Parse only an explicit supported court surface from the provider catalog."""
+    if not isinstance(row, dict):
+        return None
+    value = str(row.get("surface") or "").strip().casefold()
+    return value if value in {"hard", "clay", "grass", "carpet"} else None
+
+
+@lru_cache(maxsize=32768)
+def _catalog_name_similarity(left: str, right: str) -> float:
+    """Conservative discovery score for a provider name and Fonbet label.
+
+    This is diagnostic only: a name score never confirms identity or makes
+    catalog attributes PIT-available. Both common surname/name orders are
+    considered because some Fonbet feeds emit transliterated labels in either
+    order (for example ``Лю Клер``).
+    """
+    from tennis_adapter.external_names import fold, surname_and_initial, transliterate
+
+    def tokens(value):
+        return [token for token in transliterate(fold(value)).split() if token]
+
+    a, b = tokens(left), tokens(right)
+    if not a or not b:
+        return 0.0
+    if " ".join(a) == " ".join(b):
+        return 1.0
+    surname_a, initial_a = surname_and_initial(left)
+    surname_b, initial_b = surname_and_initial(right)
+    variants_a = [(surname_a, initial_a)]
+    variants_b = [(surname_b, initial_b)]
+    if len(a) >= 2:
+        variants_a.extend([(a[0], a[-1][:1]), (a[-1], a[0][:1])])
+    if len(b) >= 2:
+        variants_b.extend([(b[0], b[-1][:1]), (b[-1], b[0][:1])])
+    best = 0.0
+    for surname_left, initial_left in variants_a:
+        for surname_right, initial_right in variants_b:
+            if not surname_left or not surname_right:
+                continue
+            surname_score = SequenceMatcher(None, surname_left, surname_right).ratio()
+            initial_score = 1.0 if initial_left and initial_right and initial_left[0] == initial_right[0] else 0.0
+            # Exact surname agreement can stand on its own; fuzzy transliteration
+            # requires a matching initial to avoid broad common-surname links.
+            score = surname_score if surname_score == 1.0 else surname_score * 0.85 + initial_score * 0.15
+            best = max(best, score)
+    # Transliteration can differ substantially at the token level (e.g. Liu / Лю,
+    # Claire / Клер). A two-token assignment is useful for candidate discovery;
+    # its deliberately permissive result remains diagnostic only.
+    if len(a) >= 2 and len(b) >= 2:
+        def token_score(first, second):
+            raw = SequenceMatcher(None, first, second).ratio()
+            first_skeleton = re.sub(r"[aeiouy]", "", first)
+            second_skeleton = re.sub(r"[aeiouy]", "", second)
+            skeleton = (SequenceMatcher(None, first_skeleton, second_skeleton).ratio()
+                        if first_skeleton and second_skeleton else 0.0)
+            return max(raw, skeleton)
+
+        token_direct = (token_score(a[0], b[0]) + token_score(a[1], b[1])) / 2
+        token_swapped = (token_score(a[0], b[1]) + token_score(a[1], b[0])) / 2
+        best = max(best, token_direct, token_swapped)
+    return best
+
+
+def _catalog_pair_name_candidate(provider_names: tuple[str, str], fonbet_names: tuple[str, str],
+                                 *, threshold: float = 0.66) -> dict[str, Any] | None:
+    """Return a pair-name candidate for diagnostics, never a confirmed link."""
+    direct = (_catalog_name_similarity(provider_names[0], fonbet_names[0]),
+              _catalog_name_similarity(provider_names[1], fonbet_names[1]))
+    swapped = (_catalog_name_similarity(provider_names[0], fonbet_names[1]),
+               _catalog_name_similarity(provider_names[1], fonbet_names[0]))
+    scores = direct if min(direct) >= min(swapped) else swapped
+    if min(scores) < threshold:
+        return None
+    return {"side_scores": [round(score, 4) for score in scores],
+            "minimum_side_score": round(min(scores), 4),
+            "identity_confirmed": False}
+
+
+def _record_event_attribute_observation(conn, *, event_id, attribute_name: str, value: Any,
+                                       source: str, source_record_id: str, available_at: datetime,
+                                       identity_available_at: datetime | None, raw_object_key: str | None,
+                                       content_hash: str | None, evidence: dict) -> int:
+    """Append an immutable, explicitly timed event-attribute observation."""
+    if attribute_name not in {"best_of", "surface"} or not value:
+        return 0
+    payload = {"attribute_name": attribute_name, "value": value, "source": source,
+               "source_record_id": source_record_id, "available_at": available_at.isoformat(),
+               "identity_available_at": identity_available_at.isoformat() if identity_available_at else None,
+               "content_hash": content_hash, "evidence": evidence}
+    evidence_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    result = conn.execute(text("""
+        INSERT INTO tennis_event_attribute_observations
+          (id,event_id,attribute_name,value_json,source,source_record_id,available_at,
+           identity_available_at,raw_object_key,source_content_hash,parser_version,evidence_hash,
+           evidence_json,reconstructed_at,created_at)
+        VALUES (gen_random_uuid(),:event_id,:attribute_name,CAST(:value AS jsonb),:source,:source_record_id,
+                :available_at,:identity_available_at,:raw_object_key,:content_hash,'live_catalog_metadata_v1',
+                :evidence_hash,CAST(:evidence AS jsonb),now(),now())
+        ON CONFLICT (event_id,attribute_name,source,available_at,evidence_hash) DO NOTHING
+    """), {"event_id": event_id, "attribute_name": attribute_name,
+           "value": json.dumps({"value": value}), "source": source, "source_record_id": source_record_id,
+           "available_at": available_at, "identity_available_at": identity_available_at,
+           "raw_object_key": raw_object_key, "content_hash": content_hash,
+           "evidence_hash": evidence_hash, "evidence": json.dumps(evidence)})
+    return int(result.rowcount or 0)
+
+
+def _materialize_live_catalog_metadata(engine, matches: list[dict], *, catalog_seen_at: datetime,
+                                       content_sha256: str, raw_object_key: str,
+                                       include_finished: bool = False,
+                                       event_window_hours: int = 24) -> dict[str, Any]:
+    """Project explicit provider format/surface only through confirmed PIT identities.
+
+    The live catalog's numeric player IDs are a separate namespace from API-Tennis.
+    Each side must resolve through a confirmed live_tennis_api canonical alias and
+    a confirmed, as-of Flashscore identity for the Fonbet participant. Ambiguous or
+    late identities are skipped. Metadata is timestamped no earlier than both the
+    catalog observation and every identity decision.
+    """
+    rows = []
+    source_player_ids: set[str] = set()
+    for item in matches:
+        if not isinstance(item, dict):
+            continue
+        match_id = str(item.get("id") or "").strip()
+        players = item.get("players") if isinstance(item.get("players"), dict) else {}
+        p1, p2 = players.get("p1"), players.get("p2")
+        id_a = str(p1.get("id") or "").strip() if isinstance(p1, dict) else ""
+        id_b = str(p2.get("id") or "").strip() if isinstance(p2, dict) else ""
+        best_of, surface = _live_catalog_format(item), _live_catalog_surface(item)
+        if not match_id or not id_a or not id_b or (best_of is None and surface is None):
+            continue
+        source_player_ids.update((id_a, id_b))
+        rows.append({"match_id": match_id, "player_a": id_a, "player_b": id_b,
+                     "player_a_name": str(p1.get("name") or "") if isinstance(p1, dict) else "",
+                     "player_b_name": str(p2.get("name") or "") if isinstance(p2, dict) else "",
+                     "best_of": best_of, "surface": surface,
+                     "format_raw": item.get("format"), "surface_raw": item.get("surface")})
+    counts = {"catalog_matches_with_explicit_metadata": len(rows), "identity_unresolved": 0,
+              "ambiguous_event_pair": 0, "metadata_written": 0, "source_conflicts": 0,
+              "observations_inserted": 0, "confirmed_fonbet_pairs": [],
+              "unresolved_provider_matches": [], "ambiguous_provider_matches": []}
+    if not rows:
+        return counts
+
+    # A catalog can be linked after its first fetch. Its values become usable
+    # from the later identity confirmation time, never from the earlier fetch.
+    identity_cutoff = datetime.now(UTC)
+    with engine.begin() as conn:
+        alias_rows = conn.execute(text("""
+            SELECT source_player_id, canonical_player_id::text AS canonical_player_id, created_at
+            FROM ext_tennis_canonical_player_aliases
+            WHERE source='live_tennis_api' AND status='confirmed'
+              AND source_player_id = ANY(:source_ids) AND created_at <= :cutoff
+        """), {"source_ids": sorted(source_player_ids), "cutoff": identity_cutoff}).mappings().all()
+        aliases: dict[str, list[dict]] = defaultdict(list)
+        for alias in alias_rows:
+            aliases[str(alias["source_player_id"])].append(dict(alias))
+
+        # The profile endpoint performs an exact unique-name search for a
+        # Fonbet participant, then verifies the returned ID and full name in
+        # the fetched profile. This is a source-specific identity proof even
+        # when the stricter cross-provider canonical alias is not yet ready.
+        profile_rows = conn.execute(text("""
+            SELECT p.participant_id::text AS participant_id,s.state_json
+            FROM external_tennis_source_state s
+            JOIN tennis_player_profiles p
+              ON s.state_key='profile:' || p.participant_id::text
+            WHERE s.source='live_tennis_api' AND s.state_key LIKE 'profile:%'
+              AND s.state_json->>'status'='200'
+              AND s.state_json->'profile'->>'player_id' = ANY(:source_ids)
+        """), {"source_ids": sorted(source_player_ids)}).mappings().all()
+        profiles_by_source_id: dict[str, list[dict]] = defaultdict(list)
+        for profile_row in profile_rows:
+            state = profile_row["state_json"] or {}
+            profile_identity = _live_tennis_profile_identity(state, str(
+                ((state.get("profile") or {}).get("player_id") if isinstance(state, dict) else "") or ""
+            ))
+            if profile_identity is not None:
+                profiles_by_source_id[profile_identity["source_player_id"]].append({
+                    "participant_id": str(profile_row["participant_id"]),
+                    "available_at": profile_identity["available_at"],
+                })
+        direct_profile_by_source_id = {}
+        for source_id, candidates in profiles_by_source_id.items():
+            unique_participants = {row["participant_id"] for row in candidates}
+            if len(unique_participants) == 1:
+                direct_profile_by_source_id[source_id] = max(
+                    candidates, key=lambda row: row["available_at"]
+                )
+
+        identities = conn.execute(text("""
+            WITH latest_link AS (
+              SELECT DISTINCT ON (participant_id) participant_id,source_player_id,status,available_at
+              FROM tennis_player_identity_links
+              WHERE source='flashscore' AND available_at <= :cutoff
+              ORDER BY participant_id,available_at DESC,id DESC
+            )
+            SELECT l.participant_id::text AS participant_id,a.canonical_player_id::text AS canonical_player_id,
+                   greatest(l.available_at,a.created_at) AS identity_available_at
+            FROM latest_link l
+            JOIN ext_tennis_canonical_player_aliases a
+              ON a.source='flashscore' AND a.source_player_id=l.source_player_id AND a.status='confirmed'
+             AND a.created_at <= :cutoff
+            WHERE l.status='confirmed'
+        """), {"cutoff": identity_cutoff}).mappings().all()
+        canonical_by_participant = {}
+        for identity in identities:
+            canonical_by_participant.setdefault(identity["participant_id"], []).append(dict(identity))
+        event_rows = conn.execute(text("""
+            SELECT e.id::text AS event_id,e.source_event_id,e.metadata_json,
+                   e.participant_a_name,e.participant_b_name,
+                   e.participant_a_id::text AS participant_a_id,e.participant_b_id::text AS participant_b_id
+            FROM events e
+            WHERE e.source='fonbet' AND e.source_event_id ~ '^[0-9]+$'
+              AND e.sport_code='tennis' AND (:include_finished OR e.finished_at IS NULL)
+              AND (
+                (:include_finished AND e.scheduled_start_at BETWEEN :lower AND :upper)
+                OR (NOT :include_finished AND (
+                    (e.is_live IS TRUE AND e.last_seen_at >= now()-interval '90 seconds')
+                    OR e.scheduled_start_at BETWEEN :lower AND :upper
+                ))
+              )
+            ORDER BY e.is_live DESC,e.scheduled_start_at DESC
+            LIMIT 2000
+        """), {"lower": catalog_seen_at - timedelta(hours=24),
+                "upper": catalog_seen_at + timedelta(hours=max(1, min(int(event_window_hours), 48))),
+                "include_finished": include_finished}).mappings().all()
+        events_by_canonical_pair: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for event in event_rows:
+            a_rows = canonical_by_participant.get(event["participant_a_id"], [])
+            b_rows = canonical_by_participant.get(event["participant_b_id"], [])
+            if len(a_rows) != 1 or len(b_rows) != 1:
+                continue
+            pair = tuple(sorted((a_rows[0]["canonical_player_id"], b_rows[0]["canonical_player_id"])))
+            events_by_canonical_pair[pair].append({**dict(event),
+                "identity_available_at": max(a_rows[0]["identity_available_at"], b_rows[0]["identity_available_at"])})
+
+        for row in rows:
+            a_aliases, b_aliases = aliases.get(row["player_a"], []), aliases.get(row["player_b"], [])
+            candidates = []
+            if len(a_aliases) == 1 and len(b_aliases) == 1:
+                pair = tuple(sorted((a_aliases[0]["canonical_player_id"], b_aliases[0]["canonical_player_id"])))
+                candidates = events_by_canonical_pair.get(pair, [])
+                if len(candidates) == 1:
+                    candidates = [{**candidates[0], "source_identity_available_at": max(
+                        a_aliases[0]["created_at"], b_aliases[0]["created_at"],
+                        candidates[0]["identity_available_at"],
+                    )}]
+
+            if len(candidates) != 1:
+                profile_a = direct_profile_by_source_id.get(row["player_a"])
+                profile_b = direct_profile_by_source_id.get(row["player_b"])
+                if profile_a and profile_b and profile_a["participant_id"] != profile_b["participant_id"]:
+                    pair_ids = {profile_a["participant_id"], profile_b["participant_id"]}
+                    direct_candidates = [event for event in event_rows if {
+                        event["participant_a_id"], event["participant_b_id"]
+                    } == pair_ids]
+                    if len(direct_candidates) == 1:
+                        candidates = [{**dict(direct_candidates[0]),
+                                      "source_identity_available_at": max(
+                                          profile_a["available_at"], profile_b["available_at"])}]
+            if len(candidates) != 1:
+                if len(candidates) > 1:
+                    counts["ambiguous_event_pair"] += 1
+                    counts["ambiguous_provider_matches"].append({
+                        "source_match_id": row["match_id"], "source_player_ids": [row["player_a"], row["player_b"]],
+                        "source_player_names": [row["player_a_name"], row["player_b_name"]],
+                        "candidate_event_ids": sorted(str(item["event_id"]) for item in candidates),
+                    })
+                else:
+                    counts["identity_unresolved"] += 1
+                    # Surface likely pairs for identity/profile follow-up, but
+                    # never use fuzzy names as PIT identity evidence.
+                    name_candidates = []
+                    for candidate_event in event_rows:
+                        name_evidence = _catalog_pair_name_candidate(
+                            (row["player_a_name"], row["player_b_name"]),
+                            (str(candidate_event.get("participant_a_name") or ""),
+                             str(candidate_event.get("participant_b_name") or "")),
+                        )
+                        if name_evidence is not None:
+                            name_candidates.append({"event_id": str(candidate_event["event_id"]),
+                                                    **name_evidence})
+                    name_candidates.sort(key=lambda item: (-item["minimum_side_score"], item["event_id"]))
+                    counts["unresolved_provider_matches"].append({
+                        "source_match_id": row["match_id"], "source_player_ids": [row["player_a"], row["player_b"]],
+                        "source_player_names": [row["player_a_name"], row["player_b_name"]],
+                        "candidate_event_ids": [item["event_id"] for item in name_candidates],
+                        "name_candidates": name_candidates,
+                    })
+                continue
+            event = candidates[0]
+            counts["confirmed_fonbet_pairs"].append({
+                "source_match_id": row["match_id"], "fonbet_event_id": str(event["event_id"]),
+                "fonbet_participant_ids": [str(event["participant_a_id"]), str(event["participant_b_id"])],
+                "source_player_names": [row["player_a_name"], row["player_b_name"]],
+            })
+            # Direct-profile matches do not have a canonical Flashscore alias.
+            # Keep the full confirmed identity time on both matching paths.
+            event["identity_available_at"] = event["source_identity_available_at"]
+            effective_at = max(catalog_seen_at, event["identity_available_at"])
+            metadata = event["metadata_json"] if isinstance(event["metadata_json"], dict) else {}
+            updated = dict(metadata)
+            wrote = False
+            observations = []
+
+            if row["best_of"] is not None:
+                old_value = updated.get("best_of")
+                old_at = updated.get("best_of_available_at")
+                old_source = updated.get("best_of_source")
+                try:
+                    old_timestamp = datetime.fromisoformat(old_at) if old_at else None
+                except (TypeError, ValueError):
+                    old_timestamp = None
+                if old_timestamp and old_timestamp > effective_at:
+                    pass
+                elif old_value in (3, 5) and old_at and old_source != "live_tennis_api":
+                    if int(old_value) != row["best_of"]:
+                        counts["source_conflicts"] += 1
+                    # Keep a timestamped value from its existing provider even
+                    # when the providers agree; this catalog is supplemental.
+                elif old_source == "live_tennis_api" and str(old_value) == str(row["best_of"]) and old_at:
+                    pass  # Preserve the first observation time for an unchanged format.
+                else:
+                    updated.update({
+                        "best_of": row["best_of"], "best_of_available_at": effective_at.isoformat(),
+                        "best_of_source": "live_tennis_api", "best_of_source_match_id": row["match_id"],
+                        "best_of_source_format": row["format_raw"],
+                        "best_of_catalog_observed_at": catalog_seen_at.isoformat(),
+                        "best_of_identity_available_at": event["identity_available_at"].isoformat(),
+                        "best_of_source_content_sha256": content_sha256,
+                        "best_of_source_raw_object_key": raw_object_key,
+                    })
+                    wrote = True
+                    observations.append(("best_of", row["best_of"], {
+                        "catalog_observed_at": catalog_seen_at.isoformat(), "identity_available_at": event["identity_available_at"].isoformat(),
+                        "format_raw": row["format_raw"], "match_id": row["match_id"]}))
+
+            if row["surface"] is not None:
+                old_surface, old_surface_at = updated.get("surface"), updated.get("surface_available_at")
+                old_surface_source = updated.get("surface_source")
+                try:
+                    old_surface_timestamp = datetime.fromisoformat(old_surface_at) if old_surface_at else None
+                except (TypeError, ValueError):
+                    old_surface_timestamp = None
+                if old_surface_timestamp and old_surface_timestamp > effective_at:
+                    pass
+                elif old_surface in {"hard", "clay", "grass", "carpet"} and old_surface_at and old_surface_source != "live_tennis_api":
+                    if str(old_surface).casefold() != row["surface"]:
+                        counts["source_conflicts"] += 1
+                elif (old_surface_source == "live_tennis_api" and
+                      str(old_surface).casefold() == row["surface"] and old_surface_at):
+                    pass
+                else:
+                    updated.update({
+                        "surface": row["surface"], "surface_available_at": effective_at.isoformat(),
+                        "surface_source": "live_tennis_api", "surface_source_match_id": row["match_id"],
+                        "surface_catalog_observed_at": catalog_seen_at.isoformat(),
+                        "surface_identity_available_at": event["identity_available_at"].isoformat(),
+                        "surface_source_content_sha256": content_sha256,
+                        "surface_source_raw_object_key": raw_object_key,
+                    })
+                    wrote = True
+                    observations.append(("surface", row["surface"], {
+                        "catalog_observed_at": catalog_seen_at.isoformat(), "identity_available_at": event["identity_available_at"].isoformat(),
+                        "surface_raw": row["surface_raw"], "match_id": row["match_id"]}))
+            # Retain older source facts even when a newer current projection
+            # already exists. Catalog replay must not replace that projection.
+            for attribute_name, value, raw_field in (("best_of", row["best_of"], "format_raw"),
+                                                      ("surface", row["surface"], "surface_raw")):
+                if value is None or any(item[0] == attribute_name for item in observations):
+                    continue
+                old_value = metadata.get(attribute_name)
+                if old_value is not None and str(old_value).casefold() != str(value).casefold():
+                    counts["source_conflicts"] += 1
+                    continue
+                observations.append((attribute_name, value, {
+                    "catalog_observed_at": catalog_seen_at.isoformat(),
+                    "identity_available_at": event["identity_available_at"].isoformat(),
+                    raw_field: row[raw_field], "match_id": row["match_id"],
+                }))
+            if wrote:
+                conn.execute(text("UPDATE events SET metadata_json=CAST(:metadata AS jsonb),updated_at=now() WHERE id=:id"),
+                             {"metadata": json.dumps(updated), "id": event["event_id"]})
+                counts["metadata_written"] += 1
+            for attribute_name, value, evidence in observations:
+                counts["observations_inserted"] += _record_event_attribute_observation(
+                    conn, event_id=event["event_id"], attribute_name=attribute_name, value=value,
+                    source="live_tennis_api", source_record_id=row["match_id"], available_at=effective_at,
+                    identity_available_at=event["identity_available_at"], raw_object_key=raw_object_key,
+                    content_hash=content_sha256, evidence=evidence)
+    return counts
+
+
+def replay_saved_catalog_evidence(engine, storage, *, projection_engine=None, max_catalogs=100) -> dict:
+    """Revisit archived format/surface facts after identity decisions, offline."""
+    with engine.connect() as conn:
+        catalogs = conn.execute(text("""
+            SELECT state_key,state_json FROM external_tennis_source_state
+            WHERE source='live_tennis_api' AND state_key LIKE 'catalog_observation:%'
+            ORDER BY updated_at DESC,state_key LIMIT :limit
+        """), {"limit": max_catalogs}).mappings().all()
+    report = {"generated_at": datetime.now(UTC).isoformat(), "catalogs": [], "provider_requests": 0}
+    for catalog in catalogs:
+        state = catalog["state_json"]
+        item = {"state_key": catalog["state_key"], "raw_object_key": state.get("raw_object_key")}
+        report["catalogs"].append(item)
+        raw_at = state.get("first_observed_at")
+        if not raw_at:
+            item["rejected"] = "original_observation_time_missing"
+            continue
+        try:
+            observed_at = datetime.fromisoformat(raw_at.replace("Z", "+00:00"))
+        except (AttributeError, ValueError):
+            item["rejected"] = "original_observation_time_invalid"
+            continue
+        if observed_at.tzinfo is None:
+            item["rejected"] = "observation_timezone_missing"
+            continue
+        body = storage.read_external_raw_bytes(state["raw_object_key"])
+        if body is None:
+            item["rejected"] = "source_object_unavailable"
+            continue
+        digest = hashlib.sha256(body).hexdigest()
+        if digest != state.get("content_sha256"):
+            item["rejected"] = "source_content_hash_mismatch"
+            continue
+        try:
+            payload = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            item["rejected"] = "invalid_catalog_payload"
+            continue
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            item["rejected"] = "invalid_catalog_payload"
+            continue
+        item.update({"content_sha256": digest, "original_observed_at": observed_at.isoformat(),
+                     "matches": len(payload["data"]), "source_hash_verified": True})
+        item["projection"] = _materialize_live_catalog_metadata(
+            projection_engine if projection_engine is not None else engine,
+            payload["data"], catalog_seen_at=observed_at,
+            content_sha256=digest, raw_object_key=state["raw_object_key"], include_finished=True,
+            event_window_hours=48 if state.get("status") == "upcoming" else 24)
+    return report
+
+
+def _observation_envelope(**kwargs):
+    """Lazy import keeps the source runner usable by lightweight CLI entrypoints."""
+    from .external_tennis_ingestion import build_observation_envelope
+
+    return build_observation_envelope(**kwargs)
 
 
 def _api_tennis_offline_batches_per_tick() -> int:
@@ -196,6 +666,26 @@ def _secret(name: str) -> str:
     return os.getenv(name, "").strip()
 
 
+def _live_tennis_quota_retry_delay_seconds(quota: dict[str, Any], now: datetime, *,
+                                          category: str = "catalog",
+                                          category_budget: int = 48) -> int | None:
+    """Retry a skipped catalog request at the next quota boundary, without spending quota."""
+    now = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
+    if quota.get("day") != now.date().isoformat():
+        return 1
+    category_calls = quota.get("category_calls") if isinstance(quota.get("category_calls"), dict) else {}
+    daily_exhausted = int(quota.get("daily_calls", 0)) >= int(quota.get("daily_limit", 80))
+    category_exhausted = int(category_calls.get(category, 0)) >= int(category_budget)
+    if daily_exhausted or category_exhausted:
+        next_day = datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
+        return max(1, math.ceil((next_day - now).total_seconds()))
+    minute_limit = quota.get("minute_limit")
+    if minute_limit is not None and int(quota.get("minute_calls", 0)) >= int(minute_limit):
+        next_minute = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        return max(1, math.ceil((next_minute - now).total_seconds()))
+    return None
+
+
 def _api_tennis_daily_budget() -> int:
     try:
         return min(6000, max(1, int(os.getenv("API_TENNIS_DAILY_BUDGET", "6000"))))
@@ -291,9 +781,36 @@ def _live_tennis_player_profile(payload: Any, *, expected_id: str,
         "tour": profile.get("tour"),
         "country": profile.get("country"),
         "ranking": _as_int(profile.get("ranking")),
+        "ranking_points": _as_int(profile.get("ranking_points")),
+        "ranking_status": str(profile.get("ranking_status") or "").lower() or None,
+        "ranking_checked_at": profile.get("ranking_checked_at"),
         "data_completeness": profile.get("data_completeness"),
         "profile_version": _as_int(profile.get("profile_version")),
     }
+
+
+def _live_tennis_profile_identity(state: Any, source_player_id: str) -> dict[str, Any] | None:
+    """Recover an exact, timestamped profile-to-Fonbet-participant identity."""
+    from tennis_adapter.external_names import fold
+
+    if not isinstance(state, dict) or state.get("status") != 200 or state.get("match_status") != "MATCHED":
+        return None
+    profile = state.get("profile")
+    if not isinstance(profile, dict) or str(profile.get("player_id") or "") != str(source_player_id):
+        return None
+    requested_name = str(state.get("requested_name") or "").strip()
+    profile_name = str(profile.get("name") or "").strip()
+    if not requested_name or not profile_name or fold(requested_name) != fold(profile_name):
+        return None
+    raw_available = state.get("profile_fetched_at") or state.get("observed_at")
+    try:
+        available_at = datetime.fromisoformat(str(raw_available).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if available_at.tzinfo is None:
+        available_at = available_at.replace(tzinfo=UTC)
+    return {"source_player_id": str(source_player_id),
+            "available_at": available_at.astimezone(UTC)}
 
 
 def _api_tennis_player_stat_ratios(event: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -314,6 +831,74 @@ def _api_tennis_player_stat_ratios(event: dict[str, Any]) -> dict[str, dict[str,
             continue
         ratios.setdefault(str(row["player_key"]), {})[field] = won / total
     return ratios
+
+
+def _api_tennis_serve_point_counts(event: dict[str, Any]) -> dict[str, tuple[float, float]]:
+    """Keep explicit match-level service-point denominators for PIT feature use."""
+    counts: dict[str, tuple[float, float]] = {}
+    for row in event.get("statistics") or []:
+        if not isinstance(row, dict) or str(row.get("stat_period") or "").casefold() != "match":
+            continue
+        if str(row.get("stat_name") or "").strip().casefold() != "service points won":
+            continue
+        player_id = row.get("player_key")
+        if player_id is None:
+            continue
+        try:
+            won, total = float(row.get("stat_won")), float(row.get("stat_total"))
+        except (TypeError, ValueError):
+            continue
+        if (not math.isfinite(won) or not math.isfinite(total) or total <= 0
+                or won < 0 or won > total or not won.is_integer() or not total.is_integer()):
+            continue
+        counts[str(player_id)] = (total, won)
+    return counts
+
+
+def _persist_api_tennis_serve_point_counts(conn, event: dict[str, Any], available_at: datetime,
+                                            played_at: datetime) -> int:
+    """Append denominator-backed serve facts only through confirmed source identity."""
+    source_match_id = str(event.get("event_key") or "")[:128]
+    if not source_match_id:
+        return 0
+    written = 0
+    for source_player_id, (serve_points, serve_points_won) in _api_tennis_serve_point_counts(event).items():
+        result = conn.execute(text("""
+          INSERT INTO ext_tennis_serve_logs (
+            id,source,source_match_id,player_name,source_event_at,available_at,
+            availability_provenance,source_confidence,retrospective,surface,
+            serve_points,serve_points_won
+          )
+          SELECT gen_random_uuid(),'api_tennis',:match_id,matched.player_name,:played_at,:available_at,
+                 'api_tennis_fetch_at','confirmed_api_id',true,:surface,
+                 :serve_points,:serve_points_won
+          FROM (
+            SELECT min(p.canonical_name) AS player_name
+            FROM ext_tennis_canonical_player_aliases a
+            JOIN tennis_player_profiles tp ON tp.canonical_player_id=a.canonical_player_id
+            JOIN participants p ON p.id=tp.participant_id
+            WHERE a.source='api_tennis' AND a.source_player_id=:source_player_id
+              AND a.status='confirmed'
+            HAVING count(DISTINCT p.id)=1
+          ) AS matched
+          WHERE matched.player_name IS NOT NULL
+          ON CONFLICT (source,source_match_id,player_name) DO NOTHING
+        """), {
+            "match_id": source_match_id, "played_at": played_at, "available_at": available_at,
+            "source_player_id": source_player_id, "surface": _api_tennis_surface(event),
+            "serve_points": serve_points, "serve_points_won": serve_points_won,
+        })
+        written += max(0, int(getattr(result, "rowcount", 0) or 0))
+    return written
+
+
+def _api_tennis_surface(event: dict[str, Any]) -> str:
+    """Normalize only an explicitly supplied event surface; never infer from a tournament."""
+    raw = str(event.get("event_surface") or "").strip().casefold()
+    aliases = {"hard court": "hard", "indoor hard": "hard", "clay court": "clay",
+               "grass court": "grass", "carpet court": "carpet"}
+    surface = aliases.get(raw, raw)
+    return surface if surface in {"hard", "clay", "grass", "carpet"} else "unknown"
 
 
 def _api_tennis_winner_first_score(event: dict[str, Any]) -> str:
@@ -565,6 +1150,7 @@ def _store_result(conn, event: dict[str, Any], available_at: datetime) -> None:
                              "statistics": event.get("statistics") or [],
                              "point_completeness": _point_completeness(event)}, ensure_ascii=False, default=str),
     })
+    _persist_api_tennis_serve_point_counts(conn, event, available_at, played_at)
 
 
 class SourceArchive:
@@ -652,7 +1238,8 @@ class SourceArchive:
         with self.engine.begin() as conn:
             conn.execute(text(f"UPDATE external_tennis_source_jobs SET {', '.join(sets)} WHERE id=:id"), {"id": job_id, "status": status, **values})
 
-    def persist_events(self, job: dict[str, Any], events: list[dict[str, Any]], raw_key: str, digest: str):
+    def persist_events(self, job: dict[str, Any], events: list[dict[str, Any]], raw_key: str, digest: str,
+                       *, project_canonical: bool = True):
         observed_at = job.get("observed_at") or datetime.now(UTC)
         with self.engine.begin() as conn:
             for index, event in enumerate(events):
@@ -665,18 +1252,47 @@ class SourceArchive:
                     "retrospective": True,
                     "point_completeness": _point_completeness(event),
                 }
-                canonical_hash = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+                normalized = {
+                    "played_at": event.get("event_date"), "tournament": event.get("tournament_name"),
+                    "surface": event.get("event_surface"), "best_of": event.get("best_of"),
+                    "winner_name": (event.get("event_first_player") if event.get("event_winner") == "First player"
+                                    else event.get("event_second_player")),
+                    "loser_name": (event.get("event_second_player") if event.get("event_winner") == "First player"
+                                   else event.get("event_first_player")),
+                    "score": event.get("event_final_result"),
+                }
+                envelope = _observation_envelope(
+                    source="api_tennis", external_id=event_id,
+                    source_url="https://api.api-tennis.com/tennis/?method=get_fixtures",
+                    parser_version="api_tennis_v1", available_at=available_at,
+                    source_content_hash=digest, source_document_ref=raw_key,
+                    raw_fields=event, normalized_fields=normalized,
+                    required_fields=("played_at", "winner_name", "score"),
+                    field_sources={"played_at": "event_date", "tournament": "tournament_name",
+                                   "surface": "event_surface", "best_of": "best_of",
+                                   "winner_name": ("event_first_player" if event.get("event_winner") == "First player"
+                                                   else "event_second_player"),
+                                   "loser_name": ("event_second_player" if event.get("event_winner") == "First player"
+                                                  else "event_first_player"),
+                                   "score": "event_final_result"},
+                )
+                payload.update(envelope["observation_metadata"])
+                canonical_hash = envelope["observation_hash"]
                 conn.execute(text("""
                     INSERT INTO ext_tennis_match_observations
                       (id, source, source_match_id, observation_hash, available_at, source_url,
-                       source_content_hash, parser_version, payload, created_at)
+                       source_content_hash, source_document_ref, parser_version, ingestion_status,
+                       field_provenance, payload, created_at)
                     SELECT gen_random_uuid(), 'api_tennis', :mid, :ohash, :available,
                             'https://api.api-tennis.com/tennis/?method=get_fixtures', :content_hash,
-                            'api_tennis_v1', CAST(:payload AS jsonb), now()
+                            :document_ref, 'api_tennis_v1', :status, CAST(:provenance AS jsonb),
+                            CAST(:payload AS jsonb), now()
                     WHERE NOT EXISTS (SELECT 1 FROM ext_tennis_match_observations
                                       WHERE source='api_tennis' AND source_match_id=:mid AND observation_hash=:ohash)
                 """), {"mid": event_id, "ohash": canonical_hash, "available": available_at,
-                      "content_hash": digest, "payload": json.dumps(payload, ensure_ascii=False, default=str)})
+                      "content_hash": digest, "document_ref": raw_key, "status": envelope["ingestion_status"],
+                      "provenance": json.dumps(envelope["field_provenance"]),
+                      "payload": json.dumps(payload, ensure_ascii=False, default=str)})
                 normalized_points, point_quality = _normalize_api_tennis_pbp(event)
                 if normalized_points:
                     point_hash = hashlib.sha256(json.dumps(event.get("pointbypoint"), sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
@@ -724,6 +1340,8 @@ class SourceArchive:
                   "meta": json.dumps({"tours": sorted({_normalize_tour(e) for e in events}), "observed_at": observed_at.isoformat(),
                                       "provider_empty_without_result": bool(job.get("provider_empty_without_result"))})})
 
+        if not project_canonical:
+            return
         projection_items = [
             item for item in (_api_tennis_projection_item(event, observed_at) for event in events)
             if item is not None
@@ -786,7 +1404,9 @@ class ExternalTennisSourcesWorker:
         self._last_tennis_explorer_request = 0.0
         self._last_tennis_abstract_request = 0.0
 
-    def _reserve_daily_call(self, source: str, budget: int, *, minute_budget: int | None = None) -> bool:
+    def _reserve_daily_call(self, source: str, budget: int, *, minute_budget: int | None = None,
+                            category: str | None = None,
+                            category_budget: int | None = None) -> bool:
         """Reserve quota in PostgreSQL so a process restart cannot reset a provider budget."""
         now = datetime.now(UTC)
         day_key = now.date().isoformat()
@@ -804,7 +1424,10 @@ class ExternalTennisSourcesWorker:
             # source status does not have to infer a provider budget.
             state["daily_limit"] = int(budget)
             state["minute_limit"] = int(minute_budget) if minute_budget is not None else None
-            if int(state.get("daily_calls", 0)) >= budget:
+            category_calls = state.setdefault("category_calls", {})
+            if (int(state.get("daily_calls", 0)) >= budget or
+                    (category is not None and category_budget is not None
+                     and int(category_calls.get(category, 0)) >= category_budget)):
                 conn.execute(text("""
                   INSERT INTO external_tennis_source_state(source,state_key,state_json,updated_at)
                   VALUES (:source,:key,CAST(:payload AS jsonb),now())
@@ -820,6 +1443,8 @@ class ExternalTennisSourcesWorker:
                 return False
             state["daily_calls"] = int(state.get("daily_calls", 0)) + 1
             state["minute_calls"] = int(state.get("minute_calls", 0)) + 1
+            if category is not None:
+                category_calls[category] = int(category_calls.get(category, 0)) + 1
             conn.execute(text("""
               INSERT INTO external_tennis_source_state(source,state_key,state_json,updated_at)
               VALUES (:source,:key,CAST(:payload AS jsonb),now())
@@ -888,7 +1513,10 @@ class ExternalTennisSourcesWorker:
             })
             return 200
         try:
-            count = self._store_tml_csv(result["body"], tour, url)
+            count = self._store_tml_csv(
+                result["body"], tour, url, source_content_hash=digest,
+                source_document_ref=result.get("key") or url,
+            )
         except Exception as exc:
             if prior.get("status") == 200 and prior.get("content_sha256"):
                 self._save_source_snapshot(source, partition, {
@@ -1074,64 +1702,189 @@ class ExternalTennisSourcesWorker:
         logger.warning("API-Tennis interval partitioned date=%s reason=%s", job["interval_start"], reason)
         return True
 
-    async def _live_tennis_once(self) -> bool:
+    async def _live_tennis_once(self, *, status: str = "upcoming", window_hours: int = 48) -> bool:
         key = _secret("LIVE_TENNIS_API_KEY")
         if not key:
             return False
-        # Plan budget: at most 80/day and 24/minute, preserving provider headroom.
-        if not self._reserve_daily_call("live_tennis_api", 80, minute_budget=24):
-            return False
-        client = await self._client()
-        request_started = time.monotonic()
-        response = None
-        try:
-            response = await client.get(f"{LIVE_TENNIS_BASE}/matches", params={"status": "live", "limit": 100},
-                                        headers={"Authorization": f"Bearer {key}"})
-            from .source_metrics import try_record_source_metric
-            try_record_source_metric(
-                self.archive.engine, "live_tennis_api", request=True,
-                successful=200 <= response.status_code < 300,
-                duration_ms=round((time.monotonic() - request_started) * 1000),
-                status_code=response.status_code,
-                error_code=(f"HTTP_{response.status_code}" if not 200 <= response.status_code < 300 else None),
+        if status not in {"live", "upcoming"}:
+            raise ValueError("invalid_live_tennis_catalog_status")
+        category_budget = 48
+        state_key = f"catalog_scan:{status}"
+        checkpoint = self._read_source_snapshot("live_tennis_api", state_key)
+        if not isinstance(checkpoint, dict) or not checkpoint or checkpoint.get("complete"):
+            now = datetime.now(UTC)
+            checkpoint = {
+                "status": status, "cycle_started_at": now.isoformat(), "offset": 0,
+                "page_size": 200, "draw": "singles", "complete": False,
+                "unique_match_ids": [], "pages": [],
+                "from": now.isoformat() if status == "upcoming" else None,
+                "to": (now + timedelta(hours=max(1, min(window_hours, 48)))).isoformat()
+                      if status == "upcoming" else None,
+            }
+        total_unique = set(str(v) for v in checkpoint.get("unique_match_ids", []))
+        pages = list(checkpoint.get("pages", []))
+        while True:
+            if not self._reserve_daily_call("live_tennis_api", 80, minute_budget=24,
+                                            category="catalog", category_budget=category_budget):
+                checkpoint.update({"complete": False, "last_incomplete_reason": "quota_deferred",
+                                   "updated_at": datetime.now(UTC).isoformat(),
+                                   "unique_match_ids": sorted(total_unique), "pages": pages})
+                self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
+                return True  # Durable partial scan; the cursor resumes after quota reset.
+            offset = int(checkpoint.get("offset", 0))
+            params = {"status": status, "draw": "singles", "limit": 200, "offset": offset}
+            if status == "upcoming":
+                params.update({"from": checkpoint["from"], "to": checkpoint["to"]})
+            result = await self._archive_external_get(
+                "live-tennis-api", f"catalog-{status}-offset-{offset}",
+                f"{LIVE_TENNIS_BASE}/matches?{urlencode(params)}",
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
             )
-            if response.status_code in (401, 403):
-                logger.warning("Live Tennis API currently does not permit this endpoint; status=%s", response.status_code)
+            if result.get("status") != 200 or not result.get("body"):
+                checkpoint.update({"complete": False, "last_incomplete_reason": result.get("error") or
+                                   f"HTTP_{result.get('status')}", "retry_after": result.get("retry_after"),
+                                   "updated_at": datetime.now(UTC).isoformat()})
+                self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
                 return False
-            if response.status_code == 429:
-                delay = response.headers.get("Retry-After", "60")
-                await asyncio.sleep(min(300, max(1, int(delay) if delay.isdigit() else 60)))
-                return True
-            response.raise_for_status()
-            data = response.json()
-            if not isinstance(data, dict) or not isinstance(data.get("data"), list):
-                raise ValueError("invalid_live_tennis_catalog")
-            digest = hashlib.sha256(response.content).hexdigest()
-            raw_key = self.storage.archive_raw_bytes("live-tennis-api", "live", response.content, digest)
-            if raw_key:
-                # This provider is a catalog/identity supplement only. Fonbet remains score authority.
+            try:
+                payload = json.loads(result["body"])
+                rows, meta = payload.get("data"), payload.get("meta")
+                if not isinstance(rows, list) or not isinstance(meta, dict):
+                    raise ValueError("invalid_live_tennis_catalog")
+                has_more = meta.get("has_more")
+                total = meta.get("total")
+                if (not isinstance(has_more, bool) or
+                        (total is not None and (not isinstance(total, int) or total < 0))):
+                    raise ValueError("invalid_live_tennis_pagination_metadata")
+                if len(rows) > 200 or (has_more and not rows):
+                    raise ValueError("invalid_live_tennis_pagination_progress")
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                checkpoint.update({"complete": False, "last_incomplete_reason": str(exc),
+                                   "updated_at": datetime.now(UTC).isoformat()})
+                self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
+                return False
+
+            # Offset pagination is not a snapshot transaction. If the provider
+            # changes the result set during a multi-page walk, overlapping IDs
+            # or a changed total make the scan incomplete; archive the response
+            # but restart at offset zero instead of silently skipping matches.
+            page_ids = [str(row.get("id")) for row in rows
+                        if isinstance(row, dict) and row.get("id") is not None]
+            prior_total = checkpoint.get("reported_total")
+            changed_total = prior_total is not None and total is not None and int(prior_total) != total
+            overlaps = offset > 0 and any(match_id in total_unique for match_id in page_ids)
+            if changed_total or overlaps:
+                restarts = int(checkpoint.get("pagination_restarts", 0)) + 1
+                archived_attempts = list(checkpoint.get("discarded_page_sets", []))
+                archived_attempts.append({"reported_total": prior_total, "restart_total": total,
+                                          "reason": "provider_total_changed" if changed_total else "page_ids_overlap",
+                                          "pages": pages})
+                checkpoint.update({"offset": 0, "reported_total": None,
+                                   "unique_match_ids": [], "pages": [], "discarded_page_sets": archived_attempts,
+                                   "pagination_restarts": restarts, "complete": False,
+                                   "last_incomplete_reason": "provider_catalog_changed_during_pagination",
+                                   "updated_at": datetime.now(UTC).isoformat()})
+                if restarts > 2:
+                    checkpoint["last_incomplete_reason"] = "provider_catalog_unstable_after_restarts"
+                self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
+                return False
+
+            digest = result["content_sha256"]
+            raw_key = result["key"]
+            fetched_at = datetime.fromisoformat(result["fetched_at"].replace("Z", "+00:00"))
+            params_digest = hashlib.sha256(json.dumps(params, sort_keys=True,
+                                                       separators=(",", ":")).encode()).hexdigest()[:16]
+            observation_id = hashlib.sha256(f"{status}:{params_digest}:{digest}".encode()).hexdigest()
+            observation_key = f"catalog_observation:{observation_id}"
+            with self.archive.engine.begin() as conn:
+                conn.execute(text("""
+                  INSERT INTO external_tennis_source_state(source,state_key,state_json,updated_at)
+                  VALUES ('live_tennis_api',:state_key,CAST(:payload AS jsonb),now())
+                  ON CONFLICT(source,state_key) DO NOTHING
+                """), {"state_key": observation_key,
+                      "payload": json.dumps({"first_observed_at": fetched_at.isoformat(),
+                                             "raw_object_key": raw_key, "content_sha256": digest,
+                                             "match_count": len(rows), "status": status,
+                                             "offset": offset, "request_params": params,
+                                             "parser_version": "live_catalog_metadata_v1"})})
+                first_seen = conn.execute(text("""
+                  SELECT state_json FROM external_tennis_source_state
+                  WHERE source='live_tennis_api' AND state_key=:state_key
+                """), {"state_key": observation_key}).scalar_one()
+            if isinstance(first_seen, str):
+                first_seen = json.loads(first_seen)
+            available_at = datetime.fromisoformat(first_seen["first_observed_at"].replace("Z", "+00:00"))
+            projection = _materialize_live_catalog_metadata(
+                self.archive.engine, rows, catalog_seen_at=available_at,
+                content_sha256=digest, raw_object_key=raw_key,
+                event_window_hours=48 if status == "upcoming" else 24,
+            )
+            ids = page_ids
+            duplicate_ids = len(ids) - len(set(ids))
+            total_unique.update(ids)
+            page = {"offset": offset, "count": len(rows), "fetched_at": fetched_at.isoformat(),
+                    "raw_object_key": raw_key, "content_sha256": digest, "has_more": has_more,
+                    "total": total, "duplicate_ids_in_page": duplicate_ids,
+                    "projection": projection, "request_params": params}
+            pages.append(page)
+            next_offset = offset + int(checkpoint.get("page_size", 200))
+            if next_offset <= offset and has_more:
+                checkpoint.update({"last_incomplete_reason": "pagination_offset_did_not_advance"})
+                break
+            checkpoint.update({"offset": next_offset, "reported_total": total,
+                               "unique_match_ids": sorted(total_unique), "pages": pages,
+                               "last_page_at": fetched_at.isoformat(), "complete": False,
+                               "updated_at": datetime.now(UTC).isoformat()})
+            self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
+            if not has_more:
+                is_complete = total is None or next_offset >= total
+                projections = [item.get("projection", {}) for item in pages]
+                confirmed_pairs = {}
+                unresolved_matches = {}
+                ambiguous_matches = {}
+                for projection in projections:
+                    for pair in projection.get("confirmed_fonbet_pairs", []):
+                        confirmed_pairs[(pair.get("source_match_id"), pair.get("fonbet_event_id"))] = pair
+                    for match in projection.get("unresolved_provider_matches", []):
+                        unresolved_matches[match.get("source_match_id")] = match
+                    for match in projection.get("ambiguous_provider_matches", []):
+                        ambiguous_matches[match.get("source_match_id")] = match
+                overlap_report = {
+                    "confirmed_pair_count": len(confirmed_pairs),
+                    "confirmed_pairs": list(confirmed_pairs.values()),
+                    "unresolved_match_count": len(unresolved_matches),
+                    "unresolved_matches": list(unresolved_matches.values()),
+                    "ambiguous_match_count": len(ambiguous_matches),
+                    "ambiguous_matches": list(ambiguous_matches.values()),
+                }
+                checkpoint.update({"complete": is_complete,
+                                   "coverage_complete": is_complete,
+                                   "catalog_rows_seen": sum(page_item["count"] for page_item in pages),
+                                   "unique_match_count": len(total_unique),
+                                   "fonbet_overlap": overlap_report,
+                                   "completed_at": datetime.now(UTC).isoformat(),
+                                   "last_incomplete_reason": None if is_complete else
+                                   "provider_ended_before_reported_total"})
+                self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
                 with self.archive.engine.begin() as conn:
                     conn.execute(text("""
                       INSERT INTO external_tennis_source_state(source,state_key,state_json,updated_at)
-                      VALUES ('live_tennis_api','latest_live_catalog',CAST(:payload AS jsonb),now())
+                      VALUES ('live_tennis_api',:key,CAST(:payload AS jsonb),now())
                       ON CONFLICT(source,state_key) DO UPDATE SET state_json=excluded.state_json,updated_at=now()
-                    """), {"payload": json.dumps({"status": 200, "catalog_valid": True,
-                                                   "observed_at": datetime.now(UTC).isoformat(), "raw_object_key": raw_key,
-                                                   "content_sha256": digest, "match_count": len(data.get("data", [])),
-                                                   "role": "catalog_supplement_only"})})
-                from .source_metrics import try_record_source_metric
-                try_record_source_metric(self.archive.engine, "live_tennis_api", published=1)
-            return True
-        except (httpx.HTTPError, ValueError) as exc:
-            if response is None:
-                from .source_metrics import try_record_source_metric
-                try_record_source_metric(
-                    self.archive.engine, "live_tennis_api", request=True, successful=False,
-                    duration_ms=round((time.monotonic() - request_started) * 1000),
-                    error_code=type(exc).__name__,
-                )
-            logger.warning("Live Tennis API catalog fetch failed: %s", type(exc).__name__)
-            return False
+                    """), {"key": f"latest_{status}_catalog", "payload": json.dumps({
+                        "status": 200, "catalog_valid": True, "complete": checkpoint["complete"],
+                        "observed_at": checkpoint["cycle_started_at"], "page_count": len(pages),
+                        "match_count": len(total_unique), "reported_total": total,
+                        "raw_object_keys": [item["raw_object_key"] for item in pages],
+                        "raw_object_key": pages[-1]["raw_object_key"] if pages else None,
+                        "content_sha256": [item["content_sha256"] for item in pages],
+                        "complete": checkpoint["complete"], "page_count": len(pages),
+                        "fonbet_overlap": overlap_report,
+                        "role": f"{status}_pit_catalog"})})
+                return checkpoint["complete"]
+            checkpoint["offset"] = next_offset
+        self._save_source_snapshot("live_tennis_api", state_key, checkpoint)
+        return False
 
     async def _fetch_live_tennis_profiles(self, *, limit: int = 2) -> dict[str, int]:
         """Fetch only due current-match player profiles within the shared FREE quota."""
@@ -1144,22 +1897,35 @@ class ExternalTennisSourcesWorker:
         with self.archive.engine.connect() as conn:
             targets = conn.execute(text("""
                 WITH active_players AS (
-                  SELECT participant_a_id AS participant_id, is_live, scheduled_start_at
+                  SELECT participant_a_id AS participant_id,participant_b_id AS counterpart_id,
+                         is_live,scheduled_start_at
                   FROM events
-                  WHERE sport_code='tennis' AND finished_at IS NULL AND participant_a_id IS NOT NULL
-                    AND (is_live IS TRUE OR scheduled_start_at BETWEEN now()-interval '6 hours'
-                                                               AND now()+interval '6 hours')
+                  WHERE source='fonbet' AND source_event_id ~ '^[0-9]+$'
+                    AND sport_code='tennis' AND finished_at IS NULL AND participant_a_id IS NOT NULL
+                    AND ((is_live IS TRUE AND last_seen_at >= now()-interval '90 seconds')
+                         OR scheduled_start_at BETWEEN now()-interval '24 hours'
+                                                   AND now()+interval '48 hours')
                   UNION ALL
-                  SELECT participant_b_id AS participant_id, is_live, scheduled_start_at
+                  SELECT participant_b_id AS participant_id,participant_a_id AS counterpart_id,
+                         is_live,scheduled_start_at
                   FROM events
-                  WHERE sport_code='tennis' AND finished_at IS NULL AND participant_b_id IS NOT NULL
-                    AND (is_live IS TRUE OR scheduled_start_at BETWEEN now()-interval '6 hours'
-                                                               AND now()+interval '6 hours')
+                  WHERE source='fonbet' AND source_event_id ~ '^[0-9]+$'
+                    AND sport_code='tennis' AND finished_at IS NULL AND participant_b_id IS NOT NULL
+                    AND ((is_live IS TRUE AND last_seen_at >= now()-interval '90 seconds')
+                         OR scheduled_start_at BETWEEN now()-interval '24 hours'
+                                                   AND now()+interval '48 hours')
                 )
                 , candidates AS (
                   SELECT p.id::text AS participant_id,
                          COALESCE(NULLIF(cp.display_name,''), p.canonical_name) AS lookup_name,
                          bool_or(active_players.is_live) AS is_live,
+                         bool_or(EXISTS (
+                           SELECT 1 FROM external_tennis_source_state paired_profile
+                           WHERE paired_profile.source='live_tennis_api'
+                             AND paired_profile.state_key='profile:' || active_players.counterpart_id::text
+                             AND paired_profile.state_json->>'status'='200'
+                             AND paired_profile.updated_at >= now()-interval '7 days'
+                         )) AS completes_profiled_pair,
                          min(active_players.scheduled_start_at) AS next_start
                   FROM active_players JOIN participants p ON p.id=active_players.participant_id
                   LEFT JOIN tennis_player_profiles tp ON tp.participant_id=p.id
@@ -1170,11 +1936,11 @@ class ExternalTennisSourcesWorker:
                 ), ranked AS (
                   SELECT candidates.*,
                          row_number() OVER (PARTITION BY lookup_name
-                           ORDER BY is_live DESC,next_start ASC,participant_id) AS name_rank
+                           ORDER BY completes_profiled_pair DESC,is_live DESC,next_start ASC,participant_id) AS name_rank
                   FROM candidates
                 )
                 SELECT ranked.participant_id, ranked.lookup_name AS canonical_name,
-                       ranked.is_live, ranked.next_start
+                       ranked.is_live,ranked.completes_profiled_pair,ranked.next_start
                 FROM ranked
                 WHERE ranked.name_rank=1
                   AND NOT EXISTS (
@@ -1185,7 +1951,7 @@ class ExternalTennisSourcesWorker:
                       AND ((s.state_json->>'status'='200' AND s.updated_at >= now()-interval '7 days')
                            OR (s.state_json->>'status'<>'200' AND s.updated_at >= now()-interval '1 day'))
                   )
-                ORDER BY ranked.is_live DESC,ranked.next_start ASC
+                ORDER BY ranked.completes_profiled_pair DESC,ranked.is_live DESC,ranked.next_start ASC
                 LIMIT :limit
             """), {"limit": limit}).mappings().all()
         attempted = saved = skipped = 0
@@ -1202,7 +1968,8 @@ class ExternalTennisSourcesWorker:
                 "checked_at": datetime.now(UTC).isoformat(), "role": "profile_supplement",
                 "match_data_authority": "fonbet",
             }
-            if not self._reserve_daily_call("live_tennis_api", 80, minute_budget=24):
+            if not self._reserve_daily_call("live_tennis_api", 80, minute_budget=24,
+                                            category="profile", category_budget=28):
                 break
             attempted += 1
             headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
@@ -1236,8 +2003,10 @@ class ExternalTennisSourcesWorker:
             if selected is not None:
                 player_id = str(selected["id"])
                 state["player_id"] = player_id
-                if self._reserve_daily_call("live_tennis_api", 80, minute_budget=24):
+                if self._reserve_daily_call("live_tennis_api", 80, minute_budget=24,
+                                           category="profile", category_budget=28):
                     profile_url = f"{LIVE_TENNIS_BASE}/players/{player_id}"
+                    state["profile_url"] = profile_url
                     detail = await self._archive_external_get(
                         "live-tennis-api", f"profile-{participant_id}-{player_id}", profile_url,
                         headers=headers, max_bytes=2 * 1024 * 1024,
@@ -1245,6 +2014,8 @@ class ExternalTennisSourcesWorker:
                     state["profile_status"] = detail.get("status")
                     state["profile_raw_object_key"] = detail.get("key")
                     state["profile_sha256"] = detail.get("content_sha256")
+                    state["profile_fetched_at"] = detail.get("fetched_at")
+                    state["profile_parser_version"] = LIVE_TENNIS_PLAYER_PROFILE_PARSER_VERSION
                     if detail.get("status") == 200 and detail.get("body"):
                         try:
                             summary = _live_tennis_player_profile(
@@ -1280,6 +2051,120 @@ class ExternalTennisSourcesWorker:
             state["observed_at"] = datetime.now(UTC).isoformat()
             self._save_source_snapshot("live_tennis_api", f"profile:{participant_id}", state)
         return {"attempted": attempted, "saved": saved, "skipped": skipped}
+
+    async def _refresh_confirmed_official_rankings(self, *, limit: int = 20) -> dict[str, int]:
+        """Poll official ATP/WTA singles ranks only for exact confirmed provider IDs."""
+        key = _secret("LIVE_TENNIS_API_KEY")
+        if not key:
+            return {"attempted": 0, "ranked": 0, "skipped": 0}
+        limit = max(0, min(int(limit), 20))
+        if not limit:
+            return {"attempted": 0, "ranked": 0, "skipped": 0}
+        parser_version = LIVE_TENNIS_PLAYER_PROFILE_PARSER_VERSION
+        with self.archive.engine.connect() as conn:
+            targets = conn.execute(text("""
+              SELECT DISTINCT ON (a.canonical_player_id)
+                     a.canonical_player_id::text AS canonical_id,
+                     a.source_player_id, c.display_name, c.gender
+              FROM ext_tennis_canonical_player_aliases a
+              JOIN ext_tennis_canonical_players c ON c.id=a.canonical_player_id
+              WHERE a.source='live_tennis_api' AND a.status='confirmed'
+                AND c.gender IN ('m','male','f','w','female')
+                AND NOT EXISTS (
+                  SELECT 1 FROM external_tennis_source_state s
+                  WHERE s.source='live_tennis_api'
+                    AND s.state_key='official_ranking:' || a.canonical_player_id::text
+                    AND s.state_json->>'parser_version'=:parser
+                    AND s.updated_at >= now()-interval '7 days'
+                )
+              ORDER BY a.canonical_player_id,a.created_at DESC,a.id DESC
+              LIMIT :limit
+            """), {"parser": parser_version, "limit": limit}).mappings().all()
+
+        attempted = ranked = skipped = 0
+        for target in targets:
+            if not self._reserve_daily_call("live_tennis_api", 80, minute_budget=24,
+                                            category="ranking", category_budget=4):
+                break
+            source_id, canonical_id = str(target["source_player_id"]), str(target["canonical_id"])
+            expected_tour = "wta" if str(target["gender"]).lower() in {"f", "w", "female"} else "atp"
+            source_url = f"{LIVE_TENNIS_BASE}/players/{source_id}"
+            result = await self._archive_external_get(
+                "live-tennis-api", f"official-ranking-{canonical_id}", source_url,
+                headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+                max_bytes=2 * 1024 * 1024,
+            )
+            attempted += 1
+            observed_at = result.get("fetched_at") or datetime.now(UTC).isoformat()
+            profile = None
+            if result.get("status") == 200 and result.get("body"):
+                try:
+                    profile = _live_tennis_player_profile(
+                        json.loads(result["body"]), expected_id=source_id,
+                        expected_name=str(target["display_name"]),
+                    )
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    profile = None
+            valid_status = profile and profile.get("ranking_status") in {"ranked", "unranked"}
+            valid_identity = profile and str(profile.get("tour") or "").lower() == expected_tour
+            if not valid_status or not valid_identity:
+                skipped += 1
+            state = {
+                "status": ("official_ranked" if profile and profile.get("ranking_status") == "ranked"
+                           else "official_unranked" if profile and profile.get("ranking_status") == "unranked"
+                           else "identity_or_ranking_unverified"),
+                "canonical_player_id": canonical_id, "source_player_id": source_id,
+                "tour": expected_tour, "observed_at": observed_at, "source_url": source_url,
+                "raw_object_key": result.get("key"), "content_sha256": result.get("content_sha256"),
+                "parser_version": parser_version,
+                "ranking_status": profile.get("ranking_status") if profile else None,
+                "ranking_checked_at": profile.get("ranking_checked_at") if profile else None,
+                "rank": profile.get("ranking") if profile else None,
+                "points": profile.get("ranking_points") if profile else None,
+            }
+            self._save_source_snapshot("live_tennis_api", f"official_ranking:{canonical_id}", state)
+            if (not profile or profile.get("ranking_status") not in {"ranked", "unranked"}
+                    or (profile.get("ranking_status") == "ranked"
+                        and (not isinstance(profile.get("ranking"), int) or profile["ranking"] <= 0))
+                    or not result.get("key") or not result.get("content_sha256")):
+                continue
+            try:
+                checked = datetime.fromisoformat(str(profile["ranking_checked_at"]).replace("Z", "+00:00"))
+                available = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                skipped += 1
+                continue
+            if checked > available:
+                skipped += 1
+                continue
+            with self.archive.engine.begin() as conn:
+                inserted = conn.execute(text("""
+                  INSERT INTO tennis_player_ranking_snapshots
+                    (id,source,source_player_id,canonical_player_id,tour,ranking_date,rank,points,
+                     available_at,source_ref,source_content_hash,source_url,parser_version,ranking_status,is_singles,created_at)
+                  SELECT gen_random_uuid(),'live_tennis_api_official',:source_id,:canonical_id,:tour,NULL,
+                         :rank,:points,:available,:raw_ref,:content_hash,:source_url,:parser,:ranking_status,true,now()
+                  WHERE EXISTS (
+                    SELECT 1 FROM ext_tennis_canonical_player_aliases a
+                    WHERE a.source='live_tennis_api' AND a.source_player_id=:source_id
+                      AND a.canonical_player_id=:canonical_id AND a.status='confirmed'
+                  )
+                  ON CONFLICT DO NOTHING
+                """), {"source_id": source_id, "canonical_id": canonical_id,
+                       "tour": expected_tour,
+                       "rank": profile.get("ranking") if profile["ranking_status"] == "ranked" else None,
+                       "points": profile.get("ranking_points") if profile["ranking_status"] == "ranked" else None,
+                       "available": available,
+                       "raw_ref": result["key"], "content_hash": result["content_sha256"],
+                       "source_url": source_url, "parser": parser_version,
+                       "ranking_status": profile["ranking_status"]}).rowcount
+            ranked += int(inserted or 0) if profile["ranking_status"] == "ranked" else 0
+        summary = {"attempted": attempted, "ranked": ranked, "skipped": skipped}
+        self._save_source_snapshot("live_tennis_api", "official_ranking_refresh", {
+            "status": "completed", **summary, "parser_version": parser_version,
+            "observed_at": datetime.now(UTC).isoformat(),
+        })
+        return summary
 
     async def _livescore_catalog_once(self) -> bool:
         """Fetch a low-rate LiveScore discovery catalog; Fonbet remains score authority."""
@@ -1361,26 +2246,112 @@ class ExternalTennisSourcesWorker:
             await self._refresh_public_sources()
             now_mono = time.monotonic()
             last_live = now_mono - 3600
+            last_upcoming_catalog = now_mono - 6 * 3600
             last_live_profiles = now_mono - 3600
+            last_official_rankings = now_mono - 3600
             last_livescore = now_mono - 3600
             last_public = now_mono - 86400
             last_tml_live = now_mono - 3600
             last_api_projection = now_mono
+            last_independent_metrics = now_mono - 3600
+            independent_metrics_task = None
+            last_pit_coverage = now_mono - 6 * 3600 + 600
+            pit_coverage_task = None
             next_tennis_explorer = now_mono - 1
             next_tennis_abstract = now_mono - 1
             last_archive_window = datetime.now(UTC).date()
             while True:
+                if time.monotonic() - last_independent_metrics >= 3600:
+                    if independent_metrics_task is None or independent_metrics_task.done():
+                        last_independent_metrics = time.monotonic()
+                        from .independent_metric_materializer import materialize_independent_tennis_metrics
+                        independent_metrics_task = asyncio.create_task(
+                            asyncio.to_thread(materialize_independent_tennis_metrics)
+                        )
+                if independent_metrics_task is not None and independent_metrics_task.done():
+                    try:
+                        result = independent_metrics_task.result()
+                        if result.get("status") not in {"unchanged", "no_confirmed_targets"}:
+                            logger.info("Independent tennis metrics materializer: %s", result)
+                    except Exception:
+                        logger.exception("Independent tennis metrics materialization failed")
+                    independent_metrics_task = None
+                if time.monotonic() - last_pit_coverage >= 6 * 3600:
+                    if pit_coverage_task is None or pit_coverage_task.done():
+                        last_pit_coverage = time.monotonic()
+                        from .tennis_pit_coverage import build_recent_tennis_pit_coverage
+                        pit_coverage_task = asyncio.create_task(
+                            asyncio.to_thread(build_recent_tennis_pit_coverage, lookback_hours=48)
+                        )
+                if pit_coverage_task is not None and pit_coverage_task.done():
+                    try:
+                        result = pit_coverage_task.result()
+                        coverage = result.get("snapshot_source_coverage") or {}
+                        logger.info(
+                            "Rolling tennis PIT readiness: snapshots=%s ready=%s incomplete=%s events_ready_before_start=%s reasons=%s",
+                            result.get("indexed_snapshot_keys"),
+                            coverage.get("prelabel_ready_snapshots"),
+                            coverage.get("incomplete_snapshots"),
+                            coverage.get("ready_events_before_start"),
+                            coverage.get("incomplete_reasons"),
+                        )
+                    except Exception:
+                        logger.exception("Rolling tennis PIT coverage report failed")
+                    pit_coverage_task = None
                 if datetime.now(UTC) >= ARCHIVE_STOP_AT and _secret("API_TENNIS_API_KEY"):
                     logger.warning("API-Tennis request cutoff reached; archival fetches are disabled")
+                # Time-sensitive upcoming metadata should not wait behind bulk
+                # archive work when both are due in the same worker iteration.
+                if time.monotonic() - last_live >= 3600:
+                    catalog_fetched = await self._live_tennis_once(status="live")
+                    now_mono = time.monotonic()
+                    last_live = now_mono
+                    if not catalog_fetched:
+                        quota = self._read_source_snapshot("live_tennis_api", "quota")
+                        retry_delay = _live_tennis_quota_retry_delay_seconds(
+                            quota, datetime.now(UTC), category="catalog", category_budget=48,
+                        )
+                        if retry_delay is not None:
+                            last_live = now_mono - 3600 + min(3600, retry_delay)
+                if time.monotonic() - last_upcoming_catalog >= 6 * 3600:
+                    catalog_fetched = await self._live_tennis_once(status="upcoming", window_hours=48)
+                    last_upcoming_catalog = time.monotonic()
+                    if not catalog_fetched:
+                        quota = self._read_source_snapshot("live_tennis_api", "quota")
+                        retry_delay = _live_tennis_quota_retry_delay_seconds(
+                            quota, datetime.now(UTC), category="catalog", category_budget=48,
+                        )
+                        if retry_delay is not None:
+                            last_upcoming_catalog = time.monotonic() - 6 * 3600 + min(6 * 3600, retry_delay)
                 did_work = await self._archive_once()
                 if datetime.now(UTC).date() != last_archive_window and _secret("API_TENNIS_API_KEY") and datetime.now(UTC) < ARCHIVE_STOP_AT:
                     self.archive.refresh_recent_window()
                     last_archive_window = datetime.now(UTC).date()
-                if time.monotonic() - last_live >= 3600:
-                    await self._live_tennis_once(); last_live = time.monotonic()
                 if time.monotonic() - last_live_profiles >= 3600:
-                    await self._fetch_live_tennis_profiles(limit=2)
+                    profile_result = {"attempted": 0}
+                    try:
+                        profile_result = await self._fetch_live_tennis_profiles(limit=2)
+                    except Exception:
+                        logger.exception("Live tennis profile refresh failed; retaining offline catalog replay")
+                    try:
+                        catalog_replay = await asyncio.to_thread(
+                            replay_saved_catalog_evidence, self.archive.engine, self.storage)
+                        self._save_source_snapshot("live_tennis_api", "catalog_identity_replay", catalog_replay)
+                    except Exception:
+                        logger.exception("Saved tennis catalog identity replay failed")
                     last_live_profiles = time.monotonic()
+                    if not profile_result.get("attempted"):
+                        quota = self._read_source_snapshot("live_tennis_api", "quota")
+                        retry_delay = _live_tennis_quota_retry_delay_seconds(
+                            quota, datetime.now(UTC), category="profile", category_budget=28,
+                        )
+                        if retry_delay is not None:
+                            last_live_profiles = time.monotonic() - 3600 + min(3600, retry_delay)
+                if time.monotonic() - last_official_rankings >= 21600:
+                    ranking_result = await self._refresh_confirmed_official_rankings(limit=20)
+                    if ranking_result.get("attempted"):
+                        logger.info("Official tennis ranking refresh: %s", ranking_result)
+                    last_official_rankings = time.monotonic()
                 if time.monotonic() - last_livescore >= 3600:
                     await self._livescore_catalog_once(); last_livescore = time.monotonic()
                 if time.monotonic() - last_tml_live >= 3600:
@@ -1900,7 +2871,8 @@ class ExternalTennisSourcesWorker:
                 return 3600
             try:
                 inserted = self._store_tennis_explorer_results(
-                    matches, result["content_sha256"], fetched_at=fetched_at)
+                    matches, result["content_sha256"], fetched_at=fetched_at,
+                    source_document_ref=result.get("key") or result.get("archived_path"))
             except Exception as exc:
                 logger.exception("TennisExplorer import failed day=%s", event_day.isoformat())
                 self._save_source_snapshot("tennis_explorer", "recent_window", {
@@ -2095,6 +3067,7 @@ class ExternalTennisSourcesWorker:
                         stored = self._store_tennis_explorer_results(
                             snapshot["matches"], prior["content_sha256"],
                             fetched_at=original_fetched_at, parser_version=PROFILE_PARSER_VERSION,
+                            source_document_ref=prior.get("key"),
                         )
                         with Session(self.archive.engine) as session:
                             projection = project_recent_tennis_explorer(session, snapshot["matches"])
@@ -2180,6 +3153,7 @@ class ExternalTennisSourcesWorker:
                 stored = self._store_tennis_explorer_results(
                     snapshot["matches"], result["content_sha256"], fetched_at=fetched_at,
                     parser_version=PROFILE_PARSER_VERSION,
+                    source_document_ref=result.get("key") or result.get("archived_path"),
                 )
                 with Session(self.archive.engine) as session:
                     projection = project_recent_tennis_explorer(session, snapshot["matches"])
@@ -2261,6 +3235,7 @@ class ExternalTennisSourcesWorker:
     def _store_tennis_explorer_results(
         self, matches: list[dict], source_hash: str, *, fetched_at: datetime,
         parser_version: str = "tennisexplorer_results_v1",
+        source_document_ref: str | None = None,
     ) -> int:
         """Persist TE result facts, source IDs, raw-derived versions, and no career claim."""
         if not matches:
@@ -2275,15 +3250,29 @@ class ExternalTennisSourcesWorker:
                                       "gender": match["gender"]}
             payload = {key: value for key, value in match.items() if key != "available_at"}
             payload["retrospective"] = True
-            digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
-                                               default=str).encode()).hexdigest()
             payload["fetched_at"] = fetched_at.isoformat()
+            normalized = {key: match.get(key) for key in (
+                "played_at", "tour_level", "tournament", "surface", "best_of", "round_name",
+                "gender", "winner_name", "loser_name", "winner_player_id", "loser_player_id", "score",
+            )}
+            envelope = _observation_envelope(
+                source="tennis_explorer", external_id=match["source_match_id"],
+                source_url=match["source_url"], parser_version=parser_version,
+                available_at=fetched_at, source_content_hash=source_hash,
+                source_document_ref=match.get("raw_object_key") or source_document_ref or match["source_url"],
+                raw_fields=match, normalized_fields=normalized,
+                required_fields=("played_at", "winner_name", "loser_name", "score"),
+            )
+            payload.update(envelope["observation_metadata"])
             match_rows.append({**match, "stats": json.dumps(match["stats"], ensure_ascii=False)})
-            observations.append({"mid": match["source_match_id"], "digest": digest,
+            observations.append({"mid": match["source_match_id"], "digest": envelope["observation_hash"],
                                  "available": fetched_at, "url": match["source_url"],
                                  "source_hash": source_hash,
                                  "payload": json.dumps(payload, ensure_ascii=False, default=str),
-                                 "parser_version": parser_version})
+                                 "parser_version": parser_version,
+                                 "document_ref": envelope["source_document_ref"],
+                                 "status": envelope["ingestion_status"],
+                                 "provenance": json.dumps(envelope["field_provenance"])})
         with self.archive.engine.begin() as conn:
             conn.execute(text("""
               INSERT INTO ext_tennis_players(id,source,source_player_id,full_name,gender)
@@ -2317,15 +3306,17 @@ class ExternalTennisSourcesWorker:
             conn.execute(text("""
               INSERT INTO ext_tennis_match_observations
                 (id,source,source_match_id,observation_hash,available_at,source_url,source_content_hash,
-                 parser_version,payload,created_at)
+                 source_document_ref,parser_version,ingestion_status,field_provenance,payload,created_at)
               SELECT gen_random_uuid(),'tennis_explorer',:mid,:digest,:available,:url,:source_hash,
-                     :parser_version,CAST(:payload AS jsonb),now()
+                     :document_ref,:parser_version,:status,CAST(:provenance AS jsonb),CAST(:payload AS jsonb),now()
               WHERE NOT EXISTS (SELECT 1 FROM ext_tennis_match_observations
                 WHERE source='tennis_explorer' AND source_match_id=:mid AND observation_hash=:digest)
             """), observations)
         return len(match_rows)
 
-    def _store_tml_csv(self, body: bytes, tour: str, source_url: str) -> int:
+    def _store_tml_csv(self, body: bytes, tour: str, source_url: str, *,
+                       source_content_hash: str | None = None,
+                       source_document_ref: str | None = None) -> int:
         """Normalize season CSV with fetched-at provenance, not fabricated historical availability."""
         fetched_at = datetime.now(UTC)
         matches, players, observations = [], [], []
@@ -2353,13 +3344,32 @@ class ExternalTennisSourcesWorker:
             payload = {"row": row, "source_url": source_url, "fetched_at": fetched_at.isoformat(),
                        "retrospective": True, "event_date_precision": "provider_tournament_date",
                        "point_completeness": "none", "statistics_present": any(v not in (None, "") for v in stats.values())}
-            row_hash = hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-            observations.append({"mid": match_id, "digest": row_hash, "available": fetched_at,
-                                 "payload": json.dumps(payload, ensure_ascii=False), "url": source_url})
             try:
                 best_of = int(row.get("best_of") or 3)
             except (TypeError, ValueError):
                 best_of = 3
+            normalized = {"played_at": played_at.isoformat(), "tournament": row.get("tourney_name"),
+                          "surface": surface, "best_of": best_of, "winner_name": winner,
+                          "loser_name": loser, "score": row.get("score"),
+                          "winner_id": row.get("winner_id"), "loser_id": row.get("loser_id")}
+            content_hash = source_content_hash or hashlib.sha256(body).hexdigest()
+            envelope = _observation_envelope(
+                source="tml", external_id=match_id, source_url=source_url,
+                parser_version=TML_PARSER_VERSION, available_at=fetched_at,
+                source_content_hash=content_hash, source_document_ref=source_document_ref or source_url,
+                raw_fields=row, normalized_fields=normalized,
+                required_fields=("played_at", "winner_name", "loser_name"), derived_fields=("played_at",),
+                field_sources={"played_at": "tourney_date", "tournament": "tourney_name",
+                               "surface": "surface", "best_of": "best_of", "round_name": "round",
+                               "winner_id": "winner_id", "loser_id": "loser_id"},
+            )
+            payload.update(envelope["observation_metadata"])
+            observations.append({"mid": match_id, "digest": envelope["observation_hash"], "available": fetched_at,
+                                 "payload": json.dumps(payload, ensure_ascii=False), "url": source_url,
+                                 "source_hash": content_hash,
+                                 "document_ref": source_document_ref or source_url,
+                                 "parser_version": TML_PARSER_VERSION, "status": envelope["ingestion_status"],
+                                 "provenance": json.dumps(envelope["field_provenance"])})
             matches.append({"mid": match_id, "played": played_at, "available": fetched_at, "level": level,
                             "tournament": str(row.get("tourney_name") or "")[:255], "surface": surface,
                             "best_of": best_of, "round": str(row.get("round") or "")[:32], "gender": gender,
@@ -2381,9 +3391,8 @@ class ExternalTennisSourcesWorker:
         # occurrence in provider order so a corrected duplicate wins.
         players = list({row["player_id"]: row for row in players}.values())
         matches = list({row["mid"]: row for row in matches}.values())
-        # One fetch has one available_at timestamp, and observation versions are
-        # unique by (source, source_match_id, available_at), so keep one source
-        # row per match in this batch as well.
+        # Collapse duplicate natural keys in provider order. Version identity is
+        # determined by normalized content and parser version, not fetch time.
         observations = list({row["mid"]: row for row in observations}.values())
         with self.archive.engine.begin() as conn:
             if players:
@@ -2426,10 +3435,11 @@ class ExternalTennisSourcesWorker:
             if observations:
                 conn.execute(text("""
                   INSERT INTO ext_tennis_match_observations
-                    (id,source,source_match_id,observation_hash,available_at,source_url,parser_version,payload,created_at)
-                  SELECT gen_random_uuid(),'tml',:mid,:digest,:available,:url,'tml_csv_v1',CAST(:payload AS jsonb),now()
-                  WHERE NOT EXISTS (SELECT 1 FROM ext_tennis_match_observations
-                                    WHERE source='tml' AND source_match_id=:mid AND observation_hash=:digest)
+                    (id,source,source_match_id,observation_hash,available_at,source_url,source_content_hash,
+                     source_document_ref,parser_version,ingestion_status,field_provenance,payload,created_at)
+                  VALUES(gen_random_uuid(),'tml',:mid,:digest,:available,:url,:source_hash,:document_ref,
+                         :parser_version,:status,CAST(:provenance AS jsonb),CAST(:payload AS jsonb),now())
+                  ON CONFLICT(source,source_match_id,available_at,observation_hash) DO NOTHING
                 """), observations)
         return len(matches)
 
@@ -2687,16 +3697,33 @@ class ExternalTennisSourcesWorker:
                            "raw_object_key": fragment_result["key"],
                            "profile_raw_object_key": profile_result["key"],
                            "completeness": "partial_recent_results"}
-                digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+                normalized = {key: item.get(key) for key in (
+                    "played_at", "tournament", "surface", "best_of", "round_name", "gender",
+                    "winner_name", "loser_name", "winner_player_id", "loser_player_id", "score",
+                )}
+                envelope = _observation_envelope(
+                    source="tennis_abstract", external_id=item["source_match_id"], source_url=source_url,
+                    parser_version="tennis_abstract_recent_fragment_v1", available_at=fetched_at,
+                    source_content_hash=fragment_result["content_sha256"],
+                    source_document_ref=fragment_result["key"], raw_fields=item,
+                    normalized_fields=normalized,
+                    required_fields=("played_at", "winner_name", "loser_name", "score"),
+                )
+                payload.update(envelope["observation_metadata"])
+                digest = envelope["observation_hash"]
                 conn.execute(sql_text("""
                     INSERT INTO ext_tennis_match_observations
                       (id,source,source_match_id,observation_hash,available_at,source_url,
-                       source_content_hash,parser_version,payload,created_at)
+                       source_content_hash,source_document_ref,parser_version,ingestion_status,
+                       field_provenance,payload,created_at)
                     VALUES (gen_random_uuid(),'tennis_abstract',:mid,:digest,:available,:url,
-                            :file_hash,:parser,CAST(:payload AS jsonb),now())
-                    ON CONFLICT (source,source_match_id,available_at) DO NOTHING
+                            :file_hash,:document_ref,:parser,:status,CAST(:provenance AS jsonb),
+                            CAST(:payload AS jsonb),now())
+                    ON CONFLICT (source,source_match_id,available_at,observation_hash) DO NOTHING
                 """), {"mid": item["source_match_id"], "digest": digest, "available": fetched_at,
                        "url": source_url, "file_hash": fragment_result["content_sha256"],
+                       "document_ref": fragment_result["key"], "status": envelope["ingestion_status"],
+                       "provenance": json.dumps(envelope["field_provenance"]),
                        "parser": "tennis_abstract_recent_fragment_v1",
                        "payload": json.dumps(payload, ensure_ascii=False)})
             # The profile page title was checked against this exact canonical
@@ -2755,20 +3782,32 @@ class ExternalTennisSourcesWorker:
         available_at = datetime.fromisoformat(result["fetched_at"])
         with self.archive.engine.begin() as conn:
             for row in rows:
+                normalized = {key: row.get(key) for key in (
+                    "date", "winner", "loser", "tournament", "surface", "round", "score",
+                    "winner_rank", "loser_rank", "gender",
+                )}
+                envelope = _observation_envelope(
+                    source="match_charting_project", external_id=row["source_match_id"],
+                    source_url=source_url, parser_version="match_charting_project_csv_v1",
+                    available_at=available_at, source_content_hash=result["content_sha256"],
+                    source_document_ref=result.get("key") or source_url,
+                    raw_fields=row, normalized_fields=normalized,
+                    required_fields=("date", "winner", "loser"), derived_fields=("date",),
+                )
+                payload = {**row["payload"], **envelope["observation_metadata"]}
                 conn.execute(text("""
                   INSERT INTO ext_tennis_match_observations
                     (id,source,source_match_id,observation_hash,available_at,source_url,source_content_hash,
-                     parser_version,payload,created_at)
-                  SELECT gen_random_uuid(),'match_charting_project',:match_id,:row_hash,:available,:url,:file_hash,
-                         'match_charting_project_csv_v1',CAST(:payload AS jsonb),now()
-                  WHERE NOT EXISTS (
-                    SELECT 1 FROM ext_tennis_match_observations
-                    WHERE source='match_charting_project' AND source_match_id=:match_id
-                      AND observation_hash=:row_hash
-                  ) ON CONFLICT (source,source_match_id,available_at) DO NOTHING
-                """), {"match_id": row["source_match_id"], "row_hash": row["observation_hash"],
+                     source_document_ref,parser_version,ingestion_status,field_provenance,payload,created_at)
+                  VALUES(gen_random_uuid(),'match_charting_project',:match_id,:row_hash,:available,:url,:file_hash,
+                         :document_ref,'match_charting_project_csv_v1',:status,CAST(:provenance AS jsonb),
+                         CAST(:payload AS jsonb),now())
+                  ON CONFLICT(source,source_match_id,available_at,observation_hash) DO NOTHING
+                """), {"match_id": row["source_match_id"], "row_hash": envelope["observation_hash"],
                       "available": available_at, "url": source_url, "file_hash": result["content_sha256"],
-                      "payload": json.dumps(row["payload"], ensure_ascii=False)})
+                      "document_ref": envelope["source_document_ref"], "status": envelope["ingestion_status"],
+                      "provenance": json.dumps(envelope["field_provenance"]),
+                      "payload": json.dumps(payload, ensure_ascii=False)})
 
     def _store_charting_points(self, documents, source_url: str, result: dict[str, Any]) -> int:
         available_at = datetime.fromisoformat(result["fetched_at"])

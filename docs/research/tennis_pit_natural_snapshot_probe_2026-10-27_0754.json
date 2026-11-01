@@ -1,0 +1,48 @@
+{
+  "observed_at": "2026-10-27T07:54:37Z",
+  "lookback_minutes": 15,
+  "source": "production tennis_forecast_snapshots",
+  "natural_forecast_snapshots": 144,
+  "unique_events": 10,
+  "pit_ready_snapshots": 0,
+  "incomplete_snapshots": 144,
+  "prematch_snapshots_before_scheduled_start": 0,
+  "latest_and_earliest_created_at": {
+    "earliest": "2026-10-27T07:39:54.151173Z",
+    "latest": "2026-10-27T07:54:37.695589Z"
+  },
+  "incomplete_reason_counts": {
+    "event_surface": 141,
+    "timely_explicit_surface_observation_missing": 141,
+    "event_format": 141,
+    "timely_explicit_best_of_observation_missing": 141,
+    "serve_metrics_b": 123,
+    "observed_serve_denominator_missing_b": 123,
+    "serve_metrics_a": 122,
+    "observed_serve_denominator_missing_a": 122,
+    "confirmed_player_identity_missing_b": 52,
+    "confirmed_player_identity_missing_a": 32,
+    "confirmed_player_metrics_missing": 21,
+    "player_metrics": 10
+  },
+  "sample_fonbet_event": {
+    "source_event_id": "69347553",
+    "participant_names": ["Кривощеков М", "Хосилов А"],
+    "raw_hash": "b1e76d3fb5e0de34827e14ea3d197a5cfdc231180959f1de3697df7c1cc5bb74",
+    "raw_object_key": "fonbet/tennis/2026-10-27/b1e7/b1e76d3fb5e0de34827e14ea3d197a5cfdc231180959f1de3697df7c1cc5bb74.json",
+    "raw_payload_fields": ["id", "sortOrder", "level", "num", "sportId", "kind", "rootKind", "team1Id", "team2Id", "team1", "team2", "name", "startTime", "place", "priority", "tv"],
+    "explicit_best_of_present": false,
+    "explicit_surface_or_court_present": false,
+    "player_a_identity": "confirmed",
+    "player_b_identity": "search_completed_no_match",
+    "pbp_job": "waiting_players",
+    "pbp_reason": "PLAYER_SOURCE_IDS_MISSING"
+  },
+  "live_tennis_api_last_complete_catalog": "2026-10-27T07:28:44.490916Z",
+  "latest_catalog_fonbet_pairs": 0,
+  "evidence_limits": [
+    "The automatic forecast path is active, but this sample window contains no complete PIT example.",
+    "The Fonbet raw payload does not carry event format, surface, or court fields for the sample event.",
+    "The current external catalog pass did not confirm any match pairs with Fonbet."
+  ]
+}

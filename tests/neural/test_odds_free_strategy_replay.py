@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
+from sqlalchemy import Boolean, Column, DateTime, MetaData, String, Table, create_engine, select
+
+from tennis_adapter.odds_free_replay import odds_free_event_filters
 from tennis_adapter.odds_free_replay import replay_odds_free_forecasts
 from tennis_adapter.policy import TennisPolicy
 
@@ -54,6 +58,16 @@ def test_read_only_replay_applies_tennis_cfg_markets_and_confirmations():
     assert all(row["expected_value"] > 0 for row in result["signals"])
 
 
+def test_unknown_format_suppresses_match_market_but_preserves_known_set_market():
+    _, forecasts, odds = _fixtures(count=1)
+    forecasts[0]["probabilities"] = {"current_set_a": 0.65}
+    forecasts[0]["state"]["sets_to_win"] = None
+    result = replay_odds_free_forecasts(forecasts, odds, policy=_policy(confirmations=1))
+    assert result["counts"]["MATCH_FORMAT_UNKNOWN"] == 1
+    assert all(row["market"] != "match_winner" for row in result["signals"])
+    assert any(row["market"] == "set_winner:2" for row in result["signals"])
+
+
 def test_positive_ev_mode_rejects_candidate_when_configured_edge_is_non_positive():
     _, forecasts, odds = _fixtures()
     policy = _policy(confirmations=1)
@@ -87,7 +101,8 @@ def test_future_and_stale_quotes_are_never_used_for_a_past_forecast():
     ]
     result = replay_odds_free_forecasts(forecasts, odds, policy=_policy(confirmations=1))
     assert result["signals"] == []
-    assert result["counts"].get("TWO_SIDED_PRICE_MISSING", 0) == 2
+    assert result["counts"].get("PRICE_STALE", 0) == 1
+    assert result["counts"].get("TWO_SIDED_PRICE_MISSING", 0) == 1
 
 
 def test_duplicate_timestamp_does_not_satisfy_multiple_confirmations():
@@ -96,6 +111,53 @@ def test_duplicate_timestamp_does_not_satisfy_multiple_confirmations():
     result = replay_odds_free_forecasts(forecasts, odds, policy=_policy(confirmations=2))
     assert result["signals"] == []
     assert result["counts"].get("DUPLICATE_OR_OUT_OF_ORDER_FORECAST") == 2
+
+
+def test_live_event_filter_ignores_schedule_and_includes_prematch_through_six_hours():
+    now = datetime(2026, 10, 25, 14, tzinfo=timezone.utc)
+    metadata = MetaData()
+    events = Table(
+        "events", metadata,
+        Column("id", String, primary_key=True),
+        Column("sport_code", String), Column("source", String),
+        Column("finished_at", DateTime(timezone=True)),
+        Column("participant_a_name", String), Column("participant_b_name", String),
+        Column("status", String), Column("last_seen_at", DateTime(timezone=True)),
+        Column("is_live", Boolean), Column("scheduled_start_at", DateTime(timezone=True)),
+    )
+    rows = [
+        {"id": "live-independent", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "live",
+         "last_seen_at": now - timedelta(seconds=30), "is_live": True,
+         "scheduled_start_at": now - timedelta(days=2)},
+        {"id": "live-stale", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "live",
+         "last_seen_at": now - timedelta(seconds=91), "is_live": True, "scheduled_start_at": now},
+        {"id": "prematch-now", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "prematch",
+         "last_seen_at": now, "is_live": False, "scheduled_start_at": now},
+        {"id": "prematch-six-hours", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "prematch",
+         "last_seen_at": now, "is_live": False, "scheduled_start_at": now + timedelta(hours=6)},
+        {"id": "prematch-too-far", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "prematch",
+         "last_seen_at": now, "is_live": False, "scheduled_start_at": now + timedelta(hours=6, seconds=1)},
+        {"id": "prematch-past", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A", "participant_b_name": "Player B", "status": "prematch",
+         "last_seen_at": now, "is_live": False, "scheduled_start_at": now - timedelta(seconds=1)},
+        {"id": "doubles", "sport_code": "tennis", "source": "fonbet", "finished_at": None,
+         "participant_a_name": "Player A / Player B", "participant_b_name": "Player C / Player D",
+         "status": "live", "last_seen_at": now, "is_live": True, "scheduled_start_at": now},
+    ]
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    metadata.create_all(engine)
+    event_model = SimpleNamespace(**{column.name: column for column in events.columns})
+    with engine.begin() as connection:
+        connection.execute(events.insert(), rows)
+        selected = set(connection.execute(
+            select(events.c.id).where(*odds_free_event_filters(event_model, now))
+        ).scalars())
+    assert selected == {"live-independent", "prematch-now", "prematch-six-hours"}
 
 
 def test_unavailable_forecast_breaks_a_confirmation_streak():

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
+import uuid
 
 from sqlalchemy import select
 
@@ -58,6 +59,67 @@ def confirmed_source_ids_for_player(session, canonical_player_id) -> dict[str, s
     for source, source_player_id in rows:
         aliases[str(source)].add(str(source_player_id))
     return dict(aliases)
+
+
+def confirmed_player_alias_as_of(session, *, source: str, source_player_id: str, as_of):
+    """Resolve the confirmed owner visible at ``as_of``, including reviewed moves.
+
+    Alias rows keep their current status for operational lookups. A reviewed
+    reassignment therefore also needs its append-only decision timestamp when
+    reconstructing an older cutoff: the former owner was visible before the
+    decision and the selected owner only from the decision onward.
+    """
+    from db.models.external_tennis import (
+        ExtTennisCanonicalPlayerAlias,
+        ExtTennisCanonicalPlayerAliasDecision,
+    )
+
+    source_player_id = str(source_player_id)
+    decisions = session.execute(select(ExtTennisCanonicalPlayerAliasDecision).where(
+        ExtTennisCanonicalPlayerAliasDecision.source == source,
+        ExtTennisCanonicalPlayerAliasDecision.source_player_id == source_player_id,
+    ).order_by(ExtTennisCanonicalPlayerAliasDecision.created_at,
+               ExtTennisCanonicalPlayerAliasDecision.id)).scalars().all()
+    prior = [decision for decision in decisions if decision.created_at <= as_of]
+    if prior:
+        decision = prior[-1]
+        owner_id, effective_at = decision.canonical_player_id, decision.created_at
+    else:
+        future = next((decision for decision in decisions if decision.created_at > as_of), None)
+        if future is not None:
+            previous_owner = (future.evidence_json or {}).get("alias_resolution", {}).get(
+                "previous_confirmed_owner_id")
+            if not previous_owner:
+                return None
+            owner_id = uuid.UUID(str(previous_owner))
+            rows = session.execute(select(ExtTennisCanonicalPlayerAlias).where(
+                ExtTennisCanonicalPlayerAlias.source == source,
+                ExtTennisCanonicalPlayerAlias.source_player_id == source_player_id,
+                ExtTennisCanonicalPlayerAlias.canonical_player_id == owner_id,
+            )).scalars().all()
+            if len(rows) != 1:
+                return None
+            return rows[0], rows[0].created_at
+        rows = session.execute(select(ExtTennisCanonicalPlayerAlias).where(
+            ExtTennisCanonicalPlayerAlias.source == source,
+            ExtTennisCanonicalPlayerAlias.source_player_id == source_player_id,
+            ExtTennisCanonicalPlayerAlias.status == "confirmed",
+            ExtTennisCanonicalPlayerAlias.created_at <= as_of,
+        )).scalars().all()
+        owners = {row.canonical_player_id for row in rows}
+        if len(owners) != 1:
+            return None
+        row = next(row for row in rows if row.canonical_player_id in owners)
+        return row, row.created_at
+
+    rows = session.execute(select(ExtTennisCanonicalPlayerAlias).where(
+        ExtTennisCanonicalPlayerAlias.source == source,
+        ExtTennisCanonicalPlayerAlias.source_player_id == source_player_id,
+        ExtTennisCanonicalPlayerAlias.canonical_player_id == owner_id,
+    )).scalars().all()
+    if len(rows) != 1 or effective_at > as_of:
+        return None
+    return rows[0], effective_at
 
 
 def register_confirmed_player_alias(
@@ -177,6 +239,70 @@ def adjudicate_candidate_player_alias(
     return decision
 
 
+def confirm_reviewed_player_alias(
+    session, *, source: str, source_player_id: str, canonical_player_id,
+    rationale: str, evidence: dict[str, Any], decided_by: str,
+):
+    """Create an audited first confirmation when a provider alias is missing."""
+    from db.models.external_tennis import (
+        ExtTennisCanonicalPlayer,
+        ExtTennisCanonicalPlayerAlias,
+        ExtTennisCanonicalPlayerAliasDecision,
+    )
+
+    source_player_id = str(source_player_id or "").strip()
+    rationale, decided_by = str(rationale or "").strip(), str(decided_by or "").strip()
+    if not source or not source_player_id or not rationale or not decided_by or not evidence:
+        raise ValueError("source, source_player_id, rationale, decided_by and evidence are required")
+    rows = session.execute(select(ExtTennisCanonicalPlayerAlias).where(
+        ExtTennisCanonicalPlayerAlias.source == source,
+        ExtTennisCanonicalPlayerAlias.source_player_id == source_player_id,
+    ).with_for_update()).scalars().all()
+    confirmed = [row for row in rows if row.status == "confirmed"]
+    if confirmed:
+        if len(confirmed) == 1 and confirmed[0].canonical_player_id == canonical_player_id:
+            return None
+        raise ValueError("provider alias already has a different confirmed owner")
+    if any(row.status != "candidate" for row in rows):
+        raise ValueError("only unresolved candidates can be first-confirmed")
+    if session.get(ExtTennisCanonicalPlayer, canonical_player_id) is None:
+        raise ValueError("selected canonical player does not exist")
+    selected = next((row for row in rows if row.canonical_player_id == canonical_player_id), None)
+    if selected is None:
+        selected = ExtTennisCanonicalPlayerAlias(
+            source=source, source_player_id=source_player_id,
+            canonical_player_id=canonical_player_id, status="candidate",
+            evidence_json={"method": "reviewed_first_confirmation_candidate"},
+        )
+        session.add(selected)
+        session.flush()
+        rows.append(selected)
+    decision = ExtTennisCanonicalPlayerAliasDecision(
+        source=source, source_player_id=source_player_id,
+        canonical_player_id=canonical_player_id,
+        rejected_candidate_ids=sorted(str(row.canonical_player_id) for row in rows if row is not selected),
+        rationale=rationale,
+        evidence_json={**dict(evidence), "alias_resolution": {
+            "mode": "first_confirmation", "previous_confirmed_owner_id": None,
+            "selected_owner_id": str(canonical_player_id),
+        }},
+        decided_by=decided_by,
+    )
+    session.add(decision)
+    session.flush()
+    for row in rows:
+        row.status = "confirmed" if row is selected else "rejected"
+        row.evidence_json = {
+            **dict(row.evidence_json or {}),
+            "adjudication_id": str(decision.id),
+            "adjudication_rationale": rationale,
+            "adjudicated_by": decided_by,
+            "adjudicated_at": decision.created_at.isoformat() if decision.created_at else None,
+        }
+    session.flush()
+    return decision
+
+
 def reassign_confirmed_player_alias(
     session, *, source: str, source_player_id: str, expected_current_owner_id,
     canonical_player_id, rationale: str, evidence: dict[str, Any], decided_by: str,
@@ -223,7 +349,13 @@ def reassign_confirmed_player_alias(
         source=source, source_player_id=source_player_id,
         canonical_player_id=canonical_player_id,
         rejected_candidate_ids=[str(prior_owner.canonical_player_id)],
-        rationale=rationale, evidence_json=evidence, decided_by=decided_by,
+        rationale=rationale,
+        evidence_json={**evidence, "alias_resolution": {
+            "mode": "reassignment",
+            "previous_confirmed_owner_id": str(expected_current_owner_id),
+            "selected_owner_id": str(canonical_player_id),
+        }},
+        decided_by=decided_by,
     )
     session.add(decision)
     session.flush()

@@ -1,0 +1,42 @@
+{
+  "started_at": "2026-10-25T16:29:28.706788+00:00",
+  "status": "not_verified",
+  "verified": false,
+  "initial_cooldown_until": null,
+  "profile_url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+  "pbp_source_match_id": "juGuZdcD",
+  "profile": {
+    "status": "available",
+    "url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+    "retrieved_at": "2026-10-25 16:29:30.333976+00:00",
+    "content_hash": "sha256:280dc18824628f5d76f2f0864cce7c796bc47a9c8949cf2f613be59f3a2444b5",
+    "reason": null,
+    "archived_path": "snapshots/research/2026-10-25/AROuX8tf/280dc18824628f5d76f2f0864cce7c796bc47a9c8949cf2f613be59f3a2444b5-162930478334-a054ae18e5174918921f741d987e1518.json",
+    "archived_page_paths": [],
+    "fetch_transport": null,
+    "fallback_reason": null,
+    "challenge_type": null,
+    "recovery_result": null,
+    "matches": 13
+  },
+  "session_reused": false,
+  "pbp": {
+    "status": "available",
+    "source_match_id": "juGuZdcD",
+    "documents_saved": 1,
+    "confirmed_points": 190,
+    "retrospective": true,
+    "fonbet_link_status": "unlinked_at_retrieval",
+    "gaps": []
+  },
+  "finished_at": "2026-10-25T16:29:35.040516+00:00",
+  "recovery": {
+    "session_expires_at": null,
+    "last_result": {
+      "challenge_type": null,
+      "fetch_transport": "flaresolverr",
+      "recovery_result": "unavailable"
+    },
+    "lease_until": null
+  }
+}

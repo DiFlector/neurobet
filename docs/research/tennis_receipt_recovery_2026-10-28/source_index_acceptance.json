@@ -1,0 +1,14 @@
+{
+  "schema_revision": "060_point_history_source_idx",
+  "index": {
+    "relname": "idx_tennis_point_history_source_available",
+    "indisvalid": true,
+    "bytes": 14508032
+  },
+  "lookup_plan": [
+    "Sort",
+    "  Sort Key: available_at, id",
+    "  ->  Index Only Scan using idx_tennis_point_history_source_available on tennis_point_history_versions",
+    "        Index Cond: ((source_match_id = ANY ('{nJQUcQ7s,n1gVRugB}'::text[])) AND (available_at <= '2026-10-28 05:25:39+00'::timestamp with time zone))"
+  ]
+}

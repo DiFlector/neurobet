@@ -1,0 +1,35 @@
+{
+  "before_restart_at": "2026-10-26T01:00:26.292366Z",
+  "restart_window": "2026-10-26T01:00:36Z/2026-10-26T01:00:45Z",
+  "after_restart_health": "healthy",
+  "network_gate": {
+    "slot_limit": 2,
+    "cooldown_until": null,
+    "success_count_before": 6733,
+    "success_count_after_observed_dispatch": 6774,
+    "priority_order": {"live": 0, "participant": 10, "archive": 20, "background_profile": 30},
+    "archive_aging_priority_after_seconds": 10
+  },
+  "durable_work_before": {
+    "running_point_event": {"fonbet_event_id": "69171568", "event_status": "finished", "attempts": 70, "last_error": "point_history_tab_missing", "lease_until": "2026-10-26T01:03:14.360776Z"},
+    "running_profile_job": {"participant_id": "ab47f470-6cc2-4e6b-8bdb-75201cebff91", "reason": "historical_pbp_backfill", "attempts": 32, "lease_until": "2026-10-26T01:05:22.129166Z"}
+  },
+  "durable_work_after": {
+    "point_event": {"fonbet_event_id": "69171568", "status": "retry", "attempts": 70, "last_error": "point_history_tab_missing", "attempt_token": null, "lease_until": null},
+    "profile_job": {"participant_id": "ab47f470-6cc2-4e6b-8bdb-75201cebff91", "status": "queued", "attempts": 32, "attempt_token": null, "lease_until": null}
+  },
+  "worker_logs": {
+    "restarted_and_healthy": true,
+    "reported_lanes": "2 browser processes; 1 live PBP worker; 1 current + 1 backlog task slot",
+    "post_restart_dispatches": true,
+    "post_restart_http_pbp_responses_200": true
+  },
+  "live_contention_eligibility": {
+    "fresh_live_events": 2,
+    "fresh_live_point_jobs_waiting_players": 2,
+    "reason": "PLAYER_SOURCE_IDS_MISSING",
+    "active_live_source_request_observed": false,
+    "live_latency_comparison_possible": false
+  },
+  "decision": "restart_recovery_verified; live_delay_under_simultaneous_archive_load_not_measured_due_no_eligible_live_pbp_request"
+}

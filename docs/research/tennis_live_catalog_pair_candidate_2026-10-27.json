@@ -1,0 +1,34 @@
+{
+  "report_version": "live_tennis_catalog_pair_candidate_v1",
+  "generated_at": "2026-10-27T08:14:00Z",
+  "mode": "read_only_rollback",
+  "source": {
+    "provider": "live_tennis_api",
+    "source_match_id": "209627",
+    "player_ids": ["715", "973"],
+    "player_names": ["Antonia Ruzic", "Claire Liu"],
+    "observed_at": "2026-10-27T07:28:45.640821+00:00",
+    "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-upcoming-offset-0/e2eb5408ba8c2ce0c33d8c87680b6e270885e121409d9024f5ac8da4b1406b94.json.gz",
+    "content_sha256": "e2eb5408ba8c2ce0c33d8c87680b6e270885e121409d9024f5ac8da4b1406b94",
+    "raw_hash_verified": true,
+    "explicit_format": "BO3",
+    "explicit_surface": "hard"
+  },
+  "fonbet_candidate": {
+    "source_event_id": "69277051",
+    "event_id": "798487ce-74ec-4b11-98d5-0aa9578ff372",
+    "participant_names": ["Рузич А", "Лю Клер"],
+    "scheduled_start_at": "2026-10-27T07:38:34.778820+00:00",
+    "side_scores": [0.9227, 0.8333],
+    "minimum_side_score": 0.8333,
+    "identity_confirmed": false
+  },
+  "projection_result": {
+    "confirmed_pairs": 0,
+    "ambiguous_pairs": 0,
+    "unresolved_pairs_with_name_candidate": 1,
+    "observations_inserted": 0,
+    "pit_eligible_from_this_candidate": false
+  },
+  "interpretation": "Diagnostic pair candidate only. It does not create a player identity or PIT attribute observation; confirmation requires independently verified identity evidence."
+}

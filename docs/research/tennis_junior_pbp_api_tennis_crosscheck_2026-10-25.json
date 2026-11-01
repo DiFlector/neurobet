@@ -1,0 +1,745 @@
+{
+  "generated_at": "2026-10-25T10:25:44.148191+00:00",
+  "scope": "Read-only cross-reference of 23 junior match rows to stored API-Tennis match results and point documents; no Flashscore requests.",
+  "match_link_method": "same played date, both player surnames in either winner/loser order, singles rows; reviewed tournament values identify Pardubicka juniorka / Boys / Girls Pardubicka juniorka.",
+  "quality_interpretation": "API-Tennis normalizer marks these retrospective documents partial; terminal points are not explicit, and some transitions/scores are ambiguous. They expand junior PBP coverage but do not certify complete sequences.",
+  "summary": {
+    "target_junior_matches": 23,
+    "matched_api_tennis_results": 23,
+    "matches_with_api_tennis_pbp": 15,
+    "matches_without_api_tennis_pbp": 8,
+    "complete_sequences": 0,
+    "partial_documents": 15,
+    "point_events": 1349,
+    "confirmed_points": 1299,
+    "ambiguous_points": 50,
+    "gap_count": 447
+  },
+  "matches": [
+    {
+      "flashscore_match_id": "69i7EPGM",
+      "played_at": "2022-08-07",
+      "players": [
+        "Valentova T.",
+        "Brozova N."
+      ],
+      "api_tennis_match_id": "11824816",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "T. Valentova",
+        "N. Brozova"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "juGuZdcD",
+      "played_at": "2022-08-08",
+      "players": [
+        "Mrva M.",
+        "Facek J."
+      ],
+      "api_tennis_match_id": "11824777",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "J. Facek"
+      ],
+      "final_score": "1 - 2",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "G6caYpYa",
+      "played_at": "2022-08-10",
+      "players": [
+        "Valentova T.",
+        "Jandova N."
+      ],
+      "api_tennis_match_id": "11824842",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "T. Valentova",
+        "N. Jandova"
+      ],
+      "final_score": "2 - 1",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "QyHsoOH5",
+      "played_at": "2022-08-10",
+      "players": [
+        "Mrva M.",
+        "Donald M."
+      ],
+      "api_tennis_match_id": "11824796",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "M. Donald"
+      ],
+      "final_score": "0 - 2",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "YmVNIktH",
+      "played_at": "2022-08-11",
+      "players": [
+        "Valentova T.",
+        "Forejtkova E."
+      ],
+      "api_tennis_match_id": "11824844",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "T. Valentova",
+        "E. Forejtkova"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "tMKYC6JO",
+      "played_at": "2022-08-11",
+      "players": [
+        "Nicod J.",
+        "Mrva M."
+      ],
+      "api_tennis_match_id": "11824797",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Nicod",
+        "M. Mrva"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "KQfHcXjH",
+      "played_at": "2022-08-12",
+      "players": [
+        "Valentova T.",
+        "Smekalova M."
+      ],
+      "api_tennis_match_id": "11824846",
+      "api_tennis_tournament": "Pardubicka juniorka",
+      "api_tennis_players": [
+        "T. Valentova",
+        "M. Smekalova"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "x2DbP9la",
+      "played_at": "2023-07-30",
+      "players": [
+        "Klimas J.",
+        "Jurena M."
+      ],
+      "api_tennis_match_id": "11884729",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Klimas",
+        "M. Jurena"
+      ],
+      "final_score": "6-4 6-2",
+      "pbp_document_id": "afc98753-a646-4d11-946c-0e1afefe7290",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "c1a9f460052a502ba31a8caf9f597ad316f4b708ae45abe25dacf7fe003fbca3",
+      "archived_path": "snapshots/external-tennis/api-tennis/2023-07-30/753933b98e6ba4252539dde54f13b93e20d247f6d1853e1d1236897cd5de7bd3.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:29:39.759053+00:00",
+      "available_at": "2026-10-23T13:29:39.759053+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 78,
+      "confirmed_points": 77,
+      "ambiguous_points": 1,
+      "gap_count": 22,
+      "gap_reasons": {
+        "ambiguous_point_transition": 1,
+        "invalid_point_score": 3,
+        "terminal_point_not_explicit": 18
+      }
+    },
+    {
+      "flashscore_match_id": "UqhkYUDm",
+      "played_at": "2023-07-31",
+      "players": [
+        "Mrva M.",
+        "Facek J."
+      ],
+      "api_tennis_match_id": "11884704",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "J. Facek"
+      ],
+      "final_score": "6-3 6-2",
+      "pbp_document_id": "944842b6-521b-414b-a472-6bb1061f78c6",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "08683b8040b9cc19ffc681cd1d745c14da88fb06fc2f5d839576d77ce973aeeb",
+      "archived_path": "snapshots/external-tennis/api-tennis/2023-07-31/f116e689a1abdcf2ee60bf8f3bd22db18079cad23a5b6b0e7ed6b46eb3b3fcb6.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:29:37.747110+00:00",
+      "available_at": "2026-10-23T13:29:37.747110+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 67,
+      "confirmed_points": 67,
+      "ambiguous_points": 0,
+      "gap_count": 18,
+      "gap_reasons": {
+        "invalid_point_score": 1,
+        "terminal_point_not_explicit": 17
+      }
+    },
+    {
+      "flashscore_match_id": "80QifDVb",
+      "played_at": "2023-08-01",
+      "players": [
+        "Klimas J.",
+        "Chodora R."
+      ],
+      "api_tennis_match_id": "11885055",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Klimas",
+        "R. Chodora"
+      ],
+      "final_score": "2 - 1",
+      "pbp_document_id": null,
+      "source_url": null,
+      "content_hash": null,
+      "archived_path": null,
+      "parser_version": null,
+      "retrieved_at": null,
+      "available_at": null,
+      "retrospective": null,
+      "parse_status": null,
+      "point_events": 0,
+      "confirmed_points": 0,
+      "ambiguous_points": 0,
+      "gap_count": 0,
+      "gap_reasons": {}
+    },
+    {
+      "flashscore_match_id": "fgnWDIM7",
+      "played_at": "2023-08-01",
+      "players": [
+        "Mrva M.",
+        "Soukup A."
+      ],
+      "api_tennis_match_id": "11885146",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "A. Soukup"
+      ],
+      "final_score": "6-1 6-2",
+      "pbp_document_id": "cad32de1-312f-414c-878b-9429d61fab2c",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "0a67ae0875d436bd769cf2f887dcbc50175201906700363d563250dbeaa2f07c",
+      "archived_path": "snapshots/external-tennis/api-tennis/2023-08-01/92fea57b68ab4079f1566be1bd3ffa0a4f993879f83b53ca13c7d23198e96635.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:29:32.988742+00:00",
+      "available_at": "2026-10-23T13:29:32.988742+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 70,
+      "confirmed_points": 70,
+      "ambiguous_points": 0,
+      "gap_count": 17,
+      "gap_reasons": {
+        "invalid_point_score": 2,
+        "terminal_point_not_explicit": 15
+      }
+    },
+    {
+      "flashscore_match_id": "rkLMa5VF",
+      "played_at": "2023-08-02",
+      "players": [
+        "Mrva M.",
+        "Klimas J."
+      ],
+      "api_tennis_match_id": "11885674",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "J. Klimas"
+      ],
+      "final_score": "6-3 6-4",
+      "pbp_document_id": "0bfeda65-aff5-4d7d-a582-6d61fd7f6c80",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "9bed5ab3d22a283ddb49a1ab10bcaad715286fde792ab7fa0f618d8ac88e2651",
+      "archived_path": "snapshots/external-tennis/api-tennis/2023-08-02/0b11263aba15cefa20087006e9495f6d12b000ff49635bd3ca8b4fdfbe3c0fdd.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:29:28.753163+00:00",
+      "available_at": "2026-10-23T13:29:28.753163+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 86,
+      "confirmed_points": 81,
+      "ambiguous_points": 5,
+      "gap_count": 33,
+      "gap_reasons": {
+        "ambiguous_point_transition": 5,
+        "invalid_point_score": 9,
+        "terminal_point_not_explicit": 19
+      }
+    },
+    {
+      "flashscore_match_id": "dYQw8zQg",
+      "played_at": "2023-08-03",
+      "players": [
+        "Filip J.",
+        "Mrva M."
+      ],
+      "api_tennis_match_id": "11886106",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Filip",
+        "M. Mrva"
+      ],
+      "final_score": "6-3 7-5",
+      "pbp_document_id": "dbdf5713-f271-43af-b702-b0e6f6769f73",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "1d00f741d06a017b7594a65f4d102aa88f92da7b7ec54feda5618925aec996a0",
+      "archived_path": "snapshots/external-tennis/api-tennis/2023-08-03/1c960fed9e9ea4c6744440518ca0ea31da536cbf0e25faed284f97ecd533103e.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:29:25.884945+00:00",
+      "available_at": "2026-10-23T13:29:25.884945+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 98,
+      "confirmed_points": 96,
+      "ambiguous_points": 2,
+      "gap_count": 29,
+      "gap_reasons": {
+        "ambiguous_point_transition": 2,
+        "invalid_point_score": 6,
+        "terminal_point_not_explicit": 21
+      }
+    },
+    {
+      "flashscore_match_id": "6J6Ae8sA",
+      "played_at": "2024-07-21",
+      "players": [
+        "Sekerkova V.",
+        "Hutkova V."
+      ],
+      "api_tennis_match_id": "11967976",
+      "api_tennis_tournament": "Girls Pardubicka juniorka",
+      "api_tennis_players": [
+        "V. Sekerkova",
+        "V. Hutkova"
+      ],
+      "final_score": "0 - 2",
+      "pbp_document_id": "645117eb-83c1-4c7e-a608-04045c5e1d30",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "2fef044fb416eb9b239de47f393a675cb656810b91ff60e515fdd3766817df9d",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-21/8bde2d7e17e76b7f564f2d32686a3f2653fae0403c4d6a6eeaf01a87431db803.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:13.952320+00:00",
+      "available_at": "2026-10-23T13:14:13.952320+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 65,
+      "confirmed_points": 63,
+      "ambiguous_points": 2,
+      "gap_count": 20,
+      "gap_reasons": {
+        "ambiguous_point_transition": 2,
+        "invalid_point_score": 4,
+        "terminal_point_not_explicit": 14
+      }
+    },
+    {
+      "flashscore_match_id": "CxcPkwBl",
+      "played_at": "2024-07-22",
+      "players": [
+        "Klimas J.",
+        "Frohlich J."
+      ],
+      "api_tennis_match_id": "11967970",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Klimas",
+        "J. Frohlich"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": "3429f18d-7fb6-45c9-beb7-454699635497",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "d9a82568a5b978f45174e012881b6ecba00ae9dfd8324cca2b459694d4876db6",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-22/d42fa2b98f20762b57abcd1b0ae1402d97fd38352803a2d691c372dabf433afb.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:11.786781+00:00",
+      "available_at": "2026-10-23T13:14:11.786781+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 87,
+      "confirmed_points": 84,
+      "ambiguous_points": 3,
+      "gap_count": 28,
+      "gap_reasons": {
+        "ambiguous_point_transition": 3,
+        "invalid_point_score": 7,
+        "terminal_point_not_explicit": 18
+      }
+    },
+    {
+      "flashscore_match_id": "IqFKsWXO",
+      "played_at": "2024-07-22",
+      "players": [
+        "Mrva M.",
+        "Novotny A."
+      ],
+      "api_tennis_match_id": "11967869",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "A. Novotny"
+      ],
+      "final_score": "0 - 2",
+      "pbp_document_id": "7d094d7d-f889-4e74-bbfe-8dcdd51fbb8f",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "927ad3f0130ef6399f43e492d96720d768785160f8a9da29f208b33fbae76ef1",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-22/d42fa2b98f20762b57abcd1b0ae1402d97fd38352803a2d691c372dabf433afb.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:11.786781+00:00",
+      "available_at": "2026-10-23T13:14:11.786781+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 112,
+      "confirmed_points": 108,
+      "ambiguous_points": 4,
+      "gap_count": 37,
+      "gap_reasons": {
+        "ambiguous_point_transition": 4,
+        "invalid_point_score": 8,
+        "terminal_point_not_explicit": 25
+      }
+    },
+    {
+      "flashscore_match_id": "8vRfqEq2",
+      "played_at": "2024-07-23",
+      "players": [
+        "Klimas J.",
+        "Petrofsky D."
+      ],
+      "api_tennis_match_id": "11968353",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Klimas",
+        "D. Petrofsky"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": "08e85af5-ee8a-47ab-89e1-dec5ed1464d2",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "2f2195c344237f4a7e2e98178ec9f0c33bb2742a528f86e3a39098ffd7398221",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-23/3682c2d74d734a4a63b629d0ca9ff7eb2ee0a609764de296b2a46b9b1387eaac.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:09.681524+00:00",
+      "available_at": "2026-10-23T13:14:09.681524+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 86,
+      "confirmed_points": 83,
+      "ambiguous_points": 3,
+      "gap_count": 29,
+      "gap_reasons": {
+        "ambiguous_point_transition": 3,
+        "invalid_point_score": 8,
+        "terminal_point_not_explicit": 18
+      }
+    },
+    {
+      "flashscore_match_id": "WK0tWHlB",
+      "played_at": "2024-07-23",
+      "players": [
+        "Mrva M.",
+        "Soukup A."
+      ],
+      "api_tennis_match_id": "11968461",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "A. Soukup"
+      ],
+      "final_score": "0 - 2",
+      "pbp_document_id": "d96b515f-913b-43f0-8ffb-908544fc8637",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "dd9af943e60709d78c430d3cac550f54ba4d7c35e9c72f058dd5b18eee9478db",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-23/3682c2d74d734a4a63b629d0ca9ff7eb2ee0a609764de296b2a46b9b1387eaac.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:09.681524+00:00",
+      "available_at": "2026-10-23T13:14:09.681524+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 89,
+      "confirmed_points": 79,
+      "ambiguous_points": 10,
+      "gap_count": 39,
+      "gap_reasons": {
+        "ambiguous_point_transition": 10,
+        "invalid_point_score": 13,
+        "terminal_point_not_explicit": 16
+      }
+    },
+    {
+      "flashscore_match_id": "r93TCqyR",
+      "played_at": "2024-07-23",
+      "players": [
+        "Krejcova T.",
+        "Sekerkova V."
+      ],
+      "api_tennis_match_id": "11968295",
+      "api_tennis_tournament": "Girls Pardubicka juniorka",
+      "api_tennis_players": [
+        "T. Krejcova",
+        "V. Sekerkova"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": "20166019-abb2-4464-8e89-c99ef32cd03e",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "69a291982594471f6171fffc4fe501504de5399cee47f8ce8bae72f4d7bf05c2",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-23/3682c2d74d734a4a63b629d0ca9ff7eb2ee0a609764de296b2a46b9b1387eaac.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:09.681524+00:00",
+      "available_at": "2026-10-23T13:14:09.681524+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 73,
+      "confirmed_points": 72,
+      "ambiguous_points": 1,
+      "gap_count": 22,
+      "gap_reasons": {
+        "ambiguous_point_transition": 1,
+        "invalid_point_score": 4,
+        "terminal_point_not_explicit": 17
+      }
+    },
+    {
+      "flashscore_match_id": "YqctrqKk",
+      "played_at": "2024-07-24",
+      "players": [
+        "Mrva M.",
+        "Chodora R."
+      ],
+      "api_tennis_match_id": "11968804",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "M. Mrva",
+        "R. Chodora"
+      ],
+      "final_score": "0 - 2",
+      "pbp_document_id": "7eb7c9a6-733b-43c3-acb9-ba4962ad1509",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "042e21ceee14a16f652fbbbe95f1236b9678483102a74eec72b5d5ca8e072b17",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-24/86897abafc52d2dac7468a2d96c0d180484b28110a30cf37cbf54903b631d174.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:06.440732+00:00",
+      "available_at": "2026-10-23T13:14:06.440732+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 95,
+      "confirmed_points": 93,
+      "ambiguous_points": 2,
+      "gap_count": 30,
+      "gap_reasons": {
+        "ambiguous_point_transition": 2,
+        "invalid_point_score": 9,
+        "terminal_point_not_explicit": 19
+      }
+    },
+    {
+      "flashscore_match_id": "rujREseR",
+      "played_at": "2024-07-24",
+      "players": [
+        "Klimas J.",
+        "Doskocil M."
+      ],
+      "api_tennis_match_id": "11968805",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Klimas",
+        "M. Doskocil"
+      ],
+      "final_score": "2 - 1",
+      "pbp_document_id": "647fe61e-1ea3-4484-99f4-811b5292db79",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "8b5cc42c010df2f610fd5c553c4a0527d33230a347fc424238d60701696fa387",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-24/86897abafc52d2dac7468a2d96c0d180484b28110a30cf37cbf54903b631d174.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:06.440732+00:00",
+      "available_at": "2026-10-23T13:14:06.440732+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 125,
+      "confirmed_points": 123,
+      "ambiguous_points": 2,
+      "gap_count": 36,
+      "gap_reasons": {
+        "ambiguous_point_transition": 2,
+        "invalid_point_score": 8,
+        "terminal_point_not_explicit": 26
+      }
+    },
+    {
+      "flashscore_match_id": "WbsgqxLG",
+      "played_at": "2024-07-25",
+      "players": [
+        "Petak D.",
+        "Mrva M."
+      ],
+      "api_tennis_match_id": "11969277",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "D. Petak",
+        "M. Mrva"
+      ],
+      "final_score": "2 - 1",
+      "pbp_document_id": "898de613-453e-4321-af87-dfbe3dea0bb1",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "372d79040ffac2483ca983511d6fbe11f638093075cce14721f3b59d19483595",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-25/532950d5d91734dcd850229196996e40e45754b006654ffaee4aeac0338f514f.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:04.308618+00:00",
+      "available_at": "2026-10-23T13:14:04.308618+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 125,
+      "confirmed_points": 116,
+      "ambiguous_points": 9,
+      "gap_count": 51,
+      "gap_reasons": {
+        "ambiguous_point_transition": 9,
+        "invalid_point_score": 17,
+        "terminal_point_not_explicit": 25
+      }
+    },
+    {
+      "flashscore_match_id": "ddLFnnGl",
+      "played_at": "2024-07-25",
+      "players": [
+        "Kumstat J.",
+        "Klimas J."
+      ],
+      "api_tennis_match_id": "11969215",
+      "api_tennis_tournament": "Boys Pardubicka juniorka",
+      "api_tennis_players": [
+        "J. Kumstat",
+        "J. Klimas"
+      ],
+      "final_score": "2 - 0",
+      "pbp_document_id": "43024045-c2ca-462f-8c84-f72046f225c4",
+      "source_url": "https://api.api-tennis.com/tennis/?method=get_fixtures",
+      "content_hash": "0cc0d2158df1a125ffdd45e53bf46c4b109cb6de5570bbb5fa0a26df72ab1037",
+      "archived_path": "snapshots/external-tennis/api-tennis/2024-07-25/532950d5d91734dcd850229196996e40e45754b006654ffaee4aeac0338f514f.json.gz",
+      "parser_version": "api_tennis_pbp_v1",
+      "retrieved_at": "2026-10-23T13:14:04.308618+00:00",
+      "available_at": "2026-10-23T13:14:04.308618+00:00",
+      "retrospective": true,
+      "parse_status": "partial",
+      "point_events": 93,
+      "confirmed_points": 87,
+      "ambiguous_points": 6,
+      "gap_count": 36,
+      "gap_reasons": {
+        "ambiguous_point_transition": 6,
+        "invalid_point_score": 12,
+        "terminal_point_not_explicit": 18
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-10-26T13:47:40.536254+00:00",
+  "source": "fonbet_official_result",
+  "rule": "normal FINISHED result, no retirement/walkover, result available_at >= scheduled start; 2-set win => BO3, 3-set win => BO5",
+  "mode": "commit",
+  "events_scanned": 4617,
+  "candidates": 9,
+  "candidates_by_best_of": {
+    "3": 9
+  },
+  "skipped": {
+    "missing_or_invalid_result_available_at": 551,
+    "missing_official_result": 377,
+    "not_normal_finished": 4,
+    "already_has_format": 3676
+  },
+  "candidate_digest_sha256": "f98927ed3cfd5047c4eb65a3e2158c2c217e9edeebe89b5f0742a1477199cb9d",
+  "rows_committed": 9,
+  "pit_note": "best_of_available_at is the result source availability time; no pre-result snapshot is made eligible by this backfill"
+}

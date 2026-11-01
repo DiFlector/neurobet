@@ -1,0 +1,85 @@
+{
+  "checked_at_utc": "2026-10-25T15:49:32Z",
+  "production_read_only": {
+    "migration_revision": "054_tennis_point_doc_status",
+    "includes_033_source_point_jobs": true,
+    "admin_keys_present": [
+      "ADMIN_USERNAME",
+      "ADMIN_PASSWORD_SHA256",
+      "ADMIN_SESSION_SECRET",
+      "ADMIN_COOKIE_SECURE",
+      "ADMIN_INTERNAL_TOKEN"
+    ],
+    "services_healthy": ["backend", "research", "frontend"],
+    "backend_health_http": 200,
+    "frontend_base_path_http": 200,
+    "testclient": {
+      "unauthenticated_list_http": 401,
+      "unconfigured_login_http": 503,
+      "unconfigured_list_http": 503,
+      "login_http": 200,
+      "logout_http": 200,
+      "player_profile_list": {"http": 200, "total": 458},
+      "event_match_list": {"http": 200, "total": 10}
+    },
+    "confirmation_rows_before_after": {
+      "requests": [468, 468],
+      "decisions": [469, 469]
+    }
+  },
+  "isolated_e2e": {
+    "database": "neurobet_admin_e2e_20261025",
+    "migrated_to_head": true,
+    "player_profile_approve_http": 200,
+    "player_profile_reject_http": 200,
+    "event_match_approve_http": 200,
+    "event_match_reject_http": 200,
+    "same_request_concurrent_http_statuses": [200, 409],
+    "rejected_pair_reoffered": false,
+    "approved_match_link_status": "manual",
+    "approved_match_pbp_job_status": "queued",
+    "rejected_match_link_status": "rejected",
+    "same_subject_candidates_visible": 2,
+    "approved_candidate_superseded_sibling": true,
+    "browser_ui_actions": ["player_profile_reject", "event_match_approve", "approve_one_of_multiple_candidates"],
+    "browser_page_errors": 0,
+    "pit_metric_before_identity_available": true,
+    "pit_metric_after_identity_unavailable": true,
+    "restart_recovery": {
+      "pending_request_count": 0,
+      "resumed_to": "queued",
+      "lease_cleared": true,
+      "attempt_token_cleared": true
+    },
+    "bet_rows_before_after_direct_decisions": [0, 0],
+    "ledger_rows_before_after_direct_decisions": [1, 1]
+  },
+  "production_pbp": {
+    "fonbet_event_id": "91f04ffb-700e-478b-a72e-d71ce213ce53",
+    "flashscore_match_id": "A5F0BCMP",
+    "saved_documents": 22,
+    "parsed_versions": 22,
+    "latest_parser": "flashscore-point-history-v5",
+    "latest_sets": [
+      {"set": 1, "events": 120, "confirmed_points": 119, "gaps": 0, "ambiguous_points": 0, "complete": true, "terminal_score": "7-6"},
+      {"set": 2, "events": 44, "confirmed_points": 44, "gaps": 0, "ambiguous_points": 0, "complete": true, "terminal_score": "1-6"},
+      {"set": 3, "events": 87, "confirmed_points": 86, "gaps": 0, "ambiguous_points": 0, "complete": true, "terminal_score": "7-6"}
+    ],
+    "availability_status": "known",
+    "retrospective": true,
+    "pit_certified": false,
+    "fonbet_final_score": "2:1 (7-6 1-6 7-6)"
+  },
+  "format_gate": {
+    "recent_event_metadata_sample": 100,
+    "explicit_format_fields_found": 0,
+    "best_of_forecast_e2e_complete": false
+  },
+  "backend_fix": {
+    "flush_terminal_request_before_pending_query": true,
+    "refresh_request_after_subject_lock": true,
+    "backend_rebuilt_and_deployed": true,
+    "post_deploy_health": "healthy",
+    "migration_required": false
+  }
+}

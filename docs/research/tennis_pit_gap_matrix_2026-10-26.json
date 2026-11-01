@@ -1,0 +1,626 @@
+{
+  "generated_at": "2026-10-26T18:56:19.177022+00:00",
+  "dataset_sha256": "be695270db38615162b103b7c1649f1805c2cd23fea039a4702c10547929a38a",
+  "verified_groups_per_example": {
+    "0": 7273,
+    "1": 510,
+    "2": 9
+  },
+  "group_verified_examples": {
+    "event_format": 0,
+    "event_state": 0,
+    "event_surface": 0,
+    "player_metrics": 505,
+    "serve_metrics_a": 14,
+    "serve_metrics_b": 9
+  },
+  "targets": {
+    "game": {
+      "examples": 1674,
+      "events": 82,
+      "accepted_examples": 0,
+      "accepted_events": 0
+    },
+    "match": {
+      "examples": 3207,
+      "events": 3207,
+      "accepted_examples": 0,
+      "accepted_events": 0
+    },
+    "point": {
+      "examples": 2730,
+      "events": 81,
+      "accepted_examples": 0,
+      "accepted_events": 0
+    },
+    "set": {
+      "examples": 181,
+      "events": 82,
+      "accepted_examples": 0,
+      "accepted_events": 0
+    }
+  },
+  "nearest_restoration_candidates": [
+    {
+      "event_id": "3b7a6c84-5add-4d88-b80e-dbfb61da1f0c",
+      "snapshot_id": "eaa4c0a0-6c0d-4015-9c5b-495816c60b9b",
+      "target": "match",
+      "cutoff": "2026-10-25T12:04:35.715073+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_b"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a"
+      ]
+    },
+    {
+      "event_id": "7818c00e-ef3c-4fa7-8bb1-059cf54cffee",
+      "snapshot_id": "e3ff75ad-f5ed-4464-b3f2-245cd7fa70b8",
+      "target": "match",
+      "cutoff": "2026-10-25T19:02:16.924789+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "80e81b23-4de2-49a2-9ed0-d85bd932808c",
+      "snapshot_id": "6188dc41-2701-4545-b15d-60e9bc2f705f",
+      "target": "match",
+      "cutoff": "2026-10-25T12:06:05.792228+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "8efeb3f8-2ab4-49d7-b0a1-393cc122eee3",
+      "snapshot_id": "aa5d09db-6c49-4222-a775-5e559ffed2de",
+      "target": "match",
+      "cutoff": "2026-10-25T08:15:21.295998+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "96f93363-2bc7-4c13-8e66-01a2071175f6",
+      "snapshot_id": "2dacb0ee-d617-4b9f-b206-52df065dc6b8",
+      "target": "match",
+      "cutoff": "2026-10-25T11:05:08.016988+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_b"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a"
+      ]
+    },
+    {
+      "event_id": "a160d89d-b6f2-4a01-9f66-9da33dadf0f5",
+      "snapshot_id": "13371be7-058a-497b-be83-46c6c8fd17dd",
+      "target": "match",
+      "cutoff": "2026-10-25T12:46:21.920147+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "c32115ad-32d0-4c50-b02a-c3942e7c0379",
+      "snapshot_id": "5c386d88-4027-47d6-87c4-5591fe5f6ee5",
+      "target": "match",
+      "cutoff": "2026-10-26T08:13:11.336162+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_b"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a"
+      ]
+    },
+    {
+      "event_id": "eb3eeb21-85c8-4318-a10e-89529d236a13",
+      "snapshot_id": "2f4a68b6-23e3-43ed-b6af-eb44d88b36a2",
+      "target": "match",
+      "cutoff": "2026-10-25T14:14:28.858693+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "efe10cad-9b46-4ccf-b879-20dd55c73c77",
+      "snapshot_id": "a7527b07-ee95-436c-9ef5-ce470499ed05",
+      "target": "match",
+      "cutoff": "2026-10-25T15:39:17.137172+00:00",
+      "verified_groups": [
+        "player_metrics",
+        "serve_metrics_b"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a"
+      ]
+    },
+    {
+      "event_id": "012417d7-c117-44c3-8d53-030dfeab3cd1",
+      "snapshot_id": "9b374411-3249-478c-8a8f-47133f3e68ef",
+      "target": "match",
+      "cutoff": "2026-10-25T10:03:07.122785+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "0214297f-23b7-4928-a4e7-0a1023ded969",
+      "snapshot_id": "34151dc2-116a-4e42-882c-a0c83e6a7b12",
+      "target": "match",
+      "cutoff": "2026-10-23T09:52:26.328353+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "0227ae95-6631-4a63-b887-d042da13606e",
+      "snapshot_id": "1bb2d9a7-e065-4c3a-8947-5716b35764b6",
+      "target": "match",
+      "cutoff": "2026-10-24T08:13:32.024103+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "057af998-5d01-4506-844c-8ab746673d42",
+      "snapshot_id": "c2eeb609-02cd-4a5a-b7ef-5dc7bf52422b",
+      "target": "match",
+      "cutoff": "2026-10-23T09:10:10.402835+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "05e3c873-4fe4-4b16-9898-ba23e1ed8343",
+      "snapshot_id": "3257f7c0-cd47-464c-a1b1-224b9e77c2e0",
+      "target": "match",
+      "cutoff": "2026-10-22T13:58:12.883185+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "07cf92ae-e18f-4efa-9470-d9da270f7c10",
+      "snapshot_id": "7ab82a32-4edb-4070-bd13-cf595966a963",
+      "target": "match",
+      "cutoff": "2026-10-22T08:05:23.505570+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "07e51bd5-789b-446b-9048-168d552fcf6d",
+      "snapshot_id": "29321df9-f437-4291-af1f-d53609916a28",
+      "target": "match",
+      "cutoff": "2026-10-23T16:03:44.895065+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "08b20814-3704-4a1c-b85b-2480d24e9774",
+      "snapshot_id": "6ceabf29-2dc2-4d57-88a1-ba893dd8341f",
+      "target": "match",
+      "cutoff": "2026-10-25T10:08:15.666867+00:00",
+      "verified_groups": [
+        "serve_metrics_a"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "player_metrics",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "contract_prior_not_allowed:player_metrics",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "08f4d362-29ac-4688-966e-9cad0c033f43",
+      "snapshot_id": "6fa0e5d1-cad7-4d95-8537-dbc18a058334",
+      "target": "match",
+      "cutoff": "2026-10-21T10:24:26.228264+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "0a266b8c-d31c-47e1-8a4b-9b8d426198d1",
+      "snapshot_id": "015f8c2b-885a-4ffc-95f6-89fc63ceaa08",
+      "target": "match",
+      "cutoff": "2026-10-26T07:26:02.908677+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    },
+    {
+      "event_id": "0b52b9d3-4aa9-4e84-a152-dd6cc233cb2a",
+      "snapshot_id": "408967b3-98d5-468d-a6ca-32fa5382be3c",
+      "target": "match",
+      "cutoff": "2026-10-26T10:03:46.261925+00:00",
+      "verified_groups": [
+        "player_metrics"
+      ],
+      "missing_groups": [
+        "event_format",
+        "event_state",
+        "event_surface",
+        "serve_metrics_a",
+        "serve_metrics_b"
+      ],
+      "rejection_reasons": [
+        "contract_prior_not_allowed:event_surface",
+        "feature_value_missing:sets_to_win",
+        "pit_evidence_hash_missing:event_state",
+        "pit_evidence_missing:event_format",
+        "pit_evidence_missing:event_surface",
+        "pit_evidence_missing:serve_metrics_a",
+        "pit_evidence_missing:serve_metrics_b",
+        "pit_evidence_object_missing:event_state",
+        "pit_source_missing:event_format",
+        "pit_source_missing:event_surface",
+        "pit_source_missing:serve_metrics_a",
+        "pit_source_missing:serve_metrics_b"
+      ]
+    }
+  ]
+}

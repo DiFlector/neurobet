@@ -1,0 +1,58 @@
+{
+  "alignment_policy": "confirmed_pre_game_score_v1",
+  "artifacts": [
+    {
+      "bytes": 67362,
+      "path": "tennis_label_audit_recovered_saved_cohort_2026-10-28.json",
+      "sha256": "e482fb915bbefecd8b4bec15bcb1180664baadff6c5f417eb17b24c82b25ba08"
+    },
+    {
+      "bytes": 1106639,
+      "path": "tennis_recovered_saved_cohort_manifest_2026-10-28.json",
+      "sha256": "b44496f57e5d0dfd490542c0986fc8e5b55507217149472190f7ab84773c26ad"
+    },
+    {
+      "bytes": 4512941,
+      "path": "tennis_recovered_saved_cohort_artifacts_2026-10-28.tar.gz",
+      "sha256": "22f67845fe6a48bbb42254429560cfd48f582480d83282ac971ebdd6180fe464"
+    },
+    {
+      "bytes": 67529,
+      "path": "tennis_label_audit_expanded_history_2026-10-28.json",
+      "sha256": "95792bf15c21bff6b1098af32dfa95c01d619c899e0f6c97a37e51cb009b750c"
+    },
+    {
+      "bytes": 1106639,
+      "path": "tennis_expanded_history_manifest_2026-10-28.json",
+      "sha256": "0f2d70bf7942868e950481f6a2633ca1c1014a105d3d8ff0d66e6786111a79bd"
+    },
+    {
+      "bytes": 4521005,
+      "path": "tennis_expanded_history_artifacts_2026-10-28.tar.gz",
+      "sha256": "6eaedeefcbfbcc56a5834a363dcf0ab25c4ef4c1ba636aa713b6e9ac181883fc"
+    },
+    {
+      "bytes": 157491,
+      "path": "tennis_full_tape_coverage_2026-10-28.json",
+      "sha256": "8305480a8383fe5041755d0e1a60da2c712df3d5341d7f024e1097eace35955d"
+    },
+    {
+      "bytes": 6399298,
+      "path": "tennis_full_tape_coverage_artifacts_2026-10-28.tar.gz",
+      "sha256": "d5a45c20be3ccddf531d78ab58281718c5b3d54d0d628fca8e53d5dbce7f8500"
+    },
+    {
+      "bytes": 1322220,
+      "path": "tennis_expanded_snapshot_index_2026-10-28.jsonl",
+      "sha256": "270d6747c25d96398fdf3013d105e157c0b5c6ca8978fe2296c7c07da51213b7"
+    },
+    {
+      "bytes": 122019,
+      "path": "tennis_full_tape_witness_index_2026-10-28.jsonl",
+      "sha256": "a1f3f59a15e82c9b5c14f4b1e9cc5741eef2306489dde8b45c93eaba4636995d"
+    }
+  ],
+  "cutoff": "2026-10-28T03:03:00+00:00",
+  "dataset_digest": "4a00aa01f3134159f1b7e9b96a9fbb1dcaebbde3922734579abffac9b4ea90aa",
+  "training_gate": "blocked"
+}

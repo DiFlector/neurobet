@@ -3,7 +3,7 @@
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add package paths
@@ -20,8 +20,10 @@ from tennis_adapter import (
     normalize_russian_player_name,
 )
 from tennis_adapter.adapter import merge_event_metadata
+from tennis_adapter.pipeline import _is_stale_observation
+from tennis_adapter.pipeline import _best_of_forced_by_live_score, _raw_object_matches_hash
 from db.connection import SessionLocal
-from db.models import Event, EventStateSnapshot, OddsSnapshot
+from db.models import Event, EventStateSnapshot, OddsSnapshot, Sport, TennisEventAttributeObservation
 
 
 def test_registry_and_surface_detection():
@@ -50,6 +52,13 @@ def test_russian_player_name_normalization():
     assert normalize_russian_player_name("Зверев А.") == "Александр Зверев"
     assert normalize_russian_player_name("Соболенко А.") == "Арина Соболенко"
     print("test_russian_player_name_normalization: OK")
+
+
+def test_source_raw_object_key_matches_upstream_digest():
+    digest = "a" * 64
+    assert _raw_object_matches_hash(digest, f"fonbet/tennis/2026-10-26/aaaa/{digest}.json")
+    assert not _raw_object_matches_hash(digest, f"fonbet/tennis/2026-10-26/bbbb/{'b' * 64}.json")
+    assert not _raw_object_matches_hash(None, f"fonbet/tennis/2026-10-26/aaaa/{digest}.json")
 
 
 def test_hierarchical_state_and_score():
@@ -111,18 +120,83 @@ def test_event_metadata_preserves_only_explicit_best_of():
     assert "best_of" not in adapter.parse_event(unknown).metadata
 
 
+def test_prematch_event_contract_remains_scheduled_and_not_live():
+    adapter = TennisSportAdapter()
+    event = adapter.parse_event({
+        "source_event_id": "fonbet-upcoming-1",
+        "participant_a": "Пол Т", "participant_b": "Рублев А",
+        "scheduled_start": "2026-10-27T12:30:00+00:00",
+        "status": "prematch", "is_live": False,
+    })
+    assert event.status == "prematch"
+    assert event.is_live is False
+    assert event.scheduled_start == datetime(2026, 10, 27, 12, 30, tzinfo=timezone.utc)
+
+
 def test_best_of_metadata_timestamp_is_first_observation_and_changes_on_correction():
     first = datetime(2026, 1, 1, tzinfo=timezone.utc)
     second = datetime(2026, 1, 2, tzinfo=timezone.utc)
-    initial = merge_event_metadata({}, {"best_of": 3}, first)
+    digest_a, digest_b = "a" * 64, "b" * 64
+    key_a = f"fonbet/tennis/2026-01-01/aaaa/{digest_a}.json"
+    key_b = f"fonbet/tennis/2026-01-02/bbbb/{digest_b}.json"
+    initial = merge_event_metadata({}, {
+        "best_of": 3, "best_of_source_content_sha256": digest_a,
+        "best_of_source_raw_object_key": key_a,
+    }, first)
     assert initial["best_of_available_at"] == first.isoformat()
-    repeated = merge_event_metadata(initial, {"best_of": 3}, second)
+    repeated = merge_event_metadata(initial, {
+        "best_of": 3, "best_of_source_content_sha256": digest_b,
+        "best_of_source_raw_object_key": key_b,
+    }, second)
     assert repeated["best_of_available_at"] == first.isoformat()
-    corrected = merge_event_metadata(repeated, {"best_of": 5}, second)
+    assert repeated["best_of_source_content_sha256"] == digest_a
+    assert repeated["best_of_source_raw_object_key"] == key_a
+    corrected = merge_event_metadata(repeated, {
+        "best_of": 5, "best_of_source_content_sha256": digest_b,
+        "best_of_source_raw_object_key": key_b,
+    }, second)
     assert corrected["best_of_available_at"] == second.isoformat()
+    assert corrected["best_of_source_content_sha256"] == digest_b
+    assert corrected["best_of_source_raw_object_key"] == key_b
+    unproved_correction = merge_event_metadata(repeated, {"best_of": 5}, second)
+    assert "best_of_source_content_sha256" not in unproved_correction
+    assert "best_of_source_raw_object_key" not in unproved_correction
     assert "best_of_available_at" not in merge_event_metadata(
         {}, {"surface": "hard"}, second
     )
+
+
+def test_live_score_infers_only_format_forced_by_play():
+    adapter = TennisSportAdapter()
+    one_all = adapter.parse_state({
+        "id": "format-one-all", "score_state": {
+            "raw_score_string": "1-1 (6-4, 4-6, 2-1)",
+        },
+    })
+    assert one_all.current_period == 3
+    assert _best_of_forced_by_live_score(one_all) is None
+
+    two_all = adapter.parse_state({
+        "id": "format-two-all", "score_state": {
+            "raw_score_string": "2-2 (6-4, 4-6, 6-3, 3-6, 1-0)",
+        },
+    })
+    assert two_all.current_period == 5
+    assert _best_of_forced_by_live_score(two_all) == 5
+
+    third_set = adapter.parse_state({
+        "id": "format-third-set", "score_state": {
+            "raw_score_string": "1-1 (6-4, 4-6, 2-1)",
+        },
+    })
+    assert _best_of_forced_by_live_score(third_set) is None
+
+
+def test_replayed_snapshot_cannot_rewind_event_watermark():
+    last_seen = datetime(2026, 10, 26, 12, tzinfo=timezone.utc)
+    assert _is_stale_observation(datetime(2026, 10, 26, 11, tzinfo=timezone.utc), last_seen)
+    assert not _is_stale_observation(last_seen, last_seen)
+    assert not _is_stale_observation(datetime(2026, 10, 26, 13, tzinfo=timezone.utc), last_seen)
 
 
 def test_odds_snapshot_and_mvp_market():
@@ -178,6 +252,10 @@ def test_pipeline_raw_to_event_state_odds_and_deduplication():
     pipeline = TennisPipeline()
 
     with SessionLocal() as session:
+        sport_created = session.query(Sport).filter(Sport.code == "tennis").one_or_none() is None
+        if sport_created:
+            session.add(Sport(code="tennis", name="Tennis", status="active", is_primary=True, metadata_json={}))
+            session.flush()
         # Step 1: Initial ingestion (raw -> event -> state -> odds)
         event, state, odds_1, changed_1 = pipeline.process_and_persist(session, raw_event_payload)
         assert event.participant_a == "Карлос Алькарас"
@@ -212,10 +290,113 @@ def test_pipeline_raw_to_event_state_odds_and_deduplication():
         odds_rows_3 = session.query(OddsSnapshot).filter(OddsSnapshot.event_id == db_event.id).count()
         assert odds_rows_3 == 4, "Odds change must create a new historical record"
 
+        # A live score that is impossible in best-of-three proves best-of-five
+        # at this observation time. Replaying the same source payload is idempotent.
+        score_payload = dict(raw_event_payload)
+        score_payload["score_state"] = {
+            "raw_score_string": "2-2 (6-4, 4-6, 6-3, 3-6, 1-0)",
+            "current_game_a": 1,
+            "current_game_b": 0,
+            "server": "player_a",
+        }
+        observed_at = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=1)
+        source_payload_hash = "sha256:" + ("a" * 64)
+        source_payload_raw_key = f"fonbet/tennis/test/{'a' * 4}/{'a' * 64}.json"
+        pipeline.process_and_persist(
+            session, score_payload, observed_at=observed_at,
+            source_payload_hash=source_payload_hash,
+            source_payload_raw_key=source_payload_raw_key,
+        )
+        pipeline.process_and_persist(
+            session, score_payload, observed_at=observed_at,
+            source_payload_hash=source_payload_hash,
+            source_payload_raw_key=source_payload_raw_key,
+        )
+        format_rows = (
+            session.query(TennisEventAttributeObservation)
+            .filter(
+                TennisEventAttributeObservation.event_id == db_event.id,
+                TennisEventAttributeObservation.attribute_name == "best_of",
+            )
+            .all()
+        )
+        assert len(format_rows) == 1
+        assert format_rows[0].value_json == {"value": 5}
+        assert format_rows[0].available_at == observed_at
+        assert format_rows[0].source == "fonbet_score_invariant"
+        assert format_rows[0].source_content_hash
+        assert format_rows[0].raw_object_key == source_payload_raw_key
+        assert format_rows[0].evidence_hash
+        source_state = (
+            session.query(EventStateSnapshot)
+            .filter(EventStateSnapshot.event_id == db_event.id,
+                    EventStateSnapshot.observed_at == observed_at)
+            .order_by(EventStateSnapshot.id.desc())
+            .first()
+        )
+        assert source_state.raw_hash == "a" * 64
+        assert source_state.raw_object_key == source_payload_raw_key
+
+        # A stored object key without the collector's digest is not enough to
+        # claim that a projection hash proves the archived source bytes.
+        unhashed_at = observed_at + timedelta(minutes=1)
+        pipeline.process_and_persist(
+            session, score_payload, observed_at=unhashed_at,
+            source_payload_raw_key=source_payload_raw_key,
+        )
+        unhashed_state = (
+            session.query(EventStateSnapshot)
+            .filter(EventStateSnapshot.event_id == db_event.id,
+                    EventStateSnapshot.observed_at == unhashed_at)
+            .order_by(EventStateSnapshot.id.desc())
+            .first()
+        )
+        assert unhashed_state.raw_hash is None
+        assert unhashed_state.raw_object_key == source_payload_raw_key
+        assert not session.query(TennisEventAttributeObservation).filter(
+            TennisEventAttributeObservation.event_id == db_event.id,
+            TennisEventAttributeObservation.attribute_name == "best_of",
+            TennisEventAttributeObservation.available_at == unhashed_at,
+        ).first()
+
+        # A late replay preserves its original source time in the immutable
+        # history while leaving the current event projection untouched.
+        stale_at = observed_at - timedelta(days=1)
+        pipeline.process_and_persist(
+            session, score_payload, observed_at=stale_at,
+            source_payload_hash=source_payload_hash,
+            source_payload_raw_key=source_payload_raw_key,
+        )
+        pipeline.process_and_persist(
+            session, score_payload, observed_at=stale_at,
+            source_payload_hash=source_payload_hash,
+            source_payload_raw_key=source_payload_raw_key,
+        )
+        format_rows = (
+            session.query(TennisEventAttributeObservation)
+            .filter(
+                TennisEventAttributeObservation.event_id == db_event.id,
+                TennisEventAttributeObservation.attribute_name == "best_of",
+            )
+            .order_by(TennisEventAttributeObservation.available_at)
+            .all()
+        )
+        assert len(format_rows) == 2
+        assert format_rows[0].available_at == stale_at
+        assert format_rows[0].source_content_hash
+        assert format_rows[0].raw_object_key == source_payload_raw_key
+        session.refresh(db_event)
+        assert db_event.metadata_json["best_of_available_at"] == observed_at.isoformat()
+
         # Cleanup test records
+        session.query(TennisEventAttributeObservation).filter(
+            TennisEventAttributeObservation.event_id == db_event.id
+        ).delete()
         session.query(OddsSnapshot).filter(OddsSnapshot.event_id == db_event.id).delete()
         session.query(EventStateSnapshot).filter(EventStateSnapshot.event_id == db_event.id).delete()
         session.query(Event).filter(Event.id == db_event.id).delete()
+        if sport_created:
+            session.query(Sport).filter(Sport.code == "tennis").delete()
         session.commit()
 
     print("test_pipeline_raw_to_event_state_odds_and_deduplication: OK")

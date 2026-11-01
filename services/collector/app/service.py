@@ -37,6 +37,11 @@ class CollectorService:
         self.last_content_hash: Optional[str] = None
         self.last_source_content_hash: Optional[str] = None
         self.last_source_s3_key: Optional[str] = None
+        self.last_prematch_source_content_hash: Optional[str] = None
+        self.last_prematch_source_s3_key: Optional[str] = None
+        self.last_prematch_content_hash: Optional[str] = None
+        self.last_prematch_poll_at: Optional[datetime] = None
+        self.last_prematch_event_fingerprints: Dict[str, str] = {}
         self.total_polls = 0
         self.total_live_events_seen = 0
 
@@ -47,7 +52,8 @@ class CollectorService:
         self.redis_client.ping()
         logger.info("CollectorService connected to MinIO and Redis.")
 
-    async def fetch_live_feed(self) -> Dict[str, Any]:
+    async def fetch_live_feed(self, *, include_prematch: bool = False,
+                              observed_at: Optional[datetime] = None) -> Dict[str, Any]:
         """
         Fetch Fonbet live tennis data.
         Uses Russian localization headers and parameters.
@@ -75,7 +81,9 @@ class CollectorService:
                     if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
                         data = resp.json()
                         if isinstance(data, dict) and data.get("events"):
-                            normalized = FonbetLiveTennisParser.from_line_feed(data)
+                            normalized = FonbetLiveTennisParser.from_line_feed(
+                                data, include_prematch=include_prematch, observed_at=observed_at,
+                            )
                             logger.info(
                                 "Line feed %s produced %d live tennis cards.",
                                 endpoint,
@@ -138,7 +146,13 @@ class CollectorService:
             collected_at = datetime.now(timezone.utc)
 
             try:
-                raw_feed = await self.fetch_live_feed()
+                include_prematch = (
+                    self.last_prematch_poll_at is None
+                    or (collected_at - self.last_prematch_poll_at).total_seconds() >= 300
+                )
+                raw_feed = await self.fetch_live_feed(
+                    include_prematch=include_prematch, observed_at=collected_at,
+                )
 
                 # Extract strictly LIVE events
                 live_events = FonbetLiveTennisParser.parse_events_feed(raw_feed)
@@ -223,6 +237,71 @@ class CollectorService:
                         STREAM_FONBET_RAW,
                         len(live_events),
                     )
+
+                prematch_events = raw_feed.get("prematch_events") or []
+                prematch_source = raw_feed.get("_prematch_source_payload") or {}
+                if include_prematch:
+                    self.last_prematch_poll_at = collected_at
+                if prematch_events and prematch_source:
+                    source_bytes = json.dumps(
+                        prematch_source, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+                    ).encode("utf-8")
+                    prematch_source_hash = f"sha256:{hashlib.sha256(source_bytes).hexdigest()}"
+                    prematch_source_key = self.last_prematch_source_s3_key
+                    if prematch_source_hash != self.last_prematch_source_content_hash:
+                        prematch_source_key = self.s3_writer.save_source_payload(
+                            content_hash=prematch_source_hash,
+                            source_payload=prematch_source,
+                            source_url=source_url,
+                            collected_at=collected_at,
+                            page_type="prematch_source_payload",
+                        )
+                        self.last_prematch_source_content_hash = prematch_source_hash
+                        self.last_prematch_source_s3_key = prematch_source_key
+
+                    changed_prematch_events = []
+                    current_fingerprints = {}
+                    for event in prematch_events:
+                        event_id = str(event.get("source_event_id") or "")
+                        fingerprint = hashlib.sha256(json.dumps(
+                            event, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+                        ).encode("utf-8")).hexdigest()
+                        if not event_id:
+                            continue
+                        current_fingerprints[event_id] = fingerprint
+                        if self.last_prematch_event_fingerprints.get(event_id) != fingerprint:
+                            changed_prematch_events.append(event)
+                    if changed_prematch_events:
+                        prematch_payload = {
+                            "source": "fonbet", "collector_version": settings.collector_version,
+                            "collected_at": collected_at.isoformat(), "sport_code": "tennis",
+                            "page_type": "prematch", "url": source_url,
+                            "content_hash": prematch_source_hash,
+                            "events_count": len(changed_prematch_events), "events": changed_prematch_events,
+                            "source_payload_hash": prematch_source_hash,
+                            "source_payload_s3_key": prematch_source_key,
+                        }
+                        prematch_hash = f"sha256:{hashlib.sha256(json.dumps(prematch_payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()}"
+                        if prematch_hash != self.last_prematch_content_hash:
+                            prematch_payload["content_hash"] = prematch_hash
+                            prematch_key = self.s3_writer.save_raw_snapshot(
+                                content_hash=prematch_hash,
+                                snapshot_dict=prematch_payload,
+                                collected_at=collected_at,
+                            )
+                            prematch_payload["raw_s3_key"] = prematch_key
+                            self.publisher.publish_envelope(MessageEnvelope(
+                                stream_name=STREAM_FONBET_RAW,
+                                idempotency_key=f"prematch_{prematch_hash[7:]}",
+                                producer="collector-service",
+                                payload=prematch_payload,
+                            ))
+                            self.last_prematch_content_hash = prematch_hash
+                            logger.info(
+                                "Published %d changed Fonbet tennis prematch events with archived source evidence.",
+                                len(changed_prematch_events),
+                            )
+                    self.last_prematch_event_fingerprints = current_fingerprints
 
                 try:
                     from observability import COLLECTOR_POLLS_TOTAL, COLLECTOR_EVENTS_SEEN

@@ -1,0 +1,19 @@
+{
+  "audit_scope": {
+    "as_of": "2026-10-28T05:25:39+00:00",
+    "checkpoint_path": null,
+    "full_database_census": false,
+    "mode": "saved_snapshot_cohort",
+    "reason": "query_timeout",
+    "status": "incomplete"
+  },
+  "generated_at": "2026-10-28T07:41:08.505477+00:00",
+  "training_gate": {
+    "point_in_time_certified": false,
+    "reasons": [
+      "audit_incomplete"
+    ],
+    "status": "blocked",
+    "windows_evaluated": false
+  }
+}

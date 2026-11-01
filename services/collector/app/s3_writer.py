@@ -79,6 +79,7 @@ class MinIORawWriter:
         source_payload: Any,
         source_url: str,
         collected_at: datetime,
+        page_type: str = "live_source_payload",
     ) -> str:
         """Persist an unmodified upstream feed as a content-addressed S3 object."""
         snapshot = {
@@ -86,7 +87,7 @@ class MinIORawWriter:
             "collector_version": settings.collector_version,
             "collected_at": collected_at.isoformat(),
             "sport_code": settings.sport_code,
-            "page_type": "live_source_payload",
+            "page_type": page_type,
             "url": source_url,
             "content_hash": content_hash,
             "source_payload": source_payload,

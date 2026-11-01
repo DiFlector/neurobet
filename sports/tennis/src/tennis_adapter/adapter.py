@@ -89,13 +89,43 @@ def merge_event_metadata(existing: Any, incoming: Any, observed_at: datetime) ->
     values.pop("best_of_available_at", None)
     previous_best_of = merged.get("best_of")
     previous_available_at = merged.get("best_of_available_at")
+    previous_best_hash = merged.get("best_of_source_content_sha256")
+    previous_best_raw_key = merged.get("best_of_source_raw_object_key")
+    previous_surface_hash = merged.get("surface_source_content_sha256")
+    previous_surface_raw_key = merged.get("surface_source_raw_object_key")
     new_best_of = values.get("best_of")
     merged.update(values)
     if new_best_of in (3, 5):
+        if new_best_of != previous_best_of and not (
+            values.get("best_of_source_content_sha256") and values.get("best_of_source_raw_object_key")
+        ):
+            merged.pop("best_of_source_content_sha256", None)
+            merged.pop("best_of_source_raw_object_key", None)
         if new_best_of != previous_best_of or not previous_available_at:
+            merged["best_of_available_at"] = observed_at.isoformat()
+        elif not previous_best_hash and values.get("best_of_source_content_sha256"):
             merged["best_of_available_at"] = observed_at.isoformat()
         else:
             merged["best_of_available_at"] = previous_available_at
+        if new_best_of == previous_best_of and previous_best_hash:
+            merged["best_of_source_content_sha256"] = previous_best_hash
+            merged["best_of_source_raw_object_key"] = previous_best_raw_key
+    if values.get("surface_source") == "fonbet_explicit_metadata" and values.get("surface") in {"hard", "clay", "grass", "carpet"}:
+        previous_surface, previous_surface_at = merged.get("surface"), merged.get("surface_available_at")
+        if values["surface"] != previous_surface and not (
+            values.get("surface_source_content_sha256") and values.get("surface_source_raw_object_key")
+        ):
+            merged.pop("surface_source_content_sha256", None)
+            merged.pop("surface_source_raw_object_key", None)
+        if values["surface"] != previous_surface or not previous_surface_at:
+            merged["surface_available_at"] = observed_at.isoformat()
+        elif not previous_surface_hash and values.get("surface_source_content_sha256"):
+            merged["surface_available_at"] = observed_at.isoformat()
+        else:
+            merged["surface_available_at"] = previous_surface_at
+        if values["surface"] == previous_surface and previous_surface_hash:
+            merged["surface_source_content_sha256"] = previous_surface_hash
+            merged["surface_source_raw_object_key"] = previous_surface_raw_key
     return merged
 
 
@@ -124,10 +154,15 @@ class TennisSportAdapter:
         return normalize_russian_player_name(raw_name)
 
     def parse_event(self, raw_payload: Dict[str, Any]) -> Event:
-        """Construct canonical Event contract from raw Fonbet live event data."""
+        """Construct canonical Event contract from live or prematch Fonbet data."""
         source_id = str(raw_payload.get("source_event_id") or raw_payload.get("id") or "unknown")
         raw_tournament = raw_payload.get("tournament") or raw_payload.get("competitionName") or "Теннис. Live"
         surface = self.detect_surface(raw_tournament, raw_payload.get("metadata"))
+        raw_metadata = raw_payload.get("metadata") if isinstance(raw_payload.get("metadata"), dict) else {}
+        explicit_surface = str(raw_payload.get("surface") or raw_metadata.get("surface") or "").strip().casefold()
+        explicit_surface = {"hard court": "hard", "clay court": "clay", "grass court": "grass",
+                            "carpet court": "carpet"}.get(explicit_surface, explicit_surface)
+        explicit_surface = explicit_surface if explicit_surface in {"hard", "clay", "grass", "carpet"} else None
         raw_best_of = raw_payload.get("best_of")
         try:
             if isinstance(raw_best_of, float) and not raw_best_of.is_integer():
@@ -171,7 +206,14 @@ class TennisSportAdapter:
         }
         if best_of is not None:
             metadata["best_of"] = best_of
+            metadata["best_of_source"] = "fonbet_explicit_metadata"
+        if explicit_surface is not None:
+            metadata.update({"surface": explicit_surface, "surface_source": "fonbet_explicit_metadata"})
 
+        status = str(raw_payload.get("status") or "live").strip().lower()
+        if status not in {"live", "prematch"}:
+            status = "live"
+        is_live = bool(raw_payload.get("is_live", status == "live"))
         return Event(
             event_id=event_id,
             source="fonbet",
@@ -181,8 +223,8 @@ class TennisSportAdapter:
             participant_a=player_a,
             participant_b=player_b,
             scheduled_start=scheduled_dt,
-            is_live=True,
-            status="live",
+            is_live=is_live,
+            status=status,
             metadata=metadata,
         )
 

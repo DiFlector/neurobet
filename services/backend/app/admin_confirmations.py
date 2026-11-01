@@ -407,7 +407,11 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
         session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {
             "key": f"confirmation-subject:{item.source}:{item.kind}:{item.subject_id}"
         })
-        item = session.query(ManualConfirmationRequest).filter_by(id=request_id).with_for_update().first()
+        # The row was loaded before taking the subject lock. Refresh its
+        # identity-map state after acquiring the lock so a concurrent decision
+        # observes the winner's new status/version instead of stale values.
+        item = (session.query(ManualConfirmationRequest).filter_by(id=request_id)
+                .populate_existing().with_for_update().first())
         if item is None:
             raise HTTPException(status_code=404, detail="Confirmation request not found")
         if item.version != payload.expected_version:
@@ -572,6 +576,9 @@ def decide_admin_confirmation(request_id: uuid.UUID, payload: ConfirmationDecisi
         if item.kind == "player_profile":
             # The reviewed request is no longer pending before scheduling the
             # refresh. Other still-pending candidates keep the player frozen.
+            # SessionLocal disables autoflush, so make this decision visible to
+            # _enqueue_player_refresh's pending-request query first.
+            session.flush()
             _enqueue_player_refresh(session, participant_id, now)
         session.add(ManualConfirmationDecision(
             request_id=item.id, decision=payload.decision, request_version=payload.expected_version,

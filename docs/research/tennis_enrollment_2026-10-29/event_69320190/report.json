@@ -1,0 +1,1109 @@
+{
+  "alignment_policy": "confirmed_pre_game_score_v1",
+  "audit_format_version": 6,
+  "audit_scope": {
+    "as_of": "2026-10-29T11:36:30+00:00",
+    "full_database_census": false,
+    "index_path": "/tmp/tennis_event_69320190_snapshot_index.jsonl",
+    "index_sha256": "7139c2910093122a736969d1e2dc950388ef548f0144f6e3ac4fa04ded44e8f7",
+    "indexed_events": 1,
+    "indexed_examples": 717,
+    "indexed_snapshot_keys": 717,
+    "loaded_snapshots": 717,
+    "missing_snapshots": 0,
+    "mode": "saved_snapshot_cohort_revalidated_from_database",
+    "status": "saved_cohort_complete"
+  },
+  "by_competition": {
+    "ATP Челленджер. Нинбо. Квалификация": {
+      "events": 1,
+      "game_examples": 19,
+      "point_examples": 100,
+      "set_examples": 132,
+      "valid_match_labels": 1
+    }
+  },
+  "by_discipline": {
+    "singles": {
+      "events": 1,
+      "game_examples": 19,
+      "point_examples": 100,
+      "set_examples": 132,
+      "valid_match_labels": 1
+    }
+  },
+  "by_tour": {
+    "challenger": {
+      "events": 1,
+      "game_examples": 19,
+      "point_examples": 100,
+      "set_examples": 132,
+      "valid_match_labels": 1
+    }
+  },
+  "exclusions": {
+    "ambiguous_point_transition": 9,
+    "conflicting_source_labels": 2,
+    "invalid_terminal_game": 1,
+    "official_pbp_set_score_conflict": 1,
+    "result_after_audit_cutoff": 0
+  },
+  "feature_availability": {
+    "allowed_player_prior_examples": 130,
+    "allowed_serve_prior_examples": 130,
+    "certified_examples": 252,
+    "checked_examples": 252,
+    "contract_defaulted_examples": 0,
+    "contract_version": "tennis_odds_free_v2",
+    "exclusions": {},
+    "feature_value_missing_field_counts": {},
+    "feature_values_materialized_examples": 252,
+    "feature_values_missing_examples": 0,
+    "fully_source_observed_examples": 122,
+    "point_in_time_definition": "certified means every source-backed feature is available by the snapshot; a documented contract prior or explicit unknown value is allowed only when its missingness/sample-weight representation is part of the feature contract",
+    "resolution_counts": {
+      "event_format:late_unknown_allowed": 252,
+      "event_state:observed_snapshot": 252,
+      "player_metrics.a:observed_snapshot": 122,
+      "player_metrics.a:unknown_player_history_v1": 130,
+      "player_metrics.b:observed_snapshot": 252,
+      "serve_metrics.a:metric_snapshot": 122,
+      "serve_metrics.a:unknown_serve_history_v1": 130,
+      "serve_metrics.b:metric_snapshot": 252
+    },
+    "source_groups": {
+      "event_format": {
+        "available": 0,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 252,
+        "missing_or_unverifiable": 0
+      },
+      "event_state": {
+        "available": 252,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "player_metrics": {
+        "available": 252,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_a": {
+        "available": 252,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_b": {
+        "available": 252,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      }
+    },
+    "uncertified_examples": 0
+  },
+  "generated_at": "2026-10-29T11:36:30+00:00",
+  "history_link_schema": "provider_scoped_links_v2",
+  "match_exclusions_manifest": {
+    "content_type": "jsonl",
+    "path": "/tmp/tennis_event_69320190_examples/tennis_match_target_diagnostics_d0dee39aaf53.jsonl",
+    "rows": 1,
+    "sha256": "d0dee39aaf530258b32be56f156d5513405dfa5f9196ec4d679b7987c81dee1a"
+  },
+  "point_history": {
+    "availability_unknown_documents": null,
+    "availability_unknown_versions": null,
+    "confirmed_outcomes_total": null,
+    "current_links": 1,
+    "direct_api_links": 1,
+    "documents_linked": 1,
+    "documents_total": null,
+    "global_history_scan_status": "not_scanned_saved_cohort_only",
+    "linked_fonbet_events": 1,
+    "parsed_versions_linked": 0,
+    "parsed_versions_total": null,
+    "source_matches_total": null
+  },
+  "result_time_evidence": {
+    "exact_terminal_score_snapshots": 1,
+    "labels_after_audit_cutoff": 0,
+    "snapshot_rows_returned": 1,
+    "snapshots_preceding_metadata_time": 1,
+    "sources": {
+      "fonbet_exact_final_score_snapshot": 1
+    },
+    "unknown_valid_results": 0
+  },
+  "snapshot_source_coverage": {
+    "allowed_player_prior_examples": 350,
+    "allowed_serve_prior_examples": 350,
+    "certified_examples": 717,
+    "checked_examples": 717,
+    "checked_snapshots": 717,
+    "contract_defaulted_examples": 0,
+    "exclusions": {},
+    "fully_source_observed_examples": 367,
+    "resolution_counts": {
+      "event_format:late_unknown_allowed": 717,
+      "event_state:observed_snapshot": 717,
+      "player_metrics.a:observed_snapshot": 367,
+      "player_metrics.a:unknown_player_history_v1": 350,
+      "player_metrics.b:observed_snapshot": 717,
+      "serve_metrics.a:metric_snapshot": 367,
+      "serve_metrics.a:unknown_serve_history_v1": 350,
+      "serve_metrics.b:metric_snapshot": 717
+    },
+    "skipped_outside_source_scope": 0,
+    "source_groups": {
+      "event_format": {
+        "available": 0,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 717,
+        "missing_or_unverifiable": 0
+      },
+      "event_state": {
+        "available": 717,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "player_metrics": {
+        "allowed_prior": 350,
+        "available": 367,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_a": {
+        "allowed_prior": 350,
+        "available": 367,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_b": {
+        "available": 717,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      }
+    },
+    "uncertified_examples": 0
+  },
+  "source_conflicts_manifest": {
+    "content_type": "jsonl",
+    "path": "/tmp/tennis_event_69320190_examples/tennis_source_label_conflicts_4aef615b6d38.jsonl",
+    "rows": 2,
+    "sha256": "4aef615b6d38ff8b01aa02fca379beeb48d89f32a0c2b6b1a1547e6dd49ad9f7"
+  },
+  "source_scope": "numeric Fonbet IDs; singles; each feature and label gated by its source availability time",
+  "target_diagnostics": {
+    "game": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "feature_certified_candidate": 1
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "unique_matches_with_feature_certified_labels": 1,
+      "unique_matches_with_parsed_labels": 1,
+      "unique_matches_with_snapshot_aligned_labels": 1
+    },
+    "match": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "feature_certified_candidate": 1
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "unique_matches_with_feature_certified_labels": 1,
+      "unique_matches_with_parsed_labels": 1,
+      "unique_matches_with_snapshot_aligned_labels": 1
+    },
+    "point": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "feature_certified_candidate": 1
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "unique_matches_with_feature_certified_labels": 1,
+      "unique_matches_with_parsed_labels": 1,
+      "unique_matches_with_snapshot_aligned_labels": 1
+    },
+    "set": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "feature_certified_candidate": 1
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "unique_matches_with_feature_certified_labels": 1,
+      "unique_matches_with_parsed_labels": 1,
+      "unique_matches_with_snapshot_aligned_labels": 1
+    }
+  },
+  "targets": {
+    "game": {
+      "class_a": 12,
+      "class_b": 7,
+      "eligible_matches": 1,
+      "labelled_matches": 1,
+      "observed_examples": 0,
+      "parsed_labels": 27,
+      "retrospective_examples": 29,
+      "training_examples": 19
+    },
+    "match": {
+      "class_a": 1,
+      "class_b": 0,
+      "eligible_matches": 1,
+      "labelled_matches": 1,
+      "observed_examples": 0,
+      "parsed_labels": 1,
+      "retrospective_examples": 0,
+      "training_examples": 1
+    },
+    "point": {
+      "class_a": 54,
+      "class_b": 46,
+      "eligible_matches": 1,
+      "labelled_matches": 1,
+      "observed_examples": 0,
+      "parsed_labels": 109,
+      "retrospective_examples": 109,
+      "training_examples": 100
+    },
+    "set": {
+      "class_a": 132,
+      "class_b": 0,
+      "eligible_matches": 1,
+      "labelled_matches": 1,
+      "observed_examples": 0,
+      "parsed_labels": 2,
+      "retrospective_examples": 2,
+      "training_examples": 132
+    }
+  },
+  "tour_classification_sources": {
+    "fonbet_competition_name": 1
+  },
+  "training_examples_manifest": {
+    "examples": 252,
+    "logical_digest": "f9d0b1409edb81c5d49ab4e081a103edcd1de80862a77cf560681448cbb5eb86",
+    "path": "/tmp/tennis_event_69320190_examples/tennis_training_examples_f9d0b1409edb.jsonl",
+    "sha256": "9f9b359bba572cdb6087604e35d826d50cf342e742b562450befaebc9e024964"
+  },
+  "training_gate": {
+    "base_coverage_status": "insufficient",
+    "chronology_policy": "official_result_source_time_or_exact_previously_observed_final_score_snapshot",
+    "chronology_timestamp_missing_matches": 0,
+    "manifest": {
+      "dataset_digest": "e6c5cfe41541ba9fea7dc83365d48316037b6d40b57b9dbbc2c33adaae16e64a",
+      "development_matches": 0,
+      "holdout_matches": 1,
+      "holdout_quality_metrics_opened": false,
+      "matches": 1,
+      "path": "docs/research/tennis_training_manifest_e6c5cfe41541.json"
+    },
+    "manifest_result_availability_certified": false,
+    "point_in_time_certified": true,
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "manifest_result_availability_not_certified",
+      "full_database_census_not_completed"
+    ],
+    "required_per_target": {
+      "both_classes": true,
+      "each_validation_window_matches": 100,
+      "holdout_matches": 200,
+      "initial_train_matches": 500,
+      "point_in_time_clean": true
+    },
+    "result_availability_unknown_matches": 0,
+    "result_time_sources": {
+      "fonbet_exact_final_score_snapshot": 1
+    },
+    "scheduled_time_used_as_chronology": 0,
+    "status": "blocked",
+    "unknown_result_time_matches": 0,
+    "unknown_result_time_policy": "keep_confirmed_labels_in_evaluation_windows; purge from each training fold unless source availability precedes that fold",
+    "unknown_result_time_purged_from_training_folds": 0,
+    "walk_forward": {
+      "game": {
+        "development_matches": 0,
+        "folds": [
+          {
+            "fold": 1,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 2,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 3,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 4,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout": {
+          "both_classes": true,
+          "candidate_matches": 1,
+          "class_a": 1,
+          "class_b": 1,
+          "matches": 1,
+          "meets_match_minimum": false
+        },
+        "holdout_meets_minimums": false,
+        "manifest_matches": 1,
+        "matches_with_labels_on_manifest_timeline": 1
+      },
+      "match": {
+        "development_matches": 0,
+        "folds": [
+          {
+            "fold": 1,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 2,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 3,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 4,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout": {
+          "both_classes": false,
+          "candidate_matches": 1,
+          "class_a": 1,
+          "class_b": 0,
+          "matches": 1,
+          "meets_match_minimum": false
+        },
+        "holdout_meets_minimums": false,
+        "manifest_matches": 1,
+        "matches_with_labels_on_manifest_timeline": 1
+      },
+      "point": {
+        "development_matches": 0,
+        "folds": [
+          {
+            "fold": 1,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 2,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 3,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 4,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout": {
+          "both_classes": true,
+          "candidate_matches": 1,
+          "class_a": 1,
+          "class_b": 1,
+          "matches": 1,
+          "meets_match_minimum": false
+        },
+        "holdout_meets_minimums": false,
+        "manifest_matches": 1,
+        "matches_with_labels_on_manifest_timeline": 1
+      },
+      "set": {
+        "development_matches": 0,
+        "folds": [
+          {
+            "fold": 1,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 2,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 3,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          },
+          {
+            "fold": 4,
+            "temporal_precedence": {
+              "earliest_validation_forecast_at": null,
+              "latest_train_label_available_at": null,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "passed": false
+            },
+            "train": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "candidate_labelled_matches": 0,
+              "cutoff": null,
+              "eligible_matches": 0,
+              "missing_validation_forecast_times": 0,
+              "purged_future_label_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "purged_unknown_label_time_matches": 0
+            },
+            "validation": {
+              "both_classes": false,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "matches": 0,
+              "meets_match_minimum": false
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout": {
+          "both_classes": false,
+          "candidate_matches": 1,
+          "class_a": 1,
+          "class_b": 0,
+          "matches": 1,
+          "meets_match_minimum": false
+        },
+        "holdout_meets_minimums": false,
+        "manifest_matches": 1,
+        "matches_with_labels_on_manifest_timeline": 1
+      }
+    },
+    "windows_evaluated": true
+  }
+}

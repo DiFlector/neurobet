@@ -1,0 +1,20 @@
+{
+  "builder_version": "tennis_odds_free_dataset_v2_optional_serve_v1",
+  "feature_contract": "tennis_odds_free_v2",
+  "pit_evidence_policy": "tennis_pit_db_state_v2",
+  "input_examples": 521,
+  "accepted_examples": 521,
+  "rejected_examples": 0,
+  "pit_certified_examples": 521,
+  "feature_pit_certified": true,
+  "labels_with_unknown_availability_time": 0,
+  "examples_with_known_label_availability_time": 521,
+  "unknown_optional_feature_reasons": {
+    "source_after_cutoff": 521
+  },
+  "pit_certified": true,
+  "training_admission": "not_evaluated",
+  "rejection_reason_counts": {},
+  "input_path": "/tmp/tennis_census_first_batch.jsonl",
+  "output_path": "/tmp/tennis_census_first_batch_checked.jsonl"
+}

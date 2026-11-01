@@ -1,11 +1,13 @@
 from types import SimpleNamespace
 from uuid import uuid4
+from datetime import timedelta
 
 import pytest
 
 from app.canonical_player_aliases import (
     _alias_assignment_is_safe,
     adjudicate_candidate_player_alias,
+    confirmed_player_alias_as_of,
     reassign_confirmed_player_alias,
     resolve_confirmed_player_aliases,
 )
@@ -171,6 +173,9 @@ def test_reviewed_alias_reassignment_is_audited_and_fences_expected_owner():
             ExtTennisCanonicalPlayerAlias(source="test_source", source_player_id=source_id,
                                           canonical_player_id=old_id, status="confirmed",
                                           evidence_json={"method": "legacy_alias"}),
+            ExtTennisCanonicalPlayerAlias(source="test_source", source_player_id=source_id,
+                                          canonical_player_id=new_id, status="candidate",
+                                          evidence_json={"method": "preexisting_candidate"}),
         ])
         session.flush()
         with pytest.raises(ValueError, match="owner changed"):
@@ -197,6 +202,17 @@ def test_reviewed_alias_reassignment_is_audited_and_fences_expected_owner():
             str(old_id): "rejected", str(new_id): "confirmed",
         }
         assert session.get(ExtTennisCanonicalPlayerAliasDecision, decision.id) is decision
+        before = confirmed_player_alias_as_of(
+            session, source="test_source", source_player_id=source_id,
+            as_of=decision.created_at - timedelta(microseconds=1),
+        )
+        after = confirmed_player_alias_as_of(
+            session, source="test_source", source_player_id=source_id,
+            as_of=decision.created_at,
+        )
+        assert before is not None and before[0].canonical_player_id == old_id
+        assert after is not None and after[0].canonical_player_id == new_id
+        assert before[1] < decision.created_at <= after[1]
         session.rollback()
     finally:
         session.close()

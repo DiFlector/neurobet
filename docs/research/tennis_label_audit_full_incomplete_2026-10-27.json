@@ -1,0 +1,19 @@
+{
+  "audit_scope": {
+    "as_of": "2026-10-27T17:40:00+00:00",
+    "checkpoint_path": "/tmp/tennis_full_20261027/checkpoint/checkpoint.json",
+    "full_database_census": false,
+    "mode": "full_database",
+    "reason": "runtime_timeout",
+    "status": "incomplete"
+  },
+  "generated_at": "2026-10-27T18:40:38.603122+00:00",
+  "training_gate": {
+    "point_in_time_certified": false,
+    "reasons": [
+      "audit_incomplete"
+    ],
+    "status": "blocked",
+    "windows_evaluated": false
+  }
+}

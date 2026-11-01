@@ -43,6 +43,8 @@ class TennisPolicy:
     min_data_quality: float = 50.0
     min_research_quality: float = 0.0
     max_context_age_seconds: int = 180
+    execution_latency_sec: float = 2.0
+    max_odds_staleness_sec: float = 15.0
 
     def as_dict(self) -> dict:
         return {
@@ -79,6 +81,8 @@ class TennisPolicy:
             "min_data_quality": self.min_data_quality,
             "min_research_quality": self.min_research_quality,
             "max_context_age_seconds": self.max_context_age_seconds,
+            "execution_latency_sec": self.execution_latency_sec,
+            "max_odds_staleness_sec": self.max_odds_staleness_sec,
         }
 
 

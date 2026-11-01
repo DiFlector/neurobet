@@ -1,0 +1,15 @@
+{
+  "batch_size": 250,
+  "candidate_observations": 3689,
+  "examined_events": 4634,
+  "generated_at": "2026-10-26T14:21:50.678097+00:00",
+  "idempotent": true,
+  "inserted_observations": 3689,
+  "last_event_id": "fffccb26-3f8c-43ab-a217-9a011d227310",
+  "mode": "commit",
+  "rejected": {
+    "metadata_missing": 0,
+    "no_timestamped_explicit_fact": 945
+  },
+  "resume_after_event_id": "fffccb26-3f8c-43ab-a217-9a011d227310"
+}

@@ -1,0 +1,154 @@
+{
+  "generated_at": "2026-10-25T09:31:49.934703+00:00",
+  "source_manifest": "docs/research/tennis_training_examples_c7e3c68857dd.jsonl",
+  "examples": 4826,
+  "holdout_quality_metrics_opened": false,
+  "targets": {
+    "game": 845,
+    "match": 2503,
+    "point": 1387,
+    "set": 91
+  },
+  "pit_certified_examples": 0,
+  "source_resolution_counts": {
+    "event_format:missing_or_not_available_as_of": 4826,
+    "event_state:observed_snapshot": 4826,
+    "event_surface:contract_default_unknown": 4826,
+    "event_surface:contract_defaulted": 4826,
+    "player_metrics.a:contract_default": 4220,
+    "player_metrics.a:observed_snapshot": 606,
+    "player_metrics.b:contract_default": 4216,
+    "player_metrics.b:observed_snapshot": 610,
+    "player_metrics:contract_defaulted": 4405,
+    "serve_metrics.a:contract_default": 4826,
+    "serve_metrics.b:contract_default": 4826,
+    "serve_metrics_a:contract_defaulted": 4826,
+    "serve_metrics_b:contract_defaulted": 4826
+  },
+  "source_timestamp_counts": {
+    "event_format:missing": 4826,
+    "event_state:present": 4826,
+    "event_surface:missing": 4826,
+    "player_metrics:missing": 4031,
+    "player_metrics:present": 795,
+    "serve_metrics_a:missing": 4826,
+    "serve_metrics_b:missing": 4826
+  },
+  "missing_sources": {
+    "event_format": 4826
+  },
+  "player_metric_snapshot_coverage": {
+    "unique_snapshots_with_any_observed_side_metric": 639,
+    "unique_snapshots_with_any_defaulted_side_metric": 3849
+  },
+  "point_server": {
+    "known": 356,
+    "unknown": 4470
+  },
+  "result_time_source_examples": {
+    "fonbet_official_result_metadata": 3832,
+    "missing": 108,
+    "fonbet_exact_final_score_snapshot": 886
+  },
+  "result_time_source_unique_events": {
+    "fonbet_official_result_metadata": 2211,
+    "missing": 18,
+    "fonbet_exact_final_score_snapshot": 277
+  },
+  "result_time_source_unique_source_matches": {
+    "fonbet_official_result_metadata": 69,
+    "missing": 3,
+    "fonbet_exact_final_score_snapshot": 15,
+    "conflicting_sources": 1
+  },
+  "duplicate_checks": {
+    "exact_snapshot_target_index_extra_rows": 0,
+    "source_match_set_point_target_timeline_keys_reused_across_snapshots": 3757,
+    "exact_snapshot_target_index_duplicate_groups": 0,
+    "conflicting_state_groups": 0,
+    "note": "exact duplicate/conflict checks use a saved forecast snapshot; timeline-key reuse across later snapshots is expected"
+  },
+  "snapshot_to_label_availability_lag_seconds": {
+    "examples_with_both_timestamps": 4811,
+    "future_label_examples": [
+      {
+        "source_match_id": "CK2JIAU6",
+        "fonbet_event_id": "9d7eee43-c3fc-4244-9b9b-a17625279abc",
+        "target": "game",
+        "snapshot_observed_at": "2026-10-22T10:18:32.004436+00:00",
+        "label_available_at": "2026-10-22T10:12:19.293184+00:00",
+        "lag_seconds": -372.711252
+      },
+      {
+        "source_match_id": "fcipHcg2",
+        "fonbet_event_id": "abaa9aa9-2b7f-4a6c-a68e-c82b37999fa1",
+        "target": "game",
+        "snapshot_observed_at": "2026-10-22T10:26:24.054215+00:00",
+        "label_available_at": "2026-10-22T10:22:18.311613+00:00",
+        "lag_seconds": -245.742602
+      },
+      {
+        "source_match_id": "KfsnwCD5",
+        "fonbet_event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:30:20.505584+00:00",
+        "label_available_at": "2026-10-22T10:26:20.399690+00:00",
+        "lag_seconds": -240.105894
+      },
+      {
+        "source_match_id": "KfsnwCD5",
+        "fonbet_event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:32:35.356895+00:00",
+        "label_available_at": "2026-10-22T10:26:20.399690+00:00",
+        "lag_seconds": -374.957205
+      },
+      {
+        "source_match_id": "KfsnwCD5",
+        "fonbet_event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:36:10.398043+00:00",
+        "label_available_at": "2026-10-22T10:26:20.399690+00:00",
+        "lag_seconds": -589.998353
+      },
+      {
+        "source_match_id": "CK2JIAU6",
+        "fonbet_event_id": "9d7eee43-c3fc-4244-9b9b-a17625279abc",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:18:32.004436+00:00",
+        "label_available_at": "2026-10-22T10:12:19.293184+00:00",
+        "lag_seconds": -372.711252
+      },
+      {
+        "source_match_id": "fcipHcg2",
+        "fonbet_event_id": "abaa9aa9-2b7f-4a6c-a68e-c82b37999fa1",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:30:23.551566+00:00",
+        "label_available_at": "2026-10-22T10:22:18.311613+00:00",
+        "lag_seconds": -485.239953
+      },
+      {
+        "source_match_id": "fcipHcg2",
+        "fonbet_event_id": "abaa9aa9-2b7f-4a6c-a68e-c82b37999fa1",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:33:20.713400+00:00",
+        "label_available_at": "2026-10-22T10:22:18.311613+00:00",
+        "lag_seconds": -662.401787
+      },
+      {
+        "source_match_id": "fcipHcg2",
+        "fonbet_event_id": "abaa9aa9-2b7f-4a6c-a68e-c82b37999fa1",
+        "target": "point",
+        "snapshot_observed_at": "2026-10-22T10:35:50.478109+00:00",
+        "label_available_at": "2026-10-22T10:22:18.311613+00:00",
+        "lag_seconds": -812.166496
+      }
+    ],
+    "min": -812.166496,
+    "median": 244021.498044,
+    "p95": 708268.168772,
+    "max": 839159.061254,
+    "interpretation": "forecast snapshot to label availability lag, not provider ingestion latency"
+  },
+  "latency_limit": "provider retrieved_at/received_at pairs are not present in this manifest, so true source-to-ingest latency cannot be computed from these rows"
+}

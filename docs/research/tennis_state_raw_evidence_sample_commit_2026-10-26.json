@@ -1,0 +1,28 @@
+{
+  "examples": [
+    {
+      "available_at": "2026-10-13T10:51:12.592036+00:00",
+      "raw_object_key": "fonbet/tennis/2026-10-13/70c6/70c61da0a308fe21b34c816f107d2156748281a362246b2831e4cd9ab3f51194.json",
+      "reason": null,
+      "snapshot_id": "1b87269a-9885-447a-aa84-1fe20a59c0e4",
+      "snapshot_observed_at": "2026-10-13T10:51:14.159136+00:00",
+      "source_event_id": "68911372",
+      "verified": true
+    }
+  ],
+  "generated_at": "2026-10-26T22:24:06.917093+00:00",
+  "indexed_snapshots": 1,
+  "inserted": 1,
+  "loaded_snapshots": 1,
+  "max_candidate_age_seconds": 30,
+  "missing_snapshots": 0,
+  "mode": "commit",
+  "raw_objects_read": 1,
+  "reasons": {},
+  "reconstruction_parser_version": "tennis-fonbet-state-reparse-v1",
+  "rejected": 0,
+  "s3_last_modified_role": "candidate_search_only_never_used_as_available_at",
+  "snapshot_index": "/tmp/one_tennis_pit_sample.jsonl",
+  "snapshot_index_sha256": "bcf2e991d679ea26126eb0e7d5292574bbdadda19819ea12ec9154add1150fa8",
+  "verified": 1
+}

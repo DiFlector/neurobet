@@ -77,6 +77,51 @@ def _confirmed_alias_name_matches(surname: str, person: Any) -> bool:
     return tokens.issubset(name_tokens)
 
 
+def resolve_api_tennis_player_identity(source_id: str, key: tuple[str, str, str], *,
+                                      exact_candidates: list[Any], peer_candidates: list[Any],
+                                      named_people: list[Any]):
+    """Apply the canonical projection's existing conservative player resolver.
+
+    Returns the unique canonical card and a compact evidence description. This
+    helper is shared by projection and reviewed historical alias repair so the
+    repair cannot use looser identity rules than normal ingestion.
+    """
+    surname, initial, gender = key
+    if exact_candidates:
+        if len(exact_candidates) != 1:
+            return None, {"method": "multiple_exact_api_cards"}
+        person = exact_candidates[0]
+        if ((person.surname_key.casefold(), person.initial.casefold()) != key[:2]
+                or (gender != "unknown" and person.gender not in {gender, "unknown"})):
+            return None, {"method": "exact_api_card_name_or_gender_conflict"}
+        established = [row for row in peer_candidates if row.id != person.id
+                       and isinstance(row.source_ids, dict)
+                       and any(row.source_ids.get(provider) for provider in ("tml", "sackmann_sqlite"))]
+        if not established:
+            established = _compound_surname_candidates(
+                surname, initial, gender, named_people, source="api_tennis")
+            established = [row for row in established if row.id != person.id]
+        tml = [row for row in established if row.source_ids.get("tml")]
+        peers = tml if len(tml) == 1 else established
+        if len(peers) == 1:
+            target = peers[0]
+            return target, {"method": "exact_api_id_plus_unique_established_peer",
+                            "api_card_id": str(person.id), "selected_card_id": str(target.id),
+                            "selected_card_source_ids": dict(target.source_ids or {}),
+                            "established_candidate_ids": [str(row.id) for row in established]}
+        return person, {"method": "exact_api_id_only", "api_card_id": str(person.id),
+                        "selected_card_id": str(person.id),
+                        "established_candidate_ids": [str(row.id) for row in established]}
+
+    candidates = [person for person in peer_candidates if not (person.source_ids or {}).get("api_tennis")]
+    if len({person.id for person in candidates}) == 1:
+        target = candidates[0]
+        return target, {"method": "unique_non_api_profile", "selected_card_id": str(target.id),
+                        "selected_card_source_ids": dict(target.source_ids or {})}
+    return None, {"method": "no_unique_identity_candidate",
+                  "candidate_ids": sorted(str(row.id) for row in candidates)}
+
+
 def _confirmed_alias_person_matches(alias: Any, person: Any, *, surname: str,
                                    initial: str, gender: str) -> bool:
     """Validate ordinary aliases strictly and reviewed aliases by full surname.
@@ -1037,44 +1082,17 @@ def project_api_tennis_results(session, items: list[dict[str, Any]]) -> dict[str
                     and _confirmed_alias_name_matches(key[0], person)):
                 resolved[source_id] = person
             continue
-        candidates = exact_by_source.get(source_id, [])
-        if len(candidates) == 1:
-            person = candidates[0]
-            if ((person.surname_key.casefold(), person.initial.casefold()) == key[:2]
-                    and (key[2] == "unknown" or person.gender in {key[2], "unknown"})):
-                # Older projections may have created an API-only canonical
-                # person before a richer TML/Sackmann identity was imported.
-                # Prefer that single established identity for new API match
-                # links. Keep the provider's player ID on the raw match row;
-                # do not overwrite the stable canonical ID or guess when two
-                # established people share the same surname and initial.
-                peer_candidates = list(by_key.get(key, []))
-                if not peer_candidates and key[2] != "unknown":
-                    peer_candidates = list(by_key.get((key[0], key[1], "unknown"), []))
-                established = [row for row in peer_candidates
-                               if row.id != person.id
-                               and isinstance(row.source_ids, dict)
-                               and any(row.source_ids.get(name) for name in ("tml", "sackmann_sqlite"))]
-                if not established:
-                    established = _compound_surname_candidates(
-                        key[0], key[1], key[2], named_people, source="api_tennis"
-                    )
-                    established = [row for row in established if row.id != person.id]
-                tml = [row for row in established if row.source_ids.get("tml")]
-                peers = tml if len(tml) == 1 else established
-                resolved[source_id] = peers[0] if len(peers) == 1 else person
-            continue
-        if candidates:
-            continue
-        surname, initial, gender = key
-        candidates = list(by_key.get((surname, initial, gender), []))
-        if not candidates and gender != "unknown":
-            candidates = list(by_key.get((surname, initial, "unknown"), []))
-        candidates = [person for person in candidates if not (person.source_ids or {}).get("api_tennis")]
-        if len({person.id for person in candidates}) == 1:
-            person = candidates[0]
+        peer_candidates = list(by_key.get(key, []))
+        if not peer_candidates and key[2] != "unknown":
+            peer_candidates = list(by_key.get((key[0], key[1], "unknown"), []))
+        person, _proof = resolve_api_tennis_player_identity(
+            source_id, key, exact_candidates=exact_by_source.get(source_id, []),
+            peer_candidates=peer_candidates, named_people=named_people,
+        )
+        if person is not None:
             resolved[source_id] = person
-            pending_alias_updates.append((person, {**dict(person.source_ids or {}), "api_tennis": source_id}))
+            if not exact_by_source.get(source_id):
+                pending_alias_updates.append((person, {**dict(person.source_ids or {}), "api_tennis": source_id}))
 
     eligible = []
     for item in items:

@@ -53,6 +53,7 @@ from .shadow import (
 )
 from .shadow_engine import ShadowEngine
 from .composite import CompositeComponentVote, CompositeModelState
+from .tennis_pit import validate_feature_source_availability
 
 
 
@@ -121,6 +122,7 @@ __all__ = [
     "ShadowEngine",
     "CompositeComponentVote",
     "CompositeModelState",
+    "validate_feature_source_availability",
     "ExternalPredictionDTO",
     "PredictionConsensusSummary",
 ]

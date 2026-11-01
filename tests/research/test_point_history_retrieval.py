@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,6 +8,7 @@ from app.point_history import (
     _point_by_point_set_tabs,
     _point_history_tab_missing_document,
     _usable_alternative_point_version,
+    _group_four_player_doubles_observations,
 )
 
 
@@ -32,6 +34,17 @@ def test_no_pbp_tab_archives_summary_without_fabricating_set_one():
     assert document["fetch_status"] == "point_history_tab_missing"
     assert document["collection_status"] == "PBP_TAB_NOT_PUBLISHED"
     assert document["set_tab_confirmed"] is False
+
+
+def test_doubles_archive_candidate_requires_same_source_match_on_all_four_profiles():
+    rows = [SimpleNamespace(source_match_id="m1", source_profile_player_id=f"p{i}", marker=i)
+            for i in range(4)]
+    rows += [SimpleNamespace(source_match_id="m1", source_profile_player_id="p0", marker=99),
+             SimpleNamespace(source_match_id="m2", source_profile_player_id="p0", marker=0)]
+    grouped = _group_four_player_doubles_observations(rows, {"p0", "p1", "p2", "p3"})
+    assert set(grouped) == {"m1"}
+    assert grouped["m1"]["p0"].marker == 0  # Caller orders newest evidence first.
+    assert _group_four_player_doubles_observations(rows, {"p0", "p1", "p2"}) == {}
 
 
 def test_live_provenance_requires_fresh_snapshot_and_does_not_backdate():
@@ -164,7 +177,7 @@ def test_event_collection_returns_complete_alternative_before_flashscore_search(
     assert result["documents_saved"] == 0
 
 
-def test_event_collection_returns_linked_partial_alternative_without_flashscore(monkeypatch):
+def test_partial_alternative_does_not_prevent_search_for_a_complete_history(monkeypatch):
     import uuid
     from types import SimpleNamespace
     from db.models import Event, TennisPointDocument, TennisPointHistoryVersion
@@ -201,15 +214,11 @@ def test_event_collection_returns_linked_partial_alternative_without_flashscore(
             return Query()
 
     monkeypatch.setattr("db.connection.SessionLocal", Session)
+    monkeypatch.setattr("app.player_data_coverage.source_capability_enabled", lambda source, *_args: source != "flashscore")
     result = point_history.collect_event_point_history(
-        str(event_id), source_access=lambda *_args, **_kwargs: pytest.fail("Flashscore must be skipped"),
+        str(event_id), source_access=lambda *_args, **_kwargs: pytest.fail("disabled source must not be fetched"),
     )
-
-    assert result["status"] == "partial"
-    assert result["source"] == "api_tennis"
-    assert result["cached"] is True
-    assert result["complete"] is False
-    assert result["quality"]["gaps"] == [{"reason": "terminal_point_missing"}]
+    assert result == {"status": "source_disabled", "reason": "SOURCE_CAPABILITY_DISABLED"}
 
 
 def test_disabled_flashscore_pbp_stops_before_match_search_or_http(monkeypatch):
@@ -314,6 +323,35 @@ def test_stale_match_lookup_resumes_only_for_same_fresh_live_event():
     assert not _stale_match_lookup_is_live_again(
         SimpleNamespace(status=job.status, last_error="LIVE_MATCH_NOT_FOUND"), fresh, now
     )
+
+
+def test_pbp_identity_demand_includes_recent_finished_and_prematch_events(monkeypatch):
+    from app import main
+    from db.models import TennisPointRefreshJob
+
+    captured = []
+
+    class Query:
+        def join(self, *_args):
+            return self
+
+        def filter(self, *criteria):
+            captured.extend(criteria)
+            return self
+
+        def first(self):
+            return None
+
+    class Session:
+        def query(self, model):
+            assert model is TennisPointRefreshJob
+            return Query()
+
+    monkeypatch.setattr(main, "_confirmed_flashscore_player_id", lambda *_args: None)
+    assert not main._player_needs_flashscore_identity_for_missing_pbp(Session(), "player-1")
+    sql = " ".join(str(criteria) for criteria in captured)
+    assert "events.first_seen_at >=" in sql
+    assert "tennis_point_refresh_jobs.status =" in sql
 
 
 def test_reenabling_flashscore_pbp_resumes_only_gate_blocked_jobs():

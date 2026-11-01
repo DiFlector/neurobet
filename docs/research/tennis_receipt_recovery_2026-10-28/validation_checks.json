@@ -1,0 +1,41 @@
+{
+  "audit_feature_PIT": true,
+  "audited_feature_snapshots": 6458,
+  "audited_result_witnesses": 3018,
+  "backend_image": "sha256:73e953248bc07209223f39a83fac81aeaf2ada821ca93eee9de7c9a6ae634064",
+  "backend_live_restarted": false,
+  "builder": {
+    "accepted_examples": 14469,
+    "builder_version": "tennis_odds_free_dataset_v2_optional_serve_v1",
+    "examples_with_known_label_availability_time": 14454,
+    "feature_contract": "tennis_odds_free_v2",
+    "feature_pit_certified": true,
+    "input_examples": 14469,
+    "input_path": "/tmp/tennis_receipt_training_examples_20261028.jsonl",
+    "labels_with_unknown_availability_time": 15,
+    "output_path": "/tmp/tennis_receipt_neural_validation_20261028/dataset.jsonl",
+    "pit_certified": true,
+    "pit_certified_examples": 14469,
+    "pit_evidence_policy": "tennis_pit_db_state_v2",
+    "rejected_examples": 0,
+    "rejection_reason_counts": {},
+    "training_admission": "not_evaluated",
+    "unknown_optional_feature_reasons": {
+      "no_explicit_source_observation": 2343,
+      "source_after_cutoff": 12126
+    }
+  },
+  "post_label_snapshots": 0,
+  "research_tests_passed": 58,
+  "schema_revision": "060_point_history_source_idx",
+  "source_code_sha256": {
+    "migrations/versions/060_tennis_point_history_source_index.py": "b44ac5e6e51cad8c5a0f47c48d0611a062e8556b917eee2537f121822eb69d14",
+    "packages/contracts/src/contracts/tennis_pit.py": "291e83dbc938665d9165b28d0179e209d4abb90534ab5abc4646611626ab4e3a",
+    "scripts/research/prepare_tennis_recovered_cohort.py": "4d213cdf7d84dc5130df6630784447e749e40568bb9842ffc204c7947562d6c2",
+    "scripts/research/recover_tennis_result_witnesses.py": "4bd0a6db11d3a4081991bdbb33de808fd4dc13ab2c6caeb7b6793bdd4a7f3f4a",
+    "scripts/research/run_tennis_label_audit.py": "9954288066c393cf337ff1003bc251096aecc85424fb75994bc637901a57658c",
+    "scripts/research/tennis_label_audit.py": "8c684534beebdfe908ede3dcad3780d51fd54711220eb1580691386e8e55681a",
+    "scripts/research/tennis_label_audit_resumable.py": "180a2bdd33305312c38eed01b827cb51f0ea60c8c8c0903088ae35534818dbb8",
+    "services/neural/app/odds_free_dataset.py": "ddaaa109463348aa09e9acaaf3f576af8e04c470ad1c5ede2526c8d5ba3424c3"
+  }
+}

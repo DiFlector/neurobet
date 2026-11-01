@@ -1,0 +1,3127 @@
+{
+  "as_of": "2026-10-28T05:25:19.007118+00:00",
+  "candidate_events": 51,
+  "counts": {
+    "appended": 50,
+    "existing": 1
+  },
+  "events_without_confirmed_canonical_pair": null,
+  "finished_fonbet_events": 5021,
+  "mode": "apply",
+  "processed_events": 51,
+  "rows": [
+    {
+      "available_at": "2026-10-28T05:25:19.267197+00:00",
+      "confirmed_games": 29,
+      "confirmed_points": 109,
+      "event_id": "108e585a-a0a9-4d51-9b6e-f39796b3b69b",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+            "canonical_alias_id": "fc4a787a-6086-43a6-97b8-dc1074c69c19",
+            "canonical_id": "1520c8cc-4b9c-5d2c-a925-93a478a9f670",
+            "identity_available_at": "2026-10-26T06:18:28.363066+00:00",
+            "identity_link_id": "76b47f97-fde1-4b35-b5b6-a72aa2390e8e",
+            "participant_id": "4af7fa9d-0c91-46cc-aa23-d8b0b975187c"
+          },
+          {
+            "alias_available_at": "2026-10-25T10:41:02.945546+00:00",
+            "canonical_alias_id": "bf745fa9-007b-4dd0-850e-9631749d68ce",
+            "canonical_id": "713c8528-80bb-5e5c-a773-de3dcb020884",
+            "identity_available_at": "2026-10-21T07:49:15.725864+00:00",
+            "identity_link_id": "1f533e14-fff1-4ed4-b321-247f29635d10",
+            "participant_id": "721d9832-cf28-4ba4-b8a6-9ab3a334e48c"
+          }
+        ],
+        "canonical_match_id": "1289dedc-a692-521c-a296-4524f899f5ec",
+        "canonical_match_key": "f2b9c39fcb8d2a386c48016a49aebdd065e26ac2",
+        "fonbet_event_id": "108e585a-a0a9-4d51-9b6e-f39796b3b69b",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:47.310282+00:00",
+          "2026-10-28T05:24:49.825913+00:00"
+        ],
+        "provider_alias_ids": [
+          "5188836e-39a6-4987-84d7-eef7a81c2b2a",
+          "6baa8212-aa6d-4a71-af0d-365e599f6179"
+        ],
+        "provider_player_ids": [
+          "3202",
+          "52054"
+        ],
+        "semantic_digest": "5031a42726125287366192ac0017339bb4ce060ca49bafd3cb855d106710e353",
+        "source": "api_tennis",
+        "source_content_hash": "088eff56659db3dbf62ad1ed29f31c3340a45284f1fda8df31a42924dc0af221",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174216",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "87faaed9-6523-494a-8c23-cbbad0c144ab",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "3a1e36ac-ffd7-41e3-92fd-2233b41d035c",
+      "fonbet_source_event_id": "69320190",
+      "participants": [
+        "\u041c\u043e\u0440\u0438\u044f \u0425",
+        "\u0414\u0435\u0440\u0435\u043f\u0430\u0441\u043a\u043e \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "5031a42726125287366192ac0017339bb4ce060ca49bafd3cb855d106710e353",
+      "source_match_id": "12174216",
+      "version_id": "fee2ae1d-ad5a-4e75-9a73-30c3ec998e31"
+    },
+    {
+      "available_at": "2026-10-28T05:25:19.407970+00:00",
+      "confirmed_games": 13,
+      "confirmed_points": 83,
+      "event_id": "164dc9c3-d91a-4f50-88e6-09c7bcaf54ae",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "cf335fbc-55d4-4052-adb5-a7de8bde6a07",
+            "canonical_id": "4e936d61-18ff-578f-8c1c-298b884c2d62",
+            "identity_available_at": "2026-10-23T18:04:17.695789+00:00",
+            "identity_link_id": "cd3b2148-3445-424c-b4d7-bb8b0b0a4208",
+            "participant_id": "5f640837-70cc-4c8c-aee4-de698682e14c"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "85f9c097-7950-4840-8ff7-69ce40c00f88",
+            "canonical_id": "2c950570-8504-5e52-ae6e-d26dfca4f07f",
+            "identity_available_at": "2026-10-23T09:42:33.859298+00:00",
+            "identity_link_id": "950a3d6a-eba5-41db-b3ef-8d753985c05e",
+            "participant_id": "a2a264f4-0489-47e7-ba5f-195de93e4fa3"
+          }
+        ],
+        "canonical_match_id": "8b7c848d-e912-580c-9d20-7490288e4828",
+        "canonical_match_key": "fa8c2d1647295b0e09320050c672aa37aca8ff0c",
+        "fonbet_event_id": "164dc9c3-d91a-4f50-88e6-09c7bcaf54ae",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:48.630549+00:00",
+          "2026-10-28T05:24:39.757300+00:00"
+        ],
+        "provider_alias_ids": [
+          "a90e04c2-4572-4ff5-b390-033f70715aac",
+          "60f3e519-51e9-436d-a230-90db6f2cbf88"
+        ],
+        "provider_player_ids": [
+          "37892",
+          "1191"
+        ],
+        "semantic_digest": "7e33006851ac2b23d3b8cead26cfe4872bf99ad7d566ff1f8421343bfe163ba4",
+        "source": "api_tennis",
+        "source_content_hash": "0969cd71c26a1b31039f7cb9559b91da0896655bde91a72869c3a7c5e2271ea2",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172507",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "54065e69-9606-4f8f-a1a2-61e21ab10a46",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "bdc60143-8636-4ec3-bffd-ba8247df734d",
+      "fonbet_source_event_id": "69129013",
+      "participants": [
+        "\u0411\u043e\u043d\u0434\u0438\u043e\u043b\u0438 \u0424",
+        "\u0424\u043e\u0440\u0442\u0438 \u0424"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7e33006851ac2b23d3b8cead26cfe4872bf99ad7d566ff1f8421343bfe163ba4",
+      "source_match_id": "12172507",
+      "version_id": "c6f9ce5f-46db-4ef1-9ade-7471eb1284f2"
+    },
+    {
+      "available_at": "2026-10-28T05:25:19.585766+00:00",
+      "confirmed_games": 22,
+      "confirmed_points": 137,
+      "event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T08:12:38.569580+00:00",
+            "canonical_alias_id": "370fe634-6c62-4862-b0c4-ccf85c928936",
+            "canonical_id": "45b775dd-7305-5ba9-bd51-67c69691b808",
+            "identity_available_at": "2026-10-22T09:57:12.408088+00:00",
+            "identity_link_id": "1efc271f-22c0-46e4-a83c-0c790d1d5a1e",
+            "participant_id": "f789aff5-4793-46c2-9543-bc3e724f0010"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5ade8ce2-d481-406a-84af-00783ef301e7",
+            "canonical_id": "29324b57-d447-597e-a792-713b4b206f74",
+            "identity_available_at": "2026-10-21T12:56:15.056412+00:00",
+            "identity_link_id": "7cc6c853-89ed-428b-b418-82cc3abed26c",
+            "participant_id": "9058abe1-12c5-4216-a3f3-503906449a81"
+          }
+        ],
+        "canonical_match_id": "fe60f522-b080-55d4-8f17-95365c369417",
+        "canonical_match_key": "ff35ecc08cbbe8e2e1f2a8634b541b95bbbddbcb",
+        "fonbet_event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:47.935431+00:00",
+          "2026-10-28T05:24:50.937158+00:00"
+        ],
+        "provider_alias_ids": [
+          "04916da8-7caa-4198-9b55-58aea5f11333",
+          "f8fd236e-c1f8-4727-9724-97d177a9d2a5"
+        ],
+        "provider_player_ids": [
+          "3490",
+          "7403"
+        ],
+        "semantic_digest": "d24fece0ac732cfaf19daec44c28c0ddd772ffd4c898369dad6ca970b17d00d9",
+        "source": "api_tennis",
+        "source_content_hash": "a3812c2894fecea37a053f245de1f21830d7fdee953e72da7220ded9deeaf0e1",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172766",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "35c69621-4a7d-4dae-a68b-442d073a2ce1",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "edbb7d86-9136-4c44-9ef0-d313abd5af89",
+      "fonbet_source_event_id": "69142452",
+      "participants": [
+        "\u042d\u0430\u043b\u0430 \u0410",
+        "\u0428\u043d\u0430\u0439\u0434\u0435\u0440 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "d24fece0ac732cfaf19daec44c28c0ddd772ffd4c898369dad6ca970b17d00d9",
+      "source_match_id": "12172766",
+      "version_id": "f0c97393-4678-42e4-93b6-31f6cc9bac63"
+    },
+    {
+      "available_at": "2026-10-28T05:25:19.785405+00:00",
+      "confirmed_games": 22,
+      "confirmed_points": 125,
+      "event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T05:51:46.977145+00:00",
+            "canonical_alias_id": "a04b53fc-eb0f-4039-a926-0c0a66eae33e",
+            "canonical_id": "be57ed0c-7ac3-53e3-b566-c7ce57686755",
+            "identity_available_at": "2026-10-21T09:54:57.825927+00:00",
+            "identity_link_id": "664cdf6a-e48e-4846-a88a-b6521f86b881",
+            "participant_id": "b5be7604-cfaa-456f-a60f-b89c2e183bff"
+          },
+          {
+            "alias_available_at": "2026-10-26T05:12:27.861046+00:00",
+            "canonical_alias_id": "4d6f4680-9a79-4784-b4c9-51d0d4ed2d77",
+            "canonical_id": "55a969b9-e18f-5b60-a9e6-1e11c7c44372",
+            "identity_available_at": "2026-10-21T09:55:05.885862+00:00",
+            "identity_link_id": "9b129fc8-0e64-4045-8b81-8862299fac4e",
+            "participant_id": "9b58d730-2c2a-4011-9c9a-bbae8f005bdb"
+          }
+        ],
+        "canonical_match_id": "b5699c09-bfe8-55a2-ad89-13eff78c484f",
+        "canonical_match_key": "c8051720d1c2ec1ff66e2ef306480fb9c45ab4b6",
+        "fonbet_event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.751074+00:00",
+          "2026-10-28T05:24:40.872895+00:00"
+        ],
+        "provider_alias_ids": [
+          "52ac27c0-a993-4cbd-bcfa-73c54f2ad910",
+          "6031a2fd-da3d-4a78-aed8-f9a1a4af3c1a"
+        ],
+        "provider_player_ids": [
+          "25740",
+          "14348"
+        ],
+        "semantic_digest": "7f248621a9f9756eb539fbcf741af1c163bb19c5cffedf0f22e5259ec0929072",
+        "source": "api_tennis",
+        "source_content_hash": "d28c3761af840c3d641d2325cae3212bec56e4d4e206fefd48ae28ba70861f55",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172832",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "74383625-5d2d-406d-ba9c-5fa3126e4b12",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "8c8ce6ca-d15f-4f24-b3bd-0acb2abe363b",
+      "fonbet_source_event_id": "69148307",
+      "participants": [
+        "\u0421\u0443\u043a\u0441\u0443\u043c\u0440\u0430\u0440\u043d \u0422",
+        "\u041c\u0430\u0441\u0430\u0431\u0430\u044f\u0448\u0438 \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7f248621a9f9756eb539fbcf741af1c163bb19c5cffedf0f22e5259ec0929072",
+      "source_match_id": "12172832",
+      "version_id": "e0c79140-bb4f-4eea-b8fb-8a69169aac04"
+    },
+    {
+      "available_at": "2026-10-28T05:25:19.925935+00:00",
+      "confirmed_games": 32,
+      "confirmed_points": 102,
+      "event_id": "22ab8351-8955-4f82-bc33-b3b36d16af0a",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T04:12:27.766244+00:00",
+            "canonical_alias_id": "469acf51-a39d-41c5-b0ba-13e7f5a09f2d",
+            "canonical_id": "d71befcf-63e2-51b3-8ec9-6fa4caa02c6c",
+            "identity_available_at": "2026-10-23T03:02:48.058278+00:00",
+            "identity_link_id": "7d89a872-fae7-468b-bcaf-51e6e53827d6",
+            "participant_id": "b0db3299-dc5f-478e-9456-b48405bd4d49"
+          },
+          {
+            "alias_available_at": "2026-10-26T06:12:28.177703+00:00",
+            "canonical_alias_id": "283f03b1-b88a-4eae-839b-24e82ae0c335",
+            "canonical_id": "e810a723-0265-5d70-b071-1dfc03c1a1f8",
+            "identity_available_at": "2026-10-26T05:51:16.070303+00:00",
+            "identity_link_id": "cb0703d7-8b28-4d8a-8339-fa395505b568",
+            "participant_id": "773deff9-75d0-43c8-8af6-5b9235cfaec0"
+          }
+        ],
+        "canonical_match_id": "1c3356a8-88bd-52b2-b475-7640a67aebc4",
+        "canonical_match_key": "030a0ccf8d22a8ac33a86a5866e59adad77f8351",
+        "fonbet_event_id": "22ab8351-8955-4f82-bc33-b3b36d16af0a",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:50.873908+00:00",
+          "2026-10-28T05:24:40.795347+00:00"
+        ],
+        "provider_alias_ids": [
+          "216cb4bd-b013-4d28-b292-e23251410116",
+          "f4ccb125-03d9-47e8-9e8e-1a41a586c513"
+        ],
+        "provider_player_ids": [
+          "7395",
+          "13409"
+        ],
+        "semantic_digest": "0f712b1e5f025e43d27f9fa980cf3fe3df468a58682b2ac8c0b765b1efde49c9",
+        "source": "api_tennis",
+        "source_content_hash": "dea3f82f80cc0c672ce2b2b10c446daf8fe79de108a8e9cb710b27639d06e3e5",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171913",
+        "source_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+        "source_observation_id": "f5be4d06-9760-4c94-a3a3-e8860885b50a",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-18/ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a.json.gz"
+      },
+      "existing_raw_document_id": "5eb4d13e-ef0c-4d63-8eb8-d56dac1166cd",
+      "fonbet_source_event_id": "69062084",
+      "participants": [
+        "\u0414\u0435\u043c\u0438\u043d \u042f",
+        "\u0411\u0438\u043d\u0434\u0430 \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "0f712b1e5f025e43d27f9fa980cf3fe3df468a58682b2ac8c0b765b1efde49c9",
+      "source_match_id": "12171913",
+      "version_id": "d3685936-0188-441d-a97d-e499211a2428"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.007229+00:00",
+      "confirmed_games": 29,
+      "confirmed_points": 114,
+      "event_id": "22e712c1-b1b1-4808-b2f9-625b47d5df44",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T20:29:17.464781+00:00",
+            "canonical_alias_id": "3d9df36a-4f42-43ac-88c6-03c5a36f50cf",
+            "canonical_id": "5c998af7-e5e0-5107-b98e-55e3e8a06c36",
+            "identity_available_at": "2026-10-21T13:21:48.866703+00:00",
+            "identity_link_id": "4329ffe9-2f2b-4687-80e5-f47814dc514c",
+            "participant_id": "0390cb2f-5fc4-48ea-8fad-8928da6973b4"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "70fca78b-aaf8-4c7b-bcb7-ab3196a9d949",
+            "canonical_id": "f001fd8e-97f8-5a2b-909e-9c4121f4c2f1",
+            "identity_available_at": "2026-10-22T00:21:00.575639+00:00",
+            "identity_link_id": "6de1a446-0b08-4187-b208-7dc727bd9abf",
+            "participant_id": "8d46b6bf-6519-4522-92fa-95423b51a4cf"
+          }
+        ],
+        "canonical_match_id": "ca791464-6d63-5aa7-b27d-5f1941f26b73",
+        "canonical_match_key": "a4d1b5d9c6121c65ff8e6a1d626f76ada9564f14",
+        "fonbet_event_id": "22e712c1-b1b1-4808-b2f9-625b47d5df44",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:40.437061+00:00",
+          "2026-10-28T05:24:50.367272+00:00"
+        ],
+        "provider_alias_ids": [
+          "ca6af80a-7c3b-474a-8aa2-c928241e06c1",
+          "a170fd75-521f-4068-81cd-b4e890b5bb40"
+        ],
+        "provider_player_ids": [
+          "13371",
+          "61207"
+        ],
+        "semantic_digest": "f3c2ef9deadb371597bae5096394e29ed78e8bd3734d73dfb91850cf0e7fc9e5",
+        "source": "api_tennis",
+        "source_content_hash": "fe9a2b59a3b9e78f66fd02d420b4af1eab1054464882b8b2a7da8d45a796484b",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172249",
+        "source_observation_available_at": "2026-10-26T00:14:35.689323+00:00",
+        "source_observation_id": "cbf9046f-ac88-4e7f-8685-3dd2c9155c1e",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-20/4741345e9b963f9fd2040add1934fc724f8eec50ff513f98c040743a7b01b722.json.gz"
+      },
+      "existing_raw_document_id": "e78bc436-51ca-45f3-83aa-a305e2e9b098",
+      "fonbet_source_event_id": "69128309",
+      "participants": [
+        "\u042f\u043c\u0430\u043d\u0430\u043a\u0430 \u0422",
+        "\u041e\u043a\u0438 \u042e"
+      ],
+      "reason": "appended",
+      "semantic_digest": "f3c2ef9deadb371597bae5096394e29ed78e8bd3734d73dfb91850cf0e7fc9e5",
+      "source_match_id": "12172249",
+      "version_id": "2d9f95f9-8b29-4aa9-9658-89e11361fe2d"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.180329+00:00",
+      "confirmed_games": 26,
+      "confirmed_points": 136,
+      "event_id": "244c674c-1487-430b-86ed-de9736e206ce",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "7087dd30-7f86-45ba-b03b-63a81a53ab36",
+            "canonical_id": "081b0316-8ddc-52ac-a630-91dfe77fff1c",
+            "identity_available_at": "2026-10-24T10:42:12.932323+00:00",
+            "identity_link_id": "6eeb8d20-6748-469b-bfa5-6025bfb9be20",
+            "participant_id": "21825b52-613c-4526-841f-75ea3f96b8fe"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "e27353af-29ee-4759-83a9-4713426d4e14",
+            "canonical_id": "592eb8dc-06be-5bef-a6a1-7dd45e84bf21",
+            "identity_available_at": "2026-10-21T00:46:16.445837+00:00",
+            "identity_link_id": "a1fe0e17-c4bc-438d-92ce-47f6b9e046c4",
+            "participant_id": "283e8fc7-b6d5-4b44-8e52-bd9cfd95ded2"
+          }
+        ],
+        "canonical_match_id": "ed95d3a2-3c70-545f-9059-5038b13e06dc",
+        "canonical_match_key": "a1f32d7b5ed60c54dcf7cb2d0888530688d398f6",
+        "fonbet_event_id": "244c674c-1487-430b-86ed-de9736e206ce",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:46.810039+00:00",
+          "2026-10-28T05:24:48.453371+00:00"
+        ],
+        "provider_alias_ids": [
+          "ae2152c8-4370-4b1d-8a82-845cff090179",
+          "4213aabf-8c2b-4461-a5a2-ca5c4dc066ed"
+        ],
+        "provider_player_ids": [
+          "2998",
+          "36452"
+        ],
+        "semantic_digest": "8273d2a5a09c26bec0317b75f34f49bc62d589e1c85561f4ef300f41348016bc",
+        "source": "api_tennis",
+        "source_content_hash": "57d1a4f18fd7fe9a5a05727bf9fb55f41c55ec7f11ad3f63b4301c203fa255f8",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174203",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "6918c6c3-198d-4fa9-a7dd-5f745608097d",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "ee735303-9526-4f07-8b74-0419906214d3",
+      "fonbet_source_event_id": "69313168",
+      "participants": [
+        "\u0414\u0430\u0440\u0442 \u0425",
+        "\u041f\u0440\u043e\u0437\u043e\u0440\u043e\u0432\u0430 \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "8273d2a5a09c26bec0317b75f34f49bc62d589e1c85561f4ef300f41348016bc",
+      "source_match_id": "12174203",
+      "version_id": "da2e41a9-ff71-4d71-b959-9da44e03e04d"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.285957+00:00",
+      "confirmed_games": 20,
+      "confirmed_points": 96,
+      "event_id": "2ced3c83-9de8-49c2-90b5-22f367033d2e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T02:51:40.133897+00:00",
+            "canonical_alias_id": "ae4d2db9-d255-409b-a1b1-1d2e4bb35566",
+            "canonical_id": "18a6073b-1ad8-5b2b-bc1f-b0d0e2b588e8",
+            "identity_available_at": "2026-10-27T02:05:28.778645+00:00",
+            "identity_link_id": "6eb76d73-cf9a-4b75-9120-e6a7ebdcc05e",
+            "participant_id": "8411f995-8504-415f-8690-15929a2c1c75"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "4cc9f4ed-ffea-4ce7-92ce-b3f4358f243b",
+            "canonical_id": "4fe587c6-92ac-57d5-a525-7505ddfcc71f",
+            "identity_available_at": "2026-10-21T00:46:58.529475+00:00",
+            "identity_link_id": "7e81f50d-9f0b-4eec-91e4-e1623e1486ff",
+            "participant_id": "08ba62d6-a118-4c3f-b215-b6a2f84c2246"
+          }
+        ],
+        "canonical_match_id": "54f7a97a-c0ce-5649-a2cc-52884f0941f7",
+        "canonical_match_key": "5465280c308969bd676f063d5e0733f7b48973f2",
+        "fonbet_event_id": "2ced3c83-9de8-49c2-90b5-22f367033d2e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.669288+00:00",
+          "2026-10-28T05:24:49.237398+00:00"
+        ],
+        "provider_alias_ids": [
+          "fd02891c-198a-4a74-9cfc-7043d5f67a33",
+          "2cd657c6-551b-4f11-a46d-bed32dc57694"
+        ],
+        "provider_player_ids": [
+          "2406",
+          "424"
+        ],
+        "semantic_digest": "5f59b8f1c58b89fc23192d9959b61ce5de78995264e818a42faf115fa1883804",
+        "source": "api_tennis",
+        "source_content_hash": "cac244b05b4a257c86e7964ba97a6f7e484ffd2d3acd90d904c66fc6c8f50df7",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171714",
+        "source_observation_available_at": "2026-10-23T12:42:19.934940+00:00",
+        "source_observation_id": "6e0e19b4-20c8-4f26-b8b2-d2a785cc024f",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-17/61c166c4ad5e9aeea3ad6494b4377b997a850ac7d9612a2af505afb04935d92d.json.gz"
+      },
+      "existing_raw_document_id": "fc23aa04-ad7e-41c9-9207-d010bcd4eec1",
+      "fonbet_source_event_id": "69026135",
+      "participants": [
+        "\u0414\u0430\u043d\u0438\u044d\u043b\u044c \u0422",
+        "\u0411\u0430\u0441\u0438\u043b\u0430\u0448\u0432\u0438\u043b\u0438 \u041d"
+      ],
+      "reason": "appended",
+      "semantic_digest": "5f59b8f1c58b89fc23192d9959b61ce5de78995264e818a42faf115fa1883804",
+      "source_match_id": "12171714",
+      "version_id": "610bb0a8-df95-4805-8cbe-ea538c6e2fef"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.473204+00:00",
+      "confirmed_games": 28,
+      "confirmed_points": 98,
+      "event_id": "320bd59d-4683-4a2a-b447-5c733eec8c62",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-28T03:29:39.918589+00:00",
+            "canonical_alias_id": "81db3bac-e89e-4245-b9d1-d654652d005f",
+            "canonical_id": "db94b239-bb9c-5b7f-829d-3d3cdacaa82a",
+            "identity_available_at": "2026-10-21T19:46:39.386598+00:00",
+            "identity_link_id": "d809dec7-e8de-4f38-bfe6-84818ffc993d",
+            "participant_id": "b67a2a2c-6230-421a-afa7-20d53688c1ad"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "b72a0ff3-8310-4e33-b610-9c00e4c10971",
+            "canonical_id": "4daac19c-9ec6-51a4-9daf-7d10505f03f3",
+            "identity_available_at": "2026-10-21T20:20:48.431811+00:00",
+            "identity_link_id": "fc1c8563-8849-4f57-9e87-9482b648be73",
+            "participant_id": "aae435d1-b546-4fe4-b9bd-1fe5f28dd6a3"
+          }
+        ],
+        "canonical_match_id": "7ded8b38-f2dc-53e6-8edc-c54a7f18fb6c",
+        "canonical_match_key": "070ae1ad8e47407d7da3470ce406851ee4627a14",
+        "fonbet_event_id": "320bd59d-4683-4a2a-b447-5c733eec8c62",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:41.328510+00:00",
+          "2026-10-28T05:24:38.781923+00:00"
+        ],
+        "provider_alias_ids": [
+          "3f46c67f-e45c-419b-8ff4-e061338b93d1",
+          "b02d3999-36bf-482e-8f8f-e2e3c1210086"
+        ],
+        "provider_player_ids": [
+          "15184",
+          "1064"
+        ],
+        "semantic_digest": "86f23a0a478b176cdb17760e0ce5a3bb51c08378a4be9310eed9d695a9541d11",
+        "source": "api_tennis",
+        "source_content_hash": "6ee56b07926dd667221fdecfcf50df5abf5337bba8bf79a97db672ca1bbd4b2a",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171794",
+        "source_observation_available_at": "2026-10-26T00:14:35.689323+00:00",
+        "source_observation_id": "d07967dd-32e5-4997-a99a-95e00b434491",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-20/4741345e9b963f9fd2040add1934fc724f8eec50ff513f98c040743a7b01b722.json.gz"
+      },
+      "existing_raw_document_id": "6931583f-d394-43b6-8c81-f55b70adab01",
+      "fonbet_source_event_id": "69030710",
+      "participants": [
+        "\u0421\u0430\u043c\u0443\u044d\u043b\u044c \u0422",
+        "\u0411\u0435\u0440\u0433\u0441 \u0417"
+      ],
+      "reason": "appended",
+      "semantic_digest": "86f23a0a478b176cdb17760e0ce5a3bb51c08378a4be9310eed9d695a9541d11",
+      "source_match_id": "12171794",
+      "version_id": "908bcf96-9542-47f0-b57a-b12198dcb3ff"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.643061+00:00",
+      "confirmed_games": 19,
+      "confirmed_points": 83,
+      "event_id": "35f87b06-1a5a-490d-82fa-bfe13c0b4d8a",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-28T03:29:39.918589+00:00",
+            "canonical_alias_id": "47f09826-8dbb-4997-8287-4a9872bd92e9",
+            "canonical_id": "ffefc882-c8a2-58d5-8081-c1760a0a8fa8",
+            "identity_available_at": "2026-10-21T09:50:39.598679+00:00",
+            "identity_link_id": "ba8e0962-9526-4429-b340-11a76ecaae9f",
+            "participant_id": "6b2c9c7b-e6ea-40a9-a11f-cacf31724563"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "16c9f689-a56d-4f1c-b34e-f5621ab1fa54",
+            "canonical_id": "95f373ce-c7e5-5231-b33d-b52d136784f8",
+            "identity_available_at": "2026-10-21T00:45:33.321467+00:00",
+            "identity_link_id": "c3cde205-638f-4ab0-a6c0-856c9c8face2",
+            "participant_id": "d2f2b9a8-c5f8-4dc7-b345-a4fc1234bc6b"
+          }
+        ],
+        "canonical_match_id": "2132df36-97cc-597e-acb4-ed3b8757bdd8",
+        "canonical_match_key": "afb9fb71b8273743cb760b9c8e87ce3f6406c29a",
+        "fonbet_event_id": "35f87b06-1a5a-490d-82fa-bfe13c0b4d8a",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:43.729357+00:00",
+          "2026-10-28T05:24:48.077819+00:00"
+        ],
+        "provider_alias_ids": [
+          "9453615b-e72c-40e5-9c60-34a7defd0692",
+          "45d25ede-5e9f-4465-9b67-b72046d6d7b9"
+        ],
+        "provider_player_ids": [
+          "1872",
+          "35790"
+        ],
+        "semantic_digest": "0562c478a69c535908bd2284fe0a11663fea10bb7eeea742b7342112f51e7d8b",
+        "source": "api_tennis",
+        "source_content_hash": "7f1728a28a614779664c2d0bab8cc83ebf26af6c5ded6a57946c6d0b190f7829",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172942",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "c68c7736-b62b-4e67-b507-c132fb539eba",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "d3d09aae-34e0-462c-9048-99be4c27c1c0",
+      "fonbet_source_event_id": "69155384",
+      "participants": [
+        "\u0426\u0438\u0446\u0438\u043f\u0430\u0441 \u041f\u0435\u0442\u0440\u043e\u0441",
+        "\u0412\u0430\u043b\u0435\u0441 \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "0562c478a69c535908bd2284fe0a11663fea10bb7eeea742b7342112f51e7d8b",
+      "source_match_id": "12172942",
+      "version_id": "c9137d88-9081-442e-8ee0-ca277acf4db7"
+    },
+    {
+      "available_at": "2026-10-28T05:25:20.731783+00:00",
+      "confirmed_games": 20,
+      "confirmed_points": 104,
+      "event_id": "36a153ab-ff9e-4692-bfb8-94fea0d3d339",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T18:29:53.410953+00:00",
+            "canonical_alias_id": "e0442549-2358-4370-8c37-c25bdc9f9efe",
+            "canonical_id": "27999068-4f7d-57da-b091-dbc61c6d954a",
+            "identity_available_at": "2026-10-21T08:09:52.098580+00:00",
+            "identity_link_id": "2108177a-3f15-4a3e-8990-de64557d6aaa",
+            "participant_id": "af52e755-bd4b-4580-a8c7-03091d7384f6"
+          },
+          {
+            "alias_available_at": "2026-10-26T18:29:53.410953+00:00",
+            "canonical_alias_id": "e5d5525f-4405-41c3-94ec-f1b69e4ef9e3",
+            "canonical_id": "d191e925-41f3-5ad9-9202-33cb3b368342",
+            "identity_available_at": "2026-10-26T18:11:38.016178+00:00",
+            "identity_link_id": "0d989421-dc72-4a77-921e-cb968eb7453c",
+            "participant_id": "3ece6b38-c309-4ca6-a572-e2581de99492"
+          }
+        ],
+        "canonical_match_id": "dd1103d7-82c4-51df-aeab-1a0b2f9865e6",
+        "canonical_match_key": "e51028539851eef596295f1e807d1aff3e7392d5",
+        "fonbet_event_id": "36a153ab-ff9e-4692-bfb8-94fea0d3d339",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:51.217944+00:00",
+          "2026-10-28T05:24:40.000657+00:00"
+        ],
+        "provider_alias_ids": [
+          "b8ae36f9-709b-4eba-ba1f-78d036c20379",
+          "3ddadd64-0a69-4b0f-9147-ce9eb44f685d"
+        ],
+        "provider_player_ids": [
+          "8781",
+          "1192"
+        ],
+        "semantic_digest": "29dc91c6ee494390009414d7574df03fefcaca623ee2c38451374f680c16d5da",
+        "source": "api_tennis",
+        "source_content_hash": "50be5b09cc5cf5d8df5f81e7323bbeaef0be82dce9c0c9812e17ba8a94b074b7",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173977",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "96b2e0b4-adb0-4389-9820-dccc1dde1f2b",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "19199319-fbd8-4583-a510-253eef9da93f",
+      "fonbet_source_event_id": "69280947",
+      "participants": [
+        "\u0414\u0430\u0440\u0434\u0435\u0440\u0438 \u041b",
+        "\u0410\u0440\u043d\u0430\u043b\u044c\u0434\u0438 \u041c"
+      ],
+      "reason": "appended",
+      "semantic_digest": "29dc91c6ee494390009414d7574df03fefcaca623ee2c38451374f680c16d5da",
+      "source_match_id": "12173977",
+      "version_id": "27e57b80-f1df-477f-aef5-bdb1436e4983"
+    },
+    {
+      "available_at": "2026-10-28T05:25:21.072385+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 96,
+      "event_id": "400fc19a-1f25-4288-9276-c11649b2ba11",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T09:12:38.908272+00:00",
+            "canonical_alias_id": "a85bde57-5b4f-4149-a288-87283359cb96",
+            "canonical_id": "6a0e0ee1-4ce4-51f2-a36e-5ca579c3df7b",
+            "identity_available_at": "2026-10-21T14:31:55.181606+00:00",
+            "identity_link_id": "d4229a5d-8ccc-410f-925e-951bba8c29a4",
+            "participant_id": "a120a6ba-7599-46fb-ad73-ba195cf22254"
+          },
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "8414af96-1ab6-421b-97ee-295cc17c5e1f",
+            "canonical_id": "6201de23-518f-5ae1-9bb7-58b3ca40a6bb",
+            "identity_available_at": "2026-10-21T15:52:35.016239+00:00",
+            "identity_link_id": "2845d6d7-45ab-4df5-950d-76c956eac4d3",
+            "participant_id": "46e936a8-4021-47cb-8a85-3b11b734f6df"
+          }
+        ],
+        "canonical_match_id": "da3e537e-eee6-59f9-b182-e7ed472d7fce",
+        "canonical_match_key": "8045d630faee0f163dbf8edef67f3b47579adaea",
+        "fonbet_event_id": "400fc19a-1f25-4288-9276-c11649b2ba11",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:48.716145+00:00",
+          "2026-10-28T05:24:49.327758+00:00"
+        ],
+        "provider_alias_ids": [
+          "a51c726e-b80d-43b2-983c-c207f78fad46",
+          "762b288a-10cf-482d-9b2e-429ac3dd74c3"
+        ],
+        "provider_player_ids": [
+          "37897",
+          "435"
+        ],
+        "semantic_digest": "faab23d2dc52624225dc4c72ad4bc36582f46f7275a91b464724d1fd9882ca63",
+        "source": "api_tennis",
+        "source_content_hash": "5f27df8600e2730b3c333af9843ccb0252e176d31786d21af5ec3f7d224102b3",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172163",
+        "source_observation_available_at": "2026-10-26T00:14:35.689323+00:00",
+        "source_observation_id": "aa4b7b67-829c-4374-b502-d8799b58e9ef",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-20/4741345e9b963f9fd2040add1934fc724f8eec50ff513f98c040743a7b01b722.json.gz"
+      },
+      "existing_raw_document_id": "ac7e8832-e4e3-4c8c-b93d-e42080b118ae",
+      "fonbet_source_event_id": "69097014",
+      "participants": [
+        "\u0421\u0430\u043a\u0430\u043c\u043e\u0442\u043e \u0420",
+        "\u041a\u0430\u0440\u0435\u043d \u0425\u0430\u0447\u0430\u043d\u043e\u0432"
+      ],
+      "reason": "appended",
+      "semantic_digest": "faab23d2dc52624225dc4c72ad4bc36582f46f7275a91b464724d1fd9882ca63",
+      "source_match_id": "12172163",
+      "version_id": "8fda912c-4f49-417d-bf42-0b69fc606018"
+    },
+    {
+      "available_at": "2026-10-28T05:25:21.138882+00:00",
+      "confirmed_games": 15,
+      "confirmed_points": 70,
+      "event_id": "41355a71-52bb-4a3e-9fa4-7a0e15e4566a",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "803ab350-5c3e-4dc9-b6f2-0ab062b371f9",
+            "canonical_id": "a65b6f29-f0c8-56b4-b8a0-d4ea1bf1eb2c",
+            "identity_available_at": "2026-10-21T00:49:32.049920+00:00",
+            "identity_link_id": "767db28e-76eb-47ff-b7ed-715fc96965de",
+            "participant_id": "2c1b8be2-009b-4735-84f5-167a049425a7"
+          },
+          {
+            "alias_available_at": "2026-10-27T02:51:40.133897+00:00",
+            "canonical_alias_id": "8e624029-eca7-40b0-b499-58a3def16494",
+            "canonical_id": "2e6a43e7-83e9-5e91-87a9-3ca6e0144b2a",
+            "identity_available_at": "2026-10-21T13:34:38.742415+00:00",
+            "identity_link_id": "68b74f29-e895-41e2-a2e5-e7b48cf2dfc2",
+            "participant_id": "b04b1153-cbcd-4088-bfd0-329afed869d9"
+          }
+        ],
+        "canonical_match_id": "3f91888c-c0b1-5096-bfdf-af8dc47294b5",
+        "canonical_match_key": "2e8626898fb50060a6b17454ab71b0b573a9ccad",
+        "fonbet_event_id": "41355a71-52bb-4a3e-9fa4-7a0e15e4566a",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:39.315738+00:00",
+          "2026-10-28T05:24:51.683821+00:00"
+        ],
+        "provider_alias_ids": [
+          "3063122e-65c1-428e-982e-366cb895222a",
+          "6bc6c939-87c8-48ce-ac0d-67ac8c0a2365"
+        ],
+        "provider_player_ids": [
+          "1093",
+          "9608"
+        ],
+        "semantic_digest": "d5954d14e4d56425473253b62ac8f3a5526f3097c523faf438d317a9776a4996",
+        "source": "api_tennis",
+        "source_content_hash": "efb905eceaf563160a2ffc309f5ba83298550ce0b73b3e9e56c5d34093beed68",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172778",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "1cef1ba7-4bdd-4c93-898a-95b79bcbf644",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "f70df284-2cdd-4a31-9e24-bc9512afde9b",
+      "fonbet_source_event_id": "69145547",
+      "participants": [
+        "\u0414\u0430\u043d\u0438\u0438\u043b \u041c\u0435\u0434\u0432\u0435\u0434\u0435\u0432",
+        "\u0428\u0438\u043c\u0430\u0431\u0443\u043a\u0443\u0440\u043e \u0428"
+      ],
+      "reason": "appended",
+      "semantic_digest": "d5954d14e4d56425473253b62ac8f3a5526f3097c523faf438d317a9776a4996",
+      "source_match_id": "12172778",
+      "version_id": "c77d281d-144d-4e93-b200-f6eac5418d01"
+    },
+    {
+      "available_at": "2026-10-28T05:25:21.333722+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 71,
+      "event_id": "489c748c-b586-4c73-b623-175d7f118c6e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T05:51:46.977145+00:00",
+            "canonical_alias_id": "a04b53fc-eb0f-4039-a926-0c0a66eae33e",
+            "canonical_id": "be57ed0c-7ac3-53e3-b566-c7ce57686755",
+            "identity_available_at": "2026-10-21T09:54:57.825927+00:00",
+            "identity_link_id": "664cdf6a-e48e-4846-a88a-b6521f86b881",
+            "participant_id": "b5be7604-cfaa-456f-a60f-b89c2e183bff"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "4dd04bc6-ceab-405b-a438-bb6af9494068",
+            "canonical_id": "08a622fc-bc72-5f73-8af3-7b158f9f80f7",
+            "identity_available_at": "2026-10-21T08:26:05.541985+00:00",
+            "identity_link_id": "942d6535-828c-41f7-8ab8-045cb8aff2d7",
+            "participant_id": "a1f8a171-fb71-46c2-aa58-5900f83318d3"
+          }
+        ],
+        "canonical_match_id": "1d95ce50-e580-55bb-a932-f0fc6ccbe890",
+        "canonical_match_key": "a86e500f95da79e3697f67ec793ad0fd98cbf074",
+        "fonbet_event_id": "489c748c-b586-4c73-b623-175d7f118c6e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.751074+00:00",
+          "2026-10-28T05:24:43.677088+00:00"
+        ],
+        "provider_alias_ids": [
+          "52ac27c0-a993-4cbd-bcfa-73c54f2ad910",
+          "d04e3313-fd7c-424b-b737-2a240a7a8350"
+        ],
+        "provider_player_ids": [
+          "25740",
+          "1863"
+        ],
+        "semantic_digest": "2edb986d52650e8d7401626591790d6637859ef0a5138b2a26252a19ce2f00d7",
+        "source": "api_tennis",
+        "source_content_hash": "700fc25d4066e6995d4ca2a8acd02f2865a72e2b310697eae69c4c30fc0d73f1",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173541",
+        "source_observation_available_at": "2026-10-28T00:15:10.343295+00:00",
+        "source_observation_id": "a5fd6ec1-fa88-4457-abe5-9e3bd2af75e2",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-23/0a0eb3ac0ebc025490bc260b8d8adc30c03f951ffbdd24e4682ebc12cbcf04db.json.gz"
+      },
+      "existing_raw_document_id": "52c995d7-a0a8-491d-9288-8bcf575622e4",
+      "fonbet_source_event_id": "69208797",
+      "participants": [
+        "\u0421\u0443\u043a\u0441\u0443\u043c\u0440\u0430\u0440\u043d \u0422",
+        "\u041a\u0438\u0440\u043a\u0438\u043d \u042d"
+      ],
+      "reason": "appended",
+      "semantic_digest": "2edb986d52650e8d7401626591790d6637859ef0a5138b2a26252a19ce2f00d7",
+      "source_match_id": "12173541",
+      "version_id": "25fc057a-5ab1-4bf6-b012-89a6c1bec979"
+    },
+    {
+      "available_at": "2026-10-28T05:25:21.503819+00:00",
+      "confirmed_games": 28,
+      "confirmed_points": 166,
+      "event_id": "48a0e02f-667b-49f4-bb03-a5232dfc8de6",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T15:00:29.950220+00:00",
+            "canonical_alias_id": "8159031a-8f4c-4ee3-aada-8707dba86cc8",
+            "canonical_id": "de3fba7d-f1ff-5f11-8554-1a0bdcbacdef",
+            "identity_available_at": "2026-10-21T11:38:46.892921+00:00",
+            "identity_link_id": "1cb6d6da-7f64-445f-a1cb-af030d9969cd",
+            "participant_id": "3aa75aaf-c712-4b2c-9c00-bfe637394361"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "fd95c549-283d-4289-b82c-72ff0ba06121",
+            "canonical_id": "b9c3bb28-e39c-5e9e-ad30-f8a229243197",
+            "identity_available_at": "2026-10-21T11:56:29.901961+00:00",
+            "identity_link_id": "af3b6405-8854-4f9a-af6b-ade33d018250",
+            "participant_id": "a0424a29-2f51-4984-855e-6b14820be054"
+          }
+        ],
+        "canonical_match_id": "c7d39793-4696-5619-a979-927c81f901d3",
+        "canonical_match_key": "050384c5a1fe2925f9158b653f34e7a7fc5ccdec",
+        "fonbet_event_id": "48a0e02f-667b-49f4-bb03-a5232dfc8de6",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:49.368254+00:00",
+          "2026-10-28T05:24:46.092126+00:00"
+        ],
+        "provider_alias_ids": [
+          "4909125c-becd-47fc-aa60-966ef9f3facd",
+          "33398755-7449-43a9-bacc-7d6ba9713a32"
+        ],
+        "provider_player_ids": [
+          "438",
+          "2847"
+        ],
+        "semantic_digest": "7a44fe1285cdfffb72118de4235152caf9b8ced6b45162713494c3ebe498fe89",
+        "source": "api_tennis",
+        "source_content_hash": "ca12b37996e0558b7d20c694cc4e5e07b28e36d315e11ca90169edc3374ab380",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172317",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "d55e968f-da7c-4de6-9d26-b6af6c8fc454",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "340ff951-23b1-41b7-b823-bb82585c3b21",
+      "fonbet_source_event_id": "69121555",
+      "participants": [
+        "\u041c\u0430\u043d\u043d\u0430\u0440\u0438\u043d\u043e \u0410",
+        "\u0410\u043d\u0434\u0440\u0435\u0439 \u0420\u0443\u0431\u043b\u0435\u0432"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7a44fe1285cdfffb72118de4235152caf9b8ced6b45162713494c3ebe498fe89",
+      "source_match_id": "12172317",
+      "version_id": "81e2ab0d-0d33-4a6e-b753-3f975cb7c5b9"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.092091+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 79,
+      "event_id": "4e676ab1-218b-472c-a3f0-0568df227619",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "95107177-d954-434e-9a8f-2caa86867059",
+            "canonical_id": "29eab733-304e-53e3-9bc1-684a1946c3cb",
+            "identity_available_at": "2026-10-21T08:46:41.577080+00:00",
+            "identity_link_id": "59c66066-8602-4104-882b-c35994fdf0cb",
+            "participant_id": "4681be05-c7d6-4994-adcd-34c22720f8f9"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "4978f752-3ab3-4ee6-9ba0-174e7e5623f2",
+            "canonical_id": "414799e3-b78d-5c7c-b364-7aa2ca01d578",
+            "identity_available_at": "2026-10-21T19:39:01.160725+00:00",
+            "identity_link_id": "c0c5e901-4a57-4334-b088-3a897bf50f6c",
+            "participant_id": "82783e7c-1d5a-43e0-8a82-ec794ac86f89"
+          }
+        ],
+        "canonical_match_id": "7a39ccc2-ffd9-5804-9540-fad447b24f37",
+        "canonical_match_key": "c93a73540b80cb39846bc62924569a892a6e874d",
+        "fonbet_event_id": "4e676ab1-218b-472c-a3f0-0568df227619",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:48.957999+00:00",
+          "2026-10-28T05:24:39.074375+00:00"
+        ],
+        "provider_alias_ids": [
+          "e141bb38-0e93-4d91-8f82-8c612172c59e",
+          "43a24726-b8ae-4084-9ab7-0b15e24484ff"
+        ],
+        "provider_player_ids": [
+          "38026",
+          "1070"
+        ],
+        "semantic_digest": "3d65ec6e7fcd352b1d76c09df2c6c2454f576a37e9d56ba2fbc2472dd5cf5bdd",
+        "source": "api_tennis",
+        "source_content_hash": "36cbeed2cdbf754de41cd43c885e36c5cdd777213b9b7950447c9ecb408fc83a",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173755",
+        "source_observation_available_at": "2026-10-28T00:11:09.629704+00:00",
+        "source_observation_id": "509ddde4-5e3a-4b5e-b5a3-cbeebe2803e3",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-24/2b17e5644a9f8b44bd0550558415cba605ac258232073b1c5505b7e459dffc7f.json.gz"
+      },
+      "existing_raw_document_id": "b653a3f8-c0e6-4d29-9518-c0de98d2699e",
+      "fonbet_source_event_id": "69243387",
+      "participants": [
+        "\u041d\u0430\u0433\u0435\u043b\u044c \u0410",
+        "\u041c\u0430\u0440\u0442\u0435\u0440\u0435\u0440 \u041c"
+      ],
+      "reason": "appended",
+      "semantic_digest": "3d65ec6e7fcd352b1d76c09df2c6c2454f576a37e9d56ba2fbc2472dd5cf5bdd",
+      "source_match_id": "12173755",
+      "version_id": "92e47562-3436-4ae6-9d70-aaa5139eb89b"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.226621+00:00",
+      "confirmed_games": 28,
+      "confirmed_points": 146,
+      "event_id": "5b82a73b-4d86-480b-94f4-2596649af92e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T12:28:51.934050+00:00",
+            "canonical_alias_id": "1689a443-ea25-4f44-804d-e4550689dfeb",
+            "canonical_id": "78b53127-70bf-5458-9411-8ac2093f1a64",
+            "identity_available_at": "2026-10-21T00:58:20.080026+00:00",
+            "identity_link_id": "744c5337-01c6-48c6-bba7-d653fc594c6d",
+            "participant_id": "39a7dd1b-1e7a-45d8-8759-21e5c385a6b9"
+          },
+          {
+            "alias_available_at": "2026-10-27T11:28:48.653116+00:00",
+            "canonical_alias_id": "b5f75337-295c-4b1e-b21f-3b32349e8745",
+            "canonical_id": "6ca4e486-cbbc-570a-99c4-ed7bab10d99d",
+            "identity_available_at": "2026-10-21T15:01:30.018503+00:00",
+            "identity_link_id": "a20a5eaf-3e21-41f9-bb2c-1f6c4d6a61ee",
+            "participant_id": "6d6b5626-4af8-477f-8176-6b193257c35f"
+          }
+        ],
+        "canonical_match_id": "becaefa6-74af-5c59-a8dd-c539270de626",
+        "canonical_match_key": "10ad22393af6038f2de929f5d5002cc08857070b",
+        "fonbet_event_id": "5b82a73b-4d86-480b-94f4-2596649af92e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.455016+00:00",
+          "2026-10-28T05:24:44.930389+00:00"
+        ],
+        "provider_alias_ids": [
+          "16ed5d77-3409-465f-9fc1-0e9fff813280",
+          "a9fa5129-f54f-4710-aa74-b1787aca950f"
+        ],
+        "provider_player_ids": [
+          "2391",
+          "209"
+        ],
+        "semantic_digest": "611d91ff217bad9fd52b1c5d213d8267162e317dee9dd1458588e3cb014f778e",
+        "source": "api_tennis",
+        "source_content_hash": "de43265f4fa1597f21c5dc6556ade39769849a28c318395daff00e22eab7fb92",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173643",
+        "source_observation_available_at": "2026-10-28T00:15:10.343295+00:00",
+        "source_observation_id": "54ce68c2-93d4-4033-b972-22ae034ad9c2",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-23/0a0eb3ac0ebc025490bc260b8d8adc30c03f951ffbdd24e4682ebc12cbcf04db.json.gz"
+      },
+      "existing_raw_document_id": "cbd092d4-cdcb-4c75-b564-04f1e2c9f07b",
+      "fonbet_source_event_id": "69221168",
+      "participants": [
+        "\u0411\u0440\u0435\u043d\u0433\u043b \u041c",
+        "\u041c\u0430\u043d\u0434\u043b\u0438\u043a \u042d"
+      ],
+      "reason": "appended",
+      "semantic_digest": "611d91ff217bad9fd52b1c5d213d8267162e317dee9dd1458588e3cb014f778e",
+      "source_match_id": "12173643",
+      "version_id": "6c4ac7e9-0cea-4624-823a-b57baf7b7b8f"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.280832+00:00",
+      "confirmed_games": 21,
+      "confirmed_points": 115,
+      "event_id": "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "79584fa1-546a-4710-b8e8-0362396a0ad0",
+            "canonical_id": "9ecd361c-ffa4-55be-959f-569a7812dd29",
+            "identity_available_at": "2026-10-21T06:36:41.586848+00:00",
+            "identity_link_id": "d58bbfa1-7de4-47be-aaa0-70b230b19417",
+            "participant_id": "a79bee1b-e39b-46b6-9a30-c3145a86fada"
+          },
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "66a08dfb-ecfc-454e-8bd8-100ee0264c2a",
+            "canonical_id": "516b2977-89ac-53f1-a17d-9f90d4eae3e5",
+            "identity_available_at": "2026-10-21T01:51:01.375292+00:00",
+            "identity_link_id": "053e9d7c-5577-44a8-b6b3-02430e8bdc31",
+            "participant_id": "bfd139de-dab1-48a4-912b-a2497cf41606"
+          }
+        ],
+        "canonical_match_id": "ee52f102-b56c-5a21-89c5-522db3084887",
+        "canonical_match_key": "d0d8b75788472363892baf526169d6efa1f5821b",
+        "fonbet_event_id": "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:51.387492+00:00",
+          "2026-10-28T05:24:50.046932+00:00"
+        ],
+        "provider_alias_ids": [
+          "e23870bb-56aa-4af6-a78f-897794421235",
+          "1d69466e-3dd0-4e1e-958a-c815dcaa735f"
+        ],
+        "provider_player_ids": [
+          "8976",
+          "53046"
+        ],
+        "semantic_digest": "db2f4e8bea7fc31e6575f583430586ae638f489c8237ac2ce3f1595f31ed3047",
+        "source": "api_tennis",
+        "source_content_hash": "1407b54a2bdc8d9d53df9279fd117ac1f2fbb0d881093672e759d879eb63c918",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172738",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "14336861-91c2-4248-82ed-c5355d174058",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "6df8c3ab-1540-4ce8-a288-c2d4bc028b58",
+      "fonbet_source_event_id": "69139360",
+      "participants": [
+        "\u0412\u0430\u043b\u0435\u043d\u0442\u043e\u0432\u0430 \u0422",
+        "\u0422\u0430\u0433\u0433\u0435\u0440 \u041b"
+      ],
+      "reason": "appended",
+      "semantic_digest": "db2f4e8bea7fc31e6575f583430586ae638f489c8237ac2ce3f1595f31ed3047",
+      "source_match_id": "12172738",
+      "version_id": "3eac1ec8-b0b1-443c-bd8b-5d86fe34b991"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.387415+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 100,
+      "event_id": "659e9a3b-df19-4224-bacc-258965e069c6",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "e582ff24-0de3-4e8c-a3c1-c44c40822a1b",
+            "canonical_id": "4e818ca3-7dda-518d-a028-a70673d09444",
+            "identity_available_at": "2026-10-21T00:49:13.510414+00:00",
+            "identity_link_id": "bce0db7c-f008-4471-ae85-a3b3f11f9373",
+            "participant_id": "ce3e0650-e2a3-4e57-8aa7-229f5d48917d"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "95989cd7-04e3-4b90-844d-f69776570277",
+            "canonical_id": "340cd9f6-372e-5a3c-9744-a19e8e7ae6c8",
+            "identity_available_at": "2026-10-23T20:10:17.562427+00:00",
+            "identity_link_id": "b8528f5d-7bd6-4471-bafe-4c30c3c47222",
+            "participant_id": "ed91d864-990a-4886-99fa-5e1081499c63"
+          }
+        ],
+        "canonical_match_id": "19a181e4-e309-5476-8e54-3921aa76887e",
+        "canonical_match_key": "bae75a7bb636cb1f6084d387eed7f6b75f6878e7",
+        "fonbet_event_id": "659e9a3b-df19-4224-bacc-258965e069c6",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:42.609648+00:00",
+          "2026-10-28T05:24:51.481587+00:00"
+        ],
+        "provider_alias_ids": [
+          "47ddfdfa-11a2-4235-a521-1f93481322a0",
+          "ed938ffa-39b7-4ed8-a848-f09f7baf542b"
+        ],
+        "provider_player_ids": [
+          "1794",
+          "9259"
+        ],
+        "semantic_digest": "89ca50a354e7dc1fd26848a245dd91dd5c3edb0931f6afd2e1d3904dc3563ada",
+        "source": "api_tennis",
+        "source_content_hash": "99ae3e4da80eb9d9f9598d7f44834603029882999c2813a800b4db516c81c284",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171834",
+        "source_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+        "source_observation_id": "4f466b1f-8793-4c96-89bb-f95a44574659",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-18/ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a.json.gz"
+      },
+      "existing_raw_document_id": "79237d2b-2095-485c-870b-2fc3ba875853",
+      "fonbet_source_event_id": "69048442",
+      "participants": [
+        "\u0417\u0430\u0445\u0430\u0440\u043e\u0432\u0430 \u0410",
+        "\u041a\u0443\u0434\u0435\u0440\u043c\u0435\u0442\u043e\u0432\u0430 \u041f"
+      ],
+      "reason": "appended",
+      "semantic_digest": "89ca50a354e7dc1fd26848a245dd91dd5c3edb0931f6afd2e1d3904dc3563ada",
+      "source_match_id": "12171834",
+      "version_id": "2f69d367-d448-4297-999d-8ec9677c50b2"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.542435+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 103,
+      "event_id": "6cfd9b8e-e20e-42c0-96f6-25c7fadb9073",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T19:04:13.687753+00:00",
+            "canonical_alias_id": "bf89b049-1d46-4490-bce7-8d43cded209b",
+            "canonical_id": "589d0099-5f67-5d4d-bfcb-bfd79bfa2a71",
+            "identity_available_at": "2026-10-25T18:04:20.819794+00:00",
+            "identity_link_id": "9c6ad38a-eaf6-4d8e-af20-1010b7b9b407",
+            "participant_id": "7834a184-c02d-4898-8e00-e2c4e472d366"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "99e44535-dec7-495c-9f6b-f9ff0a5015f2",
+            "canonical_id": "3b07cb57-7ba8-5e1f-97b7-e9bb17ab707f",
+            "identity_available_at": "2026-10-22T14:27:14.498588+00:00",
+            "identity_link_id": "fc99785f-e490-4d87-a6d1-f0ec26a25014",
+            "participant_id": "de525599-4557-47d3-b6e5-2fc0324048ae"
+          }
+        ],
+        "canonical_match_id": "2593ce4c-92cb-5bea-97d2-e1e135901327",
+        "canonical_match_key": "53d81f059c7f61b8fe53d1a48022a931fa1302d8",
+        "fonbet_event_id": "6cfd9b8e-e20e-42c0-96f6-25c7fadb9073",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:44.558220+00:00",
+          "2026-10-28T05:24:40.622192+00:00"
+        ],
+        "provider_alias_ids": [
+          "a513fa1e-761a-48d8-9f73-400b03e40a36",
+          "1b5e934c-9d4c-402c-9e34-d5521ca3af3a"
+        ],
+        "provider_player_ids": [
+          "2001",
+          "13386"
+        ],
+        "semantic_digest": "c0ad7d820baf4701fe42754535cfb4c0a76662c71e490389f71fb0c4fbaf1da9",
+        "source": "api_tennis",
+        "source_content_hash": "489993ba21c090e9a3d64b957a9f57e53d397e75a6fcdee527fc8a674340fa7a",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173596",
+        "source_observation_available_at": "2026-10-28T00:15:10.343295+00:00",
+        "source_observation_id": "b516bb4d-0714-4aa0-9ae5-ce96317c2fc2",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-23/0a0eb3ac0ebc025490bc260b8d8adc30c03f951ffbdd24e4682ebc12cbcf04db.json.gz"
+      },
+      "existing_raw_document_id": "5b245cae-78fd-4d0d-8bdd-38642df5b3c0",
+      "fonbet_source_event_id": "69212802",
+      "participants": [
+        "\u041f\u0435\u043b\u043b\u0435\u0433\u0440\u0438\u043d\u043e \u0410",
+        "\u0413\u0443\u043b\u0438\u043d \u0421"
+      ],
+      "reason": "appended",
+      "semantic_digest": "c0ad7d820baf4701fe42754535cfb4c0a76662c71e490389f71fb0c4fbaf1da9",
+      "source_match_id": "12173596",
+      "version_id": "153288fb-58dc-4ec3-968c-ffd94664878b"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.610618+00:00",
+      "confirmed_games": 21,
+      "confirmed_points": 112,
+      "event_id": "7339e86a-eff6-4ff0-a98e-01422a9b4b77",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "ec92120a-7514-477d-a219-9eeff34fbe2a",
+            "canonical_id": "cc9b67f1-a519-5546-8a44-cc572dd8be76",
+            "identity_available_at": "2026-10-24T02:47:53.762879+00:00",
+            "identity_link_id": "da4baaed-54ce-4809-96d0-db00fdad3629",
+            "participant_id": "cc9844c7-5604-4bc6-a7e1-d1e3f798486a"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5ade8ce2-d481-406a-84af-00783ef301e7",
+            "canonical_id": "29324b57-d447-597e-a792-713b4b206f74",
+            "identity_available_at": "2026-10-21T12:56:15.056412+00:00",
+            "identity_link_id": "7cc6c853-89ed-428b-b418-82cc3abed26c",
+            "participant_id": "9058abe1-12c5-4216-a3f3-503906449a81"
+          }
+        ],
+        "canonical_match_id": "a391b106-9c29-5b7c-9544-54bcaf81f06d",
+        "canonical_match_key": "f0d0c8722503f62c4a428e16a9dc256471f01745",
+        "fonbet_event_id": "7339e86a-eff6-4ff0-a98e-01422a9b4b77",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.069420+00:00",
+          "2026-10-28T05:24:50.937158+00:00"
+        ],
+        "provider_alias_ids": [
+          "e2f59b27-61e4-439c-b7e3-c7620886ce09",
+          "f8fd236e-c1f8-4727-9724-97d177a9d2a5"
+        ],
+        "provider_player_ids": [
+          "2172",
+          "7403"
+        ],
+        "semantic_digest": "787c901994ca4ec1d0600f7bff7ce54c453a84c3579d2cb8bcf277212e2ea814",
+        "source": "api_tennis",
+        "source_content_hash": "d74863fd5ab835f67a8d8bb1ddd4c292d1a530b583bdbd2a33668c6732beb5a0",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173774",
+        "source_observation_available_at": "2026-10-28T00:11:09.629704+00:00",
+        "source_observation_id": "d753bc58-6481-405e-a9ab-8b71ec3723e9",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-24/2b17e5644a9f8b44bd0550558415cba605ac258232073b1c5505b7e459dffc7f.json.gz"
+      },
+      "existing_raw_document_id": "ab83d329-350b-4b49-8c89-43c54d843c15",
+      "fonbet_source_event_id": "69244815",
+      "participants": [
+        "\u0415\u043b\u0435\u043d\u0430 \u0420\u044b\u0431\u0430\u043a\u0438\u043d\u0430",
+        "\u0428\u043d\u0430\u0439\u0434\u0435\u0440 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "787c901994ca4ec1d0600f7bff7ce54c453a84c3579d2cb8bcf277212e2ea814",
+      "source_match_id": "12173774",
+      "version_id": "2fd2348d-07c2-4066-8fa4-b8f510b540cd"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.691832+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 94,
+      "event_id": "84cb2f08-0060-4fb7-b81c-87c0f30eec37",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T02:51:40.133897+00:00",
+            "canonical_alias_id": "ae4d2db9-d255-409b-a1b1-1d2e4bb35566",
+            "canonical_id": "18a6073b-1ad8-5b2b-bc1f-b0d0e2b588e8",
+            "identity_available_at": "2026-10-27T02:05:28.778645+00:00",
+            "identity_link_id": "6eb76d73-cf9a-4b75-9120-e6a7ebdcc05e",
+            "participant_id": "8411f995-8504-415f-8690-15929a2c1c75"
+          },
+          {
+            "alias_available_at": "2026-10-25T22:04:22.515050+00:00",
+            "canonical_alias_id": "938eb4cc-08b9-4147-b191-d07f6c8fa91d",
+            "canonical_id": "a9478d87-30fd-5c13-b312-5d6af68d8338",
+            "identity_available_at": "2026-10-21T08:13:52.630346+00:00",
+            "identity_link_id": "77f5ee77-78a4-4480-a8b2-0aaa21ffecc2",
+            "participant_id": "a30e3e0e-cb5e-4d93-8084-a42b4872758c"
+          }
+        ],
+        "canonical_match_id": "e843ad53-2fe8-5029-816e-b8708401726a",
+        "canonical_match_key": "4ed77faf6ba251681670ca8140461b44e7dac1c2",
+        "fonbet_event_id": "84cb2f08-0060-4fb7-b81c-87c0f30eec37",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.669288+00:00",
+          "2026-10-28T05:24:48.831677+00:00"
+        ],
+        "provider_alias_ids": [
+          "fd02891c-198a-4a74-9cfc-7043d5f67a33",
+          "4f52ef84-7f8a-4744-bbc4-575fd904fd44"
+        ],
+        "provider_player_ids": [
+          "2406",
+          "37936"
+        ],
+        "semantic_digest": "b5da7cf469ffe71b8a27b68a2a638cdb531057bb7fe487c56dea7ad641a02794",
+        "source": "api_tennis",
+        "source_content_hash": "7a43778e892d8351a44b6eacef12bf7dcccd99df90e56d1ec9e3e2eb6bca57c9",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174040",
+        "source_observation_available_at": "2026-10-28T00:02:14.817493+00:00",
+        "source_observation_id": "05490125-2b75-4f92-a746-c590a4176a76",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-27/d6edff2a686fd32d30a89da9ac0cd134535105b91aca6d854e03b1280db06d34.json.gz"
+      },
+      "existing_raw_document_id": "ad556ca6-cdbb-4112-a721-b682dd05c79a",
+      "fonbet_source_event_id": "69291691",
+      "participants": [
+        "\u0414\u0430\u043d\u0438\u044d\u043b\u044c \u0422",
+        "\u0418\u043b\u0430\u0433\u0430\u043d \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "b5da7cf469ffe71b8a27b68a2a638cdb531057bb7fe487c56dea7ad641a02794",
+      "source_match_id": "12174040",
+      "version_id": "d554417f-6a02-4259-931e-dbafdc1be25a"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.814247+00:00",
+      "confirmed_games": 26,
+      "confirmed_points": 149,
+      "event_id": "8534d465-5564-4c32-87c3-aeb604b65784",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T03:51:41.645786+00:00",
+            "canonical_alias_id": "9410f8e1-0226-4d3d-9257-6076c9ca4eea",
+            "canonical_id": "c1938c40-c856-5b71-877a-90028c9810d8",
+            "identity_available_at": "2026-10-21T00:30:52.610771+00:00",
+            "identity_link_id": "ec7dd4a6-69b7-4482-bad2-2ed4053b1dc3",
+            "participant_id": "915284d2-b56d-48b4-ba24-d4737e8bc471"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "35252385-d304-4276-9d4d-4b3a30b8044d",
+            "canonical_id": "a0bdfeea-0e50-54c8-9dc3-54da753fefe8",
+            "identity_available_at": "2026-10-22T05:54:04.192050+00:00",
+            "identity_link_id": "2852859d-eb27-41e1-bd2f-a59ab06c30bf",
+            "participant_id": "f2c7bcf9-ab8c-4f15-bc43-74adc4b88cb0"
+          }
+        ],
+        "canonical_match_id": "23d4f299-7299-50f8-aa27-72cb0ea8ac3f",
+        "canonical_match_key": "c25ccde4ef163cf46877d36685c4f11f842270ad",
+        "fonbet_event_id": "8534d465-5564-4c32-87c3-aeb604b65784",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:44.728621+00:00",
+          "2026-10-28T05:24:43.137331+00:00"
+        ],
+        "provider_alias_ids": [
+          "2182d531-60fd-4895-adbf-63f31aa1107e",
+          "77c6ff55-68d8-4025-8cb0-89aaccfe5167"
+        ],
+        "provider_player_ids": [
+          "2076",
+          "1828"
+        ],
+        "semantic_digest": "f36070eda1d39c36caf8679346ce3c2f14b45234d3b88bd7adf636115e0a0510",
+        "source": "api_tennis",
+        "source_content_hash": "d71f2806ad327e7a1411e39ab86eb73fb92c587595813a7cb1297f593b69c6d2",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12170246",
+        "source_observation_available_at": "2026-10-23T12:42:29.937924+00:00",
+        "source_observation_id": "f8201427-a204-4bc2-8ec1-c44deffc5ab8",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-13/53d2be36fab453a59ffb8a28351c0a8ba82c9e7d3ae8d253133698641eff0c87.json.gz"
+      },
+      "existing_raw_document_id": "40ed8afd-8dd5-498c-bd93-b7646d7348e5",
+      "fonbet_source_event_id": "68898490",
+      "participants": [
+        "\u0421\u0430\u043a\u043a\u0430\u0440\u0438 \u041c",
+        "\u041a\u043e\u0441\u0442\u044e\u043a \u041c"
+      ],
+      "reason": "appended",
+      "semantic_digest": "f36070eda1d39c36caf8679346ce3c2f14b45234d3b88bd7adf636115e0a0510",
+      "source_match_id": "12170246",
+      "version_id": "ceef4e62-cb7c-44d8-b7a6-bd7f54b5611b"
+    },
+    {
+      "available_at": "2026-10-28T05:25:22.908904+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 76,
+      "event_id": "85a1ce4d-f903-4223-b2f7-d29e15c51020",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T07:05:05.513446+00:00",
+            "canonical_alias_id": "1b2589e1-cc95-4149-a176-89d6956bf79f",
+            "canonical_id": "7fe7c3c8-61dd-57ab-9c8e-229ea916ba27",
+            "identity_available_at": "2026-10-21T00:45:39.323737+00:00",
+            "identity_link_id": "b131a6f8-6836-42f8-8740-dd43acf70b4a",
+            "participant_id": "84cf3cc6-78d8-40d6-a88b-b3f3e7e6f83f"
+          },
+          {
+            "alias_available_at": "2026-10-27T07:05:05.513446+00:00",
+            "canonical_alias_id": "ee37f349-cf47-40ab-a3f7-f7b2872eef3e",
+            "canonical_id": "d56d4786-45be-5278-9452-8827f5615812",
+            "identity_available_at": "2026-10-27T06:56:17.232612+00:00",
+            "identity_link_id": "0b394d49-5e73-4c47-91c1-0c4069234bae",
+            "participant_id": "c99ba94b-41e2-4314-a26a-830d4f3b2ca1"
+          }
+        ],
+        "canonical_match_id": "d678d06b-ef85-51f8-a880-c77033b87e23",
+        "canonical_match_key": "5108e0581892ec7fca0a71dcaa6ca226847f4fbd",
+        "fonbet_event_id": "85a1ce4d-f903-4223-b2f7-d29e15c51020",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:51.026783+00:00",
+          "2026-10-28T05:24:48.349630+00:00"
+        ],
+        "provider_alias_ids": [
+          "9ed189f9-1643-498e-8031-5e09afcbeb91",
+          "e77e9805-ba8e-425d-b12f-d54f931bd083"
+        ],
+        "provider_player_ids": [
+          "742",
+          "362"
+        ],
+        "semantic_digest": "8a65403a31b7db63051b8f03494323c4bafaf353c37c3fb4ce8a8bd99b95db6e",
+        "source": "api_tennis",
+        "source_content_hash": "69fca29b2290ff157cb4edb9a58afeb0cdad3b946bf63ec0511a1ed2bfdc0133",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174046",
+        "source_observation_available_at": "2026-10-28T00:02:14.817493+00:00",
+        "source_observation_id": "eb2b071d-d6ff-416b-82b2-40a2396ea5db",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-27/d6edff2a686fd32d30a89da9ac0cd134535105b91aca6d854e03b1280db06d34.json.gz"
+      },
+      "existing_raw_document_id": "db5d8de1-a0b5-4982-be16-8ae03840ae23",
+      "fonbet_source_event_id": "69291735",
+      "participants": [
+        "\u0421\u0430\u043a\u0435\u043b\u043b\u0430\u0440\u0438\u0434\u0438\u0441 \u0421",
+        "\u0421\u043a\u0430\u0442\u043e\u0432 \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "8a65403a31b7db63051b8f03494323c4bafaf353c37c3fb4ce8a8bd99b95db6e",
+      "source_match_id": "12174046",
+      "version_id": "516a4f1d-e316-4e26-a481-5b5632a8467f"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.002290+00:00",
+      "confirmed_games": 17,
+      "confirmed_points": 88,
+      "event_id": "85bf4fcf-7403-4add-bf9e-c0eba263cdb9",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "8c177fbd-dd85-441e-9f2a-cf3757b6a77e",
+            "canonical_id": "8f21f8a5-0b04-5748-82b6-36e166b1a2ea",
+            "identity_available_at": "2026-10-22T16:15:29.384009+00:00",
+            "identity_link_id": "daaa4963-7171-4588-a161-e8162e3a21ce",
+            "participant_id": "7caec368-23d0-456c-b488-e91235f22a65"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "62d0b4b4-9241-44c0-970a-c68d9c00053d",
+            "canonical_id": "05f7a478-19d3-538e-b219-80dac27d8a2b",
+            "identity_available_at": "2026-10-22T16:13:52.611532+00:00",
+            "identity_link_id": "bd87f496-b519-4b0d-82e9-fff922255b81",
+            "participant_id": "52780d4b-f1be-47ae-a8f8-6087af93a2bd"
+          }
+        ],
+        "canonical_match_id": "f4e603fe-cf7f-5c75-a92a-07634d7e54e2",
+        "canonical_match_key": "9a78921b0706597dcf562b886f5a246bacd4f3ea",
+        "fonbet_event_id": "85bf4fcf-7403-4add-bf9e-c0eba263cdb9",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:41.545571+00:00",
+          "2026-10-28T05:24:49.463695+00:00"
+        ],
+        "provider_alias_ids": [
+          "e0f4fc47-9cff-4532-8b38-7513bd16d54b",
+          "e38acffd-8870-47c1-9c53-eb1c6c0fff2b"
+        ],
+        "provider_player_ids": [
+          "1779",
+          "450"
+        ],
+        "semantic_digest": "5afb1f344e660d4d674af328a61490f13e6a83fab959cc091b3df4ac573117aa",
+        "source": "api_tennis",
+        "source_content_hash": "a036e146419604bd04ad3a6a42fbd3c5c8060f4c7eac52dab21bbae975f9a1d0",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172906",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "327e252c-7892-4004-805f-1a7f24553b46",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "4fd95de3-56d2-4014-9ffa-0bc459c1159e",
+      "fonbet_source_event_id": "69154409",
+      "participants": [
+        "\u0411\u043b\u0438\u043d\u043a\u043e\u0432\u0430 \u0410",
+        "\u041b\u0430\u043c\u0435\u043d\u0441 \u0421"
+      ],
+      "reason": "appended",
+      "semantic_digest": "5afb1f344e660d4d674af328a61490f13e6a83fab959cc091b3df4ac573117aa",
+      "source_match_id": "12172906",
+      "version_id": "6859a9e4-c71c-493a-a487-166c2a8c87c7"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.063443+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 113,
+      "event_id": "86931745-db4a-46b4-b7ff-7f7905a3123c",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "274a5dd9-985f-4675-ba6d-62de592961b2",
+            "canonical_id": "23a251d2-b9fe-57bb-8a8b-73d6d519be6f",
+            "identity_available_at": "2026-10-21T06:20:10.125127+00:00",
+            "identity_link_id": "700231d5-e31a-4b0e-94f3-c984de8ae5ba",
+            "participant_id": "a49b7da4-b19d-4d68-8c1b-a3f38750d72b"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "2f538f85-c2db-49a8-a704-810e199bf870",
+            "canonical_id": "af206948-f30c-56d8-a8fc-313856e259b9",
+            "identity_available_at": "2026-10-21T06:14:01.644261+00:00",
+            "identity_link_id": "9eb909a6-e6e4-4ab2-ad8c-c5c002b60f4b",
+            "participant_id": "53eb2724-0299-4cd1-a766-5804df59c4c4"
+          }
+        ],
+        "canonical_match_id": "7a6fa3b7-04a7-590a-8065-992a4f2025ae",
+        "canonical_match_key": "366064dfe9a5737936f071c6166787355d14c33e",
+        "fonbet_event_id": "86931745-db4a-46b4-b7ff-7f7905a3123c",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:44.323406+00:00",
+          "2026-10-28T05:24:47.610590+00:00"
+        ],
+        "provider_alias_ids": [
+          "ab7bd1b3-bdc1-487d-8f78-926cc40cfb29",
+          "05c41509-5573-4b46-a6a7-74fc41eefb64"
+        ],
+        "provider_player_ids": [
+          "1990",
+          "3326"
+        ],
+        "semantic_digest": "3ae2acd8d6221ab8e75d8bf31ef5f34f25321befebc5a308229b200a1dc0bdbb",
+        "source": "api_tennis",
+        "source_content_hash": "9d04b758e588f19e8757f95ef208030c71c02d0bf15c88bae4164fd4f69d80f9",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174205",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "6bc90cdd-ef80-4ca6-ae2b-b2e908169efd",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "07f5337c-a9a2-4291-b094-e684501bb542",
+      "fonbet_source_event_id": "69313690",
+      "participants": [
+        "\u0414\u0430\u0440\u044c\u044f \u041a\u0430\u0441\u0430\u0442\u043a\u0438\u043d\u0430",
+        "\u0413\u0438\u0431\u0441\u043e\u043d \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "3ae2acd8d6221ab8e75d8bf31ef5f34f25321befebc5a308229b200a1dc0bdbb",
+      "source_match_id": "12174205",
+      "version_id": "c11878fd-9dbd-40d1-830c-216016c23f78"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.161071+00:00",
+      "confirmed_games": 37,
+      "confirmed_points": 110,
+      "event_id": "9975246b-80f2-4845-95d9-caf6d4b33fd5",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "2f538f85-c2db-49a8-a704-810e199bf870",
+            "canonical_id": "af206948-f30c-56d8-a8fc-313856e259b9",
+            "identity_available_at": "2026-10-21T06:14:01.644261+00:00",
+            "identity_link_id": "9eb909a6-e6e4-4ab2-ad8c-c5c002b60f4b",
+            "participant_id": "53eb2724-0299-4cd1-a766-5804df59c4c4"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "7087dd30-7f86-45ba-b03b-63a81a53ab36",
+            "canonical_id": "081b0316-8ddc-52ac-a630-91dfe77fff1c",
+            "identity_available_at": "2026-10-24T10:42:12.932323+00:00",
+            "identity_link_id": "6eeb8d20-6748-469b-bfa5-6025bfb9be20",
+            "participant_id": "21825b52-613c-4526-841f-75ea3f96b8fe"
+          }
+        ],
+        "canonical_match_id": "15cca751-ec74-555b-82a6-3b9027b358a8",
+        "canonical_match_key": "763c87d0aae9374e598db7c620d3b1f7db515513",
+        "fonbet_event_id": "9975246b-80f2-4845-95d9-caf6d4b33fd5",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:47.610590+00:00",
+          "2026-10-28T05:24:46.810039+00:00"
+        ],
+        "provider_alias_ids": [
+          "05c41509-5573-4b46-a6a7-74fc41eefb64",
+          "ae2152c8-4370-4b1d-8a82-845cff090179"
+        ],
+        "provider_player_ids": [
+          "3326",
+          "2998"
+        ],
+        "semantic_digest": "ef8e9e8cde28317f69bbdbbaa81034997686bc9f2a445b68932ea262be16879a",
+        "source": "api_tennis",
+        "source_content_hash": "38b6253eb7fa9f45095188ec319da4fc5ee1136d226879ee1d3c31273d39e3c8",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172142",
+        "source_observation_available_at": "2026-10-24T00:06:53.207876+00:00",
+        "source_observation_id": "66d499b5-7232-406b-bc55-d1ef7eb99698",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-19/beacc0c818c4a117b3a901d06229c2d6b6065f3955cd46c578d6a1b5910e7844.json.gz"
+      },
+      "existing_raw_document_id": "e54c6335-6149-46ba-803e-1d9790d15b6b",
+      "fonbet_source_event_id": "69094661",
+      "participants": [
+        "\u0413\u0438\u0431\u0441\u043e\u043d \u0422",
+        "\u0414\u0430\u0440\u0442 \u0425"
+      ],
+      "reason": "appended",
+      "semantic_digest": "ef8e9e8cde28317f69bbdbbaa81034997686bc9f2a445b68932ea262be16879a",
+      "source_match_id": "12172142",
+      "version_id": "dc1d2237-049e-443a-ad31-165a18818efb"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.274494+00:00",
+      "confirmed_games": 19,
+      "confirmed_points": 91,
+      "event_id": "aac0a774-d953-4329-837f-ddc14134e63b",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T16:16:06.008838+00:00",
+            "canonical_alias_id": "a0ae6699-4326-4f29-ae89-1c14358a9207",
+            "canonical_id": "31761fb5-52d9-5071-8682-32f88a9d714d",
+            "identity_available_at": "2026-10-21T04:19:27.401900+00:00",
+            "identity_link_id": "ed6060ad-1190-47dd-a9b4-1807a5cdabfc",
+            "participant_id": "4d11ded4-0931-401e-96e2-c56695ecdc34"
+          },
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "8414af96-1ab6-421b-97ee-295cc17c5e1f",
+            "canonical_id": "6201de23-518f-5ae1-9bb7-58b3ca40a6bb",
+            "identity_available_at": "2026-10-21T15:52:35.016239+00:00",
+            "identity_link_id": "2845d6d7-45ab-4df5-950d-76c956eac4d3",
+            "participant_id": "46e936a8-4021-47cb-8a85-3b11b734f6df"
+          }
+        ],
+        "canonical_match_id": "d3455058-750e-5653-ab73-a6da9ed78341",
+        "canonical_match_key": "d0f8936214ffd3c5025d23232a5fe15438d0eb42",
+        "fonbet_event_id": "aac0a774-d953-4329-837f-ddc14134e63b",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:39.439633+00:00",
+          "2026-10-28T05:24:49.327758+00:00"
+        ],
+        "provider_alias_ids": [
+          "868d552b-b108-4b85-98a1-b9643c16d988",
+          "762b288a-10cf-482d-9b2e-429ac3dd74c3"
+        ],
+        "provider_player_ids": [
+          "1106",
+          "435"
+        ],
+        "semantic_digest": "c0e1832c53ccd4dc264917b11266c6e4475514cd42107d90298e9c99df0a4c46",
+        "source": "api_tennis",
+        "source_content_hash": "efcb3f3387976645a9a42c4c3cf5a9e137aa5e19690456f27ca18cd245289eb0",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12170076",
+        "source_observation_available_at": "2026-10-23T12:42:29.937924+00:00",
+        "source_observation_id": "e8838af2-fc77-4255-a234-0652399b41f5",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-13/53d2be36fab453a59ffb8a28351c0a8ba82c9e7d3ae8d253133698641eff0c87.json.gz"
+      },
+      "existing_raw_document_id": "00248e45-5a75-46dc-81c4-12f4d4389123",
+      "fonbet_source_event_id": "68865939",
+      "participants": [
+        "\u0414\u0435 \u041c\u0438\u043d\u0430\u0443\u0440 \u0410",
+        "\u041a\u0430\u0440\u0435\u043d \u0425\u0430\u0447\u0430\u043d\u043e\u0432"
+      ],
+      "reason": "appended",
+      "semantic_digest": "c0e1832c53ccd4dc264917b11266c6e4475514cd42107d90298e9c99df0a4c46",
+      "source_match_id": "12170076",
+      "version_id": "dcadd376-1b3f-4e6a-bb24-618eadc9fdb9"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.349988+00:00",
+      "confirmed_games": 33,
+      "confirmed_points": 151,
+      "event_id": "ad968686-efe7-481e-bcc7-523ea87be10e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "8fbed4e5-223d-4d9d-b2b1-62f14b141d44",
+            "canonical_id": "fe28a90e-8c34-55c1-80e0-20b2f7592481",
+            "identity_available_at": "2026-10-23T03:08:11.789828+00:00",
+            "identity_link_id": "85c23794-f651-42a1-97ba-5aa664fbaac5",
+            "participant_id": "e42943c3-8702-42d4-ad44-ab98ebbeaa40"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5ade8ce2-d481-406a-84af-00783ef301e7",
+            "canonical_id": "29324b57-d447-597e-a792-713b4b206f74",
+            "identity_available_at": "2026-10-21T12:56:15.056412+00:00",
+            "identity_link_id": "7cc6c853-89ed-428b-b418-82cc3abed26c",
+            "participant_id": "9058abe1-12c5-4216-a3f3-503906449a81"
+          }
+        ],
+        "canonical_match_id": "7f104f4c-170f-5f5b-8764-bfb92074f988",
+        "canonical_match_key": "aedfe5cf80c032e10f987445a193a18421589d0c",
+        "fonbet_event_id": "ad968686-efe7-481e-bcc7-523ea87be10e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.186002+00:00",
+          "2026-10-28T05:24:50.937158+00:00"
+        ],
+        "provider_alias_ids": [
+          "78ef278b-df8e-435b-87b0-eabbae5e4da0",
+          "f8fd236e-c1f8-4727-9724-97d177a9d2a5"
+        ],
+        "provider_player_ids": [
+          "2177",
+          "7403"
+        ],
+        "semantic_digest": "1c35b0304fb89233ac38782dec73e4dabf741903ae901d1294d39191d398779a",
+        "source": "api_tennis",
+        "source_content_hash": "cb8744e4f58cbb39ae1febae953b67ca1669ee802cbabb9afcc76f3a6563d8db",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172148",
+        "source_observation_available_at": "2026-10-26T00:14:35.689323+00:00",
+        "source_observation_id": "7183b08b-1152-450c-b7d8-9188aef7515f",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-20/4741345e9b963f9fd2040add1934fc724f8eec50ff513f98c040743a7b01b722.json.gz"
+      },
+      "existing_raw_document_id": "459dfa5d-b04f-41e5-80fb-7865625635cb",
+      "fonbet_source_event_id": "69093331",
+      "participants": [
+        "\u041f\u0443\u0442\u0438\u043d\u0446\u0435\u0432\u0430 \u042e",
+        "\u0428\u043d\u0430\u0439\u0434\u0435\u0440 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "1c35b0304fb89233ac38782dec73e4dabf741903ae901d1294d39191d398779a",
+      "source_match_id": "12172148",
+      "version_id": "9498642a-f0e0-4a26-afb3-630e2b076f91"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.421277+00:00",
+      "confirmed_games": 17,
+      "confirmed_points": 63,
+      "event_id": "b00682fe-fd19-4586-bd27-a589ceeb7cf8",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "8c177fbd-dd85-441e-9f2a-cf3757b6a77e",
+            "canonical_id": "8f21f8a5-0b04-5748-82b6-36e166b1a2ea",
+            "identity_available_at": "2026-10-22T16:15:29.384009+00:00",
+            "identity_link_id": "daaa4963-7171-4588-a161-e8162e3a21ce",
+            "participant_id": "7caec368-23d0-456c-b488-e91235f22a65"
+          },
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "35db3d2b-e940-4fd2-80c3-32329663cbb2",
+            "canonical_id": "64e21481-7017-5221-9a2b-64ab14f6c8ba",
+            "identity_available_at": "2026-10-21T00:45:42.929135+00:00",
+            "identity_link_id": "850c35c5-8f1a-493a-a400-e11548e782ed",
+            "participant_id": "c271c401-80df-4327-8238-b43b2b133901"
+          }
+        ],
+        "canonical_match_id": "7e746cfd-a07b-56b3-9a8e-7c10038bb4df",
+        "canonical_match_key": "01113b7b8e61f02b7036722eebc78afa656e7d32",
+        "fonbet_event_id": "b00682fe-fd19-4586-bd27-a589ceeb7cf8",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:41.545571+00:00",
+          "2026-10-28T05:24:49.688453+00:00"
+        ],
+        "provider_alias_ids": [
+          "e0f4fc47-9cff-4532-8b38-7513bd16d54b",
+          "3745f557-13ca-4fe7-a7f0-3deb09bc98b2"
+        ],
+        "provider_player_ids": [
+          "1779",
+          "507"
+        ],
+        "semantic_digest": "bc5a3e58a7fd2c47e08f91396f4a9de2ec102e4a3ba608d909c6803de0d35412",
+        "source": "api_tennis",
+        "source_content_hash": "52f3e7d53e232cce43ea4f20bc87100805ce4d30289f080dee3ae9e0e713172f",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174234",
+        "source_observation_available_at": "2026-10-28T00:02:14.817493+00:00",
+        "source_observation_id": "fd8dc9d3-8991-4368-9e21-93df783a07de",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-27/d6edff2a686fd32d30a89da9ac0cd134535105b91aca6d854e03b1280db06d34.json.gz"
+      },
+      "existing_raw_document_id": "c4f7800b-d99e-456a-89e2-51b257f6d21d",
+      "fonbet_source_event_id": "69331964",
+      "participants": [
+        "\u0411\u043b\u0438\u043d\u043a\u043e\u0432\u0430 \u0410",
+        "\u0413\u0430\u043b\u0444\u0438 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "bc5a3e58a7fd2c47e08f91396f4a9de2ec102e4a3ba608d909c6803de0d35412",
+      "source_match_id": "12174234",
+      "version_id": "daa321ae-2963-4957-9e92-0bcb3197ed5e"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.549511+00:00",
+      "confirmed_games": 20,
+      "confirmed_points": 99,
+      "event_id": "b0b5ade6-79ab-4ba5-b28c-820eb2a2697f",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T05:12:27.861046+00:00",
+            "canonical_alias_id": "bf0547fa-ae9a-41a6-8075-589b8525cfcc",
+            "canonical_id": "d4b73c8b-e495-5e57-8216-78e62b7efecb",
+            "identity_available_at": "2026-10-22T16:30:37.382486+00:00",
+            "identity_link_id": "a8a04848-a23b-4bda-9870-9695426e458b",
+            "participant_id": "1da1497b-d44e-4c95-9bd5-007b47add5de"
+          },
+          {
+            "alias_available_at": "2026-10-25T22:04:22.515050+00:00",
+            "canonical_alias_id": "938eb4cc-08b9-4147-b191-d07f6c8fa91d",
+            "canonical_id": "a9478d87-30fd-5c13-b312-5d6af68d8338",
+            "identity_available_at": "2026-10-21T08:13:52.630346+00:00",
+            "identity_link_id": "77f5ee77-78a4-4480-a8b2-0aaa21ffecc2",
+            "participant_id": "a30e3e0e-cb5e-4d93-8084-a42b4872758c"
+          }
+        ],
+        "canonical_match_id": "5f31935d-3d14-5dad-8fb2-0a2e3a1ce3d2",
+        "canonical_match_key": "e2f1e1e03c56a5fbf0af0e62e71800fa88df4f5f",
+        "fonbet_event_id": "b0b5ade6-79ab-4ba5-b28c-820eb2a2697f",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:50.703281+00:00",
+          "2026-10-28T05:24:48.831677+00:00"
+        ],
+        "provider_alias_ids": [
+          "7ac2077d-ddd1-48ed-9be7-4d73d0d45b42",
+          "4f52ef84-7f8a-4744-bbc4-575fd904fd44"
+        ],
+        "provider_player_ids": [
+          "6983",
+          "37936"
+        ],
+        "semantic_digest": "3fb3e8018b139a329cca51374fcc957f2281bc6c073a3455f0715397ecac5b70",
+        "source": "api_tennis",
+        "source_content_hash": "2f1aecc705c09d8fca1e8d9dfa54dfe176de8ec0ad995f5edad715d3e0469104",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172768",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "7459f401-16ce-4e24-bb55-6f97c67168ff",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "c3022bab-44bd-4179-aace-3fc6219a2ddc",
+      "fonbet_source_event_id": "69145280",
+      "participants": [
+        "\u0421\u0443\u043b\u0442\u0430\u043d\u043e\u0432 \u0425",
+        "\u0418\u043b\u0430\u0433\u0430\u043d \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "3fb3e8018b139a329cca51374fcc957f2281bc6c073a3455f0715397ecac5b70",
+      "source_match_id": "12172768",
+      "version_id": "ce8bfa94-0192-4489-b243-fd40da695ea2"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.606617+00:00",
+      "confirmed_games": 26,
+      "confirmed_points": 150,
+      "event_id": "b31ea1ae-a859-4257-aa64-20dccc15206a",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "8fbed4e5-223d-4d9d-b2b1-62f14b141d44",
+            "canonical_id": "fe28a90e-8c34-55c1-80e0-20b2f7592481",
+            "identity_available_at": "2026-10-23T03:08:11.789828+00:00",
+            "identity_link_id": "85c23794-f651-42a1-97ba-5aa664fbaac5",
+            "participant_id": "e42943c3-8702-42d4-ad44-ab98ebbeaa40"
+          },
+          {
+            "alias_available_at": "2026-10-27T03:51:41.645786+00:00",
+            "canonical_alias_id": "9410f8e1-0226-4d3d-9257-6076c9ca4eea",
+            "canonical_id": "c1938c40-c856-5b71-877a-90028c9810d8",
+            "identity_available_at": "2026-10-21T00:30:52.610771+00:00",
+            "identity_link_id": "ec7dd4a6-69b7-4482-bad2-2ed4053b1dc3",
+            "participant_id": "915284d2-b56d-48b4-ba24-d4737e8bc471"
+          }
+        ],
+        "canonical_match_id": "dd35c779-e4bc-5a25-af34-75e2f7d21531",
+        "canonical_match_key": "3fe6c8ed3b281f4cb8bac5864e19314d7e97b2ca",
+        "fonbet_event_id": "b31ea1ae-a859-4257-aa64-20dccc15206a",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:45.186002+00:00",
+          "2026-10-28T05:24:44.728621+00:00"
+        ],
+        "provider_alias_ids": [
+          "78ef278b-df8e-435b-87b0-eabbae5e4da0",
+          "2182d531-60fd-4895-adbf-63f31aa1107e"
+        ],
+        "provider_player_ids": [
+          "2177",
+          "2076"
+        ],
+        "semantic_digest": "784f583ce1e0bd8f1c0fcff9f1685df24091761cd8f4a88695a369fd8c987742",
+        "source": "api_tennis",
+        "source_content_hash": "e57f39c89778ce496bfeea1b4bfe5fa32179487fd72bab7fc2847b05da699f5d",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174212",
+        "source_observation_available_at": "2026-10-28T00:02:14.817493+00:00",
+        "source_observation_id": "5b7a78a6-ab5b-4691-80ef-75a5e815ec1d",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-27/d6edff2a686fd32d30a89da9ac0cd134535105b91aca6d854e03b1280db06d34.json.gz"
+      },
+      "existing_raw_document_id": "d3d9ab58-bc2b-4dcf-87a3-0ead2ea976b0",
+      "fonbet_source_event_id": "69313829",
+      "participants": [
+        "\u041f\u0443\u0442\u0438\u043d\u0446\u0435\u0432\u0430 \u042e",
+        "\u0421\u0430\u043a\u043a\u0430\u0440\u0438 \u041c"
+      ],
+      "reason": "appended",
+      "semantic_digest": "784f583ce1e0bd8f1c0fcff9f1685df24091761cd8f4a88695a369fd8c987742",
+      "source_match_id": "12174212",
+      "version_id": "5c634e4a-d939-40f5-8347-51e76b7fd2c2"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.741866+00:00",
+      "confirmed_games": 15,
+      "confirmed_points": 80,
+      "event_id": "b7901c6c-aca1-4dcf-83ab-4eb592c775a7",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "79478e47-cb90-4d8f-9e30-95943d5e7902",
+            "canonical_id": "81edb599-952d-5aff-8085-0efd6f28583b",
+            "identity_available_at": "2026-10-21T06:48:09.403474+00:00",
+            "identity_link_id": "8402fa3a-b4cf-4eaa-a7a0-600649460634",
+            "participant_id": "ac48953e-0f3b-40fb-956b-e1a02f731c53"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "114d1fb9-77f9-4399-9366-c6bad4887172",
+            "canonical_id": "1b4fc22c-40d2-5609-89ff-8bba1e74e70d",
+            "identity_available_at": "2026-10-21T05:34:39.153107+00:00",
+            "identity_link_id": "5556dd38-2bcf-4906-b33c-c9ee24200a9d",
+            "participant_id": "4031af10-85f5-4ad3-a996-92e1d46a9d19"
+          }
+        ],
+        "canonical_match_id": "73c098a5-3e6b-5578-aa09-a877cfb5db4a",
+        "canonical_match_key": "5d5361a2c49d9d5c0e0ee9dddc2729218de91e96",
+        "fonbet_event_id": "b7901c6c-aca1-4dcf-83ab-4eb592c775a7",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-24T13:55:38.970513+00:00",
+          "2026-10-28T05:24:49.562401+00:00"
+        ],
+        "provider_alias_ids": [
+          "bed202f0-172a-4e37-ba86-99a3f4640402",
+          "19c8525d-7601-4f8b-9820-78cfa629206f"
+        ],
+        "provider_player_ids": [
+          "10893",
+          "4526"
+        ],
+        "semantic_digest": "1e4fc638d350d6db5e46b2bfdbace14b21e8521ccc30652291fa165d19cf26b0",
+        "source": "api_tennis",
+        "source_content_hash": "06cb7620116aa3433d5d41ac620de8609035d6e5bd36b925023eaca34e0fcdf3",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173148",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "5d6c09ce-2308-41a6-b8e8-855d531ac419",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "088e37ca-ceba-42b1-ae02-0e0876687a4d",
+      "fonbet_source_event_id": "69170713",
+      "participants": [
+        "\u041c\u0443\u0448\u0438\u043a\u0430 \u041c\u0438\u043e",
+        "\u0421\u0435\u043c\u0430 \u042d"
+      ],
+      "reason": "appended",
+      "semantic_digest": "1e4fc638d350d6db5e46b2bfdbace14b21e8521ccc30652291fa165d19cf26b0",
+      "source_match_id": "12173148",
+      "version_id": "8cab73a5-bd50-459d-b70d-144b5d3f88cb"
+    },
+    {
+      "available_at": "2026-10-28T05:25:23.897527+00:00",
+      "confirmed_games": 20,
+      "confirmed_points": 117,
+      "event_id": "c1ac9647-a314-4f39-bd8d-68dab02a948b",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+            "canonical_alias_id": "31c4ad90-2225-4463-a664-ca4b6fc8d516",
+            "canonical_id": "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+            "identity_available_at": "2026-10-21T00:46:09.270877+00:00",
+            "identity_link_id": "bf47eba8-8092-47ce-8213-9b7a03519cb5",
+            "participant_id": "eb52a2fb-8bcd-4b01-9f50-2c0bfe298630"
+          },
+          {
+            "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+            "canonical_alias_id": "307faba4-4d99-4bf2-8be2-ab37d5fdcf72",
+            "canonical_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+            "identity_available_at": "2026-10-24T03:39:22.061721+00:00",
+            "identity_link_id": "9db0ed34-56db-4cc7-b41b-e30bef1b6c58",
+            "participant_id": "2685822d-cbdd-4bfc-b3a4-6cc791935452"
+          }
+        ],
+        "canonical_match_id": "c06d0bb2-b5e0-5aa6-bf18-37b7b3704692",
+        "canonical_match_key": "28d0189c2bee59315bfd4994a60e5199bf83adb9",
+        "fonbet_event_id": "c1ac9647-a314-4f39-bd8d-68dab02a948b",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:49.050611+00:00",
+          "2026-10-28T05:24:45.965529+00:00"
+        ],
+        "provider_alias_ids": [
+          "c9ba6d83-1914-47c6-92e6-cf23eb42d17a",
+          "8990ffbb-0e5c-48a8-ba13-f7bbe81e635e"
+        ],
+        "provider_player_ids": [
+          "38097",
+          "26602"
+        ],
+        "semantic_digest": "eca5284258076810dfaa1f2b59dbbc83195d82a4cafc66ed0c57701dca55f053",
+        "source": "api_tennis",
+        "source_content_hash": "691dd38b626844075551682158a5e50ca2c0562c76df1a09d7f8460b98410cf8",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174201",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "5e1b1a7d-f783-46d7-af23-6e1429e6e6c0",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "0f236bd5-d47c-4797-9dfd-301449196d8b",
+      "fonbet_source_event_id": "69313195",
+      "participants": [
+        "\u0428\u0438 \u0425\u0430\u043d\u044c",
+        "\u0418\u0431\u0440\u0430\u0433\u0438\u043c\u043e\u0432\u0430 \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "eca5284258076810dfaa1f2b59dbbc83195d82a4cafc66ed0c57701dca55f053",
+      "source_match_id": "12174201",
+      "version_id": "a36aee70-c0a5-4ac6-849a-72b1cbfa0c47"
+    },
+    {
+      "available_at": "2026-10-28T05:25:24.027599+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 89,
+      "event_id": "c26416ed-a70d-4ac0-88ce-f9fdd9999c73",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "4cc9f4ed-ffea-4ce7-92ce-b3f4358f243b",
+            "canonical_id": "4fe587c6-92ac-57d5-a525-7505ddfcc71f",
+            "identity_available_at": "2026-10-21T00:46:58.529475+00:00",
+            "identity_link_id": "7e81f50d-9f0b-4eec-91e4-e1623e1486ff",
+            "participant_id": "08ba62d6-a118-4c3f-b215-b6a2f84c2246"
+          },
+          {
+            "alias_available_at": "2026-10-25T15:00:29.950220+00:00",
+            "canonical_alias_id": "8159031a-8f4c-4ee3-aada-8707dba86cc8",
+            "canonical_id": "de3fba7d-f1ff-5f11-8554-1a0bdcbacdef",
+            "identity_available_at": "2026-10-21T11:38:46.892921+00:00",
+            "identity_link_id": "1cb6d6da-7f64-445f-a1cb-af030d9969cd",
+            "participant_id": "3aa75aaf-c712-4b2c-9c00-bfe637394361"
+          }
+        ],
+        "canonical_match_id": "55a43ae7-c781-51e6-977d-77d6aac0bbf6",
+        "canonical_match_key": "b1f896e099aa313e42da48350672f45ce1df0abf",
+        "fonbet_event_id": "c26416ed-a70d-4ac0-88ce-f9fdd9999c73",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:49.237398+00:00",
+          "2026-10-28T05:24:49.368254+00:00"
+        ],
+        "provider_alias_ids": [
+          "2cd657c6-551b-4f11-a46d-bed32dc57694",
+          "4909125c-becd-47fc-aa60-966ef9f3facd"
+        ],
+        "provider_player_ids": [
+          "424",
+          "438"
+        ],
+        "semantic_digest": "f8a46bc1a102fe4e6024c24fcf5cfdc16e65b7080afb152672477c0ae8d510be",
+        "source": "api_tennis",
+        "source_content_hash": "135ccd2ffccaa0f4cb783d1913d9c983845c7622e1a8c212a9b5c824d2efc256",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173254",
+        "source_observation_available_at": "2026-10-28T00:15:10.343295+00:00",
+        "source_observation_id": "1190c9f4-4011-4f00-aa9a-1c4b3c262ccf",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-23/0a0eb3ac0ebc025490bc260b8d8adc30c03f951ffbdd24e4682ebc12cbcf04db.json.gz"
+      },
+      "existing_raw_document_id": "8872e6ae-da0e-44d8-9479-56b9514919cf",
+      "fonbet_source_event_id": "69178318",
+      "participants": [
+        "\u0411\u0430\u0441\u0438\u043b\u0430\u0448\u0432\u0438\u043b\u0438 \u041d",
+        "\u041c\u0430\u043d\u043d\u0430\u0440\u0438\u043d\u043e \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "f8a46bc1a102fe4e6024c24fcf5cfdc16e65b7080afb152672477c0ae8d510be",
+      "source_match_id": "12173254",
+      "version_id": "60029b1e-9427-4718-85fb-ced808868315"
+    },
+    {
+      "available_at": "2026-10-28T05:25:24.138092+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 84,
+      "event_id": "c827c490-bbf8-4196-b4f0-1725f14c911c",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "274a5dd9-985f-4675-ba6d-62de592961b2",
+            "canonical_id": "23a251d2-b9fe-57bb-8a8b-73d6d519be6f",
+            "identity_available_at": "2026-10-21T06:20:10.125127+00:00",
+            "identity_link_id": "700231d5-e31a-4b0e-94f3-c984de8ae5ba",
+            "participant_id": "a49b7da4-b19d-4d68-8c1b-a3f38750d72b"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5c3efa28-28e2-4b35-9ae6-975c7421325b",
+            "canonical_id": "dc83bb9c-5d78-51ca-a973-7d35e71dda03",
+            "identity_available_at": "2026-10-21T01:51:01.358187+00:00",
+            "identity_link_id": "543e0942-dea5-492a-abb0-24ee97e62b0a",
+            "participant_id": "53f0bb6d-8106-42b5-9aed-9bf1500b767e"
+          }
+        ],
+        "canonical_match_id": "f45ee5ad-4ae1-5684-b12c-e5d585760d85",
+        "canonical_match_key": "9a3bb75751910922350a0c851e0571410c0e4c26",
+        "fonbet_event_id": "c827c490-bbf8-4196-b4f0-1725f14c911c",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:44.323406+00:00",
+          "2026-10-28T05:24:49.925743+00:00"
+        ],
+        "provider_alias_ids": [
+          "ab7bd1b3-bdc1-487d-8f78-926cc40cfb29",
+          "40c853a5-f0c7-42e6-a0e8-da4445a0239a"
+        ],
+        "provider_player_ids": [
+          "1990",
+          "527"
+        ],
+        "semantic_digest": "ab99ee8cb830203afe5dc7388b447f0f0ebbe7b5a16a6b4db912e25069eff925",
+        "source": "api_tennis",
+        "source_content_hash": "43dd2089f17a69bafdd8074146111b0b7d9a167b9818012053001822a43ecac7",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172140",
+        "source_observation_available_at": "2026-10-24T00:06:53.207876+00:00",
+        "source_observation_id": "fde4db96-fc25-4602-8e7b-c3e3d88eed02",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-19/beacc0c818c4a117b3a901d06229c2d6b6065f3955cd46c578d6a1b5910e7844.json.gz"
+      },
+      "existing_raw_document_id": "9e54d041-dd46-470c-b477-26b7be95de98",
+      "fonbet_source_event_id": "69093400",
+      "participants": [
+        "\u0414\u0430\u0440\u044c\u044f \u041a\u0430\u0441\u0430\u0442\u043a\u0438\u043d\u0430",
+        "\u0421\u0430\u0441\u043d\u043e\u0432\u0438\u0447 \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "ab99ee8cb830203afe5dc7388b447f0f0ebbe7b5a16a6b4db912e25069eff925",
+      "source_match_id": "12172140",
+      "version_id": "0ebd0961-73ae-4373-9ce3-8ff0c6d2e004"
+    },
+    {
+      "available_at": "2026-10-28T05:25:24.291252+00:00",
+      "confirmed_games": 32,
+      "confirmed_points": 118,
+      "event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T10:41:02.945546+00:00",
+            "canonical_alias_id": "bf745fa9-007b-4dd0-850e-9631749d68ce",
+            "canonical_id": "713c8528-80bb-5e5c-a773-de3dcb020884",
+            "identity_available_at": "2026-10-21T07:49:15.725864+00:00",
+            "identity_link_id": "1f533e14-fff1-4ed4-b321-247f29635d10",
+            "participant_id": "721d9832-cf28-4ba4-b8a6-9ab3a334e48c"
+          },
+          {
+            "alias_available_at": "2026-10-27T03:51:41.645786+00:00",
+            "canonical_alias_id": "56f8c146-590e-48a9-8411-d16ec3725378",
+            "canonical_id": "46abc7c2-8040-5ca4-8049-f304ef7c355d",
+            "identity_available_at": "2026-10-21T07:49:22.093474+00:00",
+            "identity_link_id": "666659f7-6f66-43a9-92c7-1fb0fc616609",
+            "participant_id": "9076a753-4881-4988-8ea1-c4822643497c"
+          }
+        ],
+        "canonical_match_id": "de0397f8-b0f2-5168-a7b8-0ff69905cf86",
+        "canonical_match_key": "ecc932dca57d9d90b21b800aac9e4c12ddc505e2",
+        "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:49.825913+00:00",
+          "2026-10-28T05:24:51.116500+00:00"
+        ],
+        "provider_alias_ids": [
+          "6baa8212-aa6d-4a71-af0d-365e599f6179",
+          "d75329e3-6932-462e-b699-09675d96aefe"
+        ],
+        "provider_player_ids": [
+          "52054",
+          "785"
+        ],
+        "semantic_digest": "fef491bb90975a796db1db68910c401b8175fb1e85cadea22597007697ed6486",
+        "source": "api_tennis",
+        "source_content_hash": "e50e57f9ecdc17ff2331dfe66df3e34032b213e4cbdc0fd52a3f384842785e0d",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12172790",
+        "source_observation_available_at": "2026-10-27T00:09:10.761848+00:00",
+        "source_observation_id": "5b839d5f-9594-45de-ad7d-8ab634a3986d",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-21/420993b10e699dce02303e2c56f31774cad8737e131ce45b154fcf7c88bd40e4.json.gz"
+      },
+      "existing_raw_document_id": "ccd98724-18b4-4457-b779-fd44be5a0d43",
+      "fonbet_source_event_id": "69144757",
+      "participants": [
+        "\u0414\u0435\u0440\u0435\u043f\u0430\u0441\u043a\u043e \u0422",
+        "\u0422\u0430\u043c\u043c \u041a"
+      ],
+      "reason": "appended",
+      "semantic_digest": "fef491bb90975a796db1db68910c401b8175fb1e85cadea22597007697ed6486",
+      "source_match_id": "12172790",
+      "version_id": "a6fe9bcd-889b-45ff-ad7b-d2da3569baf9"
+    },
+    {
+      "available_at": "2026-10-28T05:25:24.371723+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 110,
+      "event_id": "d339d4ae-afef-4905-9d21-0ad6074cab40",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "ff9cc9e4-6313-40b7-8511-8a1ec3bb59fd",
+            "canonical_id": "cea9f81b-ca7a-56a6-8fff-09069f15fbfb",
+            "identity_available_at": "2026-10-21T07:55:15.831046+00:00",
+            "identity_link_id": "33a4dc22-8012-4a70-9695-c8e0e4817867",
+            "participant_id": "f34bc4c1-e35f-4044-ac65-a93e7d5250dd"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5ade8ce2-d481-406a-84af-00783ef301e7",
+            "canonical_id": "29324b57-d447-597e-a792-713b4b206f74",
+            "identity_available_at": "2026-10-21T12:56:15.056412+00:00",
+            "identity_link_id": "7cc6c853-89ed-428b-b418-82cc3abed26c",
+            "participant_id": "9058abe1-12c5-4216-a3f3-503906449a81"
+          }
+        ],
+        "canonical_match_id": "4d7a2b80-6365-55cd-a4ed-ada8294a453f",
+        "canonical_match_key": "0e2cf3b23707f03359cc9f5df3d048651304d8a7",
+        "fonbet_event_id": "d339d4ae-afef-4905-9d21-0ad6074cab40",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:46.266881+00:00",
+          "2026-10-28T05:24:50.937158+00:00"
+        ],
+        "provider_alias_ids": [
+          "88d3bb6b-53ea-4bcc-a991-6f19f4346e23",
+          "f8fd236e-c1f8-4727-9724-97d177a9d2a5"
+        ],
+        "provider_player_ids": [
+          "2993",
+          "7403"
+        ],
+        "semantic_digest": "7a7013aa917a3d8e40c007134791fec593e3544077d8f1a34b11b6bdb28eef25",
+        "source": "api_tennis",
+        "source_content_hash": "f8df54c8c1e9c1ae795a7eddf619a25ee1bd359883178da53199c3640b1e6007",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12169856",
+        "source_observation_available_at": "2026-10-23T12:42:29.937924+00:00",
+        "source_observation_id": "a4ca4464-2762-4d37-a469-d070f4932a59",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-13/53d2be36fab453a59ffb8a28351c0a8ba82c9e7d3ae8d253133698641eff0c87.json.gz"
+      },
+      "existing_raw_document_id": "c3c62c73-eaf4-481e-8797-ced97d65fe81",
+      "fonbet_source_event_id": "68837800",
+      "participants": [
+        "\u0411\u043e\u0443\u043b\u0442\u0435\u0440 K",
+        "\u0428\u043d\u0430\u0439\u0434\u0435\u0440 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7a7013aa917a3d8e40c007134791fec593e3544077d8f1a34b11b6bdb28eef25",
+      "source_match_id": "12169856",
+      "version_id": "cdb91bed-551c-4690-a00e-2c6c3df80fa6"
+    },
+    {
+      "available_at": "2026-10-28T05:25:24.614954+00:00",
+      "confirmed_games": 28,
+      "confirmed_points": 145,
+      "event_id": "d6c09020-bbfd-47a2-8603-bfcde7f63581",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-26T20:29:27.843939+00:00",
+            "canonical_alias_id": "6987a454-7254-4764-9a54-9a24049a30ec",
+            "canonical_id": "f14455eb-78a1-543d-a48a-bbb47d7e6ca1",
+            "identity_available_at": "2026-10-21T00:48:38.832408+00:00",
+            "identity_link_id": "d9a82038-e3b9-4f7e-9ddd-8c24bee2951e",
+            "participant_id": "4950c9d6-f372-4451-a1cc-79b0fcaeecf1"
+          },
+          {
+            "alias_available_at": "2026-10-26T09:12:38.908272+00:00",
+            "canonical_alias_id": "a85bde57-5b4f-4149-a288-87283359cb96",
+            "canonical_id": "6a0e0ee1-4ce4-51f2-a36e-5ca579c3df7b",
+            "identity_available_at": "2026-10-21T14:31:55.181606+00:00",
+            "identity_link_id": "d4229a5d-8ccc-410f-925e-951bba8c29a4",
+            "participant_id": "a120a6ba-7599-46fb-ad73-ba195cf22254"
+          }
+        ],
+        "canonical_match_id": "455df5ed-d2d1-5640-bc5e-2b279708cf9b",
+        "canonical_match_key": "002db94cf80f2a9a85f39c6457d0aba52fd31dd1",
+        "fonbet_event_id": "d6c09020-bbfd-47a2-8603-bfcde7f63581",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:51.933666+00:00",
+          "2026-10-28T05:24:48.716145+00:00"
+        ],
+        "provider_alias_ids": [
+          "61cba4bd-6999-414c-b8d4-ec0141a8aa7e",
+          "a51c726e-b80d-43b2-983c-c207f78fad46"
+        ],
+        "provider_player_ids": [
+          "9909",
+          "37897"
+        ],
+        "semantic_digest": "399c152eb5a420c451b460237520237264612fb2e0503beabb9cf2381bd3ed9c",
+        "source": "api_tennis",
+        "source_content_hash": "c801c1c16f4831c011b9ca343e82b19b216b434fcebefd42983a41ad0f9dd065",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171878",
+        "source_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+        "source_observation_id": "be7917aa-488d-4c44-a7c7-00bf76dc1235",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-18/ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a.json.gz"
+      },
+      "existing_raw_document_id": "5c4db9b2-3c75-4a6d-aef4-805b444e86f3",
+      "fonbet_source_event_id": "69051577",
+      "participants": [
+        "\u0414\u0438\u0430\u043b\u043b\u043e \u0413",
+        "\u0421\u0430\u043a\u0430\u043c\u043e\u0442\u043e \u0420"
+      ],
+      "reason": "appended",
+      "semantic_digest": "399c152eb5a420c451b460237520237264612fb2e0503beabb9cf2381bd3ed9c",
+      "source_match_id": "12171878",
+      "version_id": "2c6cb6d4-caed-49d7-94b0-67dce24aa42f"
+    },
+    {
+      "available_at": "2026-10-28T05:25:25.075372+00:00",
+      "confirmed_games": 27,
+      "confirmed_points": 134,
+      "event_id": "d8d3ac79-bff1-4058-90a8-b1b710d90509",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T08:21:24.060157+00:00",
+            "canonical_alias_id": "b91ccbd2-ed2f-4083-a3c4-280d1e937b90",
+            "canonical_id": "a3a2ee91-7c8c-53cb-ad35-fb7cc93159dc",
+            "identity_available_at": "2026-10-22T07:20:41.111283+00:00",
+            "identity_link_id": "2d076d00-c0b6-42d9-8c26-13eaa0d6ad36",
+            "participant_id": "4490fa1c-e836-42c5-93ea-d8c51a6dcc46"
+          },
+          {
+            "alias_available_at": "2026-10-25T08:21:24.060157+00:00",
+            "canonical_alias_id": "21dd7a9c-c0f7-4177-b665-6f0597f22e4f",
+            "canonical_id": "569b2a5b-de0c-500c-9ff2-96a770850a00",
+            "identity_available_at": "2026-10-22T01:21:10.044995+00:00",
+            "identity_link_id": "f5622dc0-d6d1-4f3b-9f3c-b93347c9c661",
+            "participant_id": "2b01bc03-e7c0-4c86-aed6-b1ba46a4dbb6"
+          }
+        ],
+        "canonical_match_id": "a4a04abc-74fe-5993-9b6d-f21392837e59",
+        "canonical_match_key": "59b9d0253f4cb0fd213082dd88ae591c268923e9",
+        "fonbet_event_id": "d8d3ac79-bff1-4058-90a8-b1b710d90509",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:47.690891+00:00",
+          "2026-10-28T05:24:50.284120+00:00"
+        ],
+        "provider_alias_ids": [
+          "eb4be366-bf01-415b-b862-fc98f84524e0",
+          "5076f110-5a8c-4e4e-bea2-e87060e39b4c"
+        ],
+        "provider_player_ids": [
+          "33897",
+          "61173"
+        ],
+        "semantic_digest": "1c6b1bfea6c01e0a2fd5410e41d2a21261ade67ad7eb59c804afeaaa3461c60f",
+        "source": "api_tennis",
+        "source_content_hash": "dcb04c15a9ead6184f632a8a254e1880878e553c73d3e204221ff6b096720c6a",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173923",
+        "source_observation_available_at": "2026-10-28T00:09:50.520450+00:00",
+        "source_observation_id": "4e59aafe-01f0-4def-b1a2-33583e17e0fe",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-25/5030ef4e46194f39e5ce5b812ea4a52ad1168d54162bea19ef6a4e9b065e576c.json.gz"
+      },
+      "existing_raw_document_id": "77346ccf-0369-458f-a859-a6c6ef478c7b",
+      "fonbet_source_event_id": "69273463",
+      "participants": [
+        "\u0410\u0437\u043a\u0430\u0440\u0430 \u0410",
+        "\u041f\u0430\u043b\u0434\u0430\u043d\u0438\u0443\u0441 \u041e"
+      ],
+      "reason": "appended",
+      "semantic_digest": "1c6b1bfea6c01e0a2fd5410e41d2a21261ade67ad7eb59c804afeaaa3461c60f",
+      "source_match_id": "12173923",
+      "version_id": "fadf1352-5bc9-4f84-8c63-af666ef86525"
+    },
+    {
+      "available_at": "2026-10-28T05:25:25.432082+00:00",
+      "confirmed_games": 29,
+      "confirmed_points": 144,
+      "event_id": "da06cb2c-3d9d-4b46-b0c6-80ecdede299d",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "70fca78b-aaf8-4c7b-bcb7-ab3196a9d949",
+            "canonical_id": "f001fd8e-97f8-5a2b-909e-9c4121f4c2f1",
+            "identity_available_at": "2026-10-22T00:21:00.575639+00:00",
+            "identity_link_id": "6de1a446-0b08-4187-b208-7dc727bd9abf",
+            "participant_id": "8d46b6bf-6519-4522-92fa-95423b51a4cf"
+          },
+          {
+            "alias_available_at": "2026-10-27T02:51:40.133897+00:00",
+            "canonical_alias_id": "ee398502-0ca7-443d-9a8d-89fa405208be",
+            "canonical_id": "b1d2ee50-da57-5c45-809c-a9849e1b8a86",
+            "identity_available_at": "2026-10-21T05:35:43.734980+00:00",
+            "identity_link_id": "6af629eb-201e-4b80-9673-637e1524c5a9",
+            "participant_id": "ec8db0dd-506c-4e23-9df0-63cd08f08d37"
+          }
+        ],
+        "canonical_match_id": "ab31bf1e-52c0-5317-9357-3d9714cb4f46",
+        "canonical_match_key": "febf841a9a6cb300801dd6f7a59a67883135c8cf",
+        "fonbet_event_id": "da06cb2c-3d9d-4b46-b0c6-80ecdede299d",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:50.367272+00:00",
+          "2026-10-24T13:55:38.970513+00:00"
+        ],
+        "provider_alias_ids": [
+          "a170fd75-521f-4068-81cd-b4e890b5bb40",
+          "f7f759a2-98e6-48e3-8433-c40a4223b23e"
+        ],
+        "provider_player_ids": [
+          "61207",
+          "20616"
+        ],
+        "semantic_digest": "e40eac0c97469ea5804ff81f200e23ab86723e46efa6c3827d8f07ba075ef067",
+        "source": "api_tennis",
+        "source_content_hash": "59d83a018a90e959be219897db2b0bae07e5c941d1fb046ecc83631b32d9b2d3",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173702",
+        "source_observation_available_at": "2026-10-28T00:11:09.629704+00:00",
+        "source_observation_id": "89316d93-e298-4650-873f-65520d7e0f47",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-24/2b17e5644a9f8b44bd0550558415cba605ac258232073b1c5505b7e459dffc7f.json.gz"
+      },
+      "existing_raw_document_id": "5a60b48e-9e42-4985-aa3e-95e75587efb5",
+      "fonbet_source_event_id": "69235701",
+      "participants": [
+        "\u041e\u043a\u0438 \u042e",
+        "\u041a\u0443\u043c\u0430\u0441\u0430\u043a\u0430 \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "e40eac0c97469ea5804ff81f200e23ab86723e46efa6c3827d8f07ba075ef067",
+      "source_match_id": "12173702",
+      "version_id": "a3c350ef-19fd-4bdd-8a94-7091b8f1f799"
+    },
+    {
+      "available_at": "2026-10-28T05:25:25.762135+00:00",
+      "confirmed_games": 15,
+      "confirmed_points": 74,
+      "event_id": "dd67584b-e4d3-42bc-a62b-a6ca38692441",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-28T01:29:31.625465+00:00",
+            "canonical_alias_id": "cd7e3ed8-f044-4f44-a482-cf27f9d81607",
+            "canonical_id": "9a91c331-efef-5693-bfc5-14d31bba3147",
+            "identity_available_at": "2026-10-21T00:48:32.987870+00:00",
+            "identity_link_id": "c6ca96a5-8043-451b-b7dd-667281898eed",
+            "participant_id": "96d40c6b-d135-402b-9c06-e4ff3ba509a4"
+          },
+          {
+            "alias_available_at": "2026-10-26T09:12:38.908272+00:00",
+            "canonical_alias_id": "a85bde57-5b4f-4149-a288-87283359cb96",
+            "canonical_id": "6a0e0ee1-4ce4-51f2-a36e-5ca579c3df7b",
+            "identity_available_at": "2026-10-21T14:31:55.181606+00:00",
+            "identity_link_id": "d4229a5d-8ccc-410f-925e-951bba8c29a4",
+            "participant_id": "a120a6ba-7599-46fb-ad73-ba195cf22254"
+          }
+        ],
+        "canonical_match_id": "fc4fcd8f-9d37-5b57-8c65-512d40ba7900",
+        "canonical_match_key": "8f6e7612cca3e979e20a197de33feab8f2ed6229",
+        "fonbet_event_id": "dd67584b-e4d3-42bc-a62b-a6ca38692441",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:50.438168+00:00",
+          "2026-10-28T05:24:48.716145+00:00"
+        ],
+        "provider_alias_ids": [
+          "1441cae2-143d-4c12-8976-41b336a9855b",
+          "a51c726e-b80d-43b2-983c-c207f78fad46"
+        ],
+        "provider_player_ids": [
+          "63488",
+          "37897"
+        ],
+        "semantic_digest": "a64e42db90186246d954cbbb4f6c3101c929941c6d482355d1cc2aa532c22bb6",
+        "source": "api_tennis",
+        "source_content_hash": "fffee9a9cf8cc0a8e39d7d8df313f37bfe6b5583726325a98ce8b1c63ba6d8e2",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171716",
+        "source_observation_available_at": "2026-10-23T12:42:19.934940+00:00",
+        "source_observation_id": "ddcdeff5-f7ce-4240-bff1-447ee59455dd",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-17/61c166c4ad5e9aeea3ad6494b4377b997a850ac7d9612a2af505afb04935d92d.json.gz"
+      },
+      "existing_raw_document_id": "ed287192-13be-4e28-b19b-1f5ab7677e2e",
+      "fonbet_source_event_id": "69026155",
+      "participants": [
+        "\u041e\u043c\u0430\u0440\u0445\u0430\u043d\u043e\u0432 \u0410",
+        "\u0421\u0430\u043a\u0430\u043c\u043e\u0442\u043e \u0420"
+      ],
+      "reason": "appended",
+      "semantic_digest": "a64e42db90186246d954cbbb4f6c3101c929941c6d482355d1cc2aa532c22bb6",
+      "source_match_id": "12171716",
+      "version_id": "c3ea209c-b9cb-4228-8749-d173af5d2f9a"
+    },
+    {
+      "available_at": "2026-10-28T05:25:25.978124+00:00",
+      "confirmed_games": 42,
+      "confirmed_points": 219,
+      "event_id": "e011b809-eeac-49ee-a0a0-b4f20e8dc760",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "e27353af-29ee-4759-83a9-4713426d4e14",
+            "canonical_id": "592eb8dc-06be-5bef-a6a1-7dd45e84bf21",
+            "identity_available_at": "2026-10-21T00:46:16.445837+00:00",
+            "identity_link_id": "a1fe0e17-c4bc-438d-92ce-47f6b9e046c4",
+            "participant_id": "283e8fc7-b6d5-4b44-8e52-bd9cfd95ded2"
+          },
+          {
+            "alias_available_at": "2026-10-25T20:04:18.800948+00:00",
+            "canonical_alias_id": "41ab8e00-5048-4114-875e-283f770560f6",
+            "canonical_id": "289010b1-d397-5a69-aa58-9fbf19d2f813",
+            "identity_available_at": "2026-10-24T01:37:07.887337+00:00",
+            "identity_link_id": "e4ca934c-a57f-4e71-afef-0b659b6554d4",
+            "participant_id": "bd13df0e-9725-434d-96d1-a5d05a4cd37a"
+          }
+        ],
+        "canonical_match_id": "919c3eb1-e611-59f1-80a0-e3cca2fd97db",
+        "canonical_match_key": "66bbf2f6e5442f29de7a3175a2a3745ccab82b89",
+        "fonbet_event_id": "e011b809-eeac-49ee-a0a0-b4f20e8dc760",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:48.453371+00:00",
+          "2026-10-28T05:24:39.554267+00:00"
+        ],
+        "provider_alias_ids": [
+          "4213aabf-8c2b-4461-a5a2-ca5c4dc066ed",
+          "26a2a300-ada0-466c-a68f-bddb6c7dc3f9"
+        ],
+        "provider_player_ids": [
+          "36452",
+          "1140"
+        ],
+        "semantic_digest": "df083a160c0676297b838ea40a8abc24336730aadd254388a9af6dd6237b9d73",
+        "source": "api_tennis",
+        "source_content_hash": "f1163162894103ab461e5b5d03218043f7b114a1c4b168d55d4d7dab91d70e50",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171903",
+        "source_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+        "source_observation_id": "b5803eeb-ef4d-47e3-9db1-1a7b4bf9bcfb",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-18/ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a.json.gz"
+      },
+      "existing_raw_document_id": "3b1a1a57-9d77-4585-a678-676a738f136c",
+      "fonbet_source_event_id": "69059270",
+      "participants": [
+        "\u041f\u0440\u043e\u0437\u043e\u0440\u043e\u0432\u0430 \u0422",
+        "\u0420\u0430\u0445\u0438\u043c\u043e\u0432\u0430 \u041a"
+      ],
+      "reason": "appended",
+      "semantic_digest": "df083a160c0676297b838ea40a8abc24336730aadd254388a9af6dd6237b9d73",
+      "source_match_id": "12171903",
+      "version_id": "3feb9259-3c23-4cf6-94a0-69e4fcbc7d2b"
+    },
+    {
+      "available_at": "2026-10-28T05:25:26.401811+00:00",
+      "confirmed_games": 41,
+      "confirmed_points": 158,
+      "event_id": "eb89b434-70aa-4a67-b010-c78ea2c3554e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "c6f28bb8-780d-4f9c-9d0d-f912c778747a",
+            "canonical_id": "03577805-aa56-55e8-890a-118cf5eb5f5c",
+            "identity_available_at": "2026-10-21T08:17:53.509774+00:00",
+            "identity_link_id": "509233c4-6a4d-4bd0-83c5-97a46099d9f6",
+            "participant_id": "43d8071d-1aff-4d2e-ae76-28638b09c082"
+          },
+          {
+            "alias_available_at": "2026-10-26T11:12:40.757027+00:00",
+            "canonical_alias_id": "518f0521-5926-4414-a0e6-0d0f2cc633e6",
+            "canonical_id": "483aaa70-6cde-5bd1-9779-2348a2212d8c",
+            "identity_available_at": "2026-10-21T08:18:01.535390+00:00",
+            "identity_link_id": "7c401f1c-1182-4c89-b849-ac5acde008d6",
+            "participant_id": "cb0bd1fa-5186-48d2-b96d-7d68a5306fad"
+          }
+        ],
+        "canonical_match_id": "86951135-d192-5d2a-9b6f-2b0f4f5e7a05",
+        "canonical_match_key": "d833cba767ee19a036e0e8a77b425409a29bd334",
+        "fonbet_event_id": "eb89b434-70aa-4a67-b010-c78ea2c3554e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:40.320390+00:00",
+          "2026-10-28T05:24:41.089056+00:00"
+        ],
+        "provider_alias_ids": [
+          "63260582-bbc2-4570-9598-2160e6e42f74",
+          "cb10cc38-d2fd-4872-93f0-86868677291c"
+        ],
+        "provider_player_ids": [
+          "1321",
+          "14540"
+        ],
+        "semantic_digest": "7eae8dd8def926b3f1e5f8f6df995cb6c564e05eb1ea82c34bfb005de7196ce2",
+        "source": "api_tennis",
+        "source_content_hash": "9df27edb1577cda88c56c7b6ca0a979f3a72bf4e8a4ae204bd2446acfc9144aa",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173316",
+        "source_observation_available_at": "2026-10-28T00:19:15.447973+00:00",
+        "source_observation_id": "f5c36932-6411-461a-96ae-bb0a2e61433c",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-22/7f549a04c1cff39ed53ad569a4d3f9b86f97bf9ac2ee8066b1717436a8f825f0.json.gz"
+      },
+      "existing_raw_document_id": "2d891fc3-769f-4167-a109-696adef6574e",
+      "fonbet_source_event_id": "69183812",
+      "participants": [
+        "\u0413\u0435\u043d\u0433\u0435\u043b \u041c",
+        "\u041b\u0430\u043d\u0438\u043a \u0422"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7eae8dd8def926b3f1e5f8f6df995cb6c564e05eb1ea82c34bfb005de7196ce2",
+      "source_match_id": "12173316",
+      "version_id": "cda026e1-c2fc-4c60-9b67-460039dc95b1"
+    },
+    {
+      "available_at": "2026-10-28T05:25:26.545254+00:00",
+      "confirmed_games": 18,
+      "confirmed_points": 77,
+      "event_id": "eeb42d4b-5447-4337-9958-23d3e68d9c26",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-27T10:28:45.135528+00:00",
+            "canonical_alias_id": "66a08dfb-ecfc-454e-8bd8-100ee0264c2a",
+            "canonical_id": "516b2977-89ac-53f1-a17d-9f90d4eae3e5",
+            "identity_available_at": "2026-10-21T01:51:01.375292+00:00",
+            "identity_link_id": "053e9d7c-5577-44a8-b6b3-02430e8bdc31",
+            "participant_id": "bfd139de-dab1-48a4-912b-a2497cf41606"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "9ee1610e-da0f-49f1-9542-479213c12ecd",
+            "canonical_id": "b3d5effd-f06e-55b2-b27d-cba28da0c605",
+            "identity_available_at": "2026-10-21T06:21:19.286465+00:00",
+            "identity_link_id": "9d809fe4-bd68-4fcd-bcac-8a25bbc34919",
+            "participant_id": "8fba44b3-2a6d-4276-9c51-a7a2248feeff"
+          }
+        ],
+        "canonical_match_id": "6ed20cd0-efd8-5bed-99b3-6b44a596e5fc",
+        "canonical_match_key": "d3f1749d6a0594299231c2bf72cc792c15ce33dc",
+        "fonbet_event_id": "eeb42d4b-5447-4337-9958-23d3e68d9c26",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:50.046932+00:00",
+          "2026-10-28T05:24:50.561509+00:00"
+        ],
+        "provider_alias_ids": [
+          "1d69466e-3dd0-4e1e-958a-c815dcaa735f",
+          "aa1ee31d-855c-444c-80b9-acc9c0b25d52"
+        ],
+        "provider_player_ids": [
+          "53046",
+          "68376"
+        ],
+        "semantic_digest": "69fb19895b9c82633fec69073ada3b3fcd8c425c3192b120dbce23cbe37b65d5",
+        "source": "api_tennis",
+        "source_content_hash": "345bb4ca2ea72e4f1b08269c7f6edd242492603da4ce8905e8ac443dd779d2da",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171853",
+        "source_observation_available_at": "2026-10-24T00:06:53.207876+00:00",
+        "source_observation_id": "31f773c5-40bf-40d3-bb25-cce22ef15fb1",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-19/beacc0c818c4a117b3a901d06229c2d6b6065f3955cd46c578d6a1b5910e7844.json.gz"
+      },
+      "existing_raw_document_id": "a1265f7d-bd88-4793-bc63-231d1abaf788",
+      "fonbet_source_event_id": "69050478",
+      "participants": [
+        "\u0422\u0430\u0433\u0433\u0435\u0440 \u041b",
+        "\u041b\u044e\u0434\u043c\u0438\u043b\u0430 \u0421\u0430\u043c\u0441\u043e\u043d\u043e\u0432\u0430"
+      ],
+      "reason": "appended",
+      "semantic_digest": "69fb19895b9c82633fec69073ada3b3fcd8c425c3192b120dbce23cbe37b65d5",
+      "source_match_id": "12171853",
+      "version_id": "aaeba98e-ba25-43c2-8d7c-ffd6aa905390"
+    },
+    {
+      "available_at": "2026-10-28T05:25:27.128571+00:00",
+      "confirmed_games": 31,
+      "confirmed_points": 95,
+      "event_id": "f6ac1660-f012-4c33-a482-3519c842b945",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "c6f28bb8-780d-4f9c-9d0d-f912c778747a",
+            "canonical_id": "03577805-aa56-55e8-890a-118cf5eb5f5c",
+            "identity_available_at": "2026-10-21T08:17:53.509774+00:00",
+            "identity_link_id": "509233c4-6a4d-4bd0-83c5-97a46099d9f6",
+            "participant_id": "43d8071d-1aff-4d2e-ae76-28638b09c082"
+          },
+          {
+            "alias_available_at": "2026-10-25T08:21:24.060157+00:00",
+            "canonical_alias_id": "b91ccbd2-ed2f-4083-a3c4-280d1e937b90",
+            "canonical_id": "a3a2ee91-7c8c-53cb-ad35-fb7cc93159dc",
+            "identity_available_at": "2026-10-22T07:20:41.111283+00:00",
+            "identity_link_id": "2d076d00-c0b6-42d9-8c26-13eaa0d6ad36",
+            "participant_id": "4490fa1c-e836-42c5-93ea-d8c51a6dcc46"
+          }
+        ],
+        "canonical_match_id": "bbcc30a8-e778-590f-b47a-ed3157d505fe",
+        "canonical_match_key": "cdbc827972222f2b22cd444e1adca7f9ba6a1348",
+        "fonbet_event_id": "f6ac1660-f012-4c33-a482-3519c842b945",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:40.320390+00:00",
+          "2026-10-28T05:24:47.690891+00:00"
+        ],
+        "provider_alias_ids": [
+          "63260582-bbc2-4570-9598-2160e6e42f74",
+          "eb4be366-bf01-415b-b862-fc98f84524e0"
+        ],
+        "provider_player_ids": [
+          "1321",
+          "33897"
+        ],
+        "semantic_digest": "fdeb9367cccefbd4b0a4aa345b0a3127c0541f266bd234042311956b49dbcca6",
+        "source": "api_tennis",
+        "source_content_hash": "f216fc99ab19946e09dc1f7db88e531f18b629270e247059ec2090a9cf5c455b",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12173770",
+        "source_observation_available_at": "2026-10-28T00:11:09.629704+00:00",
+        "source_observation_id": "85a26ef7-f132-4ed0-b659-0b532d5eeec1",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-24/2b17e5644a9f8b44bd0550558415cba605ac258232073b1c5505b7e459dffc7f.json.gz"
+      },
+      "existing_raw_document_id": "b88e7a99-f280-4f02-8b9e-4edb130e9065",
+      "fonbet_source_event_id": "69238383",
+      "participants": [
+        "\u0413\u0435\u043d\u0433\u0435\u043b \u041c",
+        "\u0410\u0437\u043a\u0430\u0440\u0430 \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "fdeb9367cccefbd4b0a4aa345b0a3127c0541f266bd234042311956b49dbcca6",
+      "source_match_id": "12173770",
+      "version_id": "9b0e1531-e8bd-4d15-95a5-8b42e4256cf3"
+    },
+    {
+      "available_at": "2026-10-28T05:25:27.607767+00:00",
+      "confirmed_games": 19,
+      "confirmed_points": 100,
+      "event_id": "f9da2d45-7525-47c0-bdf7-bca0347ee0b3",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "5c3efa28-28e2-4b35-9ae6-975c7421325b",
+            "canonical_id": "dc83bb9c-5d78-51ca-a973-7d35e71dda03",
+            "identity_available_at": "2026-10-21T01:51:01.358187+00:00",
+            "identity_link_id": "543e0942-dea5-492a-abb0-24ee97e62b0a",
+            "participant_id": "53f0bb6d-8106-42b5-9aed-9bf1500b767e"
+          },
+          {
+            "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+            "canonical_alias_id": "fb84290c-1891-460c-bd16-3a95359317df",
+            "canonical_id": "82d027da-0f68-5c09-a5d0-c454e6b2f4c9",
+            "identity_available_at": "2026-10-26T06:12:40.488400+00:00",
+            "identity_link_id": "003668f5-be2b-444b-b3e1-1e763f1f20be",
+            "participant_id": "786f02d2-6c4f-4ba8-897c-ca8302db73a6"
+          }
+        ],
+        "canonical_match_id": "f70cf763-3f0a-5de6-ba3b-1ae916709742",
+        "canonical_match_key": "21cb940963bfa246be40ce77f5d02f6353e1c70c",
+        "fonbet_event_id": "f9da2d45-7525-47c0-bdf7-bca0347ee0b3",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:49.925743+00:00",
+          "2026-10-28T05:24:49.639553+00:00"
+        ],
+        "provider_alias_ids": [
+          "40c853a5-f0c7-42e6-a0e8-da4445a0239a",
+          "8912acc1-e913-413b-a1c6-396bedcc797a"
+        ],
+        "provider_player_ids": [
+          "527",
+          "505"
+        ],
+        "semantic_digest": "5477808a7b3a7b3c4162c9e72c849c90ba8b3ece6f59c8acaddf34bfec3f4d26",
+        "source": "api_tennis",
+        "source_content_hash": "ecca287d91f34ca02d7ad94c8284027d6fea898e0251044fa8ace790e21659ca",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171672",
+        "source_observation_available_at": "2026-10-23T12:42:19.934940+00:00",
+        "source_observation_id": "76334323-7413-4fe1-a636-0f52e5e2529a",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-17/61c166c4ad5e9aeea3ad6494b4377b997a850ac7d9612a2af505afb04935d92d.json.gz"
+      },
+      "existing_raw_document_id": "61b6ed47-b989-4843-acea-94f410ec5736",
+      "fonbet_source_event_id": "69018179",
+      "participants": [
+        "\u0421\u0430\u0441\u043d\u043e\u0432\u0438\u0447 \u0410",
+        "\u0411\u043e\u043d\u0434\u0430\u0440\u044c \u0410"
+      ],
+      "reason": "appended",
+      "semantic_digest": "5477808a7b3a7b3c4162c9e72c849c90ba8b3ece6f59c8acaddf34bfec3f4d26",
+      "source_match_id": "12171672",
+      "version_id": "273157c2-291c-4c1c-a721-105bb9a96cdf"
+    },
+    {
+      "available_at": "2026-10-28T05:25:27.841907+00:00",
+      "confirmed_games": 17,
+      "confirmed_points": 95,
+      "event_id": "fb240c16-eaf4-4950-959c-f2fc9174bd39",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "68f8f7b5-5f98-4576-8f7d-5bc29f7cfd4f",
+            "canonical_id": "89203582-0dbb-5760-9390-859fce72e30a",
+            "identity_available_at": "2026-10-21T08:11:17.413040+00:00",
+            "identity_link_id": "053fd032-6e17-4155-b419-1cc3266a8ea9",
+            "participant_id": "b867c5a3-0113-4d70-aad8-7c133a6eb295"
+          },
+          {
+            "alias_available_at": "2026-10-25T21:04:20.169496+00:00",
+            "canonical_alias_id": "9a6ed64e-2182-469d-9ac5-1adb96b1c1d0",
+            "canonical_id": "17cbc581-b0bf-5a83-945b-6eacd95c8f65",
+            "identity_available_at": "2026-10-21T19:37:29.659739+00:00",
+            "identity_link_id": "6a83e289-2ac3-4b7a-8aa8-f374b24d9842",
+            "participant_id": "513e708c-d8ed-4b49-a565-aabedd8c2193"
+          }
+        ],
+        "canonical_match_id": "9fbec8ba-278e-5e4d-95aa-4fd93ee6f347",
+        "canonical_match_key": "78f39903f021820da2c42e2bdb67f1f44fa3ee92",
+        "fonbet_event_id": "fb240c16-eaf4-4950-959c-f2fc9174bd39",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:47.839391+00:00",
+          "2026-10-24T13:55:38.970513+00:00"
+        ],
+        "provider_alias_ids": [
+          "c11bb82b-9d63-4848-b95c-0f1da0f9b8d3",
+          "63afef21-e648-45de-82c8-abc38fa22310"
+        ],
+        "provider_player_ids": [
+          "34386",
+          "40212"
+        ],
+        "semantic_digest": "7223988e1e4498fe7ed7ea414850f1638a1a66e67296ba0c87f7535a37cfba90",
+        "source": "api_tennis",
+        "source_content_hash": "38bfb2bdf4d4005d4d412b4fd74b55ef18003f3a7d6485c5764d2da07abb2aca",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12174306",
+        "source_observation_available_at": "2026-10-28T00:07:39.287315+00:00",
+        "source_observation_id": "080c9e55-b310-4d84-aeba-b14191a3aee5",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-26/ab3fecf408f0e9442f7a86a95310d818d281fbea8246852d8a1e17ca4f445cdb.json.gz"
+      },
+      "existing_raw_document_id": "773f5ff1-fb39-4586-a52f-7a401de2da0a",
+      "fonbet_source_event_id": "69329595",
+      "participants": [
+        "\u0422\u043e\u0431\u043e\u043d \u041c",
+        "\u0421\u0430\u043b\u0430\u0437\u0430\u0440 \u0414"
+      ],
+      "reason": "appended",
+      "semantic_digest": "7223988e1e4498fe7ed7ea414850f1638a1a66e67296ba0c87f7535a37cfba90",
+      "source_match_id": "12174306",
+      "version_id": "dcc79665-13d4-4c7c-933f-01984aeb2a54"
+    },
+    {
+      "available_at": "2026-10-28T05:25:28.192183+00:00",
+      "confirmed_games": 16,
+      "confirmed_points": 86,
+      "event_id": "fbe4cb6f-afd2-4709-b838-2cb00ff5143b",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "76b656cb-1e45-4c63-b8e3-e1cfa378a04e",
+            "canonical_id": "f9ac1e00-fb08-5b05-9d91-7ffc7781f83c",
+            "identity_available_at": "2026-10-21T13:18:27.803440+00:00",
+            "identity_link_id": "cede121b-f4df-4d5a-8fe5-afd54f428b1c",
+            "participant_id": "fe228837-33ea-44b2-9260-896111518e88"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "8fbed4e5-223d-4d9d-b2b1-62f14b141d44",
+            "canonical_id": "fe28a90e-8c34-55c1-80e0-20b2f7592481",
+            "identity_available_at": "2026-10-23T03:08:11.789828+00:00",
+            "identity_link_id": "85c23794-f651-42a1-97ba-5aa664fbaac5",
+            "participant_id": "e42943c3-8702-42d4-ad44-ab98ebbeaa40"
+          }
+        ],
+        "canonical_match_id": "d3a247fb-1eaf-54d9-a15a-b6ab74566991",
+        "canonical_match_key": "52bc4174f9f69c54c3988de0d8196fb0f1c92650",
+        "fonbet_event_id": "fbe4cb6f-afd2-4709-b838-2cb00ff5143b",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:41.821828+00:00",
+          "2026-10-28T05:24:45.186002+00:00"
+        ],
+        "provider_alias_ids": [
+          "6bd895e1-6049-4bd0-b515-9c329dc34f7d",
+          "78ef278b-df8e-435b-87b0-eabbae5e4da0"
+        ],
+        "provider_player_ids": [
+          "1792",
+          "2177"
+        ],
+        "semantic_digest": "98ecefb28c983597ae94e96b732f34909f3f4ce620992d02cb24bf4877983ab5",
+        "source": "api_tennis",
+        "source_content_hash": "1441b46775b4f21de597e849f55333672ec88753aa34bf2f517fa0daf26b9c2a",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12171845",
+        "source_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+        "source_observation_id": "cbf4dbd0-0e56-43ff-8384-87cde6a17578",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-18/ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a.json.gz"
+      },
+      "existing_raw_document_id": "918df18a-73ea-4af6-987e-3a9177f5d5c5",
+      "fonbet_source_event_id": "69051602",
+      "participants": [
+        "\u041f\u0430\u0440\u043a\u0441 \u0410",
+        "\u041f\u0443\u0442\u0438\u043d\u0446\u0435\u0432\u0430 \u042e"
+      ],
+      "reason": "appended",
+      "semantic_digest": "98ecefb28c983597ae94e96b732f34909f3f4ce620992d02cb24bf4877983ab5",
+      "source_match_id": "12171845",
+      "version_id": "9554a044-cba6-42c9-bcdf-917eaa3cdcda"
+    },
+    {
+      "available_at": "2026-10-28T04:01:46.116432+00:00",
+      "confirmed_games": 24,
+      "confirmed_points": 109,
+      "event_id": "fcf2765e-5366-4288-9e75-2a3ae279937e",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T22:04:22.515050+00:00",
+            "canonical_alias_id": "4f249220-2592-4919-8572-a742b04a9c04",
+            "canonical_id": "8b20ea12-3b9d-527b-bd9b-1d1b4b64db94",
+            "identity_available_at": "2026-10-21T12:14:54.326276+00:00",
+            "identity_link_id": "01f13d1b-c1e3-4e24-9c39-df68ae6243a6",
+            "participant_id": "faace22b-2b90-4622-93d8-f4d844d41b57"
+          },
+          {
+            "alias_available_at": "2026-10-25T08:21:24.060157+00:00",
+            "canonical_alias_id": "4cee488f-6857-415f-989e-ae7f626fd9c1",
+            "canonical_id": "b586c6cf-ef9a-51c2-99a5-30fce5fb348a",
+            "identity_available_at": "2026-10-21T00:44:09.860095+00:00",
+            "identity_link_id": "c36b0b70-b4fb-4b06-ae19-f06ddc536dbf",
+            "participant_id": "21d62222-c4be-4b5b-92fa-3a8d4795c8ef"
+          }
+        ],
+        "canonical_match_id": "740e21d5-ea99-5169-a880-d71721660d98",
+        "canonical_match_key": "9d2414645dc86a265bac2c039826fa795aae95f2",
+        "fonbet_event_id": "fcf2765e-5366-4288-9e75-2a3ae279937e",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-24T13:55:38.970513+00:00",
+          "2026-10-24T13:55:38.970513+00:00"
+        ],
+        "provider_alias_ids": [
+          "4c6199fb-33d0-41ae-adcf-fb94ae13ed96",
+          "939a245c-a4ab-4066-b79a-5f5c9a0c1ca4"
+        ],
+        "provider_player_ids": [
+          "19429",
+          "1417"
+        ],
+        "semantic_digest": "440c33f545889df1149d97889949bc046d793299f9cb90db9732a11ffebb6de6",
+        "source": "api_tennis",
+        "source_content_hash": "238ba65c1cd33f2e3c5d53bc956633de1153324755bc0900491e1fe7f7a92d0e",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12170521",
+        "source_observation_available_at": "2026-10-23T12:42:29.937924+00:00",
+        "source_observation_id": "346a5a7a-29fc-4ac4-9431-470826451faa",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-13/53d2be36fab453a59ffb8a28351c0a8ba82c9e7d3ae8d253133698641eff0c87.json.gz"
+      },
+      "existing_raw_document_id": "ecd40f15-af08-4763-bdc8-2de0c9c9d294",
+      "fonbet_source_event_id": "68911373",
+      "participants": [
+        "\u0420\u0443\u0442\u043b\u0430\u0443\u043a\u0430 \u0421",
+        "\u041a\u0443\u0431\u0430\u0440\u0435\u0432\u0430 \u0410"
+      ],
+      "reason": "existing",
+      "semantic_digest": "440c33f545889df1149d97889949bc046d793299f9cb90db9732a11ffebb6de6",
+      "source_match_id": "12170521",
+      "version_id": "8b311898-4b70-4922-b950-6bf21f0c25c1"
+    },
+    {
+      "available_at": "2026-10-28T05:25:28.692781+00:00",
+      "confirmed_games": 22,
+      "confirmed_points": 103,
+      "event_id": "fd367524-89af-472a-aa53-da432a6c3a9b",
+      "evidence": {
+        "canonical_identity_proofs": [
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "803ab350-5c3e-4dc9-b6f2-0ab062b371f9",
+            "canonical_id": "a65b6f29-f0c8-56b4-b8a0-d4ea1bf1eb2c",
+            "identity_available_at": "2026-10-21T00:49:32.049920+00:00",
+            "identity_link_id": "767db28e-76eb-47ff-b7ed-715fc96965de",
+            "participant_id": "2c1b8be2-009b-4735-84f5-167a049425a7"
+          },
+          {
+            "alias_available_at": "2026-10-25T07:05:47.807056+00:00",
+            "canonical_alias_id": "94296387-5799-4bfd-9725-12cf96c3281a",
+            "canonical_id": "26124a15-0bb9-5e6b-a818-f844df3829e1",
+            "identity_available_at": "2026-10-21T12:37:21.723114+00:00",
+            "identity_link_id": "3b61c08e-a416-4dc7-9743-aeeb2624e677",
+            "participant_id": "bbd97218-3bd2-414d-bc51-673bb672834d"
+          }
+        ],
+        "canonical_match_id": "02f3412c-7f7b-5eb7-ae3f-f9edd4e87a5a",
+        "canonical_match_key": "4087624fc153597d6ed42af7c9bfdbb5eb923818",
+        "fonbet_event_id": "fd367524-89af-472a-aa53-da432a6c3a9b",
+        "method": "confirmed_canonical_and_provider_ids_v2",
+        "normalized_to_fonbet": true,
+        "provider_alias_available_at": [
+          "2026-10-28T05:24:39.315738+00:00",
+          "2026-10-28T05:24:44.029951+00:00"
+        ],
+        "provider_alias_ids": [
+          "3063122e-65c1-428e-982e-366cb895222a",
+          "35e54aa3-d0db-4a3e-b0fd-aaf0a4c8016a"
+        ],
+        "provider_player_ids": [
+          "1093",
+          "1906"
+        ],
+        "semantic_digest": "3facdf57def7b08d92dd4579415f3f0fd508583a8d4f9eff280b1df824d8cbcd",
+        "source": "api_tennis",
+        "source_content_hash": "1a36fc9c276196cd3528a7fcddc4b61d5b99f6daf36346fc89610dbbbbd11795",
+        "source_first_is_fonbet_a": true,
+        "source_match_id": "12170285",
+        "source_observation_available_at": "2026-10-23T12:42:27.036937+00:00",
+        "source_observation_id": "c56d0dd7-24a2-49a2-b3f9-6ac19a210afe",
+        "source_raw_reference": "snapshots/external-tennis/api-tennis/2026-10-14/ec8ed48744e983a9943b10bea54563f5db319660745a3b893f76f340c46b740a.json.gz"
+      },
+      "existing_raw_document_id": "bb1f9290-7379-43b7-8ded-83347b2d265e",
+      "fonbet_source_event_id": "68901002",
+      "participants": [
+        "\u0414\u0430\u043d\u0438\u0438\u043b \u041c\u0435\u0434\u0432\u0435\u0434\u0435\u0432",
+        "\u0421\u0442\u0435\u0444\u0430\u043d\u043e\u0441 \u0426\u0438\u0446\u0438\u043f\u0430\u0441"
+      ],
+      "reason": "appended",
+      "semantic_digest": "3facdf57def7b08d92dd4579415f3f0fd508583a8d4f9eff280b1df824d8cbcd",
+      "source_match_id": "12170285",
+      "version_id": "f83f0d7b-16dc-4f0e-90c1-af85f73d19b3"
+    }
+  ],
+  "status": "complete",
+  "training_gate": "blocked_not_an_admission_report"
+}

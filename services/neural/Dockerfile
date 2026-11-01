@@ -13,21 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY packages/contracts /app/packages/contracts
-RUN pip install --no-cache-dir /app/packages/contracts
-
-COPY packages/db /app/packages/db
-RUN pip install --no-cache-dir /app/packages/db
-
-COPY packages/features /app/packages/features
-RUN pip install --no-cache-dir /app/packages/features
-
-COPY packages/sports-core /app/packages/sports-core
-RUN pip install --no-cache-dir /app/packages/sports-core
-
-COPY sports/tennis /app/sports/tennis
-RUN pip install --no-cache-dir /app/sports/tennis
-
+# Keep the large numerical dependency layer independent of source-only changes.
 COPY services/neural/pyproject.toml /app/
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 \
     && pip install --no-cache-dir \
@@ -42,6 +28,21 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
         "catboost>=1.2.0" \
         "lightgbm>=4.0.0" \
         "xgboost>=2.0.0"
+
+COPY packages/contracts /app/packages/contracts
+RUN pip install --no-cache-dir /app/packages/contracts
+
+COPY packages/db /app/packages/db
+RUN pip install --no-cache-dir /app/packages/db
+
+COPY packages/features /app/packages/features
+RUN pip install --no-cache-dir /app/packages/features
+
+COPY packages/sports-core /app/packages/sports-core
+RUN pip install --no-cache-dir /app/packages/sports-core
+
+COPY sports/tennis /app/sports/tennis
+RUN pip install --no-cache-dir /app/sports/tennis
 
 COPY services/neural/app /app/app
 RUN pip install --no-cache-dir --no-deps .

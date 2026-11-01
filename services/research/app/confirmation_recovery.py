@@ -46,45 +46,42 @@ def resume_match_job_after_closed_confirmation(
     return True
 
 
-def exact_confirmed_match_orientation(
+def exact_confirmed_match_url(
     url: str,
     candidate_id: str,
     player_a_id: str | None,
     player_b_id: str | None,
     pending_candidate_count: int,
-) -> bool | None:
-    """Return Fonbet side orientation only for one exact, confirmed candidate.
+) -> bool:
+    """Validate one exact candidate URL without inferring scoreboard sides.
 
     Manual review remains required when more than one distinct Flashscore match
     is pending. A single candidate is auto-resolvable only when its stable
     ``mid`` and both separate participant slugs match the already-confirmed
     Flashscore player identities.
     """
-    if pending_candidate_count != 1 or not candidate_id or not player_a_id or not player_b_id:
-        return None
+    if pending_candidate_count != 1 or not candidate_id or not player_a_id or not player_b_id or player_a_id == player_b_id:
+        return False
     try:
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").casefold()
         if hostname != "flashscore.com" and not hostname.endswith(".flashscore.com"):
-            return None
+            return False
         match_ids = parse_qs(parsed.query).get("mid", [])
         if match_ids != [candidate_id]:
-            return None
+            return False
         segments = [segment for segment in parsed.path.split("/") if segment]
         index = next(i for i, segment in enumerate(segments) if segment == "tennis")
         if index == 0 or segments[index - 1] != "match" or len(segments) < index + 3:
-            return None
+            return False
         if any(segment.casefold() == "doubles" for segment in segments):
-            return None
+            return False
         home_slug, away_slug = segments[index + 1:index + 3]
 
         def has_player(slug: str, player_id: str) -> bool:
             return slug == player_id or slug.endswith(f"-{player_id}")
 
-        if has_player(home_slug, player_a_id) and has_player(away_slug, player_b_id):
-            return True
-        if has_player(home_slug, player_b_id) and has_player(away_slug, player_a_id):
-            return False
+        return bool((has_player(home_slug, player_a_id) and has_player(away_slug, player_b_id)) or
+                    (has_player(home_slug, player_b_id) and has_player(away_slug, player_a_id)))
     except (StopIteration, ValueError):
-        return None
-    return None
+        return False

@@ -1,6 +1,22 @@
 groups:
   - name: neurobet_critical_alerts
     rules:
+      - alert: TennisEnrollmentMissing
+        expr: tennis_enrollment_missing > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: research
+        annotations:
+          summary: "Recent tennis events are missing research jobs"
+      - alert: TennisEnrollmentOverdue
+        expr: tennis_enrollment_overdue > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: research
+        annotations:
+          summary: "Ready tennis research jobs are overdue"
       # 1. Collector stale-data alert
       - alert: CollectorStaleDataAlert
         expr: (time() - max(collector_polls_total)) > 60 or collector_events_seen == 0

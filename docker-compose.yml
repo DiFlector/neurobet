@@ -157,7 +157,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 1024M
+          memory: 1536M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -173,7 +173,7 @@ services:
       context: .
       dockerfile: services/collector/Dockerfile
     container_name: neurobet_collector
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     environment:
@@ -391,6 +391,39 @@ services:
       retries: 3
       start_period: 2s
 
+  # One browser slot stays reserved for the always-on local recovery service.
+  flashscore-solver:
+    image: ghcr.io/flaresolverr/flaresolverr@sha256:c80ae007ce2ccdcd217a12426e4f039ef763ff90738c808d38810c3e59323767
+    container_name: neurobet_flashscore_solver
+    restart: unless-stopped
+    user: "0:0"
+    command: ["/usr/local/bin/python", "/opt/neurobet/solver-entrypoint.py"]
+    environment:
+      LOG_LEVEL: warning
+      LOG_HTML: "false"
+      CAPTCHA_SOLVER: none
+      FLASHSCORE_X_FSIGN: ${FLASHSCORE_X_FSIGN:-SW9D1eZo}
+      FLASHSCORE_BROWSER_PROCESSES: ${FLASHSCORE_WORKER_BROWSER_PROCESSES:-2}
+      FLASHSCORE_BROWSER_SLOT_DIR: /run/flashscore-browser-slots
+    volumes:
+      - ./scripts/flashscore_solver_entrypoint.py:/opt/neurobet/solver-entrypoint.py:ro
+      - flashscore_browser_slots:/run/flashscore-browser-slots
+    networks:
+      - neurobet-public
+      - neurobet-internal
+    shm_size: 256m
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8191/', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
   research-browser:
     build:
       context: .
@@ -442,6 +475,11 @@ services:
       FLASHSCORE_BROWSER_MAX_JOBS: ${FLASHSCORE_BROWSER_MAX_JOBS:-50}
       FLASHSCORE_BROWSER_MAX_AGE_SECONDS: ${FLASHSCORE_BROWSER_MAX_AGE_SECONDS:-900}
       PLAYWRIGHT_WS_ENDPOINT: ws://research-browser:3000/
+      FLASHSCORE_RECOVERY_ENABLED: ${FLASHSCORE_RECOVERY_ENABLED:-true}
+      FLASHSCORE_SOURCE_COOLDOWN_ENABLED: ${FLASHSCORE_SOURCE_COOLDOWN_ENABLED:-false}
+      FLASHSCORE_CAPTCHA_RETRY_SECONDS: ${FLASHSCORE_CAPTCHA_RETRY_SECONDS:-60}
+      FLASHSCORE_RECOVERY_URL: http://flashscore-solver:8191/v1
+      FLASHSCORE_RECOVERY_TIMEOUT_SECONDS: ${FLASHSCORE_RECOVERY_TIMEOUT_SECONDS:-60}
       FLASHSCORE_EXECUTOR_ENABLED: "true"
       TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_MY_LIFE_MATCH_HISTORY_ENABLED:-true}
       TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED: ${TENNIS_SOURCE_TENNIS_EXPLORER_MATCH_HISTORY_ENABLED:-true}
@@ -457,8 +495,8 @@ services:
       RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser
-      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser,flashscore-solver
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,worker,neural,bet-manager,research-browser,flashscore-solver
       POSTGRES_HOST: postgres
       POSTGRES_INTERNAL_PORT: "5432"
     depends_on:
@@ -469,6 +507,8 @@ services:
       research-proxy-relay:
         condition: service_healthy
       research-browser:
+        condition: service_healthy
+      flashscore-solver:
         condition: service_healthy
     networks:
       - neurobet-public
@@ -520,11 +560,16 @@ services:
       FLASHSCORE_BROWSER_MAX_JOBS: ${FLASHSCORE_BROWSER_MAX_JOBS:-50}
       FLASHSCORE_BROWSER_MAX_AGE_SECONDS: ${FLASHSCORE_BROWSER_MAX_AGE_SECONDS:-900}
       PLAYWRIGHT_WS_ENDPOINT: ws://research-browser:3000/
+      FLASHSCORE_RECOVERY_ENABLED: ${FLASHSCORE_RECOVERY_ENABLED:-true}
+      FLASHSCORE_SOURCE_COOLDOWN_ENABLED: ${FLASHSCORE_SOURCE_COOLDOWN_ENABLED:-false}
+      FLASHSCORE_CAPTCHA_RETRY_SECONDS: ${FLASHSCORE_CAPTCHA_RETRY_SECONDS:-60}
+      FLASHSCORE_RECOVERY_URL: http://flashscore-solver:8191/v1
+      FLASHSCORE_RECOVERY_TIMEOUT_SECONDS: ${FLASHSCORE_RECOVERY_TIMEOUT_SECONDS:-60}
       RESEARCH_HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTP_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
       HTTPS_PROXY: ${RESEARCH_HTTP_PROXY:-http://${NEUROBET_PUBLIC_GATEWAY:-172.26.0.1}:${RESEARCH_PROXY_PORT:-17890}}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser
-      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser,flashscore-solver
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1},minio,postgres,redis,searxng,backend,research,worker,neural,bet-manager,research-browser,flashscore-solver
       POSTGRES_HOST: postgres
       POSTGRES_INTERNAL_PORT: "5432"
     depends_on:
@@ -533,6 +578,8 @@ services:
       research-proxy-relay:
         condition: service_healthy
       research-browser:
+        condition: service_healthy
+      flashscore-solver:
         condition: service_healthy
     networks:
       - neurobet-public
@@ -600,8 +647,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '2.0'
+          memory: 3G
     healthcheck:
       test: ["CMD", "python", "-c", "import os,time,sys; sys.exit(0 if os.path.exists('/tmp/healthy') and time.time()-os.path.getmtime('/tmp/healthy') < 90 else 1)"]
       interval: 30s
@@ -617,7 +664,7 @@ services:
       context: .
       dockerfile: services/worker/Dockerfile
     container_name: neurobet_worker
-    restart: unless-stopped
+    restart: always
     env_file:
       - .env
     environment:

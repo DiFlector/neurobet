@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.confirmation_recovery import (
-    exact_confirmed_match_orientation,
+    exact_confirmed_match_url,
     resume_match_job_after_closed_confirmation,
     resume_player_job_after_closed_confirmation,
 )
@@ -10,13 +10,13 @@ from app.confirmation_recovery import (
 
 def test_exact_single_match_candidate_is_auto_resolvable_only_with_two_confirmed_player_ids():
     url = "https://www.flashscore.com/match/tennis/adkar-vaishnavi-riKJvzYF/shkutova-anna-O8EO0106/?mid=rRgwzmTF"
-    assert exact_confirmed_match_orientation(url, "rRgwzmTF", "riKJvzYF", "O8EO0106", 1) is True
-    assert exact_confirmed_match_orientation(url, "rRgwzmTF", "O8EO0106", "riKJvzYF", 1) is False
-    assert exact_confirmed_match_orientation(url, "rRgwzmTF", "riKJvzYF", "O8EO0106", 2) is None
-    assert exact_confirmed_match_orientation(url, "rRgwzmTF", None, "O8EO0106", 1) is None
-    assert exact_confirmed_match_orientation(url, "other-mid", "riKJvzYF", "O8EO0106", 1) is None
-    assert exact_confirmed_match_orientation(url.replace("flashscore.com", "untrusted.example"),
-        "rRgwzmTF", "riKJvzYF", "O8EO0106", 1) is None
+    assert exact_confirmed_match_url(url, "rRgwzmTF", "riKJvzYF", "O8EO0106", 1)
+    assert exact_confirmed_match_url(url, "rRgwzmTF", "O8EO0106", "riKJvzYF", 1)
+    assert not exact_confirmed_match_url(url, "rRgwzmTF", "riKJvzYF", "O8EO0106", 2)
+    assert not exact_confirmed_match_url(url, "rRgwzmTF", None, "O8EO0106", 1)
+    assert not exact_confirmed_match_url(url, "other-mid", "riKJvzYF", "O8EO0106", 1)
+    assert not exact_confirmed_match_url(url.replace("flashscore.com", "untrusted.example"),
+        "rRgwzmTF", "riKJvzYF", "O8EO0106", 1)
 
 
 def test_orphaned_player_confirmation_is_requeued_and_cached_metrics_are_preserved():

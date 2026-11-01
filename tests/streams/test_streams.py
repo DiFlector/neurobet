@@ -151,6 +151,42 @@ def test_idempotency_prevents_duplicate_actions(client):
     print("test_idempotency_prevents_duplicate_actions: OK")
 
 
+def test_abandoned_pending_message_is_reclaimed(client):
+    """A new worker can resume a delivery left pending by a stopped worker."""
+    test_stream = f"test.stream.reclaim.{uuid.uuid4().hex[:8]}"
+    group_name = "test_cg_reclaim"
+    publisher = StreamPublisher(client, producer="test_publisher")
+    abandoned = StreamConsumerGroup(client, test_stream, group_name, "worker_stopped")
+    replacement = StreamConsumerGroup(
+        client, test_stream, group_name, "worker_replacement", pending_idle_ms=0
+    )
+    abandoned.create_group(start_id="0")
+    key = f"reclaim_{uuid.uuid4().hex}"
+    publisher.publish(test_stream, {"event_id": "fonbet-raw-1"}, idempotency_key=key)
+
+    # Simulate a process stopping after Redis assigned the message but before
+    # application processing or acknowledgement.
+    original = abandoned.read_messages(count=1, block_ms=0)
+    assert len(original) == 1
+    resumed = replacement.read_messages(count=1, block_ms=0)
+    assert len(resumed) == 1
+    assert resumed[0][0] == original[0][0]
+    assert resumed[0][1].idempotency_key == key
+    client.xack(test_stream, group_name, resumed[0][0])
+    client.delete(test_stream)
+    print("test_abandoned_pending_message_is_reclaimed: OK")
+
+
+def test_replay_uses_collector_observation_time():
+    from app.ingest import _observed_at
+
+    source_time = datetime(2026, 10, 25, 14, 47, tzinfo=timezone.utc)
+    parsed = _observed_at({"collected_at": source_time.isoformat()})
+    assert parsed == source_time
+    assert _observed_at({}, source_time) == source_time
+    print("test_replay_uses_collector_observation_time: OK")
+
+
 def test_worker_error_and_dead_letter_routing(client):
     """
     Acceptance Criteria:
@@ -214,6 +250,8 @@ if __name__ == "__main__":
     try:
         test_stream_publish_and_consume(client)
         test_idempotency_prevents_duplicate_actions(client)
+        test_abandoned_pending_message_is_reclaimed(client)
+        test_replay_uses_collector_observation_time()
         test_worker_error_and_dead_letter_routing(client)
         print("\nALL REDIS STREAMS TESTS PASSED SUCCESSFULLY!")
     finally:

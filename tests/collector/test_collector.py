@@ -5,6 +5,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ sys.path.insert(0, str(Path("/srv/neurobet/packages/streams/src")))
 from app.circuit_breaker import CircuitBreaker, CircuitState
 from app.parser import FonbetLiveTennisParser
 from app.s3_writer import MinIORawWriter
+from app.results_collector import FonbetResultsCollector
 
 
 def test_parser_filters_out_prematch_and_accepts_live():
@@ -81,6 +83,49 @@ def test_parser_filters_out_prematch_and_accepts_live():
     print("test_parser_filters_out_prematch_and_accepts_live: OK")
 
 
+def test_line_feed_prematch_parser_keeps_future_tennis_events_and_market_evidence():
+    observed_at = datetime(2026, 10, 27, 9, 0, tzinfo=timezone.utc)
+    start_time = int(datetime(2026, 10, 27, 12, 30, tzinfo=timezone.utc).timestamp())
+    feed = {
+        "sports": [
+            {"id": 4, "name": "Теннис"},
+            {"id": 40, "parentId": 4, "kind": "segment", "name": "ATP. Вена. Хард"},
+            {"id": 1, "name": "Футбол"},
+        ],
+        "events": [
+            {"id": 100, "sportId": 40, "place": "line", "startTime": start_time,
+             "team1": "Пол Т", "team2": "Рублев А"},
+            {"id": 101, "sportId": 40, "place": "live", "startTime": start_time,
+             "team1": "Live A", "team2": "Live B"},
+            {"id": 102, "sportId": 1, "place": "line", "startTime": start_time,
+             "team1": "Football A", "team2": "Football B"},
+            {"id": 103, "sportId": 40, "place": "line", "startTime": start_time,
+             "team1": "Player A / Player B", "team2": "Player C / Player D"},
+            {"id": 104, "sportId": 40, "place": "line", "startTime": start_time + 3 * 86400,
+             "team1": "Too Far A", "team2": "Too Far B"},
+        ],
+        "customFactors": [
+            {"e": 100, "factors": [{"f": 921, "v": 1.65}, {"f": 923, "v": 2.10},
+                                    {"f": 1569, "v": 1.5}]},
+            {"e": 101, "factors": [{"f": 921, "v": 1.8}, {"f": 923, "v": 2.0}]},
+        ],
+    }
+    events, source = FonbetLiveTennisParser.parse_prematch_line_feed(
+        feed, observed_at=observed_at, horizon_hours=48,
+    )
+    assert len(events) == 2
+    event = events[0]
+    assert event["source_event_id"] == "100"
+    assert event["status"] == "prematch" and event["is_live"] is False
+    assert event["scheduled_start"] == "2026-10-27T12:30:00+00:00"
+    assert [x["odds"] for x in event["markets"][0]["selections"]] == [1.65, 2.1]
+    assert source["events"] == [feed["events"][0], feed["events"][3]]
+    assert source["customFactors"] == [{"e": 100, "factors": [{"f": 921, "v": 1.65}, {"f": 923, "v": 2.10}]}]
+    doubles = next(row for row in events if row["source_event_id"] == "103")
+    assert doubles["tennis_discipline"] == "unknown_doubles"
+    assert doubles["doubles_roster_pending"] is True
+
+
 def test_parser_card_error_isolation():
     """
     Acceptance Criteria:
@@ -122,6 +167,32 @@ def test_parser_card_error_isolation():
     assert parsed_events[0]["participant_a"] == "Андрей Рублев"
     assert parsed_events[1]["participant_a"] == "Александр Зверев"
     print("test_parser_card_error_isolation: OK")
+
+
+def test_results_collector_publishes_valid_idempotent_envelope():
+    writer = Mock()
+    writer.save_raw_snapshot.return_value = "fonbet/all/results.json"
+    redis_client = Mock()
+    collector = FonbetResultsCollector(s3_writer=writer, redis_client=redis_client)
+    results = {"events": [{"id": 42}], "sections": [{"id": 7}]}
+
+    content_hash = collector.process_and_publish(results)
+
+    assert content_hash.startswith("sha256:")
+    redis_client.xadd.assert_called_once()
+    call = redis_client.xadd.call_args
+    assert call.kwargs["name"] == "fonbet.results"
+    envelope = call.kwargs["fields"]
+    assert envelope["stream_name"] == "fonbet.results"
+    assert envelope["producer"] == "results-collector"
+    assert envelope["idempotency_key"] == f"fonbet_results:{content_hash.removeprefix('sha256:')}"
+    payload = json.loads(envelope["payload"])
+    assert payload["storage_path"] == "fonbet/all/results.json"
+    assert payload["events_count"] == 1
+    assert payload["sections_count"] == 1
+
+    assert collector.process_and_publish(results) == content_hash
+    redis_client.xadd.assert_called_once()
 
 
 def test_line_feed_keeps_verbatim_source_rows_for_live_tennis_only():
@@ -327,10 +398,15 @@ def test_poll_archives_unmodified_source_payload_once_and_streams_only_key():
     service.last_content_hash = None
     service.last_source_content_hash = None
     service.last_source_s3_key = None
+    service.last_prematch_source_content_hash = None
+    service.last_prematch_source_s3_key = None
+    service.last_prematch_content_hash = None
+    service.last_prematch_poll_at = None
+    service.last_prematch_event_fingerprints = {}
     service.total_polls = 0
     service.total_live_events_seen = 0
 
-    async def fetch():
+    async def fetch(**kwargs):
         return feed
 
     service.fetch_live_feed = fetch
@@ -346,6 +422,59 @@ def test_poll_archives_unmodified_source_payload_once_and_streams_only_key():
     assert published["source_payload_hash"] == writer.source_payloads[0]["content_hash"]
     assert "source_payload" not in published
     print("test_poll_archives_unmodified_source_payload_once_and_streams_only_key: OK")
+
+
+def test_poll_archives_and_publishes_changed_prematch_events_once():
+    import asyncio
+    from app.service import CollectorService
+
+    class Writer:
+        def __init__(self):
+            self.sources, self.normalized = [], []
+        def save_source_payload(self, **kwargs):
+            self.sources.append(kwargs)
+            return f"source/{kwargs['content_hash'][7:]}"
+        def save_raw_snapshot(self, content_hash, snapshot_dict, collected_at):
+            self.normalized.append(snapshot_dict)
+            return f"normalized/{content_hash[7:]}"
+
+    class Publisher:
+        def __init__(self): self.envelopes = []
+        def publish_envelope(self, envelope): self.envelopes.append(envelope)
+
+    event = {"source_event_id": "902", "status": "prematch", "is_live": False,
+             "participant_a": "Player A", "participant_b": "Player B"}
+    feed = {"events": [], "_source_payload": {}, "_source_url": "https://fonbet.example/list",
+            "prematch_events": [event],
+            "_prematch_source_payload": {"events": [{"id": 902, "place": "line"}],
+                                         "customFactors": [{"e": 902, "factors": []}]}}
+    writer, publisher = Writer(), Publisher()
+    service = CollectorService.__new__(CollectorService)
+    service.semaphore = asyncio.Semaphore(1)
+    service.s3_writer = writer
+    service.circuit_breaker = CircuitBreaker()
+    service.publisher = publisher
+    service.last_content_hash = None
+    service.last_source_content_hash = None
+    service.last_source_s3_key = None
+    service.last_prematch_source_content_hash = None
+    service.last_prematch_source_s3_key = None
+    service.last_prematch_content_hash = None
+    service.last_prematch_poll_at = None
+    service.last_prematch_event_fingerprints = {}
+    service.total_polls = 0
+    service.total_live_events_seen = 0
+
+    async def fetch(**kwargs): return feed
+    service.fetch_live_feed = fetch
+    asyncio.run(service.poll_once())
+    asyncio.run(service.poll_once())
+
+    prematch_envelopes = [item for item in publisher.envelopes if item.payload.get("page_type") == "prematch"]
+    assert len(prematch_envelopes) == 1
+    assert prematch_envelopes[0].payload["events"] == [event]
+    assert prematch_envelopes[0].payload["source_payload_s3_key"].startswith("source/")
+    assert len(writer.sources) == 1
 
 
 if __name__ == "__main__":

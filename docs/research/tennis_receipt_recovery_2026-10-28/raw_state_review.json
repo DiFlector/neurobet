@@ -1,0 +1,203 @@
+{
+  "examples": [
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "00791e6b-10d1-4029-bf0b-2600adbf9afb",
+      "snapshot_observed_at": "2026-10-12T16:42:17.931935+00:00",
+      "source_event_id": "68856540",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "8c89ff15-1790-4b11-82d3-aca09dd1eb0b",
+      "snapshot_observed_at": "2026-10-12T16:42:18.051360+00:00",
+      "source_event_id": "68856502",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "895dd346-ce7a-4f8d-ad11-362b329dd77e",
+      "snapshot_observed_at": "2026-10-12T16:42:18.068441+00:00",
+      "source_event_id": "68856340",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "6037f3b5-5718-4361-9d50-bb3aa6dd6175",
+      "snapshot_observed_at": "2026-10-12T16:42:18.086481+00:00",
+      "source_event_id": "68875994",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "a807ba3d-c76d-4350-9356-6455d85f3226",
+      "snapshot_observed_at": "2026-10-12T16:42:18.102556+00:00",
+      "source_event_id": "68875998",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "score_mismatch",
+      "snapshot_id": "cfceefdf-d6ad-4d60-8f70-74f5051e8015",
+      "snapshot_observed_at": "2026-10-12T16:42:18.113226+00:00",
+      "source_event_id": "68881926",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "score_mismatch",
+      "snapshot_id": "65bf0667-1d16-4a79-adda-dbf25dd298f4",
+      "snapshot_observed_at": "2026-10-12T16:42:18.128815+00:00",
+      "source_event_id": "68861024",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "ec537655-7de5-45c1-8795-db4e709f89a5",
+      "snapshot_observed_at": "2026-10-12T16:42:18.139360+00:00",
+      "source_event_id": "68861155",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "70925c7d-89ff-47f5-ba9a-28e4d0e7d9f9",
+      "snapshot_observed_at": "2026-10-12T16:42:18.163316+00:00",
+      "source_event_id": "68890073",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "score_mismatch",
+      "snapshot_id": "1d72e73e-089d-4535-8c38-d113535b5c15",
+      "snapshot_observed_at": "2026-10-12T16:42:18.174619+00:00",
+      "source_event_id": "68890075",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "7d1b23c5-d869-4b12-a479-381e1bedaeb0",
+      "snapshot_observed_at": "2026-10-12T16:42:18.189094+00:00",
+      "source_event_id": "68890067",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "bdc0f6ae-1836-4640-b147-3beec628ad34",
+      "snapshot_observed_at": "2026-10-12T16:42:18.201346+00:00",
+      "source_event_id": "68889916",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "5d4e65e0-3358-42ed-8cf2-a93a14fd877c",
+      "snapshot_observed_at": "2026-10-12T16:42:18.218611+00:00",
+      "source_event_id": "68889938",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "c1ebb866-4bcf-4446-a65b-cd4d6f0d6a4e",
+      "snapshot_observed_at": "2026-10-12T16:42:18.231456+00:00",
+      "source_event_id": "68889918",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "score_mismatch",
+      "snapshot_id": "2637b513-9b0f-4593-8db0-920896593d01",
+      "snapshot_observed_at": "2026-10-12T16:42:18.243277+00:00",
+      "source_event_id": "68887831",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "4e34ce51-2ea1-4d09-8327-51e79dba38c6",
+      "snapshot_observed_at": "2026-10-12T16:42:18.265492+00:00",
+      "source_event_id": "68887833",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "5d8b78e4-616b-4a3a-bf84-157dc2e84f6e",
+      "snapshot_observed_at": "2026-10-12T16:42:18.277578+00:00",
+      "source_event_id": "68887835",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "state_mismatch",
+      "snapshot_id": "5c53a0c1-e481-4fc2-a00b-e0d93266f5e6",
+      "snapshot_observed_at": "2026-10-12T16:42:18.291099+00:00",
+      "source_event_id": "68884165",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "source_event_missing_or_ambiguous",
+      "snapshot_id": "ae81a4c9-561e-4b31-b846-0e8bbd7cbef1",
+      "snapshot_observed_at": "2026-10-12T16:43:40.914607+00:00",
+      "source_event_id": "68888918",
+      "verified": false
+    },
+    {
+      "available_at": null,
+      "raw_object_key": null,
+      "reason": "source_event_missing_or_ambiguous",
+      "snapshot_id": "f5c53603-47ad-4807-a284-65953aaafef1",
+      "snapshot_observed_at": "2026-10-12T16:46:48.219635+00:00",
+      "source_event_id": "68887838",
+      "verified": false
+    }
+  ],
+  "generated_at": "2026-10-28T07:16:54.222110+00:00",
+  "indexed_snapshots": 50,
+  "inserted": 0,
+  "loaded_snapshots": 50,
+  "max_candidate_age_seconds": 30,
+  "missing_snapshots": 0,
+  "mode": "dry_run",
+  "raw_objects_read": 126,
+  "reasons": {
+    "score_mismatch": 4,
+    "source_event_missing_or_ambiguous": 32,
+    "state_mismatch": 14
+  },
+  "reconstruction_parser_version": "tennis-fonbet-state-reparse-v1",
+  "rejected": 50,
+  "s3_last_modified_role": "candidate_search_only_never_used_as_available_at",
+  "snapshot_index": "/tmp/tennis_missing_state_index_20261028.jsonl",
+  "snapshot_index_sha256": "36b1c770e08834b6ed987a5c72f358bfdb75a4c576af5bd70eb3656b02be5e79",
+  "verified": 0
+}

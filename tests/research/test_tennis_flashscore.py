@@ -12,6 +12,8 @@ from app.tennis_flashscore import (
     _player_name_matches,
     is_auto_confirmable_player_match,
     is_exact_player_name_match,
+    is_canonical_full_player_name_match,
+    flashscore_identity_query_name,
     _profile_candidates_from_search_payload,
     _profile_search_queries,
     _profile_search_failure_reason,
@@ -25,6 +27,7 @@ from app.tennis_flashscore import (
     _profile_feed_page_url,
     _profile_initial_feed_from_html,
     is_compatible_profile_parser_version,
+    has_archived_profile_search_evidence,
     _is_doubles_result,
     is_doubles_player_display,
     _advertised_singles_count_matches,
@@ -177,6 +180,15 @@ def test_exact_player_confirmation_requires_full_ordered_name_match():
     assert not is_exact_player_name_match("Tsitsipas S", "Tsitsipas Stefanos")
     assert not is_exact_player_name_match("Stefanos Tsitsipas", "Tsitsipas Stefanos")
     assert not is_exact_player_name_match("Tsitsipas Stefanos", "Tsitsipas Stefanos Jr")
+    assert is_canonical_full_player_name_match("Leonardo Taddia", "Taddia Leonardo")
+    assert not is_canonical_full_player_name_match("Таддиа Л", "Taddia Leonardo")
+    assert not is_canonical_full_player_name_match("Leonardo Taddia", "Taddia Leonardo Jr")
+
+
+def test_flashscore_identity_search_prefers_agreeing_canonical_full_name():
+    assert flashscore_identity_query_name("Таддиа Л", "Leonardo Taddia") == "Leonardo Taddia"
+    assert flashscore_identity_query_name("Таддиа Л", "Leonardo Sinner") == "Таддиа Л"
+    assert flashscore_identity_query_name("Таддиа Л", None) == "Таддиа Л"
 
 
 def test_overlapping_profile_import_locks_are_deduplicated_and_ordered():
@@ -217,6 +229,14 @@ def test_automatic_player_confirmation_accepts_only_simple_full_surname_and_init
     assert not is_auto_confirmable_player_match("Альварадо-берроспи А-о", "Alvarado Berrospi Alberto Odiseo")
     assert not is_auto_confirmable_player_match("Паскуаль-ферра Р", "Pascual Ferra Roger")
     assert not is_auto_confirmable_player_match("Силва Л-Ф", "Silva Luiz Felipe")
+
+
+def test_russian_full_name_order_and_known_transliteration_variants_resolve_unique_profile():
+    assert _profile_search_queries("Лю Клер") == ["lyu kler", "liu claire", "claire liu"]
+    assert is_canonical_full_player_name_match("Лю Клер", "Claire Liu")
+    assert is_auto_confirmable_player_match("Лю Клер", "Claire Liu")
+    assert _player_name_matches("Лю Клер", "Claire Liu")
+    assert not is_auto_confirmable_player_match("Лю Клер", "Claire Lin")
 
 
 def test_russian_initials_and_surnames_accept_common_flashscore_transliterations():
@@ -297,12 +317,29 @@ def test_flashscore_search_payload_filters_to_tennis_player_and_builds_profile_u
     }]
 
 
+def test_flashscore_search_payload_accepts_unique_provider_name_for_reordered_russian_label():
+    payload = [{"id": "QNuG0Gzb", "url": "liu-claire", "name": "Claire Liu",
+                "type": {"id": 3, "name": "Player"}, "sport": {"id": 2, "name": "Tennis"},
+                "gender": {"id": 2, "name": "Women"}}]
+    assert _profile_candidates_from_search_payload(payload, "Лю Клер") == [{
+        "name": "Claire Liu",
+        "profile_url": "https://www.flashscore.com/player/liu-claire/QNuG0Gzb/results/",
+        "source_player_id": "QNuG0Gzb",
+        "gender": "female",
+    }]
+
+
 def test_profile_search_endpoint_returns_only_tennis_player_candidates(monkeypatch):
     import httpx
 
     class Response:
         status_code = 200
         content = b"[]"
+        url = "https://s.livesport.services/api/v2/search/"
+        @property
+        def text(self):
+            import json
+            return json.dumps(self.json())
         def json(self):
             return [
                 {"id": "84GyAaXB", "url": "rus-arantxa", "name": "Rus Arantxa",
@@ -335,6 +372,11 @@ def test_profile_search_acquires_rate_limit_slot_for_each_http_request(monkeypat
     class Response:
         status_code = 200
         content = b"[]"
+        url = "https://s.livesport.services/api/v2/search/"
+        @property
+        def text(self):
+            import json
+            return json.dumps(self.json())
         def json(self): return []
 
     class Client:
@@ -365,12 +407,58 @@ def test_profile_search_acquires_rate_limit_slot_for_each_http_request(monkeypat
     assert len(clients) == 1
 
 
+def test_resolved_profile_search_archives_raw_response_before_returning_identity(monkeypatch):
+    raw_body = b'[{"type":{"id":"3"},"sport":{"id":"2"},"id":"84GyAaXB","url":"arantxa-rus/84GyAaXB","name":"Arantxa Rus"}]'
+    candidate = {
+        "name": "Arantxa Rus", "source_player_id": "84GyAaXB",
+        "profile_url": "https://www.flashscore.com/player/arantxa-rus/84GyAaXB/results/",
+    }
+    class Storage:
+        def __init__(self): self.calls = []
+        def archive_raw_bytes(self, source, partition, body, digest):
+            self.calls.append((source, partition, body, digest))
+            return f"snapshots/external-tennis/{source}/{partition}/{digest}.json.gz"
+    storage = Storage()
+    importer = FlashscoreTennisImporter(storage=storage)
+    monkeypatch.setattr("app.tennis_flashscore._search_flashscore_player_endpoint", lambda *a, **k: {
+        "status": "matched", "candidate": dict(candidate), "candidates": [dict(candidate)],
+        "search_responses": [{"query": "Arantxa Rus", "body": raw_body.decode(),
+                              "fetched_at": "2026-10-27T08:00:00+00:00"}],
+    })
+    result = importer.resolve_player_profile("Arantxa Rus")
+    assert result["status"] == "matched"
+    assert storage.calls[0][0] == "flashscore-player-search"
+    assert storage.calls[0][2] == raw_body
+    evidence = result["candidate"]["search_evidence"]
+    assert has_archived_profile_search_evidence(result["candidate"])
+    assert evidence[0]["content_sha256"] == hashlib.sha256(raw_body).hexdigest()
+
+
+def test_profile_search_archive_failure_fails_closed_and_evidence_validator_rejects_bad_inputs(monkeypatch):
+    candidate = {"name": "Arantxa Rus", "source_player_id": "84GyAaXB"}
+    class Storage:
+        def archive_raw_bytes(self, *args): return None
+    importer = FlashscoreTennisImporter(storage=Storage())
+    monkeypatch.setattr("app.tennis_flashscore._search_flashscore_player_endpoint", lambda *a, **k: {
+        "status": "matched", "candidate": dict(candidate), "candidates": [dict(candidate)],
+        "search_responses": [{"query": "Arantxa Rus", "body": "[]",
+                              "fetched_at": "2026-10-27T08:00:00+00:00"}],
+    })
+    result = importer.resolve_player_profile("Arantxa Rus")
+    assert result["status"] == "source_unavailable"
+    assert result["reason"] == "PROFILE_SEARCH_EVIDENCE_ARCHIVE_FAILED"
+    assert not has_archived_profile_search_evidence({"search_evidence": []})
+    assert not has_archived_profile_search_evidence({"search_evidence": [{"source": "flashscore"}]})
+
+
 @pytest.mark.parametrize("status_code,expected", [(403, "blocked"), (429, "blocked")])
 def test_profile_search_endpoint_treats_rate_limits_as_blocked(monkeypatch, status_code, expected):
     import httpx
 
     class Response:
         content = b"blocked"
+        text = "blocked"
+        url = "https://s.livesport.services/api/v2/search/"
         def __init__(self): self.status_code = status_code
     class Client:
         def __init__(self, **kwargs): pass
@@ -407,6 +495,11 @@ def test_profile_search_variants_cover_order_and_initial_without_unbounded_queri
     ]
     assert _profile_search_queries("Джонсон София")[2] == "johnson sofia"
     assert len(_profile_search_queries("Player Name Extra Tokens")) <= 3
+    assert _profile_search_queries("Поганкова М") == [
+        "pogankova m", "m pogankova", "pogankova", "pohankova m"
+    ]
+    assert _player_name_matches("Поганкова М", "Mia Pohankova")
+    assert not is_auto_confirmable_player_match("Поганкова М", "Mia Pohankova")
 
 
 def test_profile_search_timeout_or_missing_response_is_not_not_found():
@@ -504,6 +597,33 @@ def test_profile_count_compares_advertised_singles_not_all_feed_events():
     assert not _is_doubles_result(
         {"CX": "Player A.", "AF": "Player B."},
         {"ZA": "WTA - Singles: US Open", "ZAF": "WTA - Singles"},
+    )
+
+
+def test_doubles_result_is_parsed_as_unverified_team_evidence_not_singles():
+    from app.tennis_flashscore import (
+        _doubles_result_observation_hash, _parse_doubles_result, _parse_match_with_reason,
+    )
+
+    fields = {
+        "AA": "doubleFixture01", "AD": "1793275200",
+        "CX": "Player A / Player B", "AF": "Player C / Player D",
+        "BA": "6", "BB": "4", "BC": "6", "BD": "3",
+    }
+    context = {"ZA": "Wimbledon Mixed Doubles", "ZAF": "Mixed Doubles", "ZK": "Wimbledon"}
+    result, reason = _parse_doubles_result(fields, context)
+    assert reason is None
+    assert result["side_a_names"] == ["Player A", "Player B"]
+    assert result["side_b_names"] == ["Player C", "Player D"]
+    assert result["discipline"] == "mixed_doubles"
+    assert result["winner_side"] is None
+    assert result["winner_status"] == "unverified_score_only"
+    assert _parse_match_with_reason(fields, context) == (None, "doubles_excluded_from_singles")
+    assert _doubles_result_observation_hash(result) == _doubles_result_observation_hash({
+        **result, "retrieved_at": "later", "source_profile_player_id": "another-profile",
+    })
+    assert _doubles_result_observation_hash(result) != _doubles_result_observation_hash(
+        {**result, "score": "6-4 6-4"}
     )
 
 
@@ -697,6 +817,16 @@ def test_atp_wta_categories_determine_gender_and_major_match_format():
     three_sets = {**two_sets, "BE": "6", "BF": "4"}
     parsed, reason = _parse_match_with_reason(three_sets, context)
     assert reason is None and parsed is not None and parsed.best_of == 5
+
+
+def test_junior_tournament_markers_override_adult_itf_category():
+    assert _category("ITF Junior J300 Girls", "", "") == ("female", "junior", 3)
+    assert _category("J200 Boys", "", "") == ("male", "junior", 3)
+    assert _category("U16 Girls", "", "") == ("female", "junior", 3)
+    assert _category("M15 Monastir", "", "") == ("male", "itf", 3)
+    assert _category("W15 Monastir", "", "") == ("female", "itf", 3)
+    assert _category("Menorca Challenger", "", "") == ("unknown", "challenger", 3)
+    assert _category("Menorca", "", "/tennis/atp-challenger/") == ("male", "challenger", 3)
 
 
 def test_profile_country_id_is_inferred_from_player_side_not_opponent():
@@ -1059,6 +1189,40 @@ def test_source_dom_side_orientation_uses_home_away_profile_ids_not_url_slug_ord
     assert _source_dom_side_orientation(source_html, "Sz5NW6cC", "zT0yq0KG") is True
     assert _source_dom_side_orientation(source_html, "zT0yq0KG", "Sz5NW6cC") is False
     assert _source_dom_side_orientation(source_html, "unconfirmed-a", "unconfirmed-b") is None
+
+
+def test_source_dom_doubles_orientation_requires_exact_two_player_rosters():
+    from app.point_history import _source_dom_doubles_side_orientation
+
+    source_html = '''<div class="duelParticipant__home">
+      <a href="/player/one/PlayerA1/"></a><a href="/player/two/PlayerA2/"></a></div>
+      <div class="duelParticipant__away">
+      <a href="/player/three/PlayerB1/"></a><a href="/player/four/PlayerB2/"></a></div>'''
+    assert _source_dom_doubles_side_orientation(
+        source_html, ["PlayerA1", "PlayerA2"], ["PlayerB1", "PlayerB2"]
+    ) is True
+    assert _source_dom_doubles_side_orientation(
+        source_html, ["PlayerB1", "PlayerB2"], ["PlayerA1", "PlayerA2"]
+    ) is False
+    assert _source_dom_doubles_side_orientation(
+        source_html, ["PlayerA1", "Unknown"], ["PlayerB1", "PlayerB2"]
+    ) is None
+    assert _source_dom_doubles_side_orientation(
+        source_html.replace("PlayerA2", "PlayerA1"), ["PlayerA1", "PlayerA2"],
+        ["PlayerB1", "PlayerB2"]
+    ) is None
+
+
+def test_doubles_match_url_is_only_a_four_id_candidate_check():
+    from app.point_history import _match_url_has_doubles_player_ids
+
+    side_a = ["playera1", "playera2"]
+    side_b = ["playerb1", "playerb2"]
+    url = ("https://www.flashscore.com/match/tennis/"
+           "pair-b-playerb1-playerb2/pair-a-playera1-playera2/summary/?mid=AbCd1234")
+    assert _match_url_has_doubles_player_ids(url, side_a, side_b)
+    assert _match_url_has_doubles_player_ids(url, side_b, side_a)
+    assert not _match_url_has_doubles_player_ids(url, ["playera1", "othera2"], side_b)
 
 
 def test_confirmed_live_link_rejects_untrusted_or_wrong_player_urls():

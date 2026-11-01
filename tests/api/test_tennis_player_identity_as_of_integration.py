@@ -61,7 +61,10 @@ def test_reassigned_profile_metrics_remain_point_in_time():
                 available_at=start + timedelta(minutes=5, microseconds=1),
             ),
             TennisPlayerMetricSnapshot(
-                participant_id=participant_id, source_player_id=source_b, metrics_version=2,
+                # This legacy snapshot predates source-keyed metric snapshots.
+                # The current profile aggregate is usable only after its
+                # matching B identity decision and materialization time.
+                participant_id=participant_id, source_player_id=None, metrics_version=2,
                 available_at=start + timedelta(minutes=9), source_watermark=start,
                 history_digest=uuid.uuid4().hex, metrics_json=second,
             ),

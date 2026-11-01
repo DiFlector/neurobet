@@ -1,0 +1,885 @@
+{
+  "actions": [
+    {
+      "action": "reassign",
+      "canonical_player_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+      "current_owner_id": "f42bef53-6364-54e2-9eef-f298a5a40683",
+      "evidence": {
+        "current_confirmed_owner_id": "f42bef53-6364-54e2-9eef-f298a5a40683",
+        "independent_source_match_count": 1,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "B. Artnak",
+              "loser_player_id": "10846",
+              "played_at": "2026-10-19T16:10:00+00:00",
+              "score": "6-4 6-4",
+              "winner_name": "A. Rybakov",
+              "winner_player_id": "559"
+            },
+            "api_match_id": "12172211",
+            "api_observation_available_at": "2026-10-24T00:06:53.207876+00:00",
+            "api_observation_id": "62fa0352-108a-47e8-8861-3a832915f866",
+            "api_source_content_hash": "beacc0c818c4a117b3a901d06229c2d6b6065f3955cd46c578d6a1b5910e7844",
+            "canonical_key": "bfdf07f766ac1cd4f6640b392993c3c719240213",
+            "canonical_match_id": "437f7d33-18ca-5240-a79e-a33e18928f59",
+            "canonical_match_sources": [
+              "api_tennis:12172211",
+              "flashscore:n1DES1YP",
+              "tennis_explorer:3353665"
+            ],
+            "fonbet_event_id": "69109936",
+            "fonbet_event_uuid": "0cf08d53-f8a9-4953-b2d0-9ab2b0c2d358",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "e483a585-788f-502f-9803-d8ca515f7719",
+                  "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                ],
+                "loser_name": "Artnak B.",
+                "loser_player_id": "2XEwnKpM",
+                "played_at": "2026-10-19T16:10:00+00:00",
+                "score": "6-4 6-4",
+                "source": "flashscore",
+                "source_match_id": "n1DES1YP",
+                "winner_name": "Rybakov A.",
+                "winner_player_id": "x01GZe48"
+              },
+              {
+                "canonical_player_ids": [
+                  "e483a585-788f-502f-9803-d8ca515f7719",
+                  "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                ],
+                "loser_name": "Artnak B.",
+                "loser_player_id": "artnak",
+                "played_at": "2026-10-19T00:00:00+00:00",
+                "score": "6-4 6-4",
+                "source": "tennis_explorer",
+                "source_match_id": "3353665",
+                "winner_name": "Rybakov A.",
+                "winner_player_id": "rybakov"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-28T09:56:38.106495+00:00",
+                "canonical_alias_id": "12d9898e-7b75-439b-9b21-5ad5ede046c2",
+                "canonical_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "identity_available_at": "2026-10-21T21:43:06.067369+00:00",
+                "identity_link_id": "8ec1e319-d239-44f6-b541-c019bee6dd94",
+                "participant_id": "681f882e-f153-4734-86a7-e90f837c4250"
+              },
+              {
+                "alias_available_at": "2026-10-28T16:16:54.736808+00:00",
+                "canonical_alias_id": "6720004b-08d2-41ed-a5e1-4f4f22d9b201",
+                "canonical_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                "identity_available_at": "2026-10-21T01:51:01.260831+00:00",
+                "identity_link_id": "36a4bda3-bfd1-4a50-90a1-46618219a494",
+                "participant_id": "44b4a2fc-0c61-4448-b665-91ed487294c7"
+              }
+            ],
+            "participants": [
+              "Рыбаков А",
+              "Артнак Б"
+            ],
+            "resolution_by_api_id": {
+              "10846": {
+                "canonical_player_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                "proof": {
+                  "api_card_id": "f42bef53-6364-54e2-9eef-f298a5a40683",
+                  "established_candidate_ids": [
+                    "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "210107.0",
+                    "tennis_explorer": "artnak",
+                    "tml": "A0I1"
+                  }
+                }
+              },
+              "559": {
+                "canonical_player_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "proof": {
+                  "api_card_id": "c24c1dbb-ece4-51a6-a68e-b321712a298f",
+                  "established_candidate_ids": [
+                    "e483a585-788f-502f-9803-d8ca515f7719"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "126206.0",
+                    "tennis_explorer": "rybakov",
+                    "tml": "RG42"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "10846": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+              "559": "e483a585-788f-502f-9803-d8ca515f7719"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 1,
+        "selected_canonical_player_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+        "source_player_id": "10846"
+      },
+      "evidence_digest": "c4013a0e6991f082e2be2568ce9ab54929126c84a6b72e2ffb12088eaff32153",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "10846"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+      "current_owner_id": "1d2385b7-5063-5be1-9fbc-ad2cb9fca1ea",
+      "evidence": {
+        "current_confirmed_owner_id": "1d2385b7-5063-5be1-9fbc-ad2cb9fca1ea",
+        "independent_source_match_count": 1,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "O. Baris",
+              "loser_player_id": "32559",
+              "played_at": "2026-10-27T23:30:00+00:00",
+              "score": "6-1 6-1",
+              "winner_name": "D. Ostapenkov",
+              "winner_player_id": "13986"
+            },
+            "api_match_id": "12175165",
+            "api_observation_available_at": "2026-10-29T00:07:48.260509+00:00",
+            "api_observation_id": "ec3e9b25-2593-4db6-8a39-89dec2d20cd9",
+            "api_source_content_hash": "ccba915fc44a142152cb5f57a800df190dd0a18ccb6ab31491fd720ded443ec5",
+            "canonical_key": "3102de3b069a6e7f56a56cce47798e4790abf76f",
+            "canonical_match_id": "1a119fc6-b9dc-5272-b770-f14ff5d21eaf",
+            "canonical_match_sources": [
+              "api_tennis:12175165",
+              "tennis_explorer:3363223"
+            ],
+            "fonbet_event_id": "69385696",
+            "fonbet_event_uuid": "9fb26731-a5f7-4049-bcb6-201f3abd91c6",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                  "5436b243-a294-58f8-8c4c-79ad6e834da0"
+                ],
+                "loser_name": "Baris O.",
+                "loser_player_id": "baris",
+                "played_at": "2026-10-28T00:00:00+00:00",
+                "score": "6-1 6-1",
+                "source": "tennis_explorer",
+                "source_match_id": "3363223",
+                "winner_name": "Ostapenkov D.",
+                "winner_player_id": "ostapenkov"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-25T18:04:13.167100+00:00",
+                "canonical_alias_id": "0b249f4b-af5e-43e8-9f57-ddfd06307184",
+                "canonical_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                "identity_available_at": "2026-10-21T01:51:01.332673+00:00",
+                "identity_link_id": "90fec751-0c7e-4846-a738-60db657b36e4",
+                "participant_id": "cc746389-8eaa-4f8b-9938-36db2705edef"
+              },
+              {
+                "alias_available_at": "2026-10-25T23:04:25.471219+00:00",
+                "canonical_alias_id": "8bf909f4-f708-4726-9dc1-fdcd2fe0fdbc",
+                "canonical_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                "identity_available_at": "2026-10-21T20:27:56.765583+00:00",
+                "identity_link_id": "d8f9107e-86ca-47e8-918d-538808c7d19c",
+                "participant_id": "debe6d1b-43f5-4a17-81a8-0374ad3abc2e"
+              }
+            ],
+            "participants": [
+              "Остапенков Д",
+              "Барис О"
+            ],
+            "resolution_by_api_id": {
+              "13986": {
+                "canonical_player_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                "proof": {
+                  "api_card_id": "1d2385b7-5063-5be1-9fbc-ad2cb9fca1ea",
+                  "established_candidate_ids": [
+                    "3804bc9e-5e3a-582c-a5f3-f5003795214f"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "209867.0",
+                    "tennis_explorer": "ostapenkov",
+                    "tml": "O0BR"
+                  }
+                }
+              },
+              "32559": {
+                "canonical_player_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                "proof": {
+                  "api_card_id": "529c6840-c6a5-5c1a-8cf6-9d81054a738c",
+                  "established_candidate_ids": [
+                    "5436b243-a294-58f8-8c4c-79ad6e834da0"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "210028.0",
+                    "tennis_abstract": "OzanBaris",
+                    "tennis_explorer": "baris",
+                    "tml": "C0HX"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "13986": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+              "32559": "5436b243-a294-58f8-8c4c-79ad6e834da0"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 1,
+        "selected_canonical_player_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+        "source_player_id": "13986"
+      },
+      "evidence_digest": "4af75ae8ae9c38413386abcb47367f38b3bbbc56c6ff194b13bf300c5cfca60a",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "13986"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+      "current_owner_id": "529c6840-c6a5-5c1a-8cf6-9d81054a738c",
+      "evidence": {
+        "current_confirmed_owner_id": "529c6840-c6a5-5c1a-8cf6-9d81054a738c",
+        "independent_source_match_count": 1,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "O. Baris",
+              "loser_player_id": "32559",
+              "played_at": "2026-10-27T23:30:00+00:00",
+              "score": "6-1 6-1",
+              "winner_name": "D. Ostapenkov",
+              "winner_player_id": "13986"
+            },
+            "api_match_id": "12175165",
+            "api_observation_available_at": "2026-10-29T00:07:48.260509+00:00",
+            "api_observation_id": "ec3e9b25-2593-4db6-8a39-89dec2d20cd9",
+            "api_source_content_hash": "ccba915fc44a142152cb5f57a800df190dd0a18ccb6ab31491fd720ded443ec5",
+            "canonical_key": "3102de3b069a6e7f56a56cce47798e4790abf76f",
+            "canonical_match_id": "1a119fc6-b9dc-5272-b770-f14ff5d21eaf",
+            "canonical_match_sources": [
+              "api_tennis:12175165",
+              "tennis_explorer:3363223"
+            ],
+            "fonbet_event_id": "69385696",
+            "fonbet_event_uuid": "9fb26731-a5f7-4049-bcb6-201f3abd91c6",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                  "5436b243-a294-58f8-8c4c-79ad6e834da0"
+                ],
+                "loser_name": "Baris O.",
+                "loser_player_id": "baris",
+                "played_at": "2026-10-28T00:00:00+00:00",
+                "score": "6-1 6-1",
+                "source": "tennis_explorer",
+                "source_match_id": "3363223",
+                "winner_name": "Ostapenkov D.",
+                "winner_player_id": "ostapenkov"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-25T18:04:13.167100+00:00",
+                "canonical_alias_id": "0b249f4b-af5e-43e8-9f57-ddfd06307184",
+                "canonical_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                "identity_available_at": "2026-10-21T01:51:01.332673+00:00",
+                "identity_link_id": "90fec751-0c7e-4846-a738-60db657b36e4",
+                "participant_id": "cc746389-8eaa-4f8b-9938-36db2705edef"
+              },
+              {
+                "alias_available_at": "2026-10-25T23:04:25.471219+00:00",
+                "canonical_alias_id": "8bf909f4-f708-4726-9dc1-fdcd2fe0fdbc",
+                "canonical_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                "identity_available_at": "2026-10-21T20:27:56.765583+00:00",
+                "identity_link_id": "d8f9107e-86ca-47e8-918d-538808c7d19c",
+                "participant_id": "debe6d1b-43f5-4a17-81a8-0374ad3abc2e"
+              }
+            ],
+            "participants": [
+              "Остапенков Д",
+              "Барис О"
+            ],
+            "resolution_by_api_id": {
+              "13986": {
+                "canonical_player_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                "proof": {
+                  "api_card_id": "1d2385b7-5063-5be1-9fbc-ad2cb9fca1ea",
+                  "established_candidate_ids": [
+                    "3804bc9e-5e3a-582c-a5f3-f5003795214f"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "209867.0",
+                    "tennis_explorer": "ostapenkov",
+                    "tml": "O0BR"
+                  }
+                }
+              },
+              "32559": {
+                "canonical_player_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                "proof": {
+                  "api_card_id": "529c6840-c6a5-5c1a-8cf6-9d81054a738c",
+                  "established_candidate_ids": [
+                    "5436b243-a294-58f8-8c4c-79ad6e834da0"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "210028.0",
+                    "tennis_abstract": "OzanBaris",
+                    "tennis_explorer": "baris",
+                    "tml": "C0HX"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "13986": "3804bc9e-5e3a-582c-a5f3-f5003795214f",
+              "32559": "5436b243-a294-58f8-8c4c-79ad6e834da0"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 1,
+        "selected_canonical_player_id": "5436b243-a294-58f8-8c4c-79ad6e834da0",
+        "source_player_id": "32559"
+      },
+      "evidence_digest": "4a3d8568b960a37fb7f19dc13ef3985ef46c7b0a4dcafedc4c55e29ebaef06cd",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "32559"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8",
+      "current_owner_id": "13777ec0-a8d2-5e96-bc3d-6651a24e993c",
+      "evidence": {
+        "current_confirmed_owner_id": "13777ec0-a8d2-5e96-bc3d-6651a24e993c",
+        "independent_source_match_count": 1,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "M. Okalova",
+              "loser_player_id": "38017",
+              "played_at": "2026-10-28T19:50:00+00:00",
+              "score": "6-4 7-6",
+              "winner_name": "E. Mamedova",
+              "winner_player_id": "14563"
+            },
+            "api_match_id": "12174758",
+            "api_observation_available_at": "2026-10-29T00:01:13.090169+00:00",
+            "api_observation_id": "83c332ae-f88e-450f-9939-561d3b051289",
+            "api_source_content_hash": "a23d2ee66401d66b9122310060f080ac8280c9f3a1e2b878786c546bc58017de",
+            "canonical_key": "bdb57a9f164015b0163ecbacadd88947123cc196",
+            "canonical_match_id": "cd97d474-6778-53bd-af3a-76bdaf97aa4b",
+            "canonical_match_sources": [
+              "api_tennis:12174758",
+              "tennis_explorer:3362189"
+            ],
+            "fonbet_event_id": "69360484",
+            "fonbet_event_uuid": "c2424dcf-5648-448c-9b10-e93342a62572",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "605e347c-da46-5021-a725-43480e134b44",
+                  "d69185cc-ac7d-592d-8de4-8af7eea2e7b8"
+                ],
+                "loser_name": "Okalova M.",
+                "loser_player_id": "okalova",
+                "played_at": "2026-10-28T00:00:00+00:00",
+                "score": "6-4 7-6(3)",
+                "source": "tennis_explorer",
+                "source_match_id": "3362189",
+                "winner_name": "Mamedova E.",
+                "winner_player_id": "mamedova"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-28T09:56:38.106495+00:00",
+                "canonical_alias_id": "50a2d9de-eeeb-4fc2-8977-667ce004a594",
+                "canonical_id": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8",
+                "identity_available_at": "2026-10-21T00:52:01.099883+00:00",
+                "identity_link_id": "a797248b-066d-4527-aa61-5be67345137f",
+                "participant_id": "d8c77bea-3552-49b5-8a6f-609ab307da44"
+              },
+              {
+                "alias_available_at": "2026-10-28T09:56:38.106495+00:00",
+                "canonical_alias_id": "18f66931-ea90-41f0-86c9-d59c042ac36a",
+                "canonical_id": "605e347c-da46-5021-a725-43480e134b44",
+                "identity_available_at": "2026-10-21T06:09:48.230581+00:00",
+                "identity_link_id": "be7c952d-a32d-49d8-bef3-ba60b04f07ce",
+                "participant_id": "cae38a6e-cea4-49fc-a0ca-21ae57ac1b03"
+              }
+            ],
+            "participants": [
+              "Окалова М",
+              "Мамедова Э"
+            ],
+            "resolution_by_api_id": {
+              "14563": {
+                "canonical_player_id": "605e347c-da46-5021-a725-43480e134b44",
+                "proof": {
+                  "api_card_id": "605e347c-da46-5021-a725-43480e134b44",
+                  "established_candidate_ids": [],
+                  "method": "exact_api_id_only",
+                  "selected_card_id": "605e347c-da46-5021-a725-43480e134b44"
+                }
+              },
+              "38017": {
+                "canonical_player_id": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8",
+                "proof": {
+                  "api_card_id": "13777ec0-a8d2-5e96-bc3d-6651a24e993c",
+                  "established_candidate_ids": [
+                    "d69185cc-ac7d-592d-8de4-8af7eea2e7b8"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8",
+                  "selected_card_source_ids": {
+                    "api_tennis": "28141",
+                    "tennis_explorer": "okalova",
+                    "tml": "214862"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "14563": "605e347c-da46-5021-a725-43480e134b44",
+              "38017": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 1,
+        "selected_canonical_player_id": "d69185cc-ac7d-592d-8de4-8af7eea2e7b8",
+        "source_player_id": "38017"
+      },
+      "evidence_digest": "2069967562f7840aea99b0ead8f5c618fa2c96188a58b654bd13187a301ca513",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "38017"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+      "current_owner_id": "79f6e36b-7f82-5aec-b951-917d425802e2",
+      "evidence": {
+        "current_confirmed_owner_id": "79f6e36b-7f82-5aec-b951-917d425802e2",
+        "independent_source_match_count": 1,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "A. Ibragimova",
+              "loser_player_id": "51378",
+              "played_at": "2026-10-26T06:30:00+00:00",
+              "score": "6-4 6-4",
+              "winner_name": "H. Shi",
+              "winner_player_id": "38097"
+            },
+            "api_match_id": "12174201",
+            "api_observation_available_at": "2026-10-29T00:12:01.932248+00:00",
+            "api_observation_id": "51097fb6-1deb-4e0e-8018-55f32b99fb3d",
+            "api_source_content_hash": "add4138a2e45db06d63e83e5c942abfc1a2a0c0e1094984d62b98cb6e982b66f",
+            "canonical_key": "28d0189c2bee59315bfd4994a60e5199bf83adb9",
+            "canonical_match_id": "c06d0bb2-b5e0-5aa6-bf18-37b7b3704692",
+            "canonical_match_sources": [
+              "api_tennis:12174201",
+              "tennis_abstract:6603eb415bcbce0e957dd2a2fd43c0b44131ec05",
+              "tennis_explorer:3359735"
+            ],
+            "fonbet_event_id": "69313195",
+            "fonbet_event_uuid": "c1ac9647-a314-4f39-bd8d-68dab02a948b",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+                  "0a9066b5-6633-5c77-aa05-b06584bf8904"
+                ],
+                "loser_name": "Ibragimova A.",
+                "loser_player_id": "ibragimova-ef6ec",
+                "played_at": "2026-10-26T00:00:00+00:00",
+                "score": "6-4 6-4",
+                "source": "tennis_explorer",
+                "source_match_id": "3359735",
+                "winner_name": "Shi H.",
+                "winner_player_id": "shi-2f390"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+                "canonical_alias_id": "31c4ad90-2225-4463-a664-ca4b6fc8d516",
+                "canonical_id": "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+                "identity_available_at": "2026-10-21T00:46:09.270877+00:00",
+                "identity_link_id": "bf47eba8-8092-47ce-8213-9b7a03519cb5",
+                "participant_id": "eb52a2fb-8bcd-4b01-9f50-2c0bfe298630"
+              },
+              {
+                "alias_available_at": "2026-10-26T07:12:31.181280+00:00",
+                "canonical_alias_id": "307faba4-4d99-4bf2-8be2-ab37d5fdcf72",
+                "canonical_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+                "identity_available_at": "2026-10-24T03:39:22.061721+00:00",
+                "identity_link_id": "9db0ed34-56db-4cc7-b41b-e30bef1b6c58",
+                "participant_id": "2685822d-cbdd-4bfc-b3a4-6cc791935452"
+              }
+            ],
+            "participants": [
+              "Ши Хань",
+              "Ибрагимова А"
+            ],
+            "resolution_by_api_id": {
+              "38097": {
+                "canonical_player_id": "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+                "proof": {
+                  "api_card_id": "f2373beb-1aa5-5ac5-b50f-ce7bd60bd754",
+                  "established_candidate_ids": [
+                    "65dfef0b-cc4e-586e-a5df-08c3e167a47d"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+                  "selected_card_source_ids": {
+                    "api_tennis": "31159",
+                    "tennis_abstract": "HanShi",
+                    "tennis_explorer": "shi-2f390",
+                    "tml": "222559"
+                  }
+                }
+              },
+              "51378": {
+                "canonical_player_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+                "proof": {
+                  "api_card_id": "79f6e36b-7f82-5aec-b951-917d425802e2",
+                  "established_candidate_ids": [
+                    "0a9066b5-6633-5c77-aa05-b06584bf8904"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+                  "selected_card_source_ids": {
+                    "api_tennis": "26602",
+                    "tennis_explorer": "ibragimova-ef6ec",
+                    "tml": "260581"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "38097": "65dfef0b-cc4e-586e-a5df-08c3e167a47d",
+              "51378": "0a9066b5-6633-5c77-aa05-b06584bf8904"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 1,
+        "selected_canonical_player_id": "0a9066b5-6633-5c77-aa05-b06584bf8904",
+        "source_player_id": "51378"
+      },
+      "evidence_digest": "519fd5b2e499806266103f9d8561562599ce33305e65ca0059c4a6523572993d",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "51378"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "e483a585-788f-502f-9803-d8ca515f7719",
+      "current_owner_id": "c24c1dbb-ece4-51a6-a68e-b321712a298f",
+      "evidence": {
+        "current_confirmed_owner_id": "c24c1dbb-ece4-51a6-a68e-b321712a298f",
+        "independent_source_match_count": 2,
+        "match_references": [
+          {
+            "api_match": {
+              "loser_name": "B. Artnak",
+              "loser_player_id": "10846",
+              "played_at": "2026-10-19T16:10:00+00:00",
+              "score": "6-4 6-4",
+              "winner_name": "A. Rybakov",
+              "winner_player_id": "559"
+            },
+            "api_match_id": "12172211",
+            "api_observation_available_at": "2026-10-24T00:06:53.207876+00:00",
+            "api_observation_id": "62fa0352-108a-47e8-8861-3a832915f866",
+            "api_source_content_hash": "beacc0c818c4a117b3a901d06229c2d6b6065f3955cd46c578d6a1b5910e7844",
+            "canonical_key": "bfdf07f766ac1cd4f6640b392993c3c719240213",
+            "canonical_match_id": "437f7d33-18ca-5240-a79e-a33e18928f59",
+            "canonical_match_sources": [
+              "api_tennis:12172211",
+              "flashscore:n1DES1YP",
+              "tennis_explorer:3353665"
+            ],
+            "fonbet_event_id": "69109936",
+            "fonbet_event_uuid": "0cf08d53-f8a9-4953-b2d0-9ab2b0c2d358",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "e483a585-788f-502f-9803-d8ca515f7719",
+                  "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                ],
+                "loser_name": "Artnak B.",
+                "loser_player_id": "2XEwnKpM",
+                "played_at": "2026-10-19T16:10:00+00:00",
+                "score": "6-4 6-4",
+                "source": "flashscore",
+                "source_match_id": "n1DES1YP",
+                "winner_name": "Rybakov A.",
+                "winner_player_id": "x01GZe48"
+              },
+              {
+                "canonical_player_ids": [
+                  "e483a585-788f-502f-9803-d8ca515f7719",
+                  "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                ],
+                "loser_name": "Artnak B.",
+                "loser_player_id": "artnak",
+                "played_at": "2026-10-19T00:00:00+00:00",
+                "score": "6-4 6-4",
+                "source": "tennis_explorer",
+                "source_match_id": "3353665",
+                "winner_name": "Rybakov A.",
+                "winner_player_id": "rybakov"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-28T09:56:38.106495+00:00",
+                "canonical_alias_id": "12d9898e-7b75-439b-9b21-5ad5ede046c2",
+                "canonical_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "identity_available_at": "2026-10-21T21:43:06.067369+00:00",
+                "identity_link_id": "8ec1e319-d239-44f6-b541-c019bee6dd94",
+                "participant_id": "681f882e-f153-4734-86a7-e90f837c4250"
+              },
+              {
+                "alias_available_at": "2026-10-28T16:16:54.736808+00:00",
+                "canonical_alias_id": "6720004b-08d2-41ed-a5e1-4f4f22d9b201",
+                "canonical_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                "identity_available_at": "2026-10-21T01:51:01.260831+00:00",
+                "identity_link_id": "36a4bda3-bfd1-4a50-90a1-46618219a494",
+                "participant_id": "44b4a2fc-0c61-4448-b665-91ed487294c7"
+              }
+            ],
+            "participants": [
+              "Рыбаков А",
+              "Артнак Б"
+            ],
+            "resolution_by_api_id": {
+              "10846": {
+                "canonical_player_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                "proof": {
+                  "api_card_id": "f42bef53-6364-54e2-9eef-f298a5a40683",
+                  "established_candidate_ids": [
+                    "36e1bc7a-454c-502d-b0cd-f1790cac3843"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "210107.0",
+                    "tennis_explorer": "artnak",
+                    "tml": "A0I1"
+                  }
+                }
+              },
+              "559": {
+                "canonical_player_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "proof": {
+                  "api_card_id": "c24c1dbb-ece4-51a6-a68e-b321712a298f",
+                  "established_candidate_ids": [
+                    "e483a585-788f-502f-9803-d8ca515f7719"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "126206.0",
+                    "tennis_explorer": "rybakov",
+                    "tml": "RG42"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "10846": "36e1bc7a-454c-502d-b0cd-f1790cac3843",
+              "559": "e483a585-788f-502f-9803-d8ca515f7719"
+            }
+          },
+          {
+            "api_match": {
+              "loser_name": "K. Poling",
+              "loser_player_id": "8886",
+              "played_at": "2026-10-18T16:05:00+00:00",
+              "score": "6-4 6-4",
+              "winner_name": "A. Rybakov",
+              "winner_player_id": "559"
+            },
+            "api_match_id": "12172094",
+            "api_observation_available_at": "2026-10-23T12:42:17.984087+00:00",
+            "api_observation_id": "51715024-d235-409b-b311-ac85fffcdec0",
+            "api_source_content_hash": "ef9c7d2df4f2553616b4a84e2dfc3fe1cd2953553739c4fc734053550eed917a",
+            "canonical_key": "ce9902c1430ec48b78b56e7de131a59024d61afc",
+            "canonical_match_id": "dd734222-d2b2-5d60-a07c-84103dbe44ab",
+            "canonical_match_sources": [
+              "api_tennis:12172094",
+              "flashscore:C0GhS2zi",
+              "tennis_explorer:3352993"
+            ],
+            "fonbet_event_id": "69084311",
+            "fonbet_event_uuid": "c55d370f-f66a-4ff9-b5cd-756cb4ae09d6",
+            "independent_same_pair_matches": [
+              {
+                "canonical_player_ids": [
+                  "e483a585-788f-502f-9803-d8ca515f7719",
+                  "db9769ae-888e-5bd8-9701-0b497ce101aa"
+                ],
+                "loser_name": "Poling K.",
+                "loser_player_id": "poling",
+                "played_at": "2026-10-18T00:00:00+00:00",
+                "score": "6-4 6-4",
+                "source": "tennis_explorer",
+                "source_match_id": "3352993",
+                "winner_name": "Rybakov A.",
+                "winner_player_id": "rybakov"
+              }
+            ],
+            "participant_identity_proofs": [
+              {
+                "alias_available_at": "2026-10-25T16:01:12.594133+00:00",
+                "canonical_alias_id": "efec00f9-ae0a-4b9d-b987-31904317acab",
+                "canonical_id": "db9769ae-888e-5bd8-9701-0b497ce101aa",
+                "identity_available_at": "2026-10-21T01:51:01.285026+00:00",
+                "identity_link_id": "6b970b9d-0407-4c00-bb15-0f6c6098e5b2",
+                "participant_id": "53781f51-2ac0-458e-9c1c-ff586396add5"
+              },
+              {
+                "alias_available_at": "2026-10-28T09:56:38.106495+00:00",
+                "canonical_alias_id": "12d9898e-7b75-439b-9b21-5ad5ede046c2",
+                "canonical_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "identity_available_at": "2026-10-21T21:43:06.067369+00:00",
+                "identity_link_id": "8ec1e319-d239-44f6-b541-c019bee6dd94",
+                "participant_id": "681f882e-f153-4734-86a7-e90f837c4250"
+              }
+            ],
+            "participants": [
+              "Полинг К",
+              "Рыбаков А"
+            ],
+            "resolution_by_api_id": {
+              "559": {
+                "canonical_player_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                "proof": {
+                  "api_card_id": "c24c1dbb-ece4-51a6-a68e-b321712a298f",
+                  "established_candidate_ids": [
+                    "e483a585-788f-502f-9803-d8ca515f7719"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "e483a585-788f-502f-9803-d8ca515f7719",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "126206.0",
+                    "tennis_explorer": "rybakov",
+                    "tml": "RG42"
+                  }
+                }
+              },
+              "8886": {
+                "canonical_player_id": "db9769ae-888e-5bd8-9701-0b497ce101aa",
+                "proof": {
+                  "api_card_id": "708c2d6d-79c7-5ee8-8931-52933265b486",
+                  "established_candidate_ids": [
+                    "db9769ae-888e-5bd8-9701-0b497ce101aa"
+                  ],
+                  "method": "exact_api_id_plus_unique_established_peer",
+                  "selected_card_id": "db9769ae-888e-5bd8-9701-0b497ce101aa",
+                  "selected_card_source_ids": {
+                    "sackmann_sqlite": "207202.0",
+                    "tennis_explorer": "poling",
+                    "tml": "P0C1"
+                  }
+                }
+              }
+            },
+            "target_by_api_id": {
+              "559": "e483a585-788f-502f-9803-d8ca515f7719",
+              "8886": "db9769ae-888e-5bd8-9701-0b497ce101aa"
+            }
+          }
+        ],
+        "method": "reviewed_api_tennis_alias_reconciliation_v1",
+        "projection_methods": [
+          "exact_api_id_plus_unique_established_peer"
+        ],
+        "reviewed_match_count": 2,
+        "selected_canonical_player_id": "e483a585-788f-502f-9803-d8ca515f7719",
+        "source_player_id": "559"
+      },
+      "evidence_digest": "3996f1f9888c83ff60a2c15886145c2b1d5c5e630ed11d4c42f90433f9a78699",
+      "rationale": "The existing API-Tennis projection resolver uniquely selected the same established canonical player as the confirmed Fonbet participant identity. The assignment is consistent across all reviewed matches and API raw winner/loser IDs; match-level evidence and independent provider aliases are attached.",
+      "source": "api_tennis",
+      "source_player_id": "559"
+    }
+  ],
+  "counts": {
+    "already_correct": 9,
+    "confirm": 0,
+    "reassign": 12
+  },
+  "generated_at": "2026-10-29T10:00:57.118826+03:00",
+  "link_dry_run_path": "/tmp/tennis_all_link_review_20261029.json",
+  "link_dry_run_sha256": "da5c004686d95873f93e3829e9dee550a316e7a92ccf03e58441d81adc5d42cd",
+  "rejected_events": [
+    {
+      "api_player_id": "37903",
+      "fonbet_source_event_id": "69161598",
+      "reason": "projection_resolver_disagrees_with_confirmed_match_identity"
+    },
+    {
+      "api_player_id": "1960",
+      "fonbet_source_event_id": "69162585",
+      "reason": "projection_resolver_disagrees_with_confirmed_match_identity"
+    },
+    {
+      "api_player_id": "10502",
+      "fonbet_source_event_id": "69304680",
+      "reason": "projection_resolver_disagrees_with_confirmed_match_identity"
+    },
+    {
+      "api_player_id": "73",
+      "fonbet_source_event_id": "69016186",
+      "reason": "projection_resolver_disagrees_with_confirmed_match_identity"
+    }
+  ],
+  "reviewed_conflict_events": 13,
+  "status": "complete",
+  "training_gate": "blocked_not_an_admission_report",
+  "unique_provider_ids": 21,
+  "unsafe": []
+}

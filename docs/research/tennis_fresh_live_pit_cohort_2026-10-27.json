@@ -1,0 +1,70 @@
+{
+  "certified_examples": 0,
+  "checked_snapshots": 11,
+  "exclusions": {
+    "event_format:missing_evidence": 10,
+    "event_format:missing_sources": 10,
+    "event_surface:missing_evidence": 11,
+    "event_surface:missing_sources": 11,
+    "player_metrics:missing_evidence": 4,
+    "player_metrics:missing_sources": 4,
+    "serve_metrics_a:missing_evidence": 10,
+    "serve_metrics_a:missing_sources": 10,
+    "serve_metrics_b:missing_evidence": 11,
+    "serve_metrics_b:missing_sources": 11
+  },
+  "generated_at": "2026-10-27T00:01:12.305957+00:00",
+  "indexed_snapshot_keys": 12,
+  "loaded_snapshots": 12,
+  "missing_snapshots": 0,
+  "per_example_results_path": "tennis_fresh_live_pit_cohort_2026-10-27.jsonl",
+  "report_version": "tennis_fresh_numeric_live_pit_cohort_v1",
+  "resolution_counts": {
+    "event_format:missing_or_not_available_as_of": 10,
+    "event_format:observed": 1,
+    "event_state:observed_snapshot": 11,
+    "event_surface:contract_default_unknown": 11,
+    "player_metrics.a:contract_default": 7,
+    "player_metrics.a:observed_snapshot": 4,
+    "player_metrics.b:contract_default": 5,
+    "player_metrics.b:observed_snapshot": 6,
+    "serve_metrics.a:identity_provenance_missing": 10,
+    "serve_metrics.a:metric_snapshot": 1,
+    "serve_metrics.b:identity_provenance_missing": 11
+  },
+  "skipped_outside_source_scope": 1,
+  "snapshot_index_sha256": "6ab96a236b827c184fc7f872a958f70686a3e0738601ab6802b87235f157c3eb",
+  "source_groups": {
+    "event_format": {
+      "available": 1,
+      "contract_defaulted": 0,
+      "missing_or_unverifiable": 10
+    },
+    "event_state": {
+      "available": 11,
+      "contract_defaulted": 0,
+      "missing_or_unverifiable": 0
+    },
+    "event_surface": {
+      "available": 0,
+      "contract_defaulted": 11,
+      "missing_or_unverifiable": 0
+    },
+    "player_metrics": {
+      "available": 3,
+      "contract_defaulted": 8,
+      "missing_or_unverifiable": 0
+    },
+    "serve_metrics_a": {
+      "available": 1,
+      "contract_defaulted": 0,
+      "missing_or_unverifiable": 10
+    },
+    "serve_metrics_b": {
+      "available": 0,
+      "contract_defaulted": 0,
+      "missing_or_unverifiable": 11
+    }
+  },
+  "training_not_run": true
+}

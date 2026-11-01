@@ -1,0 +1,34 @@
+{
+  "scope": "Bounded production transport probes; no claim of solved CAPTCHA",
+  "profile_url": "https://www.flashscore.com/player/huang-tsung-hao/AROuX8tf/results/",
+  "browser_profile_probe": {
+    "first": {
+      "outcome": "recovered",
+      "http_status": 200,
+      "body_bytes": 1456345
+    },
+    "repeat": {
+      "outcome": "recovered",
+      "http_status": 200,
+      "body_bytes": 1456640
+    },
+    "challenge_type": "data"
+  },
+  "pbp_probe": {
+    "source_match_id": "juGuZdcD",
+    "status": "complete",
+    "transport": "http_feed",
+    "documents": 1,
+    "confirmed_points": 190
+  },
+  "captcha_verified": false,
+  "cooldown_policy": {
+    "global_enabled": false,
+    "captcha_job_retry_seconds": 60,
+    "recovery_enabled": true
+  },
+  "requeued": {
+    "flashscore_import_jobs": 11,
+    "tennis_player_refresh_jobs": 30
+  }
+}

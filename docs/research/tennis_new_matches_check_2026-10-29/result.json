@@ -1,0 +1,507 @@
+{
+  "as_of": "2026-10-29T07:08:17.945793+00:00",
+  "scope": "10 most recently first-seen finished singles candidates in last 24h; current data, not train admission",
+  "events": [
+    {
+      "event_id": "cf166f7c-5041-4e21-ac74-452f662d651b",
+      "source_event_id": "69420195",
+      "first_seen_at": "2026-10-29T04:36:19.235885+00:00",
+      "players": [
+        "Самакаев Искандер",
+        "Тамаркин Никита"
+      ],
+      "status": "complete",
+      "snapshots": 456,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 94,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 95,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/cf166f7c-5041-4e21-ac74-452f662d651b/tennis_training_examples_d916393cda60.jsonl",
+        "examples": 95,
+        "sha256": "4a785756cef58d8795a089556baeedf8b43d525670f8f170b7946a809db8a22e",
+        "logical_digest": "d916393cda60b9c9041fb22d5fd0c04bd0eb2de798fd6d1bd9833247ec825d6a"
+      }
+    },
+    {
+      "event_id": "297ebfda-b08d-4ab6-98ba-2d6c66826bd8",
+      "source_event_id": "69417464",
+      "first_seen_at": "2026-10-29T00:02:51.946960+00:00",
+      "players": [
+        "Сингх Сварманью",
+        "Бишт В"
+      ],
+      "status": "complete",
+      "snapshots": 2,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "feature_pit_not_certified"
+        },
+        "match": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_snapshot_aligned_label"
+        }
+      },
+      "features": 0,
+      "result_time": {
+        "snapshot_rows_returned": 0,
+        "exact_terminal_score_snapshots": 0,
+        "snapshots_preceding_metadata_time": 0,
+        "sources": {
+          "fonbet_official_result_metadata": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/297ebfda-b08d-4ab6-98ba-2d6c66826bd8/tennis_training_examples_e3b0c44298fc.jsonl",
+        "examples": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "logical_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "event_id": "6a9133bf-bc53-4e9a-b9aa-ae357e5b66fa",
+      "source_event_id": "69406557",
+      "first_seen_at": "2026-10-29T00:02:51.946960+00:00",
+      "players": [
+        "Шарма М",
+        "Камбодж У"
+      ],
+      "status": "complete",
+      "snapshots": 2,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "feature_pit_not_certified"
+        },
+        "match": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_snapshot_aligned_label"
+        }
+      },
+      "features": 0,
+      "result_time": {
+        "snapshot_rows_returned": 0,
+        "exact_terminal_score_snapshots": 0,
+        "snapshots_preceding_metadata_time": 0,
+        "sources": {
+          "fonbet_official_result_metadata": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/6a9133bf-bc53-4e9a-b9aa-ae357e5b66fa/tennis_training_examples_e3b0c44298fc.jsonl",
+        "examples": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "logical_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "event_id": "9373ab1f-e027-4e2f-8c5b-a8d342554122",
+      "source_event_id": "69410856",
+      "first_seen_at": "2026-10-28T18:13:36.203276+00:00",
+      "players": [
+        "Калина В",
+        "Месарович М"
+      ],
+      "status": "complete",
+      "snapshots": 713,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 113,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 114,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/9373ab1f-e027-4e2f-8c5b-a8d342554122/tennis_training_examples_5cccaac94150.jsonl",
+        "examples": 114,
+        "sha256": "5bbdcf9a323ec23abb7c95911224e6ab37b55ba863734cd313a6fce71e6a9ac4",
+        "logical_digest": "5cccaac94150297ec045d7c1152505187a1b4300651c97cd869dbc728535adc8"
+      }
+    },
+    {
+      "event_id": "cf62a598-e8b2-49a6-bce9-607e8e8211b8",
+      "source_event_id": "69389475",
+      "first_seen_at": "2026-10-28T18:05:13.497882+00:00",
+      "players": [
+        "Маррон-баруки М",
+        "Оз И"
+      ],
+      "status": "complete",
+      "snapshots": 246,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 60,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 61,
+      "result_time": {
+        "snapshot_rows_returned": 0,
+        "exact_terminal_score_snapshots": 0,
+        "snapshots_preceding_metadata_time": 0,
+        "sources": {
+          "fonbet_official_result_metadata": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/cf62a598-e8b2-49a6-bce9-607e8e8211b8/tennis_training_examples_bfa8d7c99f54.jsonl",
+        "examples": 61,
+        "sha256": "c76fec30b1b118b02572a88fd8002579397b562ea560162b548ef4784cd31e47",
+        "logical_digest": "bfa8d7c99f547a217658ac287812db24e7f195ab0ac8998ce1768718ffe94795"
+      }
+    },
+    {
+      "event_id": "f10d6f2c-c972-4dbe-8510-65face02ab19",
+      "source_event_id": "69406187",
+      "first_seen_at": "2026-10-28T15:12:11.981065+00:00",
+      "players": [
+        "Ноэль Х",
+        "Гомес К"
+      ],
+      "status": "complete",
+      "snapshots": 560,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 104,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 105,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/f10d6f2c-c972-4dbe-8510-65face02ab19/tennis_training_examples_17e62f8beb9a.jsonl",
+        "examples": 105,
+        "sha256": "1ae5db4e8c81a9c82539d91fec7632250c5703c610d545de19f1eb9547b816dd",
+        "logical_digest": "17e62f8beb9aa7b6729e994192372bae2a1d73ed7553239eadd65dfdf26f509d"
+      }
+    },
+    {
+      "event_id": "bc048773-d41e-4151-8f57-5ec24a5ad441",
+      "source_event_id": "69405309",
+      "first_seen_at": "2026-10-28T14:45:27.283207+00:00",
+      "players": [
+        "Сингх Д-п",
+        "Муртаза М"
+      ],
+      "status": "complete",
+      "snapshots": 607,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 114,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 115,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/bc048773-d41e-4151-8f57-5ec24a5ad441/tennis_training_examples_3d5c715e2e6e.jsonl",
+        "examples": 115,
+        "sha256": "cd570b0ebd28f01eed733bcbdfdcb6db88b82a92b9dcb967a3163496d9c79b03",
+        "logical_digest": "3d5c715e2e6eb8ed75f4f25a427602a8d529952b63f160118f007ed7d1c497df"
+      }
+    },
+    {
+      "event_id": "c4e608fc-fd97-4888-8da5-dc3b4f651eec",
+      "source_event_id": "69403220",
+      "first_seen_at": "2026-10-28T13:55:59.578147+00:00",
+      "players": [
+        "Хиральди-рекена А",
+        "Магро М"
+      ],
+      "status": "complete",
+      "snapshots": 975,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 203,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 204,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/c4e608fc-fd97-4888-8da5-dc3b4f651eec/tennis_training_examples_d26a561680c9.jsonl",
+        "examples": 204,
+        "sha256": "f70f634ea9ca63d38854af749808db7e71489bc8d9636cc0104ccb40e3b667a6",
+        "logical_digest": "d26a561680c9a608d986241428ed25e6118fc892211b58774cf529c01e194713"
+      }
+    },
+    {
+      "event_id": "1698b627-027a-4b18-826c-93addd31e2a2",
+      "source_event_id": "69403716",
+      "first_seen_at": "2026-10-28T13:51:19.750944+00:00",
+      "players": [
+        "Бурцев Д",
+        "Бессонов Д"
+      ],
+      "status": "complete",
+      "snapshots": 500,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_history_version"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_history_version"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 110,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 111,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/1698b627-027a-4b18-826c-93addd31e2a2/tennis_training_examples_db3e3aede142.jsonl",
+        "examples": 111,
+        "sha256": "13ff233ec8ccdc962717e3762268cb7d943fb796eba7a1ad8d31338dacb67916",
+        "logical_digest": "db3e3aede1426936e2fe687e1e8405fad25a86222b2fe58c2e100efacd3cedf7"
+      }
+    },
+    {
+      "event_id": "453bed73-0eca-458f-a403-5ae2c30cdc72",
+      "source_event_id": "69403724",
+      "first_seen_at": "2026-10-28T13:51:19.750944+00:00",
+      "players": [
+        "Шин М",
+        "Мюллер Кэлвин"
+      ],
+      "status": "complete",
+      "snapshots": 629,
+      "targets": {
+        "point": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "game": {
+          "matches": 0,
+          "examples": 0,
+          "reason": "no_confirmed_source_link"
+        },
+        "set": {
+          "matches": 1,
+          "examples": 115,
+          "reason": "feature_certified_candidate"
+        },
+        "match": {
+          "matches": 1,
+          "examples": 1,
+          "reason": "feature_certified_candidate"
+        }
+      },
+      "features": 116,
+      "result_time": {
+        "snapshot_rows_returned": 1,
+        "exact_terminal_score_snapshots": 1,
+        "snapshots_preceding_metadata_time": 1,
+        "sources": {
+          "fonbet_exact_final_score_snapshot": 1
+        },
+        "unknown_valid_results": 0,
+        "labels_after_audit_cutoff": 0
+      },
+      "examples_manifest": {
+        "path": "/tmp/tennis_new_matches_check_20261029/453bed73-0eca-458f-a403-5ae2c30cdc72/tennis_training_examples_1509ff8cca7c.jsonl",
+        "examples": 116,
+        "sha256": "e4380f4733490d49f4b77f53664527c4864a3a83850e5a72d4d121f2a2de0ea3",
+        "logical_digest": "1509ff8cca7cb34000cd9d97e3a24aa139255411d926b9d93aa39a83897edc35"
+      }
+    }
+  ],
+  "status": "complete"
+}

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import pytest
 
 from app.external_tennis_sources import (
     ARCHIVE_STOP_AT,
@@ -9,16 +10,136 @@ from app.external_tennis_sources import (
     _api_tennis_player_stat_ratios,
     _api_tennis_winner_first_score,
     _api_tennis_projection_item,
+    _api_tennis_serve_point_counts,
+    _persist_api_tennis_serve_point_counts,
     _prioritize_tennis_explorer_profiles,
     _tennis_abstract_imported_observations,
     _livescore_catalog_summary,
     _live_tennis_player_candidate,
     _live_tennis_player_profile,
+    _live_tennis_profile_identity,
+    _live_tennis_quota_retry_delay_seconds,
     _point_completeness,
     _tml_historical_partitions,
     _store_result,
     _fixture_events,
+    _live_catalog_format,
+    _live_catalog_surface,
+    _materialize_live_catalog_metadata,
+    _catalog_name_similarity,
+    _catalog_pair_name_candidate,
+    replay_saved_catalog_evidence,
 )
+
+
+def test_offline_catalog_replay_rejects_source_bytes_with_wrong_hash():
+    from contextlib import contextmanager
+
+    class Result:
+        def mappings(self):
+            return self
+        def all(self):
+            return [{"state_key": "catalog_observation:original", "state_json": {
+                "raw_object_key": "archive/original.json.gz", "content_sha256": "a" * 64,
+                "first_observed_at": "2026-10-26T10:00:00Z"}}]
+    class Connection:
+        def execute(self, *args, **kwargs):
+            return Result()
+    class Engine:
+        @contextmanager
+        def connect(self):
+            yield Connection()
+    class Storage:
+        def read_external_raw_bytes(self, key):
+            return b'{"data":[]}'
+    report = replay_saved_catalog_evidence(Engine(), Storage())
+    assert report["provider_requests"] == 0
+    assert report["catalogs"][0]["rejected"] == "source_content_hash_mismatch"
+
+
+@pytest.mark.parametrize("newer_projection", [False, True])
+def test_catalog_direct_profile_identity_keeps_the_later_identity_timestamp(newer_projection):
+    from contextlib import contextmanager
+    from datetime import timedelta
+
+    seen = datetime(2026, 10, 26, 10, tzinfo=timezone.utc)
+    confirmed = seen + timedelta(minutes=5)
+    writes = []
+
+    class Result:
+        rowcount = 1
+        def __init__(self, rows):
+            self.rows = rows
+        def mappings(self):
+            return self
+        def all(self):
+            return self.rows
+
+    class Connection:
+        def execute(self, query, params=None):
+            sql = str(query)
+            if "FROM external_tennis_source_state s" in sql:
+                return Result([{
+                    "participant_id": participant,
+                    "state_json": {"status": 200, "match_status": "MATCHED",
+                        "requested_name": name, "profile_fetched_at": confirmed.isoformat(),
+                        "profile": {"name": name, "player_id": source_id}},
+                } for participant, name, source_id in (("p1", "First Player", "11"), ("p2", "Second Player", "22"))])
+            if "FROM events e" in sql:
+                assert "e.source='fonbet'" in sql
+                assert "e.source_event_id ~ '^[0-9]+$'" in sql
+                assert "e.last_seen_at >= now()-interval '90 seconds'" in sql
+                metadata = {"best_of": 3, "best_of_available_at": "2026-10-26T20:00:00Z",
+                            "surface": "hard", "surface_available_at": "2026-10-26T20:00:00Z"} if newer_projection else {}
+                return Result([{"event_id": "event-1", "source_event_id": "1234",
+                                "participant_a_id": "p1", "participant_b_id": "p2", "metadata_json": metadata}])
+            if "UPDATE events" in sql or "INSERT INTO tennis_event_attribute_observations" in sql:
+                writes.append((sql, params))
+            return Result([])
+
+    class Engine:
+        @contextmanager
+        def begin(self):
+            yield Connection()
+
+    counts = _materialize_live_catalog_metadata(Engine(), [{
+        "id": "match-1", "players": {"p1": {"id": "11"}, "p2": {"id": "22"}},
+        "format": "BO3", "surface": "hard",
+    }], catalog_seen_at=seen, content_sha256="a" * 64, raw_object_key="archive/" + "a" * 64 + ".json.gz")
+    assert counts["metadata_written"] == (0 if newer_projection else 1)
+    observations = [params for sql, params in writes if "INSERT INTO tennis_event_attribute_observations" in sql]
+    assert {item["attribute_name"] for item in observations} == {"best_of", "surface"}
+    assert all(item["available_at"] == confirmed and item["identity_available_at"] == confirmed for item in observations)
+
+
+def test_live_catalog_metadata_accepts_only_explicit_supported_values():
+    assert _live_catalog_format({"format": "BO3"}) == 3
+    assert _live_catalog_format({"format": "bo 5"}) == 5
+    assert _live_catalog_format({"format": "best of 3"}) is None
+    assert _live_catalog_format({"format": None}) is None
+    assert _live_catalog_format({"score": "2:0", "tournament": "Wimbledon"}) is None
+    assert _live_catalog_surface({"surface": "Hard"}) == "hard"
+    assert _live_catalog_surface({"surface": "indoor"}) is None
+    assert _live_catalog_surface({}) is None
+
+
+def test_catalog_name_candidates_handle_reversed_transliterated_fonbet_labels_without_confirming():
+    ruzi = _catalog_name_similarity("Antonia Ruzic", "Рузич А")
+    liu = _catalog_name_similarity("Claire Liu", "Лю Клер")
+    assert ruzi >= 0.66
+    assert liu >= 0.66
+    pair = _catalog_pair_name_candidate(
+        ("Antonia Ruzic", "Claire Liu"), ("Рузич А", "Лю Клер")
+    )
+    assert pair is not None
+    assert pair["identity_confirmed"] is False
+    assert min(pair["side_scores"]) >= 0.66
+
+
+def test_catalog_name_candidate_keeps_unrelated_pairs_unmatched():
+    assert _catalog_pair_name_candidate(
+        ("Antonia Ruzic", "Claire Liu"), ("Дель Пино М", "Бартункова Н")
+    ) is None
 
 
 def test_tennis_explorer_profile_budget_prioritizes_current_fonbet_players_without_linking():
@@ -204,12 +325,55 @@ def test_live_tennis_player_search_requires_one_exact_non_team_identity():
 
 def test_live_tennis_player_profile_checks_id_and_full_name():
     payload = {"id": 11, "name": "Jannik Sinner", "tour": "atp", "ranking": 2,
+               "ranking_points": 11000, "ranking_status": "ranked",
+               "ranking_checked_at": "2026-10-24T06:00:00Z",
                "country": "Italy", "profile_version": 1}
     profile = _live_tennis_player_profile(payload, expected_id="11", expected_name="Jannik Sinner")
     assert profile["ranking"] == 2
+    assert profile["ranking_points"] == 11000
+    assert profile["ranking_status"] == "ranked"
+    assert profile["ranking_checked_at"] == "2026-10-24T06:00:00Z"
     assert profile["tour"] == "atp"
     assert _live_tennis_player_profile(payload, expected_id="12", expected_name="Jannik Sinner") is None
     assert _live_tennis_player_profile(payload, expected_id="11", expected_name="J. Sinner") is None
+
+
+def test_live_tennis_profile_identity_keeps_only_exact_confirmed_pit_link():
+    state = {
+        "status": 200, "match_status": "MATCHED", "requested_name": "Stijn Pel",
+        "profile_fetched_at": "2026-10-26T12:00:00Z",
+        "profile": {"player_id": "1371", "name": "Stijn Pel"},
+    }
+    resolved = _live_tennis_profile_identity(state, "1371")
+    assert resolved["source_player_id"] == "1371"
+    assert resolved["available_at"].isoformat() == "2026-10-26T12:00:00+00:00"
+    assert _live_tennis_profile_identity(state, "1372") is None
+    assert _live_tennis_profile_identity({**state, "requested_name": "Stijn P."}, "1371") is None
+    assert _live_tennis_profile_identity({**state, "match_status": "PLAYER_SEARCH_AMBIGUOUS"}, "1371") is None
+
+
+def test_live_catalog_quota_retry_targets_the_next_allowed_boundary():
+    from datetime import datetime
+
+    now = datetime(2026, 10, 26, 23, 59, 30, tzinfo=timezone.utc)
+    exhausted_day = {"day": "2026-10-26", "daily_calls": 80, "daily_limit": 80}
+    assert _live_tennis_quota_retry_delay_seconds(exhausted_day, now) == 30
+    assert _live_tennis_quota_retry_delay_seconds({
+        "day": "2026-10-26", "daily_calls": 48, "daily_limit": 80,
+        "category_calls": {"catalog": 48},
+    }, now) == 30
+    assert _live_tennis_quota_retry_delay_seconds({
+        "day": "2026-10-26", "daily_calls": 28, "daily_limit": 80,
+        "category_calls": {"profile": 28},
+    }, now, category="profile", category_budget=28) == 30
+    assert _live_tennis_quota_retry_delay_seconds({
+        "day": "2026-10-26", "daily_calls": 2, "daily_limit": 80,
+        "minute_calls": 24, "minute_limit": 24,
+    }, datetime(2026, 10, 26, 12, 30, 20, tzinfo=timezone.utc)) == 40
+    assert _live_tennis_quota_retry_delay_seconds({
+        "day": "2026-10-26", "daily_calls": 2, "daily_limit": 80,
+        "minute_calls": 1, "minute_limit": 24,
+    }, now) is None
 
 
 def test_live_tennis_profile_worker_uses_two_free_calls_and_archives_profile(monkeypatch):
@@ -227,9 +391,12 @@ def test_live_tennis_profile_worker_uses_two_free_calls_and_archives_profile(mon
 
     class Connection:
         def execute(self, statement, *_args, **_kwargs):
-            assert "cp.display_name" in str(statement)
-            assert "s.state_json->>'requested_name'=" in str(statement)
-            assert "PARTITION BY lookup_name" in str(statement)
+            sql = str(statement)
+            assert "cp.display_name" in sql
+            assert "s.state_json->>'requested_name'=" in sql
+            assert "PARTITION BY lookup_name" in sql
+            assert "source='fonbet' AND source_event_id ~ '^[0-9]+$'" in sql
+            assert "last_seen_at >= now()-interval '90 seconds'" in sql
             return Result()
 
     class Transaction:
@@ -246,8 +413,8 @@ def test_live_tennis_profile_worker_uses_two_free_calls_and_archives_profile(mon
     reservations = []
     saved = []
     snapshots = []
-    worker._reserve_daily_call = lambda source, budget, *, minute_budget=None: (
-        reservations.append((source, budget, minute_budget)) or True
+    worker._reserve_daily_call = lambda source, budget, *, minute_budget=None, category=None, category_budget=None: (
+        reservations.append((source, budget, minute_budget, category, category_budget)) or True
     )
 
     async def fetch(_source, partition, url, *, headers=None, max_bytes=None):
@@ -267,12 +434,72 @@ def test_live_tennis_profile_worker_uses_two_free_calls_and_archives_profile(mon
 
     assert result == {"attempted": 1, "saved": 1, "skipped": 0}
     assert len(reservations) == 2
-    assert all(call == ("live_tennis_api", 80, 24) for call in reservations)
+    assert all(call == ("live_tennis_api", 80, 24, "profile", 28) for call in reservations)
     assert snapshots[0][1] == "profile:participant-1"
     assert snapshots[0][2]["profile"]["player_id"] == "11"
     assert snapshots[0][2]["search_raw_object_key"] == "raw/search.json"
     assert snapshots[0][2]["profile_raw_object_key"] == "raw/profile.json"
+    assert snapshots[0][2]["profile_parser_version"] == "live_tennis_player_profile_v2"
+    assert snapshots[0][2]["profile_url"].endswith("/players/11")
     assert snapshots[0][2]["match_data_authority"] == "fonbet"
+
+
+def test_confirmed_official_ranking_ingestion_archives_and_appends_pit_observation(monkeypatch):
+    import asyncio
+    import json
+    from app.external_tennis_sources import ExternalTennisSourcesWorker
+
+    target = {"canonical_id": "canonical-1", "source_player_id": "11",
+              "display_name": "Jannik Sinner", "gender": "m"}
+
+    class Rows:
+        def mappings(self): return self
+        def all(self): return [target]
+
+    class WriteResult:
+        rowcount = 1
+
+    class Connection:
+        def execute(self, statement, *_args, **_kwargs):
+            if "SELECT DISTINCT ON (a.canonical_player_id)" in str(statement):
+                return Rows()
+            assert "live_tennis_api_official" in str(statement)
+            assert "source_url,parser_version" in str(statement)
+            return WriteResult()
+
+    class Transaction:
+        def __enter__(self): return Connection()
+        def __exit__(self, *_args): return False
+
+    class Engine:
+        def connect(self): return Transaction()
+        def begin(self): return Transaction()
+
+    worker = ExternalTennisSourcesWorker(storage=object(), engine=Engine())
+    worker._reserve_daily_call = lambda *_args, **_kwargs: True
+    fetched_at = "2026-10-25T12:00:01+00:00"
+
+    async def fetch(_source, _partition, url, *, headers=None, max_bytes=None):
+        assert url.endswith("/players/11")
+        assert headers["Authorization"] == "Bearer test-key"
+        body = json.dumps({"id": 11, "name": "Jannik Sinner", "tour": "atp",
+                           "ranking": 2, "ranking_points": 11000,
+                           "ranking_status": "ranked",
+                           "ranking_checked_at": "2026-10-25T11:59:00Z"}).encode()
+        return {"status": 200, "key": "raw/rank.json", "content_sha256": "a" * 64,
+                "fetched_at": fetched_at, "body": body}
+
+    snapshots = []
+    worker._archive_external_get = fetch
+    worker._save_source_snapshot = lambda source, key, state: snapshots.append((source, key, state))
+    monkeypatch.setenv("LIVE_TENNIS_API_KEY", "test-key")
+    result = asyncio.run(worker._refresh_confirmed_official_rankings(limit=1))
+
+    assert result == {"attempted": 1, "ranked": 1, "skipped": 0}
+    assert snapshots[0][1] == "official_ranking:canonical-1"
+    assert snapshots[0][2]["ranking_status"] == "ranked"
+    assert snapshots[0][2]["source_url"].endswith("/players/11")
+    assert snapshots[-1][2]["parser_version"] == "live_tennis_player_profile_v2"
 
 
 def test_live_tennis_profile_skips_abbreviated_non_latin_name_without_spending_quota(monkeypatch):
@@ -574,6 +801,51 @@ def test_api_tennis_serve_metrics_require_match_level_won_and_total_counts():
     assert ratios == {"1": {"serve_won": 36 / 56, "return_won": 21 / 44}}
 
 
+def test_api_tennis_serve_point_counts_preserve_denominator_and_reject_invalid_rows():
+    counts = _api_tennis_serve_point_counts({"statistics": [
+        {"stat_name": "Service Points Won", "stat_period": "match", "player_key": 1,
+         "stat_won": 36, "stat_total": 56},
+        {"stat_name": "Service Points Won", "stat_period": "set1", "player_key": 1,
+         "stat_won": 9, "stat_total": 15},
+        {"stat_name": "Service Points Won", "stat_period": "match", "player_key": 2,
+         "stat_won": 9, "stat_total": 0},
+        {"stat_name": "Service Points Won", "stat_period": "match", "player_key": 3,
+         "stat_won": 9.5, "stat_total": 15},
+    ]})
+    assert counts == {"1": (56.0, 36.0)}
+
+
+def test_api_tennis_serve_point_persistence_requires_confirmed_identity_and_keeps_source_time():
+    class Result:
+        rowcount = 1
+
+    class Connection:
+        def __init__(self): self.calls = []
+        def execute(self, statement, params):
+            self.calls.append((str(statement), params))
+            return Result()
+
+    conn = Connection()
+    available_at = datetime(2026, 10, 26, 2, 0, tzinfo=timezone.utc)
+    played_at = datetime(2026, 10, 24, 16, 30, tzinfo=timezone.utc)
+    written = _persist_api_tennis_serve_point_counts(conn, {
+        "event_key": 123, "event_surface": "Clay",
+        "statistics": [
+            {"stat_name": "Service Points Won", "stat_period": "match", "player_key": 11,
+             "stat_won": 36, "stat_total": 56},
+            {"stat_name": "Service Points Won", "stat_period": "match", "player_key": 22,
+             "stat_won": 30, "stat_total": 48},
+        ],
+    }, available_at, played_at)
+
+    assert written == 2
+    assert all("a.status='confirmed'" in query for query, _ in conn.calls)
+    assert all(params["available_at"] == available_at for _, params in conn.calls)
+    assert all(params["played_at"] == played_at for _, params in conn.calls)
+    assert {params["source_player_id"] for _, params in conn.calls} == {"11", "22"}
+    assert all(params["surface"] == "clay" for _, params in conn.calls)
+
+
 def test_api_tennis_result_uses_canonical_gender_tokens_and_player_side_stats():
     conn = _CaptureConnection()
     at = datetime(2026, 10, 23, tzinfo=timezone.utc)
@@ -694,6 +966,13 @@ def test_archive_persists_and_projects_api_tennis_result_after_raw_commit(monkey
     assert projection_calls[0][0]["score"] == "6-3 7-6"
     assert ProjectionSession.instances[0].committed is True
     assert any("canonical_projection" in sql for sql, _ in engine.connection.calls)
+
+    source_only_engine = Engine()
+    SourceArchive(source_only_engine).persist_events({
+        "id": "job-id", "interval_start": date(2026, 10, 22), "observed_at": observed_at,
+    }, [event], "raw-object", "sha256", project_canonical=False)
+    assert not any("canonical_projection" in sql for sql, _ in source_only_engine.connection.calls)
+    assert len(ProjectionSession.instances) == 1
 
 
 def test_tour_classification_keeps_itf_separate():
@@ -848,6 +1127,128 @@ def test_provider_quota_survives_worker_restart():
     assert database.state["minute_limit"] is None
 
 
+def test_live_provider_quota_reserves_daily_calls_by_category():
+    from app.external_tennis_sources import ExternalTennisSourcesWorker
+
+    database = _QuotaConnection()
+    engine = _CaptureEngine(database)
+    worker = ExternalTennisSourcesWorker(storage=object(), engine=engine)
+    assert worker._reserve_daily_call("live_tennis_api", 80, category="catalog", category_budget=1) is True
+    restarted = ExternalTennisSourcesWorker(storage=object(), engine=engine)
+    assert restarted._reserve_daily_call("live_tennis_api", 80, category="catalog", category_budget=1) is False
+    assert restarted._reserve_daily_call("live_tennis_api", 80, category="profile", category_budget=28) is True
+    assert database.state["daily_calls"] == 2
+    assert database.state["category_calls"] == {"catalog": 1, "profile": 1}
+
+
+def test_live_catalog_paginates_and_resumes_incomplete_checkpoint(monkeypatch):
+    import asyncio
+    import json
+    from contextlib import contextmanager
+    from app import external_tennis_sources as module
+
+    class Result:
+        def scalar_one(self):
+            return {"first_observed_at": "2026-10-27T01:00:00+00:00"}
+
+    class Connection:
+        def execute(self, *_args, **_kwargs):
+            return Result()
+
+    class Engine:
+        @contextmanager
+        def begin(self):
+            yield Connection()
+
+    worker = module.ExternalTennisSourcesWorker(storage=object(), engine=Engine())
+    snapshots = {}
+    worker._read_source_snapshot = lambda _source, key: dict(snapshots.get(key, {}))
+    worker._save_source_snapshot = lambda _source, key, value: snapshots.__setitem__(key, dict(value))
+    reservations = iter([True, False, True])
+    worker._reserve_daily_call = lambda *_a, **_kw: next(reservations)
+    projected = []
+    monkeypatch.setattr(module, "_materialize_live_catalog_metadata",
+                        lambda _engine, rows, **kwargs: projected.append((rows, kwargs)) or {
+                            "metadata_written": 0, "identity_unresolved": len(rows),
+                            "ambiguous_event_pair": 0, "source_conflicts": 0})
+    pages = [
+        {"data": [{"id": 101}], "meta": {"total": 2, "has_more": True}},
+        {"data": [{"id": 202}], "meta": {"total": 2, "has_more": False}},
+    ]
+    requested = []
+
+    async def fetch(_source, partition, url, **_kwargs):
+        requested.append((partition, url))
+        page = pages.pop(0)
+        body = json.dumps(page).encode()
+        return {"status": 200, "body": body, "content_sha256": str(len(requested)) * 64,
+                "key": f"raw/{len(requested)}.json.gz", "fetched_at": "2026-10-27T01:00:00+00:00"}
+
+    worker._archive_external_get = fetch
+    assert asyncio.run(worker._live_tennis_once(status="upcoming")) is True
+    checkpoint = snapshots["catalog_scan:upcoming"]
+    assert checkpoint["complete"] is False
+    assert checkpoint["offset"] == 200
+    assert len(checkpoint["pages"]) == 1
+    assert "offset=0" in requested[0][1] and "draw=singles" in requested[0][1]
+
+    assert asyncio.run(worker._live_tennis_once(status="upcoming")) is True
+    checkpoint = snapshots["catalog_scan:upcoming"]
+    assert checkpoint["complete"] is True
+    assert checkpoint["offset"] == 400
+    assert checkpoint["unique_match_ids"] == ["101", "202"]
+    assert len(checkpoint["pages"]) == 2
+    assert "offset=200" in requested[1][1]
+    assert len(projected) == 2
+
+
+def test_live_catalog_marks_mid_pagination_provider_change_incomplete(monkeypatch):
+    import asyncio
+    import json
+    from contextlib import contextmanager
+    from app import external_tennis_sources as module
+
+    class Result:
+        def scalar_one(self):
+            return {"first_observed_at": "2026-10-27T01:00:00+00:00"}
+
+    class Connection:
+        def execute(self, *_args, **_kwargs):
+            return Result()
+
+    class Engine:
+        @contextmanager
+        def begin(self):
+            yield Connection()
+
+    worker = module.ExternalTennisSourcesWorker(storage=object(), engine=Engine())
+    snapshots = {}
+    worker._read_source_snapshot = lambda _source, key: dict(snapshots.get(key, {}))
+    worker._save_source_snapshot = lambda _source, key, value: snapshots.__setitem__(key, dict(value))
+    worker._reserve_daily_call = lambda *_a, **_kw: True
+    monkeypatch.setattr(module, "_materialize_live_catalog_metadata",
+                        lambda *_a, **_kw: {"metadata_written": 0, "identity_unresolved": 0,
+                                             "ambiguous_event_pair": 0, "source_conflicts": 0})
+    pages = [
+        {"data": [{"id": 101}], "meta": {"total": 2, "has_more": True}},
+        {"data": [{"id": 202}], "meta": {"total": 3, "has_more": True}},
+    ]
+
+    async def fetch(*_a, **_kw):
+        page = pages.pop(0)
+        body = json.dumps(page).encode()
+        return {"status": 200, "body": body, "content_sha256": "a" * 64,
+                "key": "raw/page.json.gz", "fetched_at": "2026-10-27T01:00:00+00:00"}
+
+    worker._archive_external_get = fetch
+    assert asyncio.run(worker._live_tennis_once(status="live")) is False
+    checkpoint = snapshots["catalog_scan:live"]
+    assert checkpoint["complete"] is False
+    assert checkpoint["offset"] == 0
+    assert checkpoint["pages"] == []
+    assert checkpoint["discarded_page_sets"][0]["reason"] == "provider_total_changed"
+
+
 def test_tml_csv_import_uses_fetch_time_and_keeps_source_rows_versioned():
     from app.external_tennis_sources import ExternalTennisSourcesWorker
 
@@ -965,7 +1366,7 @@ def test_ongoing_tml_results_are_normalized_only_after_successful_response(monke
 
     worker._archive_external_get = fetch
     worker._save_source_snapshot = lambda *_a: saved.append(_a)
-    worker._store_tml_csv = lambda body, tour, url: imported.append((body, tour, url)) or 1
+    worker._store_tml_csv = lambda body, tour, url, **_kwargs: imported.append((body, tour, url)) or 1
     monkeypatch.setattr(sources.asyncio, "sleep", sleep)
     asyncio.run(worker._fetch_tml_ongoing())
     assert {tour for _, tour, _ in imported} == {"atp", "wta"}
@@ -1077,7 +1478,7 @@ def test_tml_parse_failure_keeps_previous_successful_coverage(monkeypatch):
         return {"status": 200, "body": b"invalid", "content_sha256": "e" * 64,
                 "key": "raw/invalid.csv.gz"}
 
-    def reject(*_args):
+    def reject(*_args, **_kwargs):
         raise ValueError("challenge_html")
 
     worker._archive_external_get = fetch

@@ -1,0 +1,337 @@
+{
+  "report_version": "tennis_pit_history_new_slices_v1",
+  "generated_at": "2026-10-27T07:54:37Z",
+  "contract": "tennis_odds_free_v1",
+  "training_run": false,
+  "catalog": {
+    "provider": "live_tennis_api",
+    "latest_completed_scan_at": "2026-10-27T07:28:48.974157Z",
+    "live": {
+      "complete": true,
+      "unique_matches": 30,
+      "pages": 1,
+      "confirmed_fonbet_pairs": 0,
+      "unresolved_matches": 30,
+      "page_evidence": [
+        {
+          "offset": 0,
+          "count": 30,
+          "fetched_at": "2026-10-27T07:28:43.461618Z",
+          "sha256": "6364ad5ce63c98585b6467565a88ba75485edac297f720387f92e4230a230e10",
+          "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-live-offset-0/6364ad5ce63c98585b6467565a88ba75485edac297f720387f92e4230a230e10.json.gz",
+          "request_params": {
+            "status": "live",
+            "draw": "singles",
+            "limit": 200,
+            "offset": 0
+          }
+        }
+      ]
+    },
+    "upcoming_48h": {
+      "complete": true,
+      "unique_matches": 457,
+      "pages": 3,
+      "confirmed_fonbet_pairs": 0,
+      "unresolved_matches": 457,
+      "page_evidence": [
+        {
+          "offset": 0,
+          "count": 200,
+          "fetched_at": "2026-10-27T07:28:45.640821Z",
+          "sha256": "e2eb5408ba8c2ce0c33d8c87680b6e270885e121409d9024f5ac8da4b1406b94",
+          "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-upcoming-offset-0/e2eb5408ba8c2ce0c33d8c87680b6e270885e121409d9024f5ac8da4b1406b94.json.gz",
+          "request_params": {
+            "status": "upcoming",
+            "draw": "singles",
+            "limit": 200,
+            "offset": 0,
+            "from": "2026-10-27T07:28:44.490916+00:00",
+            "to": "2026-10-29T07:28:44.490916+00:00"
+          }
+        },
+        {
+          "offset": 200,
+          "count": 200,
+          "fetched_at": "2026-10-27T07:28:46.723600Z",
+          "sha256": "eed1da0b7a04b57781367021d3f534a8eeadd88e504750640d653739dffbcdb0",
+          "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-upcoming-offset-200/eed1da0b7a04b57781367021d3f534a8eeadd88e504750640d653739dffbcdb0.json.gz",
+          "request_params": {
+            "status": "upcoming",
+            "draw": "singles",
+            "limit": 200,
+            "offset": 200,
+            "from": "2026-10-27T07:28:44.490916+00:00",
+            "to": "2026-10-29T07:28:44.490916+00:00"
+          }
+        },
+        {
+          "offset": 400,
+          "count": 57,
+          "fetched_at": "2026-10-27T07:28:48.416067Z",
+          "sha256": "64953fd1f5bf627a1c58ea79c1d05ae0af06d4cfaee7b5ee429c8a285bdcfcc9",
+          "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-upcoming-offset-400/64953fd1f5bf627a1c58ea79c1d05ae0af06d4cfaee7b5ee429c8a285bdcfcc9.json.gz",
+          "request_params": {
+            "status": "upcoming",
+            "draw": "singles",
+            "limit": 200,
+            "offset": 400,
+            "from": "2026-10-27T07:28:44.490916+00:00",
+            "to": "2026-10-29T07:28:44.490916+00:00"
+          }
+        }
+      ]
+    },
+    "daily_quota_at_0728": {
+      "calls": 68,
+      "limit": 80,
+      "minute_calls": 4,
+      "minute_limit": 24,
+      "category_calls": {
+        "catalog": 30,
+        "profile": 28,
+        "ranking": 10
+      },
+      "category_limits": {
+        "catalog": 48,
+        "profile": 28,
+        "ranking": 4
+      }
+    },
+    "prior_confirmed_pair_at_0715": {
+      "provider_match_id": "209630",
+      "fonbet_event_id": "3d593f5a-6545-4ba6-a196-6711add172fd",
+      "players": [
+        "Zeynep Sonmez",
+        "Sara Sorribes Tormo"
+      ],
+      "catalog_observation_at": "2026-10-27T07:15:41.169707Z",
+      "identity_available_at": "2026-10-27T06:55:31.698474Z"
+    }
+  },
+  "historical_audit": {
+    "path": "docs/research/tennis_label_audit_2026-10-27_reaudit.json",
+    "sha256": "26954b0bf86895a7e351d40133a8cdabda411c4f50eabdafbf0608ee3d1a6ee4",
+    "indexed_examples": 7792,
+    "checked_snapshots": 6706,
+    "pit_certified_examples": 0,
+    "timely_event_format": 0,
+    "timely_event_surface": 0,
+    "observed_serve_a": 14,
+    "observed_serve_b": 9,
+    "unknown_result_availability_matches": 15
+  },
+  "prelabel_live_snapshot": {
+    "event_id": "3d593f5a-6545-4ba6-a196-6711add172fd",
+    "source_snapshot_id": "2f760b7d-362c-4a31-930d-a9a13ca3fd71",
+    "forecast_snapshot_id": "df8bfaf0-6ec6-46d1-9c97-9fc2f8464a7c",
+    "cutoff": "2026-10-27T07:17:19.688909Z",
+    "readiness": "ready_for_labeled_pit",
+    "six_groups_certified": true,
+    "label_status": "pending",
+    "event_state": {
+      "available_at": "2026-10-27T07:17:19.688909Z",
+      "sha256": "ca92e4d83655c89f8f4a8f2849a40077ed140c278514089607b69dbcf5b8bc61",
+      "raw_object_key": "fonbet/tennis/2026-10-27/ca92/ca92e4d83655c89f8f4a8f2849a40077ed140c278514089607b69dbcf5b8bc61.json"
+    },
+    "event_attributes": {
+      "available_at": "2026-10-27T07:15:41.169707Z",
+      "identity_available_at": "2026-10-27T06:55:31.698474Z",
+      "source_content_sha256": "efb26385e37dbc5f6580e2559851847f18e82d48c39f988bc2b6dd54f3973d6a",
+      "raw_object_key": "snapshots/external-tennis/live-tennis-api/catalog-live-offset-0/efb26385e37dbc5f6580e2559851847f18e82d48c39f988bc2b6dd54f3973d6a.json.gz",
+      "parser_version": "live_catalog_metadata_v1",
+      "format_observation_id": "d6f2f43d-6196-4125-87e8-e4bdfb4f5d89",
+      "surface_observation_id": "7a94ef96-8101-4770-8b6f-af05835b6b8c"
+    },
+    "player_metrics": [
+      {
+        "source_player_id": "xEGb8F4p",
+        "identity_available_at": "2026-10-21T06:21:28.625827Z",
+        "snapshot_id": "7a575de3-65e8-4afd-a1e8-146450977a22",
+        "available_at": "2026-10-27T05:16:27.998062Z",
+        "history_digest": "453b423827ff19bbac96873257b7c6fc4f488cc9591be5569d7007681f67b69e"
+      },
+      {
+        "source_player_id": "vZ8lpjnM",
+        "identity_available_at": "2026-10-21T13:21:42.643914Z",
+        "snapshot_id": "9438e598-d160-4f55-ab3e-ce396722b7a7",
+        "available_at": "2026-10-27T05:16:37.337486Z",
+        "history_digest": "7d338eb06a6bcfb0d512a4a119a84c515e0557d5d09ad21576616ce6d35cc4cc"
+      }
+    ],
+    "serve_metric_snapshots": [
+      {
+        "snapshot_id": "11c99e1f-0695-4a7b-a49c-0c6d9e9ecdf4",
+        "available_at": "2026-10-27T06:55:30.764014Z",
+        "history_digest": "c3fd0e317e81afb93985ab1c41de25c7194b5f70cbff5539675715f47952a116",
+        "serve_points": 124
+      },
+      {
+        "snapshot_id": "99583612-d9b2-4f91-846f-76563aa13b6e",
+        "available_at": "2026-10-27T06:55:30.764014Z",
+        "history_digest": "5072467796165d38918b4b5a85c9bfe2eea24d709f8cc35baf59f5e3ef9aee4d",
+        "serve_points": 1069
+      }
+    ],
+    "written_via": "persist_event_forecasts replay of existing production snapshots",
+    "writes": [
+      "tennis_forecast_snapshots"
+    ],
+    "training_example_accepted": false
+  },
+  "rolling_coverage_at_0730": {
+    "lookback_hours": 48,
+    "forecast_snapshots": 17947,
+    "prelabel_ready": 1,
+    "incomplete": 17946,
+    "readiness_missing_on_prior_snapshots": 17946,
+    "ready_events_before_scheduled_start": 0,
+    "training_examples_accepted": 0,
+    "training_not_run": true
+  },
+  "tests": {
+    "external_tennis_sources": {
+      "passed": 56
+    },
+    "odds_free_forecast_readiness": {
+      "passed": 26
+    },
+    "docker_compose_config_valid": true,
+    "docker_images_rebuilt": true,
+    "services_healthy": [
+      "neurobet_neural",
+      "neurobet_research",
+      "neurobet_external_tennis_sources"
+    ]
+  },
+  "open_gates": [
+    "historical_cohort_remains_0_of_7792",
+    "natural_forecast_path_observed_but_0_of_144_recent_snapshots_passed",
+    "prematch_pit_coverage_is_0_in_recent_probe",
+    "provider_match_overlap_is_zero_and_fonbet_payload_lacks_format_surface",
+    "training_admission_gates_not_met"
+  ],
+  "historical_audit_rerun": {
+    "path": "docs/research/tennis_pit_historical_7792_identityfix_2026-10-27.json",
+    "sha256": "f5337a9220da1b38d7d6e553d5f72849c53d4c85c82ce15a60f9b5bf8900f250",
+    "index_path": "docs/research/tennis_pit_historical_7792_snapshot_index_2026-10-27.jsonl",
+    "index_sha256": "9200df3b5c52ebf47017897365627133c8483757d2a32e1e9593d623c69dc722",
+    "indexed_examples": 7792,
+    "indexed_events": 3207,
+    "unique_snapshot_keys": 6429,
+    "loaded_snapshots": 6429,
+    "missing_snapshots": 0,
+    "pit_certified_examples": 0,
+    "format_timely": 0,
+    "surface_timely": 0,
+    "player_metrics_observed": 1299,
+    "player_metric_contract_default_examples": 6493,
+    "serve_a_observed": 20,
+    "serve_b_observed": 13,
+    "event_state_raw_evidence_missing": 556,
+    "label_availability_missing_examples": 283,
+    "training_examples_path": "docs/research/tennis_training_examples_fd4961d0ef5a.jsonl",
+    "training_examples_sha256": "1d491027a404ee7558c2669888020123cdb0960f59c4f184a2472d2303af3b72"
+  },
+  "historical_builder_rerun": {
+    "path": "docs/research/tennis_pit_historical_7792_builder_summary_2026-10-27.json",
+    "input_examples": 7792,
+    "accepted_examples": 0,
+    "rejected_examples": 7792,
+    "pit_certified": false
+  },
+  "identity_resolver_fix": {
+    "change": "select latest append-only identity decision available at snapshot cutoff for participant and confirmed alias",
+    "regression": "candidate_then_confirmed_then_future_revocation",
+    "tests_passed": 38,
+    "deployed": true,
+    "post_deploy_tests_passed": 38
+  },
+  "real_labeled_example": {
+    "event_id": "3d593f5a-6545-4ba6-a196-6711add172fd",
+    "source_event_id": "69276687",
+    "snapshot_id": "2f760b7d-362c-4a31-930d-a9a13ca3fd71",
+    "cutoff": "2026-10-27T07:17:19.688909Z",
+    "label_available_at": "2026-10-27T07:25:29.505528Z",
+    "audit_accepted": 1,
+    "audit_checked": 1,
+    "builder_accepted": 1,
+    "builder_checked": 1,
+    "audit_path": "docs/research/tennis_pit_live_match_69276687_audit_2026-10-27.json",
+    "source_example_path": "docs/research/tennis_training_examples_e80253f5a7d7.jsonl",
+    "builder_output_path": "docs/research/tennis_pit_live_match_69276687_builder_result_2026-10-27.jsonl"
+  },
+  "research_deployment": {
+    "image_rebuilt": true,
+    "container": "neurobet_research",
+    "health": "healthy",
+    "post_deploy_label_audit_tests_passed": 38
+  },
+  "natural_snapshot_probe": {
+    "path": "docs/research/tennis_pit_natural_snapshot_probe_2026-10-27_0754.json",
+    "lookback_minutes": 15,
+    "snapshots": 144,
+    "unique_events": 10,
+    "pit_ready": 0,
+    "incomplete": 144,
+    "prematch_before_scheduled_start": 0,
+    "reason_counts": {
+      "event_surface": 141,
+      "event_format": 141,
+      "serve_metrics_a": 122,
+      "serve_metrics_b": 123,
+      "confirmed_player_identity_missing_a": 32,
+      "confirmed_player_identity_missing_b": 52,
+      "confirmed_player_metrics_missing": 21,
+      "player_metrics": 10
+    },
+    "fonbet_payload_explicit_format_or_surface": false,
+    "catalog_confirmed_fonbet_pairs": 0
+  },
+  "post_identity_reaudit": {
+    "generated_at": "2026-10-27T08:52:02.189622+00:00",
+    "path": "docs/research/tennis_pit_historical_7792_post_identity_reaudit_2026-10-27.json",
+    "sha256": "8fb04cfb06e5ad7f2269495ba37d5236be12305f30225ad7b20fe118d3e7b399",
+    "indexed_examples": 7792,
+    "loaded_snapshots": 6429,
+    "missing_snapshots": 0,
+    "pit_certified_examples": 0,
+    "strict_builder_accepted": 0,
+    "strict_builder_path": "docs/research/tennis_pit_historical_7792_post_identity_builder_2026-10-27.jsonl.gz",
+    "strict_builder_sha256": "baa3dd4c4aa73a70404bc55c6f5704afd743144bb0d56829ddb176febbe04a72",
+    "training_not_run": true
+  },
+  "flashscore_identity_recovery": {
+    "participant": "Лю Клер",
+    "source": "flashscore",
+    "source_player_id": "8KHYNHRA",
+    "status": "confirmed",
+    "available_at": "2026-10-27T08:42:35.240476+00:00",
+    "raw_search_evidence_count": 2,
+    "raw_hashes_verified_after_readback": [
+      "c32376e08914ac4c59ae1765faa21961017b4551770a1fba7fe8618d3e185bf5",
+      "87d1beea90f73abf2670829666ff1fc75602daec2c80ab0eac2de5906f1116b6"
+    ],
+    "profile_history_matches": 411,
+    "metrics_version": 2,
+    "profile_refresh_status": "completed",
+    "historical_cutoffs_affected": false
+  },
+  "profile_import_deadlock_repair": {
+    "migration": "059_statement_metric_dirty",
+    "database_applied": true,
+    "dirty_trigger_granularity": "statement",
+    "post_migration_import_completed": true
+  },
+  "rolling_coverage_after_profile_import": {
+    "path": "docs/research/tennis_pit_natural_snapshot_probe_2026-10-27_0849.json",
+    "generated_at": "2026-10-27T08:48:33.730437+00:00",
+    "lookback_hours": 48,
+    "forecast_snapshots": 18923,
+    "prelabel_ready": 1,
+    "incomplete": 18922,
+    "readiness_missing_on_prior_snapshots": 17314,
+    "ready_events_before_scheduled_start": 0,
+    "certified_training_examples": 0
+  }
+}

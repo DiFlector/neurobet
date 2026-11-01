@@ -1,0 +1,1442 @@
+{
+  "completed": [
+    {
+      "aligned_examples": {
+        "game": 649,
+        "point": 539,
+        "set": 714
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "108e585a-a0a9-4d51-9b6e-f39796b3b69b",
+      "fonbet_source_event_id": "69320190",
+      "history_link_version_id": "fee2ae1d-ad5a-4e75-9a73-30c3ec998e31",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/108e585a-a0a9-4d51-9b6e-f39796b3b69b.jsonl",
+      "index_sha256": "6d0c66fc9e71669634e603a6c21c0e734287ae93cc59d552705681ab1c60c6ee",
+      "link_available_at": "2026-10-28T05:25:19.267197+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 717,
+      "source": "api_tennis",
+      "source_match_id": "12174216"
+    },
+    {
+      "aligned_examples": {
+        "game": 433,
+        "point": 342,
+        "set": 433
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "164dc9c3-d91a-4f50-88e6-09c7bcaf54ae",
+      "fonbet_source_event_id": "69129013",
+      "history_link_version_id": "c6f9ce5f-46db-4ef1-9ade-7471eb1284f2",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/164dc9c3-d91a-4f50-88e6-09c7bcaf54ae.jsonl",
+      "index_sha256": "9bc0d073c7ad81e311cb0259dfacdfdac1fb188bd70ab5b7645d0bde32498f93",
+      "link_available_at": "2026-10-28T05:25:19.407970+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 435,
+      "source": "api_tennis",
+      "source_match_id": "12172507"
+    },
+    {
+      "aligned_examples": {
+        "game": 717,
+        "point": 538,
+        "set": 717
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 33,
+        "point": 31,
+        "set": 33
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+      "fonbet_source_event_id": "69142452",
+      "history_link_version_id": "f0c97393-4678-42e4-93b6-31f6cc9bac63",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/1e004531-caf5-49e2-8396-e94efe2bb8ce.jsonl",
+      "index_sha256": "dd354276b3a98720066f238e3bf0d8885afe8b5c24cba66e29abbcfe89b15957",
+      "link_available_at": "2026-10-28T05:25:19.585766+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 720,
+      "source": "api_tennis",
+      "source_match_id": "12172766"
+    },
+    {
+      "aligned_examples": {
+        "game": 845,
+        "point": 618,
+        "set": 845
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "fonbet_source_event_id": "69148307",
+      "history_link_version_id": "e0c79140-bb4f-4eea-b8fb-8a69169aac04",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/1ef5f18f-d19a-49c4-97d4-a7c8cb56917f.jsonl",
+      "index_sha256": "957e4cf1a3b6e63a66a7cd80f1b90688990541ac7c81c42959190a01f3ab3940",
+      "link_available_at": "2026-10-28T05:25:19.785405+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 849,
+      "source": "api_tennis",
+      "source_match_id": "12172832"
+    },
+    {
+      "aligned_examples": {
+        "game": 589,
+        "point": 506,
+        "set": 642
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "22ab8351-8955-4f82-bc33-b3b36d16af0a",
+      "fonbet_source_event_id": "69062084",
+      "history_link_version_id": "d3685936-0188-441d-a97d-e499211a2428",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/22ab8351-8955-4f82-bc33-b3b36d16af0a.jsonl",
+      "index_sha256": "765457b422ebc616c7f35c17aac0a1742b06f11cab3c6b17fc846107a8c69ae8",
+      "link_available_at": "2026-10-28T05:25:19.925935+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 645,
+      "source": "api_tennis",
+      "source_match_id": "12171913"
+    },
+    {
+      "aligned_examples": {
+        "game": 698,
+        "point": 594,
+        "set": 902
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "22e712c1-b1b1-4808-b2f9-625b47d5df44",
+      "fonbet_source_event_id": "69128309",
+      "history_link_version_id": "2d9f95f9-8b29-4aa9-9658-89e11361fe2d",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/22e712c1-b1b1-4808-b2f9-625b47d5df44.jsonl",
+      "index_sha256": "e1a2a37ae82d8ea613fdfd88eee97d149c09fb64ec1df6221f96c6028f1c02b9",
+      "link_available_at": "2026-10-28T05:25:20.007229+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 906,
+      "source": "api_tennis",
+      "source_match_id": "12172249"
+    },
+    {
+      "aligned_examples": {
+        "game": 961,
+        "point": 803,
+        "set": 961
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "244c674c-1487-430b-86ed-de9736e206ce",
+      "fonbet_source_event_id": "69313168",
+      "history_link_version_id": "da2e41a9-ff71-4d71-b959-9da44e03e04d",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/244c674c-1487-430b-86ed-de9736e206ce.jsonl",
+      "index_sha256": "fce4be51efe266b9b5132b400b88e56a9777bca15aabfe91bde7eae3de41d637",
+      "link_available_at": "2026-10-28T05:25:20.180329+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 965,
+      "source": "api_tennis",
+      "source_match_id": "12174203"
+    },
+    {
+      "aligned_examples": {
+        "game": 542,
+        "point": 433,
+        "set": 0
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "2ced3c83-9de8-49c2-90b5-22f367033d2e",
+      "fonbet_source_event_id": "69026135",
+      "history_link_version_id": "610bb0a8-df95-4805-8cbe-ea538c6e2fef",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/2ced3c83-9de8-49c2-90b5-22f367033d2e.jsonl",
+      "index_sha256": "82787c48e57a5e681b2e98c349b9367bce0ba37e72cb402fae06a77b0734e670",
+      "link_available_at": "2026-10-28T05:25:20.285957+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": false,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 545,
+      "source": "api_tennis",
+      "source_match_id": "12171714"
+    },
+    {
+      "aligned_examples": {
+        "game": 503,
+        "point": 457,
+        "set": 576
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 41,
+        "point": 40,
+        "set": 52
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "320bd59d-4683-4a2a-b447-5c733eec8c62",
+      "fonbet_source_event_id": "69030710",
+      "history_link_version_id": "908bcf96-9542-47f0-b57a-b12198dcb3ff",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/320bd59d-4683-4a2a-b447-5c733eec8c62.jsonl",
+      "index_sha256": "5bd6f894e607ab5d59d83a6ef4c7cd5bd1a6d49f227203540efaeb5ea8837672",
+      "link_available_at": "2026-10-28T05:25:20.473204+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 580,
+      "source": "api_tennis",
+      "source_match_id": "12171794"
+    },
+    {
+      "aligned_examples": {
+        "game": 605,
+        "point": 455,
+        "set": 605
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "35f87b06-1a5a-490d-82fa-bfe13c0b4d8a",
+      "fonbet_source_event_id": "69155384",
+      "history_link_version_id": "c9137d88-9081-442e-8ee0-ca277acf4db7",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/35f87b06-1a5a-490d-82fa-bfe13c0b4d8a.jsonl",
+      "index_sha256": "593822f12b959d6315dcdd8b4d799a6077fde76824ac3d874ca65cf4cfcb5456",
+      "link_available_at": "2026-10-28T05:25:20.643061+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 608,
+      "source": "api_tennis",
+      "source_match_id": "12172942"
+    },
+    {
+      "aligned_examples": {
+        "game": 527,
+        "point": 432,
+        "set": 527
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "36a153ab-ff9e-4692-bfb8-94fea0d3d339",
+      "fonbet_source_event_id": "69280947",
+      "history_link_version_id": "27e57b80-f1df-477f-aef5-bdb1436e4983",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/36a153ab-ff9e-4692-bfb8-94fea0d3d339.jsonl",
+      "index_sha256": "d37bef8d2a4b877ecae0cddf61886b5e511feb66b0a16d3911262ca6c2fe5b60",
+      "link_available_at": "2026-10-28T05:25:20.731783+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 531,
+      "source": "api_tennis",
+      "source_match_id": "12173977"
+    },
+    {
+      "aligned_examples": {
+        "game": 462,
+        "point": 394,
+        "set": 462
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "400fc19a-1f25-4288-9276-c11649b2ba11",
+      "fonbet_source_event_id": "69097014",
+      "history_link_version_id": "8fda912c-4f49-417d-bf42-0b69fc606018",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/400fc19a-1f25-4288-9276-c11649b2ba11.jsonl",
+      "index_sha256": "78077044ecf287679aab3445e2ad6c14ee29922877128da16d4cb09ef2bb4afb",
+      "link_available_at": "2026-10-28T05:25:21.072385+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 462,
+      "source": "api_tennis",
+      "source_match_id": "12172163"
+    },
+    {
+      "aligned_examples": {
+        "game": 317,
+        "point": 260,
+        "set": 317
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 27,
+        "point": 26,
+        "set": 27
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "41355a71-52bb-4a3e-9fa4-7a0e15e4566a",
+      "fonbet_source_event_id": "69145547",
+      "history_link_version_id": "c77d281d-144d-4e93-b200-f6eac5418d01",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/41355a71-52bb-4a3e-9fa4-7a0e15e4566a.jsonl",
+      "index_sha256": "085e47257290f89dc8a3bf48c25071019d7662b0926cb8fed8569b8d74a69e94",
+      "link_available_at": "2026-10-28T05:25:21.138882+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 318,
+      "source": "api_tennis",
+      "source_match_id": "12172778"
+    },
+    {
+      "aligned_examples": {
+        "game": 542,
+        "point": 398,
+        "set": 542
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "489c748c-b586-4c73-b623-175d7f118c6e",
+      "fonbet_source_event_id": "69208797",
+      "history_link_version_id": "25fc057a-5ab1-4bf6-b012-89a6c1bec979",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/489c748c-b586-4c73-b623-175d7f118c6e.jsonl",
+      "index_sha256": "7a60152b8a63683bb2bd3aec0fd1b3befe65c873ba46a7c9d5f7d473db38fc16",
+      "link_available_at": "2026-10-28T05:25:21.333722+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 545,
+      "source": "api_tennis",
+      "source_match_id": "12173541"
+    },
+    {
+      "aligned_examples": {
+        "game": 821,
+        "point": 632,
+        "set": 821
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 2,
+        "point": 1,
+        "set": 2
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "48a0e02f-667b-49f4-bb03-a5232dfc8de6",
+      "fonbet_source_event_id": "69121555",
+      "history_link_version_id": "81e2ab0d-0d33-4a6e-b753-3f975cb7c5b9",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/48a0e02f-667b-49f4-bb03-a5232dfc8de6.jsonl",
+      "index_sha256": "2d4f19dc585c58640dbd17def81479e3d60486fb9ebdb7ea1c108c9f050ce3de",
+      "link_available_at": "2026-10-28T05:25:21.503819+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 824,
+      "source": "api_tennis",
+      "source_match_id": "12172317"
+    },
+    {
+      "aligned_examples": {
+        "game": 392,
+        "point": 317,
+        "set": 392
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "4e676ab1-218b-472c-a3f0-0568df227619",
+      "fonbet_source_event_id": "69243387",
+      "history_link_version_id": "92e47562-3436-4ae6-9d70-aaa5139eb89b",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/4e676ab1-218b-472c-a3f0-0568df227619.jsonl",
+      "index_sha256": "adfb2761720abff2d186726246d732369fb7f73a95f61d0d9523b6a5dadecf1c",
+      "link_available_at": "2026-10-28T05:25:22.092091+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 395,
+      "source": "api_tennis",
+      "source_match_id": "12173755"
+    },
+    {
+      "aligned_examples": {
+        "game": 686,
+        "point": 593,
+        "set": 686
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "5b82a73b-4d86-480b-94f4-2596649af92e",
+      "fonbet_source_event_id": "69221168",
+      "history_link_version_id": "6c4ac7e9-0cea-4624-823a-b57baf7b7b8f",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/5b82a73b-4d86-480b-94f4-2596649af92e.jsonl",
+      "index_sha256": "10a83c2ef747129fa1c1d98a1f4f9649485218aa478aa7d7d3ddc09b47053fef",
+      "link_available_at": "2026-10-28T05:25:22.226621+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 689,
+      "source": "api_tennis",
+      "source_match_id": "12173643"
+    },
+    {
+      "aligned_examples": {
+        "game": 721,
+        "point": 607,
+        "set": 721
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 44,
+        "point": 43,
+        "set": 44
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+      "fonbet_source_event_id": "69139360",
+      "history_link_version_id": "3eac1ec8-b0b1-443c-bd8b-5d86fe34b991",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/5fd2d2ab-6230-4b26-9818-702d1d3674b6.jsonl",
+      "index_sha256": "a399ece24c149fbf6ba67709215f191c53d62d922c94ee45a00592ad34fa8070",
+      "link_available_at": "2026-10-28T05:25:22.280832+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 725,
+      "source": "api_tennis",
+      "source_match_id": "12172738"
+    },
+    {
+      "aligned_examples": {
+        "game": 622,
+        "point": 538,
+        "set": 622
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "659e9a3b-df19-4224-bacc-258965e069c6",
+      "fonbet_source_event_id": "69048442",
+      "history_link_version_id": "2f69d367-d448-4297-999d-8ec9677c50b2",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/659e9a3b-df19-4224-bacc-258965e069c6.jsonl",
+      "index_sha256": "3042997b331735eccd0d5ba58c822b0bed7ce4159b5fbf35bdcb9009e7e5b125",
+      "link_available_at": "2026-10-28T05:25:22.387415+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 627,
+      "source": "api_tennis",
+      "source_match_id": "12171834"
+    },
+    {
+      "aligned_examples": {
+        "game": 531,
+        "point": 448,
+        "set": 531
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "6cfd9b8e-e20e-42c0-96f6-25c7fadb9073",
+      "fonbet_source_event_id": "69212802",
+      "history_link_version_id": "153288fb-58dc-4ec3-968c-ffd94664878b",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/6cfd9b8e-e20e-42c0-96f6-25c7fadb9073.jsonl",
+      "index_sha256": "1e026bd650095d9472810c2164bb2f9ee925175a5af8b82ceff36366a4a2b607",
+      "link_available_at": "2026-10-28T05:25:22.542435+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 534,
+      "source": "api_tennis",
+      "source_match_id": "12173596"
+    },
+    {
+      "aligned_examples": {
+        "game": 654,
+        "point": 495,
+        "set": 654
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "7339e86a-eff6-4ff0-a98e-01422a9b4b77",
+      "fonbet_source_event_id": "69244815",
+      "history_link_version_id": "2fd2348d-07c2-4066-8fa4-b8f510b540cd",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/7339e86a-eff6-4ff0-a98e-01422a9b4b77.jsonl",
+      "index_sha256": "b4052ace5e1aab6622752134b0901d9eb94a2fae42779ace6174ac9e7b6f9a9b",
+      "link_available_at": "2026-10-28T05:25:22.610618+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 657,
+      "source": "api_tennis",
+      "source_match_id": "12173774"
+    },
+    {
+      "aligned_examples": {
+        "game": 522,
+        "point": 392,
+        "set": 522
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "84cb2f08-0060-4fb7-b81c-87c0f30eec37",
+      "fonbet_source_event_id": "69291691",
+      "history_link_version_id": "d554417f-6a02-4259-931e-dbafdc1be25a",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/84cb2f08-0060-4fb7-b81c-87c0f30eec37.jsonl",
+      "index_sha256": "32d047366144b3e949691be42fb27d64c7c58603e75df0639b42d4a567e022c1",
+      "link_available_at": "2026-10-28T05:25:22.691832+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 526,
+      "source": "api_tennis",
+      "source_match_id": "12174040"
+    },
+    {
+      "aligned_examples": {
+        "game": 925,
+        "point": 744,
+        "set": 925
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "8534d465-5564-4c32-87c3-aeb604b65784",
+      "fonbet_source_event_id": "68898490",
+      "history_link_version_id": "ceef4e62-cb7c-44d8-b7a6-bd7f54b5611b",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/8534d465-5564-4c32-87c3-aeb604b65784.jsonl",
+      "index_sha256": "181569c70d4308c1343381622de044bd130e907328b7a8aa17f98339458aa03d",
+      "link_available_at": "2026-10-28T05:25:22.814247+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 929,
+      "source": "api_tennis",
+      "source_match_id": "12170246"
+    },
+    {
+      "aligned_examples": {
+        "game": 429,
+        "point": 332,
+        "set": 429
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "85a1ce4d-f903-4223-b2f7-d29e15c51020",
+      "fonbet_source_event_id": "69291735",
+      "history_link_version_id": "516a4f1d-e316-4e26-a481-5b5632a8467f",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/85a1ce4d-f903-4223-b2f7-d29e15c51020.jsonl",
+      "index_sha256": "b84ba10abf847436ac1ee8bed92518c9381140691cfd92a4f5a45d9792205dd7",
+      "link_available_at": "2026-10-28T05:25:22.908904+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 433,
+      "source": "api_tennis",
+      "source_match_id": "12174046"
+    },
+    {
+      "aligned_examples": {
+        "game": 463,
+        "point": 394,
+        "set": 463
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 34,
+        "point": 32,
+        "set": 34
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "85bf4fcf-7403-4add-bf9e-c0eba263cdb9",
+      "fonbet_source_event_id": "69154409",
+      "history_link_version_id": "6859a9e4-c71c-493a-a487-166c2a8c87c7",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/85bf4fcf-7403-4add-bf9e-c0eba263cdb9.jsonl",
+      "index_sha256": "da3baffdb190de50975c330a1e6559229c06c0db3fabe03320dd21149d38dc08",
+      "link_available_at": "2026-10-28T05:25:23.002290+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 467,
+      "source": "api_tennis",
+      "source_match_id": "12172906"
+    },
+    {
+      "aligned_examples": {
+        "game": 682,
+        "point": 482,
+        "set": 682
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "86931745-db4a-46b4-b7ff-7f7905a3123c",
+      "fonbet_source_event_id": "69313690",
+      "history_link_version_id": "c11878fd-9dbd-40d1-830c-216016c23f78",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/86931745-db4a-46b4-b7ff-7f7905a3123c.jsonl",
+      "index_sha256": "8115b0a82d32db5cd2df3001e470a7c441d1b964f2d24f675ece12b7be403b1f",
+      "link_available_at": "2026-10-28T05:25:23.063443+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 686,
+      "source": "api_tennis",
+      "source_match_id": "12174205"
+    },
+    {
+      "aligned_examples": {
+        "game": 732,
+        "point": 605,
+        "set": 822
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "9975246b-80f2-4845-95d9-caf6d4b33fd5",
+      "fonbet_source_event_id": "69094661",
+      "history_link_version_id": "dc1d2237-049e-443a-ad31-165a18818efb",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/9975246b-80f2-4845-95d9-caf6d4b33fd5.jsonl",
+      "index_sha256": "5153f31253daa58718a6d1ace0a9e27e8668e2965b33366bd6f7be7d40012c55",
+      "link_available_at": "2026-10-28T05:25:23.161071+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 824,
+      "source": "api_tennis",
+      "source_match_id": "12172142"
+    },
+    {
+      "aligned_examples": {
+        "game": 646,
+        "point": 539,
+        "set": 646
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "aac0a774-d953-4329-837f-ddc14134e63b",
+      "fonbet_source_event_id": "68865939",
+      "history_link_version_id": "dcadd376-1b3f-4e6a-bb24-618eadc9fdb9",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/aac0a774-d953-4329-837f-ddc14134e63b.jsonl",
+      "index_sha256": "b584066501de746d609a4179a712c96a3c40411509852455ddaed1bec5d49554",
+      "link_available_at": "2026-10-28T05:25:23.274494+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 650,
+      "source": "api_tennis",
+      "source_match_id": "12170076"
+    },
+    {
+      "aligned_examples": {
+        "game": 973,
+        "point": 818,
+        "set": 1098
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "ad968686-efe7-481e-bcc7-523ea87be10e",
+      "fonbet_source_event_id": "69093331",
+      "history_link_version_id": "9498642a-f0e0-4a26-afb3-630e2b076f91",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/ad968686-efe7-481e-bcc7-523ea87be10e.jsonl",
+      "index_sha256": "c86a18c69f13f02bf25d472a3e988c788f7cc018f530bd96eb9a1b4bcfcd7350",
+      "link_available_at": "2026-10-28T05:25:23.349988+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 1102,
+      "source": "api_tennis",
+      "source_match_id": "12172148"
+    },
+    {
+      "aligned_examples": {
+        "game": 359,
+        "point": 270,
+        "set": 359
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "b00682fe-fd19-4586-bd27-a589ceeb7cf8",
+      "fonbet_source_event_id": "69331964",
+      "history_link_version_id": "daa321ae-2963-4957-9e92-0bcb3197ed5e",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/b00682fe-fd19-4586-bd27-a589ceeb7cf8.jsonl",
+      "index_sha256": "0d4962eeb7f721de078822bca2869b60c0e512db73cc13b24536d8eb62f03f81",
+      "link_available_at": "2026-10-28T05:25:23.421277+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 359,
+      "source": "api_tennis",
+      "source_match_id": "12174234"
+    },
+    {
+      "aligned_examples": {
+        "game": 515,
+        "point": 428,
+        "set": 515
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 34,
+        "point": 30,
+        "set": 34
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "b0b5ade6-79ab-4ba5-b28c-820eb2a2697f",
+      "fonbet_source_event_id": "69145280",
+      "history_link_version_id": "ce8bfa94-0192-4489-b243-fd40da695ea2",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/b0b5ade6-79ab-4ba5-b28c-820eb2a2697f.jsonl",
+      "index_sha256": "85d254e31650e49d93a0f3725c9366fdff73fa189df120fa6a814f8b93d19d9e",
+      "link_available_at": "2026-10-28T05:25:23.549511+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 519,
+      "source": "api_tennis",
+      "source_match_id": "12172768"
+    },
+    {
+      "aligned_examples": {
+        "game": 1032,
+        "point": 802,
+        "set": 1032
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "b31ea1ae-a859-4257-aa64-20dccc15206a",
+      "fonbet_source_event_id": "69313829",
+      "history_link_version_id": "5c634e4a-d939-40f5-8347-51e76b7fd2c2",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/b31ea1ae-a859-4257-aa64-20dccc15206a.jsonl",
+      "index_sha256": "681ac1693907726dad2cd92abf4945d2d8722146fff6e81b9ac6c9f199af3dac",
+      "link_available_at": "2026-10-28T05:25:23.606617+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 1036,
+      "source": "api_tennis",
+      "source_match_id": "12174212"
+    },
+    {
+      "aligned_examples": {
+        "game": 426,
+        "point": 298,
+        "set": 426
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "b7901c6c-aca1-4dcf-83ab-4eb592c775a7",
+      "fonbet_source_event_id": "69170713",
+      "history_link_version_id": "8cab73a5-bd50-459d-b70d-144b5d3f88cb",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/b7901c6c-aca1-4dcf-83ab-4eb592c775a7.jsonl",
+      "index_sha256": "ee488bac8258ed21ef69d1cd8c9a27ed9ade3e7630ffdf87686fac5b8628793f",
+      "link_available_at": "2026-10-28T05:25:23.741866+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 426,
+      "source": "api_tennis",
+      "source_match_id": "12173148"
+    },
+    {
+      "aligned_examples": {
+        "game": 744,
+        "point": 598,
+        "set": 744
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "c1ac9647-a314-4f39-bd8d-68dab02a948b",
+      "fonbet_source_event_id": "69313195",
+      "history_link_version_id": "a36aee70-c0a5-4ac6-849a-72b1cbfa0c47",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/c1ac9647-a314-4f39-bd8d-68dab02a948b.jsonl",
+      "index_sha256": "eac49b9d857839ac821e9e77089f754ccd533ac4bafaa241ad8983b666a55829",
+      "link_available_at": "2026-10-28T05:25:23.897527+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 749,
+      "source": "api_tennis",
+      "source_match_id": "12174201"
+    },
+    {
+      "aligned_examples": {
+        "game": 431,
+        "point": 351,
+        "set": 431
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "c26416ed-a70d-4ac0-88ce-f9fdd9999c73",
+      "fonbet_source_event_id": "69178318",
+      "history_link_version_id": "60029b1e-9427-4718-85fb-ced808868315",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/c26416ed-a70d-4ac0-88ce-f9fdd9999c73.jsonl",
+      "index_sha256": "d6715c07fcdaedb98dacf823b7ca0165bb037f2a7f2de8e9beb78eb150226768",
+      "link_available_at": "2026-10-28T05:25:24.027599+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 435,
+      "source": "api_tennis",
+      "source_match_id": "12173254"
+    },
+    {
+      "aligned_examples": {
+        "game": 580,
+        "point": 471,
+        "set": 580
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 32,
+        "point": 30,
+        "set": 32
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "c827c490-bbf8-4196-b4f0-1725f14c911c",
+      "fonbet_source_event_id": "69093400",
+      "history_link_version_id": "0ebd0961-73ae-4373-9ce3-8ff0c6d2e004",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/c827c490-bbf8-4196-b4f0-1725f14c911c.jsonl",
+      "index_sha256": "fa36bfcf45f2c08d3165527d6920226e06fb7f6e3e4f3d1730e4617b9a36a96e",
+      "link_available_at": "2026-10-28T05:25:24.138092+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 583,
+      "source": "api_tennis",
+      "source_match_id": "12172140"
+    },
+    {
+      "aligned_examples": {
+        "game": 794,
+        "point": 686,
+        "set": 920
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "fonbet_source_event_id": "69144757",
+      "history_link_version_id": "a6fe9bcd-889b-45ff-ad7b-d2da3569baf9",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/d1a04b18-566a-4800-95d6-1de67b97daae.jsonl",
+      "index_sha256": "023faae49b31d1b665951652ca6c502b990771fcb8b2d4e6a3bdaec0d05654bf",
+      "link_available_at": "2026-10-28T05:25:24.291252+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 924,
+      "source": "api_tennis",
+      "source_match_id": "12172790"
+    },
+    {
+      "aligned_examples": {
+        "game": 690,
+        "point": 514,
+        "set": 690
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "d339d4ae-afef-4905-9d21-0ad6074cab40",
+      "fonbet_source_event_id": "68837800",
+      "history_link_version_id": "cdb91bed-551c-4690-a00e-2c6c3df80fa6",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/d339d4ae-afef-4905-9d21-0ad6074cab40.jsonl",
+      "index_sha256": "6f976be944382fa2d45118c8987facb59e7a862e343eb72aecd83f1ea661041a",
+      "link_available_at": "2026-10-28T05:25:24.371723+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 693,
+      "source": "api_tennis",
+      "source_match_id": "12169856"
+    },
+    {
+      "aligned_examples": {
+        "game": 873,
+        "point": 713,
+        "set": 873
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "d6c09020-bbfd-47a2-8603-bfcde7f63581",
+      "fonbet_source_event_id": "69051577",
+      "history_link_version_id": "2c6cb6d4-caed-49d7-94b0-67dce24aa42f",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/d6c09020-bbfd-47a2-8603-bfcde7f63581.jsonl",
+      "index_sha256": "70d8359f9b4de169f58475d33f931446e707d03540d95868d8450d4d03d89af4",
+      "link_available_at": "2026-10-28T05:25:24.614954+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 877,
+      "source": "api_tennis",
+      "source_match_id": "12171878"
+    },
+    {
+      "aligned_examples": {
+        "game": 735,
+        "point": 542,
+        "set": 735
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "d8d3ac79-bff1-4058-90a8-b1b710d90509",
+      "fonbet_source_event_id": "69273463",
+      "history_link_version_id": "fadf1352-5bc9-4f84-8c63-af666ef86525",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/d8d3ac79-bff1-4058-90a8-b1b710d90509.jsonl",
+      "index_sha256": "5dd52a2c08fa26fb2d97dc58c25b86a061d9cedc4dd469e86585944d56e2cc5b",
+      "link_available_at": "2026-10-28T05:25:25.075372+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 738,
+      "source": "api_tennis",
+      "source_match_id": "12173923"
+    },
+    {
+      "aligned_examples": {
+        "game": 988,
+        "point": 770,
+        "set": 988
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "da06cb2c-3d9d-4b46-b0c6-80ecdede299d",
+      "fonbet_source_event_id": "69235701",
+      "history_link_version_id": "a3c350ef-19fd-4bdd-8a94-7091b8f1f799",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/da06cb2c-3d9d-4b46-b0c6-80ecdede299d.jsonl",
+      "index_sha256": "a68139e318124f8299773f6450182c13caf0e4de8310b5d8d77fffd3939381f1",
+      "link_available_at": "2026-10-28T05:25:25.432082+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 991,
+      "source": "api_tennis",
+      "source_match_id": "12173702"
+    },
+    {
+      "aligned_examples": {
+        "game": 422,
+        "point": 349,
+        "set": 0
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 24,
+        "point": 22,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "dd67584b-e4d3-42bc-a62b-a6ca38692441",
+      "fonbet_source_event_id": "69026155",
+      "history_link_version_id": "c3ea209c-b9cb-4228-8749-d173af5d2f9a",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/dd67584b-e4d3-42bc-a62b-a6ca38692441.jsonl",
+      "index_sha256": "5c65a73746d3b183783d9e8052c275fbb5e6f541ec5bcd5cdd5899b5e2277989",
+      "link_available_at": "2026-10-28T05:25:25.762135+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": false,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 425,
+      "source": "api_tennis",
+      "source_match_id": "12171716"
+    },
+    {
+      "aligned_examples": {
+        "game": 1535,
+        "point": 1162,
+        "set": 1636
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "e011b809-eeac-49ee-a0a0-b4f20e8dc760",
+      "fonbet_source_event_id": "69059270",
+      "history_link_version_id": "3feb9259-3c23-4cf6-94a0-69e4fcbc7d2b",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/e011b809-eeac-49ee-a0a0-b4f20e8dc760.jsonl",
+      "index_sha256": "b8c00b7c3d560bbf485d8270ded783abe1e6268457662eb4b1e1f667ba091e01",
+      "link_available_at": "2026-10-28T05:25:25.978124+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 1639,
+      "source": "api_tennis",
+      "source_match_id": "12171903"
+    },
+    {
+      "aligned_examples": {
+        "game": 598,
+        "point": 555,
+        "set": 717
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "eb89b434-70aa-4a67-b010-c78ea2c3554e",
+      "fonbet_source_event_id": "69183812",
+      "history_link_version_id": "cda026e1-c2fc-4c60-9b67-460039dc95b1",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/eb89b434-70aa-4a67-b010-c78ea2c3554e.jsonl",
+      "index_sha256": "f1686bf013c2c10f2f0fbc75f53aee90e9aeeedc26da699cd5c55387cf18590f",
+      "link_available_at": "2026-10-28T05:25:26.401811+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 719,
+      "source": "api_tennis",
+      "source_match_id": "12173316"
+    },
+    {
+      "aligned_examples": {
+        "game": 571,
+        "point": 457,
+        "set": 571
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 31,
+        "point": 29,
+        "set": 31
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "eeb42d4b-5447-4337-9958-23d3e68d9c26",
+      "fonbet_source_event_id": "69050478",
+      "history_link_version_id": "aaeba98e-ba25-43c2-8d7c-ffd6aa905390",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/eeb42d4b-5447-4337-9958-23d3e68d9c26.jsonl",
+      "index_sha256": "c5528d316d454b2846d86a59ac240eb39de420879a06e8082c3b8e4866b5bee1",
+      "link_available_at": "2026-10-28T05:25:26.545254+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 575,
+      "source": "api_tennis",
+      "source_match_id": "12171853"
+    },
+    {
+      "aligned_examples": {
+        "game": 484,
+        "point": 469,
+        "set": 623
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "f6ac1660-f012-4c33-a482-3519c842b945",
+      "fonbet_source_event_id": "69238383",
+      "history_link_version_id": "9b0e1531-e8bd-4d15-95a5-8b42e4256cf3",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/f6ac1660-f012-4c33-a482-3519c842b945.jsonl",
+      "index_sha256": "b9670ea7abe5ee5a82916ab7f86e767876fcc506259495b84025fa6f0c39a7a8",
+      "link_available_at": "2026-10-28T05:25:27.128571+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 627,
+      "source": "api_tennis",
+      "source_match_id": "12173770"
+    },
+    {
+      "aligned_examples": {
+        "game": 671,
+        "point": 547,
+        "set": 0
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 1,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "f9da2d45-7525-47c0-bdf7-bca0347ee0b3",
+      "fonbet_source_event_id": "69018179",
+      "history_link_version_id": "273157c2-291c-4c1c-a721-105bb9a96cdf",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/f9da2d45-7525-47c0-bdf7-bca0347ee0b3.jsonl",
+      "index_sha256": "3cc9de755c6d16448f9fd9d77704942377db798caa170052b69061f7622b4d6c",
+      "link_available_at": "2026-10-28T05:25:27.607767+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": false,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 675,
+      "source": "api_tennis",
+      "source_match_id": "12171672"
+    },
+    {
+      "aligned_examples": {
+        "game": 442,
+        "point": 356,
+        "set": 442
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 0,
+        "point": 0,
+        "set": 0
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "fb240c16-eaf4-4950-959c-f2fc9174bd39",
+      "fonbet_source_event_id": "69329595",
+      "history_link_version_id": "dcc79665-13d4-4c7c-933f-01984aeb2a54",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/fb240c16-eaf4-4950-959c-f2fc9174bd39.jsonl",
+      "index_sha256": "9457127158b7edd401014d16bbd4267b05a24814edfbf2c2c362625c7ccb8a5f",
+      "link_available_at": "2026-10-28T05:25:27.841907+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 445,
+      "source": "api_tennis",
+      "source_match_id": "12174306"
+    },
+    {
+      "aligned_examples": {
+        "game": 561,
+        "point": 409,
+        "set": 561
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "fbe4cb6f-afd2-4709-b838-2cb00ff5143b",
+      "fonbet_source_event_id": "69051602",
+      "history_link_version_id": "9554a044-cba6-42c9-bcdf-917eaa3cdcda",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/fbe4cb6f-afd2-4709-b838-2cb00ff5143b.jsonl",
+      "index_sha256": "01b9ff0740eb841e504974d7549d8d4982eb2c4b361e67fbbdb7e0c602a43136",
+      "link_available_at": "2026-10-28T05:25:28.192183+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 565,
+      "source": "api_tennis",
+      "source_match_id": "12171845"
+    },
+    {
+      "aligned_examples": {
+        "game": 895,
+        "point": 682,
+        "set": 895
+      },
+      "authoritative_sets": 3,
+      "baseline_aligned_examples": {
+        "game": 2,
+        "point": 1,
+        "set": 2
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "fcf2765e-5366-4288-9e75-2a3ae279937e",
+      "fonbet_source_event_id": "68911373",
+      "history_link_version_id": "8b311898-4b70-4922-b950-6bf21f0c25c1",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/fcf2765e-5366-4288-9e75-2a3ae279937e.jsonl",
+      "index_sha256": "99d87b7aa91bf4351b4432456d42fdee2825ee7a8dd1f336796eb4d19d8bfdf9",
+      "link_available_at": "2026-10-28T04:01:46.116432+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 899,
+      "source": "api_tennis",
+      "source_match_id": "12170521"
+    },
+    {
+      "aligned_examples": {
+        "game": 622,
+        "point": 533,
+        "set": 622
+      },
+      "authoritative_sets": 2,
+      "baseline_aligned_examples": {
+        "game": 1,
+        "point": 0,
+        "set": 1
+      },
+      "effective_page_size": 500,
+      "fonbet_event_id": "fd367524-89af-472a-aa53-da432a6c3a9b",
+      "fonbet_source_event_id": "68901002",
+      "history_link_version_id": "f83f0d7b-16dc-4f0e-90c1-af85f73d19b3",
+      "index_path": "/tmp/tennis_api_alias_reconcile_coverage_20261028/events/fd367524-89af-472a-aa53-da432a6c3a9b.jsonl",
+      "index_sha256": "be8484a8a28ed8405abd8bd8472bc298755d48fa6bcab253cc311edd066a8d34",
+      "link_available_at": "2026-10-28T05:25:28.692781+00:00",
+      "match_link_id": null,
+      "reason": "aligned_candidate",
+      "result_time_known": true,
+      "snapshot_query_retries": 0,
+      "snapshots_scanned": 625,
+      "source": "api_tennis",
+      "source_match_id": "12170285"
+    }
+  ],
+  "config": {
+    "baseline_sha256": "23270c08d420f207b063bbf100e8372e35eaff2eba3032a21566e9111b129469",
+    "cutoff": "2026-10-28T05:25:39+00:00",
+    "event_ids": [
+      "108e585a-a0a9-4d51-9b6e-f39796b3b69b",
+      "164dc9c3-d91a-4f50-88e6-09c7bcaf54ae",
+      "1e004531-caf5-49e2-8396-e94efe2bb8ce",
+      "1ef5f18f-d19a-49c4-97d4-a7c8cb56917f",
+      "22ab8351-8955-4f82-bc33-b3b36d16af0a",
+      "22e712c1-b1b1-4808-b2f9-625b47d5df44",
+      "244c674c-1487-430b-86ed-de9736e206ce",
+      "2ced3c83-9de8-49c2-90b5-22f367033d2e",
+      "320bd59d-4683-4a2a-b447-5c733eec8c62",
+      "35f87b06-1a5a-490d-82fa-bfe13c0b4d8a",
+      "36a153ab-ff9e-4692-bfb8-94fea0d3d339",
+      "400fc19a-1f25-4288-9276-c11649b2ba11",
+      "41355a71-52bb-4a3e-9fa4-7a0e15e4566a",
+      "489c748c-b586-4c73-b623-175d7f118c6e",
+      "48a0e02f-667b-49f4-bb03-a5232dfc8de6",
+      "4e676ab1-218b-472c-a3f0-0568df227619",
+      "5b82a73b-4d86-480b-94f4-2596649af92e",
+      "5fd2d2ab-6230-4b26-9818-702d1d3674b6",
+      "659e9a3b-df19-4224-bacc-258965e069c6",
+      "6cfd9b8e-e20e-42c0-96f6-25c7fadb9073",
+      "7339e86a-eff6-4ff0-a98e-01422a9b4b77",
+      "84cb2f08-0060-4fb7-b81c-87c0f30eec37",
+      "8534d465-5564-4c32-87c3-aeb604b65784",
+      "85a1ce4d-f903-4223-b2f7-d29e15c51020",
+      "85bf4fcf-7403-4add-bf9e-c0eba263cdb9",
+      "86931745-db4a-46b4-b7ff-7f7905a3123c",
+      "9975246b-80f2-4845-95d9-caf6d4b33fd5",
+      "aac0a774-d953-4329-837f-ddc14134e63b",
+      "ad968686-efe7-481e-bcc7-523ea87be10e",
+      "b00682fe-fd19-4586-bd27-a589ceeb7cf8",
+      "b0b5ade6-79ab-4ba5-b28c-820eb2a2697f",
+      "b31ea1ae-a859-4257-aa64-20dccc15206a",
+      "b7901c6c-aca1-4dcf-83ab-4eb592c775a7",
+      "c1ac9647-a314-4f39-bd8d-68dab02a948b",
+      "c26416ed-a70d-4ac0-88ce-f9fdd9999c73",
+      "c827c490-bbf8-4196-b4f0-1725f14c911c",
+      "d1a04b18-566a-4800-95d6-1de67b97daae",
+      "d339d4ae-afef-4905-9d21-0ad6074cab40",
+      "d6c09020-bbfd-47a2-8603-bfcde7f63581",
+      "d8d3ac79-bff1-4058-90a8-b1b710d90509",
+      "da06cb2c-3d9d-4b46-b0c6-80ecdede299d",
+      "dd67584b-e4d3-42bc-a62b-a6ca38692441",
+      "e011b809-eeac-49ee-a0a0-b4f20e8dc760",
+      "eb89b434-70aa-4a67-b010-c78ea2c3554e",
+      "eeb42d4b-5447-4337-9958-23d3e68d9c26",
+      "f6ac1660-f012-4c33-a482-3519c842b945",
+      "f9da2d45-7525-47c0-bdf7-bca0347ee0b3",
+      "fb240c16-eaf4-4950-959c-f2fc9174bd39",
+      "fbe4cb6f-afd2-4709-b838-2cb00ff5143b",
+      "fcf2765e-5366-4288-9e75-2a3ae279937e",
+      "fd367524-89af-472a-aa53-da432a6c3a9b"
+    ],
+    "page_size": 5000,
+    "policy": "confirmed_pre_game_score_v1",
+    "source": "api_tennis",
+    "version_lookup": "confirmed_source_match_and_document_v2"
+  }
+}

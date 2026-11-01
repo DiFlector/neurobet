@@ -563,14 +563,8 @@ export function MatchCard({
               {([event.tennis_player_profiles?.a, event.tennis_player_profiles?.b] as const).map((profile, index) => (
                 <div key={index} className="rounded border border-border/40 px-2 py-1.5">
                   <div className="font-medium text-foreground">{index === 0 ? playerA : playerB}</div>
-                  <div>История: {profile ? `${profile.history_match_count} матчей` : "готовится"}</div>
-                  <div>
-                    {profile?.elo?.overall != null ? `Elo ${Math.round(profile.elo.overall)}` : "Elo пока нет"}
-                    {profile?.glicko?.rating != null ? ` · Glicko ${Math.round(profile.glicko.rating)} ±${Math.round(profile.glicko.rd || 350)}` : ""}
-                    {profile?.recent?.days_90?.win_rate != null
-                      ? ` · 90 дней ${Math.round(profile.recent.days_90.win_rate * 100)}% (${profile.recent.days_90.matches || 0})`
-                      : " · форма пока неизвестна"}
-                  </div>
+                  <div>История профиля: {profile ? `${profile.history_match_count} матчей` : "готовится"}</div>
+                  <div>Эти данные профиля не участвуют в независимом PIT baseline.</div>
                   <div>Источник: {profile?.status || "ожидание"}{profile?.available_at ? ` · ${new Date(profile.available_at).toLocaleString()}` : ""}</div>
                 </div>
               ))}
@@ -587,9 +581,13 @@ export function MatchCard({
                 );
               }
               const availableRows = rows.filter((row) => row.forecast_available !== false);
-              const pointsFor = (side: "a" | "b") => availableRows.map((row, index) => {
-                const x = availableRows.length === 1 ? 50 : 4 + (index / (availableRows.length - 1)) * 92;
-                const probabilityA = row.probabilities.match_a;
+              const matchRows = availableRows.filter((row) => typeof row.probabilities.match_a === "number");
+              const matchProbability = latest.probabilities.match_a;
+              const percentage = (value: number | undefined) =>
+                typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+              const pointsFor = (side: "a" | "b") => matchRows.map((row, index) => {
+                const x = matchRows.length === 1 ? 50 : 4 + (index / (matchRows.length - 1)) * 92;
+                const probabilityA = row.probabilities.match_a as number;
                 const probability = side === "a" ? probabilityA : 1 - probabilityA;
                 return `${x},${46 - probability * 40}`;
               }).join(" ");
@@ -598,17 +596,37 @@ export function MatchCard({
               const qualityDelta = previous && typeof previous.data_quality === "number" && typeof latest.data_quality === "number"
                 ? latest.data_quality - previous.data_quality
                 : null;
+              const baselineDetail = latest.data_quality_detail || {};
+              const baselinePlayers = baselineDetail.baseline_player_metrics as Record<string, { available?: boolean; elo?: number; glicko?: number; rd?: number; matches?: number; ranking?: { tour?: string; rank?: number } | null }> | undefined;
+              const rankA = baselinePlayers?.a?.ranking;
+              const rankB = baselinePlayers?.b?.ranking;
+              const strengthComponents = baselineDetail.strength_components as Array<{ name?: string }> | undefined;
+              const missingStrength = baselineDetail.strength_missing_components as string[] | undefined;
+              const adjustedRates = baselineDetail.opponent_adjusted_serve_return as Record<string, number> | undefined;
               return (
                 <div key={model} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
                   <div className="min-w-0">
                     <div className="text-[10px] text-muted-foreground">{model} · {latest.model_version}</div>
-                    <svg viewBox="0 0 100 50" role="img" aria-label={`Вероятность победы: ${playerA} и ${playerB}`} className="h-8 w-full overflow-visible">
+                    {matchRows.length > 0 ? <svg viewBox="0 0 100 50" role="img" aria-label={`Вероятность победы: ${playerA} и ${playerB}`} className="h-8 w-full overflow-visible">
                       <line x1="0" y1="26" x2="100" y2="26" stroke="currentColor" strokeOpacity="0.2" strokeDasharray="2 2" />
                       <polyline points={pointsFor("a")} fill="none" stroke="currentColor" strokeWidth="2" className="text-sky-500" />
                       <polyline points={pointsFor("b")} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="3 2" className="text-violet-500" />
-                    </svg>
-                    <div className="text-[10px] text-muted-foreground">Линии: {playerA} / {playerB} · {latest.observed_at ? new Date(latest.observed_at).toLocaleTimeString() : "время неизвестно"}</div>
+                    </svg> : <div className="py-1 text-[10px] text-muted-foreground">Вероятность победы в матче не рассчитана: формат матча неизвестен.</div>}
+                    {matchRows.length > 0 && <div className="text-[10px] text-muted-foreground">Линии: {playerA} / {playerB} · {latest.observed_at ? new Date(latest.observed_at).toLocaleTimeString() : "время неизвестно"}</div>}
                     <div className="text-[10px] text-muted-foreground">Счёт: {tennisForecastScore(latest)}{scoreChanged && previous ? ` · изменение: ${tennisForecastScore(previous)} → ${tennisForecastScore(latest)}` : ""}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Рейтинг тура: {rankA?.rank ? `${rankA.tour?.toUpperCase()} #${rankA.rank}` : "A неизвестен"} / {rankB?.rank ? `${rankB.tour?.toUpperCase()} #${rankB.rank}` : "B неизвестен"}
+                      {strengthComponents?.length ? ` · компоненты: ${strengthComponents.map((item) => item.name).join(", ")}` : " · рейтинг/форма не подтверждены PIT"}
+                    </div>
+                    {baselinePlayers && <div className="text-[10px] text-muted-foreground">
+                      Elo/Glicko: {baselinePlayers.a?.available ? `${Math.round(baselinePlayers.a.elo || 1500)} / ${Math.round(baselinePlayers.a.glicko || 1500)}±${Math.round(baselinePlayers.a.rd || 350)} (${baselinePlayers.a.matches || 0})` : "A нет PIT snapshot"}
+                      {" · "}{baselinePlayers.b?.available ? `${Math.round(baselinePlayers.b.elo || 1500)} / ${Math.round(baselinePlayers.b.glicko || 1500)}±${Math.round(baselinePlayers.b.rd || 350)} (${baselinePlayers.b.matches || 0})` : "B нет PIT snapshot"}
+                    </div>}
+                    {adjustedRates && <div className="text-[10px] text-muted-foreground">
+                      Подача с поправкой на приём: {percentage(adjustedRates.serve_a)} / {percentage(adjustedRates.serve_b)}
+                      {` · объём за 365 дней: ${Math.round(adjustedRates.serve_points_a_365d || 0)} / ${Math.round(adjustedRates.serve_points_b_365d || 0)} подач, ${Math.round(adjustedRates.return_points_a_365d || 0)} / ${Math.round(adjustedRates.return_points_b_365d || 0)} приёмов`}
+                    </div>}
+                    {missingStrength?.length ? <div className="text-[10px] text-muted-foreground">Нет данных: {missingStrength.join(", ")}</div> : null}
                     {(qualityDelta !== null || latest.quality_reasons?.length) && <div className="text-[10px] text-muted-foreground">
                       {qualityDelta !== null ? `Качество ${Math.round((previous?.data_quality || 0) * 100)}% → ${Math.round(Number(latest.data_quality || 0) * 100)}%` : "Причины качества"}
                       {latest.quality_reasons?.length ? ` · ${latest.quality_reasons.join(", ")}` : ""}
@@ -617,10 +635,12 @@ export function MatchCard({
                     <div className="text-[10px] text-muted-foreground">2 гейма: {latest.scenarios?.next_2_games?.slice(0, 3).map((scenario) => `${scenario.path} ${Math.round(scenario.probability * 100)}%`).join(" · ") || "нет данных"}</div>
                   </div>
                   <div className="text-right text-[11px] tabular-nums">
-                    <div>{playerA}: {Math.round(latest.probabilities.match_a * 100)}%</div>
-                    <div>{playerB}: {Math.round((1 - latest.probabilities.match_a) * 100)}%</div>
-                    <div className="text-muted-foreground">Сет {Math.round(latest.probabilities.current_set_a * 100)}%</div>
-                    <div className="text-muted-foreground">Гейм {Math.round(latest.probabilities.next_game_a * 100)}%</div>
+                    {typeof matchProbability === "number" ? <>
+                      <div>{playerA}: {percentage(matchProbability)}</div>
+                      <div>{playerB}: {percentage(1 - matchProbability)}</div>
+                    </> : <div className="text-muted-foreground">Матч: не рассчитан</div>}
+                    <div className="text-muted-foreground">Сет {percentage(latest.probabilities.current_set_a)}</div>
+                    <div className="text-muted-foreground">Гейм {percentage(latest.probabilities.next_game_a)}</div>
                     <div className="text-muted-foreground">Качество {Math.round((latest.data_quality || 0) * 100)}%</div>
                   </div>
                 </div>

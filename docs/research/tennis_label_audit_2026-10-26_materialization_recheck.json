@@ -1,0 +1,2000 @@
+{
+  "generated_at": "2026-10-26T12:07:51.525320+00:00",
+  "source_scope": "numeric Fonbet IDs; singles; each feature and label gated by its source availability time",
+  "targets": {
+    "point": {
+      "eligible_matches": 3378,
+      "labelled_matches": 81,
+      "parsed_labels": 12737,
+      "training_examples": 2730,
+      "class_a": 1362,
+      "class_b": 1368,
+      "observed_examples": 1385,
+      "retrospective_examples": 15367
+    },
+    "game": {
+      "eligible_matches": 3378,
+      "labelled_matches": 82,
+      "parsed_labels": 2316,
+      "training_examples": 1674,
+      "class_a": 835,
+      "class_b": 839,
+      "observed_examples": 263,
+      "retrospective_examples": 2804
+    },
+    "set": {
+      "eligible_matches": 3378,
+      "labelled_matches": 82,
+      "parsed_labels": 243,
+      "training_examples": 181,
+      "class_a": 91,
+      "class_b": 90,
+      "observed_examples": 22,
+      "retrospective_examples": 300
+    },
+    "match": {
+      "eligible_matches": 3378,
+      "labelled_matches": 3210,
+      "parsed_labels": 3338,
+      "training_examples": 3210,
+      "class_a": 1658,
+      "class_b": 1552,
+      "observed_examples": 0,
+      "retrospective_examples": 0
+    }
+  },
+  "by_tour": {
+    "challenger": {
+      "events": 485,
+      "valid_match_labels": 483,
+      "point_examples": 617,
+      "game_examples": 368,
+      "set_examples": 40
+    },
+    "unknown": {
+      "events": 2295,
+      "valid_match_labels": 2261,
+      "point_examples": 319,
+      "game_examples": 206,
+      "set_examples": 20
+    },
+    "wta": {
+      "events": 265,
+      "valid_match_labels": 263,
+      "point_examples": 273,
+      "game_examples": 187,
+      "set_examples": 20
+    },
+    "atp": {
+      "events": 254,
+      "valid_match_labels": 252,
+      "point_examples": 206,
+      "game_examples": 126,
+      "set_examples": 13
+    },
+    "itf": {
+      "events": 79,
+      "valid_match_labels": 79,
+      "point_examples": 1315,
+      "game_examples": 787,
+      "set_examples": 88
+    }
+  },
+  "by_discipline": {
+    "singles": {
+      "events": 3378,
+      "valid_match_labels": 3338,
+      "point_examples": 2730,
+      "game_examples": 1674,
+      "set_examples": 181
+    }
+  },
+  "by_competition": {
+    "ATP Челленджер. Гуаякиль. Квалификация": {
+      "events": 9,
+      "valid_match_labels": 9,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Эдмонд": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 108,
+      "game_examples": 67,
+      "set_examples": 7
+    },
+    "WTA. Токио. Хард. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Ангола": {
+      "events": 57,
+      "valid_match_labels": 57,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "Открытый турнир Лига Про. Мужчины. Балашиха": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Италия": {
+      "events": 62,
+      "valid_match_labels": 62,
+      "point_examples": 67,
+      "game_examples": 46,
+      "set_examples": 5
+    },
+    "ATP. Брюссель. Хард. Квалификация": {
+      "events": 12,
+      "valid_match_labels": 12,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. США. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Tour": {
+      "events": 106,
+      "valid_match_labels": 104,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Китай": {
+      "events": 56,
+      "valid_match_labels": 56,
+      "point_examples": 112,
+      "game_examples": 62,
+      "set_examples": 8
+    },
+    "World Tennis. Женщины. Сингапур": {
+      "events": 24,
+      "valid_match_labels": 24,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Франция": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "Теннис. Открытый турнир Лига Про. Мужчины. Балашиха": {
+      "events": 3,
+      "valid_match_labels": 0,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Ухань. Хард": {
+      "events": 44,
+      "valid_match_labels": 44,
+      "point_examples": 76,
+      "game_examples": 54,
+      "set_examples": 6
+    },
+    "World Tennis. Мужчины. США": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Лиссабон. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Франция. Квалификация": {
+      "events": 20,
+      "valid_match_labels": 20,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Египет": {
+      "events": 58,
+      "valid_match_labels": 58,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Катания": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 53,
+      "game_examples": 24,
+      "set_examples": 3
+    },
+    "World Tennis. Женщины. США": {
+      "events": 59,
+      "valid_match_labels": 58,
+      "point_examples": 160,
+      "game_examples": 116,
+      "set_examples": 13
+    },
+    "World Tennis. Женщины. Китай": {
+      "events": 58,
+      "valid_match_labels": 58,
+      "point_examples": 123,
+      "game_examples": 62,
+      "set_examples": 6
+    },
+    "World Tennis. Мужчины. Индия": {
+      "events": 61,
+      "valid_match_labels": 61,
+      "point_examples": 368,
+      "game_examples": 207,
+      "set_examples": 23
+    },
+    "World Tennis. Женщины. Чехия": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Флоренция": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 26,
+      "game_examples": 18,
+      "set_examples": 2
+    },
+    "World Tennis. Мужчины. Бразилия. Квалификация": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Осака. Хард": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 68,
+      "game_examples": 39,
+      "set_examples": 4
+    },
+    "World Tennis. Мужчины. Египет": {
+      "events": 54,
+      "valid_match_labels": 53,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Рексем": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 26,
+      "game_examples": 17,
+      "set_examples": 2
+    },
+    "World Tennis. Мужчины. США. Лексингтон": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Испания. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Греция": {
+      "events": 59,
+      "valid_match_labels": 59,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Венгрия": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Сингапур": {
+      "events": 27,
+      "valid_match_labels": 27,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Майя": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 86,
+      "game_examples": 62,
+      "set_examples": 7
+    },
+    "World Tennis. Женщины. Чехия. Квалификация": {
+      "events": 6,
+      "valid_match_labels": 6,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Роан": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Нинбо. Хард": {
+      "events": 26,
+      "valid_match_labels": 26,
+      "point_examples": 46,
+      "game_examples": 40,
+      "set_examples": 4
+    },
+    "World Tennis. Мужчины. Хорватия": {
+      "events": 48,
+      "valid_match_labels": 48,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Греция": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Молдова": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Алматы. Хард. Квалификация": {
+      "events": 12,
+      "valid_match_labels": 12,
+      "point_examples": 77,
+      "game_examples": 55,
+      "set_examples": 6
+    },
+    "World Tennis. Женщины. Германия. Квалификация": {
+      "events": 5,
+      "valid_match_labels": 2,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Германия": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Гуанчжоу": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 28,
+      "game_examples": 20,
+      "set_examples": 2
+    },
+    "WTA 125K. Мальорка": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Осака. Хард. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 18,
+      "point_examples": 38,
+      "game_examples": 22,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Хорватия": {
+      "events": 62,
+      "valid_match_labels": 62,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Глазго. Квалификация": {
+      "events": 19,
+      "valid_match_labels": 16,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Кали": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 48,
+      "game_examples": 35,
+      "set_examples": 4
+    },
+    "World Tennis. Женщины. Шербур-ан-Котантен. Квалификация": {
+      "events": 22,
+      "valid_match_labels": 22,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Нинбо. Хард. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 18,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Пуатье. Квалификация": {
+      "events": 11,
+      "valid_match_labels": 9,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA 125K. Роверето": {
+      "events": 27,
+      "valid_match_labels": 27,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Австралия": {
+      "events": 30,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Тунис": {
+      "events": 58,
+      "valid_match_labels": 58,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Италия. Квалификация": {
+      "events": 17,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "unknown": {
+      "events": 4,
+      "valid_match_labels": 0,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Португалия": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Гуанчжоу. Хард. Квалификация": {
+      "events": 16,
+      "valid_match_labels": 16,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Бразилия": {
+      "events": 58,
+      "valid_match_labels": 57,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Ольбия": {
+      "events": 28,
+      "valid_match_labels": 28,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Италия. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Египет. Квалификация": {
+      "events": 14,
+      "valid_match_labels": 14,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Шербур-ан-Котантен": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Италия": {
+      "events": 59,
+      "valid_match_labels": 59,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Гуанчжоу. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 18,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Хорватия. Квалификация": {
+      "events": 14,
+      "valid_match_labels": 14,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Лион. Хард": {
+      "events": 27,
+      "valid_match_labels": 27,
+      "point_examples": 60,
+      "game_examples": 34,
+      "set_examples": 3
+    },
+    "World Tennis. Мужчины. Бразилия": {
+      "events": 55,
+      "valid_match_labels": 55,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Япония": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Брюссель. Хард": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 49,
+      "game_examples": 22,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Остин": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 96,
+      "game_examples": 56,
+      "set_examples": 6
+    },
+    "World Tennis. Женщины. Австралия": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 158,
+      "game_examples": 97,
+      "set_examples": 9
+    },
+    "World Tennis. Женщины. Греция. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Лион. Хард. Квалификация": {
+      "events": 12,
+      "valid_match_labels": 12,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Цзинань": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 34,
+      "game_examples": 16,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Бразилия. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Алматы. Хард": {
+      "events": 25,
+      "valid_match_labels": 25,
+      "point_examples": 20,
+      "game_examples": 15,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Стара-Загора": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Нинбо. Квалификация": {
+      "events": 16,
+      "valid_match_labels": 16,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Египет. Квалификация": {
+      "events": 14,
+      "valid_match_labels": 14,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Пакистан": {
+      "events": 18,
+      "valid_match_labels": 17,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Великобритания. Квалификация": {
+      "events": 42,
+      "valid_match_labels": 39,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Греция. Квалификация": {
+      "events": 16,
+      "valid_match_labels": 16,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Рексем. Квалификация": {
+      "events": 24,
+      "valid_match_labels": 24,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Санта-Крус 2": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Китай. Квалификация": {
+      "events": 6,
+      "valid_match_labels": 6,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Остин. Квалификация": {
+      "events": 23,
+      "valid_match_labels": 23,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Тунис. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Тунис": {
+      "events": 60,
+      "valid_match_labels": 60,
+      "point_examples": 236,
+      "game_examples": 147,
+      "set_examples": 16
+    },
+    "World Tennis. Женщины. Хорватия. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Сеул": {
+      "events": 5,
+      "valid_match_labels": 5,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Лиссабон": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 83,
+      "game_examples": 37,
+      "set_examples": 3
+    },
+    "World Tennis. Женщины. Великобритания": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Китай. Квалификация": {
+      "events": 36,
+      "valid_match_labels": 36,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "UTR Pro. Мужчины. Словакия": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Швеция. Квалификация": {
+      "events": 7,
+      "valid_match_labels": 4,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Шанхай. Хард": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Флоренция. Квалификация": {
+      "events": 14,
+      "valid_match_labels": 14,
+      "point_examples": 24,
+      "game_examples": 19,
+      "set_examples": 2
+    },
+    "World Tennis. Мужчины. США. Лексингтон. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Эдмонд. Квалификация": {
+      "events": 17,
+      "valid_match_labels": 17,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Испания": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Великобритания": {
+      "events": 32,
+      "valid_match_labels": 31,
+      "point_examples": 61,
+      "game_examples": 26,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Сагеней. Квалификация": {
+      "events": 21,
+      "valid_match_labels": 21,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Квебек": {
+      "events": 31,
+      "valid_match_labels": 31,
+      "point_examples": 58,
+      "game_examples": 45,
+      "set_examples": 5
+    },
+    "WTA 125K. Лиссабон": {
+      "events": 27,
+      "valid_match_labels": 27,
+      "point_examples": 45,
+      "game_examples": 32,
+      "set_examples": 4
+    },
+    "World Tennis. Мужчины. Эквадор": {
+      "events": 20,
+      "valid_match_labels": 20,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Тунис. Квалификация": {
+      "events": 21,
+      "valid_match_labels": 17,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Сингапур. Квалификация": {
+      "events": 26,
+      "valid_match_labels": 26,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "Теннис. Турнир": {
+      "events": 24,
+      "valid_match_labels": 24,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Гуанчжоу. Хард": {
+      "events": 6,
+      "valid_match_labels": 6,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. США. Остин. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Сагеней": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 8,
+      "game_examples": 8,
+      "set_examples": 2
+    },
+    "World Tennis. Женщины. Португалия. Квалификация": {
+      "events": 7,
+      "valid_match_labels": 7,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA 125K. Курмайер. Квалификация": {
+      "events": 5,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Форт-Уэрт. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 18,
+      "point_examples": 134,
+      "game_examples": 82,
+      "set_examples": 9
+    },
+    "ATP Челленджер. Форт-Уэрт": {
+      "events": 29,
+      "valid_match_labels": 29,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Япония. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Стамбул. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 17,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. США. Остин": {
+      "events": 30,
+      "valid_match_labels": 30,
+      "point_examples": 53,
+      "game_examples": 37,
+      "set_examples": 4
+    },
+    "World Tennis. Мужчины Ангола. Квалификация": {
+      "events": 2,
+      "valid_match_labels": 2,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Эквадор. Квалификация": {
+      "events": 6,
+      "valid_match_labels": 6,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Бургас": {
+      "events": 2,
+      "valid_match_labels": 2,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Брест. Квалификация": {
+      "events": 13,
+      "valid_match_labels": 11,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Нинбо": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Базель. Хард. Квалификация": {
+      "events": 11,
+      "valid_match_labels": 11,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Кали. Квалификация": {
+      "events": 18,
+      "valid_match_labels": 18,
+      "point_examples": 101,
+      "game_examples": 55,
+      "set_examples": 6
+    },
+    "World Tennis. Мужчины. США. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Сингапур. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Индия. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Цзинань. Квалификация": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Квебек. Квалификация": {
+      "events": 6,
+      "valid_match_labels": 6,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "UTR Pro. Мужчины. Конкорд": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Сеул. Квалификация": {
+      "events": 12,
+      "valid_match_labels": 12,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA. Токио. Хард": {
+      "events": 4,
+      "valid_match_labels": 4,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "UTR Pro. Мужчины. Индия": {
+      "events": 1,
+      "valid_match_labels": 1,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Торонто. Квалификация": {
+      "events": 15,
+      "valid_match_labels": 15,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Су-Фолс. Квалификация": {
+      "events": 12,
+      "valid_match_labels": 12,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP. Вена. Хард. Квалификация": {
+      "events": 9,
+      "valid_match_labels": 9,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Мужчины. Австралия. Квалификация": {
+      "events": 8,
+      "valid_match_labels": 8,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "World Tennis. Женщины. Австралия. Квалификация": {
+      "events": 7,
+      "valid_match_labels": 7,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Санта-Крус 2. Квалификация": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "WTA 125K. Куритиба. Квалификация": {
+      "events": 3,
+      "valid_match_labels": 3,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    },
+    "ATP Челленджер. Унин 3": {
+      "events": 1,
+      "valid_match_labels": 1,
+      "point_examples": 0,
+      "game_examples": 0,
+      "set_examples": 0
+    }
+  },
+  "tour_classification_sources": {
+    "fonbet_competition_name": 970,
+    "unknown": 2295,
+    "flashscore_match_archive": 113
+  },
+  "result_time_evidence": {
+    "snapshot_rows_returned": 277,
+    "exact_terminal_score_snapshots": 277,
+    "snapshots_preceding_metadata_time": 0,
+    "sources": {
+      "fonbet_official_result_metadata": 2918,
+      "fonbet_exact_final_score_snapshot": 277,
+      "unavailable": 143
+    },
+    "unknown_valid_results": 143
+  },
+  "point_history": {
+    "documents_total": 234460,
+    "documents_linked": 4903,
+    "source_matches_total": null,
+    "current_links": 191,
+    "linked_fonbet_events": 191,
+    "parsed_versions_total": null,
+    "parsed_versions_linked": 4903,
+    "confirmed_outcomes_total": null,
+    "availability_unknown_documents": 0,
+    "availability_unknown_versions": null,
+    "global_history_scan_status": "deferred_resource_guard_copy_database_audit"
+  },
+  "feature_availability": {
+    "contract_version": "tennis_odds_free_v1",
+    "checked_examples": 7795,
+    "certified_examples": 0,
+    "uncertified_examples": 7795,
+    "fully_source_observed_examples": 0,
+    "contract_defaulted_examples": 7795,
+    "point_in_time_definition": "certified means every source-backed feature is available by the snapshot; a documented contract prior or explicit unknown value is allowed only when its missingness/sample-weight representation is part of the feature contract",
+    "source_groups": {
+      "player_metrics": {
+        "available": 499,
+        "contract_defaulted": 7296,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_a": {
+        "available": 15,
+        "contract_defaulted": 7780,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_b": {
+        "available": 9,
+        "contract_defaulted": 7786,
+        "missing_or_unverifiable": 0
+      },
+      "event_state": {
+        "available": 7795,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "event_format": {
+        "available": 0,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 7795
+      },
+      "event_surface": {
+        "available": 0,
+        "contract_defaulted": 7795,
+        "missing_or_unverifiable": 0
+      }
+    },
+    "resolution_counts": {
+      "player_metrics.a:contract_default": 6608,
+      "player_metrics.b:contract_default": 6714,
+      "serve_metrics.a:contract_default": 7780,
+      "serve_metrics.b:contract_default": 7786,
+      "event_format:missing_or_not_available_as_of": 7795,
+      "event_surface:contract_default_unknown": 7795,
+      "event_state:observed_snapshot": 7795,
+      "player_metrics.a:observed_snapshot": 1187,
+      "player_metrics.b:observed_snapshot": 1081,
+      "serve_metrics.a:metric_snapshot": 15,
+      "serve_metrics.b:metric_snapshot": 9
+    },
+    "exclusions": {
+      "event_format": 7795
+    },
+    "feature_values_materialized_examples": 7795,
+    "feature_values_missing_examples": 0
+  },
+  "exclusions": {
+    "doubles": 862,
+    "non_numeric_fonbet_id": 358,
+    "official_result_not_finished": 34,
+    "point_side_order_unknown": 6681,
+    "set_winner_disagrees_with_score": 6
+  },
+  "training_gate": {
+    "status": "blocked",
+    "required_per_target": {
+      "initial_train_matches": 500,
+      "each_validation_window_matches": 100,
+      "holdout_matches": 200,
+      "both_classes": true,
+      "point_in_time_clean": true
+    },
+    "windows_evaluated": true,
+    "point_in_time_certified": false,
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "odds_free_feature_availability_not_certified"
+    ],
+    "chronology_policy": "official_result_source_time_or_exact_previously_observed_final_score_snapshot",
+    "walk_forward": {
+      "point": {
+        "matches_with_labels_on_manifest_timeline": 81,
+        "manifest_matches": 3195,
+        "development_matches": 2556,
+        "holdout": {
+          "matches": 8,
+          "candidate_matches": 639,
+          "class_a": 8,
+          "class_b": 8,
+          "both_classes": true,
+          "meets_match_minimum": false
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 42,
+              "candidate_matches": 1533,
+              "class_a": 42,
+              "class_b": 42,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T02:26:55.462351+00:00",
+              "candidate_labelled_matches": 42,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 42,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 4,
+              "candidate_matches": 256,
+              "class_a": 4,
+              "class_b": 4,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T02:26:55.462351+00:00"
+            }
+          },
+          {
+            "fold": 2,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 46,
+              "candidate_matches": 1789,
+              "class_a": 46,
+              "class_b": 46,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T14:20:06.305291+00:00",
+              "candidate_labelled_matches": 46,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 46,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 4,
+              "candidate_matches": 256,
+              "class_a": 4,
+              "class_b": 4,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T14:20:06.305291+00:00"
+            }
+          },
+          {
+            "fold": 3,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 50,
+              "candidate_matches": 2045,
+              "class_a": 50,
+              "class_b": 50,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T01:12:51.697399+00:00",
+              "candidate_labelled_matches": 50,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 50,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 8,
+              "candidate_matches": 255,
+              "class_a": 8,
+              "class_b": 8,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-21T01:12:51.697399+00:00"
+            }
+          },
+          {
+            "fold": 4,
+            "train": {
+              "matches": 23,
+              "candidate_matches": 23,
+              "class_a": 23,
+              "class_b": 23,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 58,
+              "candidate_matches": 2300,
+              "class_a": 58,
+              "class_b": 58,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T15:23:37.403862+00:00",
+              "candidate_labelled_matches": 58,
+              "eligible_matches": 23,
+              "purged_future_label_matches": 35,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 15,
+              "candidate_matches": 256,
+              "class_a": 15,
+              "class_b": 15,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": true,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": "2026-10-21T13:58:29.099868+00:00",
+              "earliest_validation_forecast_at": "2026-10-21T15:23:37.403862+00:00"
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "game": {
+        "matches_with_labels_on_manifest_timeline": 82,
+        "manifest_matches": 3195,
+        "development_matches": 2556,
+        "holdout": {
+          "matches": 8,
+          "candidate_matches": 639,
+          "class_a": 8,
+          "class_b": 8,
+          "both_classes": true,
+          "meets_match_minimum": false
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 42,
+              "candidate_matches": 1533,
+              "class_a": 42,
+              "class_b": 42,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T02:06:41.269291+00:00",
+              "candidate_labelled_matches": 42,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 42,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 4,
+              "candidate_matches": 256,
+              "class_a": 4,
+              "class_b": 4,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T02:06:41.269291+00:00"
+            }
+          },
+          {
+            "fold": 2,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 46,
+              "candidate_matches": 1789,
+              "class_a": 46,
+              "class_b": 46,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T10:51:14.159136+00:00",
+              "candidate_labelled_matches": 46,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 46,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 5,
+              "candidate_matches": 256,
+              "class_a": 5,
+              "class_b": 5,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T10:51:14.159136+00:00"
+            }
+          },
+          {
+            "fold": 3,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 51,
+              "candidate_matches": 2045,
+              "class_a": 51,
+              "class_b": 51,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T01:02:52.748911+00:00",
+              "candidate_labelled_matches": 51,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 51,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 8,
+              "candidate_matches": 255,
+              "class_a": 8,
+              "class_b": 8,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-21T01:02:52.748911+00:00"
+            }
+          },
+          {
+            "fold": 4,
+            "train": {
+              "matches": 23,
+              "candidate_matches": 23,
+              "class_a": 23,
+              "class_b": 23,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 59,
+              "candidate_matches": 2300,
+              "class_a": 59,
+              "class_b": 59,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T15:00:39.053791+00:00",
+              "candidate_labelled_matches": 59,
+              "eligible_matches": 23,
+              "purged_future_label_matches": 36,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 15,
+              "candidate_matches": 256,
+              "class_a": 15,
+              "class_b": 15,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": true,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": "2026-10-21T13:58:29.099868+00:00",
+              "earliest_validation_forecast_at": "2026-10-21T15:00:39.053791+00:00"
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "set": {
+        "matches_with_labels_on_manifest_timeline": 82,
+        "manifest_matches": 3195,
+        "development_matches": 2556,
+        "holdout": {
+          "matches": 8,
+          "candidate_matches": 639,
+          "class_a": 5,
+          "class_b": 5,
+          "both_classes": true,
+          "meets_match_minimum": false
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 42,
+              "candidate_matches": 1533,
+              "class_a": 28,
+              "class_b": 26,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T02:06:41.269291+00:00",
+              "candidate_labelled_matches": 42,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 42,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 4,
+              "candidate_matches": 256,
+              "class_a": 3,
+              "class_b": 2,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T02:06:41.269291+00:00"
+            }
+          },
+          {
+            "fold": 2,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 46,
+              "candidate_matches": 1789,
+              "class_a": 31,
+              "class_b": 28,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-13T11:38:13.367224+00:00",
+              "candidate_labelled_matches": 46,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 46,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 5,
+              "candidate_matches": 256,
+              "class_a": 2,
+              "class_b": 3,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-13T11:38:13.367224+00:00"
+            }
+          },
+          {
+            "fold": 3,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 51,
+              "candidate_matches": 2045,
+              "class_a": 33,
+              "class_b": 31,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T01:02:52.748911+00:00",
+              "candidate_labelled_matches": 51,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 51,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 8,
+              "candidate_matches": 255,
+              "class_a": 4,
+              "class_b": 6,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-21T01:02:52.748911+00:00"
+            }
+          },
+          {
+            "fold": 4,
+            "train": {
+              "matches": 23,
+              "candidate_matches": 23,
+              "class_a": 15,
+              "class_b": 12,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 59,
+              "candidate_matches": 2300,
+              "class_a": 37,
+              "class_b": 37,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T15:00:39.053791+00:00",
+              "candidate_labelled_matches": 59,
+              "eligible_matches": 23,
+              "purged_future_label_matches": 36,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 15,
+              "candidate_matches": 256,
+              "class_a": 9,
+              "class_b": 12,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "temporal_precedence": {
+              "passed": true,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": "2026-10-21T13:58:29.099868+00:00",
+              "earliest_validation_forecast_at": "2026-10-21T15:00:39.053791+00:00"
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "match": {
+        "matches_with_labels_on_manifest_timeline": 3195,
+        "manifest_matches": 3195,
+        "development_matches": 2556,
+        "holdout": {
+          "matches": 639,
+          "candidate_matches": 639,
+          "class_a": 333,
+          "class_b": 306,
+          "both_classes": true,
+          "meets_match_minimum": true
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 1533,
+              "candidate_matches": 1533,
+              "class_a": 813,
+              "class_b": 720,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "training_filter": {
+              "cutoff": "2026-10-12T22:00:29.642226+00:00",
+              "candidate_labelled_matches": 1533,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 1533,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 256,
+              "candidate_matches": 256,
+              "class_a": 132,
+              "class_b": 124,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-12T22:00:29.642226+00:00"
+            }
+          },
+          {
+            "fold": 2,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 1789,
+              "candidate_matches": 1789,
+              "class_a": 945,
+              "class_b": 844,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "training_filter": {
+              "cutoff": "2026-10-12T16:42:17.931935+00:00",
+              "candidate_labelled_matches": 1789,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 1789,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 256,
+              "candidate_matches": 256,
+              "class_a": 125,
+              "class_b": 131,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-12T16:42:17.931935+00:00"
+            }
+          },
+          {
+            "fold": 3,
+            "train": {
+              "matches": 0,
+              "candidate_matches": 0,
+              "class_a": 0,
+              "class_b": 0,
+              "both_classes": false,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 2045,
+              "candidate_matches": 2045,
+              "class_a": 1070,
+              "class_b": 975,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "training_filter": {
+              "cutoff": "2026-10-12T18:16:08.287051+00:00",
+              "candidate_labelled_matches": 2045,
+              "eligible_matches": 0,
+              "purged_future_label_matches": 2045,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 255,
+              "candidate_matches": 255,
+              "class_a": 115,
+              "class_b": 140,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "temporal_precedence": {
+              "passed": false,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": null,
+              "earliest_validation_forecast_at": "2026-10-12T18:16:08.287051+00:00"
+            }
+          },
+          {
+            "fold": 4,
+            "train": {
+              "matches": 277,
+              "candidate_matches": 277,
+              "class_a": 138,
+              "class_b": 139,
+              "both_classes": true,
+              "meets_match_minimum": false
+            },
+            "train_candidates": {
+              "matches": 2300,
+              "candidate_matches": 2300,
+              "class_a": 1185,
+              "class_b": 1115,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "training_filter": {
+              "cutoff": "2026-10-21T04:38:21.316391+00:00",
+              "candidate_labelled_matches": 2300,
+              "eligible_matches": 277,
+              "purged_future_label_matches": 2023,
+              "purged_unknown_label_time_matches": 0,
+              "purged_no_validation_boundary_matches": 0,
+              "missing_validation_forecast_times": 0
+            },
+            "validation": {
+              "matches": 256,
+              "candidate_matches": 256,
+              "class_a": 132,
+              "class_b": 124,
+              "both_classes": true,
+              "meets_match_minimum": true
+            },
+            "temporal_precedence": {
+              "passed": true,
+              "missing_train_label_times": 0,
+              "missing_validation_forecast_times": 0,
+              "latest_train_label_available_at": "2026-10-17T23:53:01.124018+00:00",
+              "earliest_validation_forecast_at": "2026-10-21T04:38:21.316391+00:00"
+            }
+          }
+        ],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": true
+      }
+    },
+    "manifest": {
+      "path": "docs/research/tennis_training_manifest_8447ea4e509b.json",
+      "dataset_digest": "8447ea4e509bfe3225e06a8b32dae57c77364dfde77173d3054c8e1c4651d858",
+      "matches": 3195,
+      "development_matches": 2556,
+      "holdout_matches": 639,
+      "holdout_quality_metrics_opened": false
+    },
+    "chronology_timestamp_missing_matches": 178,
+    "result_availability_unknown_matches": 143,
+    "unknown_result_time_policy": "exclude_from_manifest; use exact previously observed final-score snapshot when available",
+    "manifest_result_availability_certified": true,
+    "unknown_result_time_excluded_matches": 143,
+    "scheduled_time_used_as_chronology": 0,
+    "result_time_sources": {
+      "fonbet_official_result_metadata": 2918,
+      "fonbet_exact_final_score_snapshot": 277,
+      "unavailable": 143
+    },
+    "base_coverage_status": "insufficient"
+  },
+  "training_examples_manifest": {
+    "path": "docs/research/tennis_training_examples_77927850ad23.jsonl",
+    "examples": 7795,
+    "sha256": "2d59c48ffdceb2334b1a799db39ca5129a0cdf7576294c7f8a88107b0abd9c8d",
+    "logical_digest": "77927850ad23fe8401fb4886ae6d916594d92e33d002734979321a7a7e14199c"
+  }
+}

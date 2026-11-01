@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import redis
 
-from streams import STREAM_FONBET_RESULTS, MessageEnvelope, StreamPublisher
+from streams import STREAM_FONBET_RESULTS, StreamPublisher
 from .config import settings
 from .s3_writer import MinIORawWriter
 
@@ -120,18 +120,17 @@ class FonbetResultsCollector:
         )
 
         # 2. Publish to Redis Streams
-        envelope = MessageEnvelope(
-            producer="collector-results",
-            event_type="fonbet.results.raw",
-            payload={
+        self.publisher.publish(
+            STREAM_FONBET_RESULTS,
+            {
                 "storage_path": s3_path,
                 "content_hash": content_hash,
                 "collected_at": collected_at.isoformat(),
                 "events_count": len(results_data.get("events", [])),
                 "sections_count": len(results_data.get("sections", [])),
             },
+            idempotency_key=f"fonbet_results:{content_hash.removeprefix('sha256:')}",
         )
-        self.publisher.publish(STREAM_FONBET_RESULTS, envelope)
 
         self.last_content_hash = content_hash
         logger.info(

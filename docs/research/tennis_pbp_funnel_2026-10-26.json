@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-10-26T01:03:50Z",
+  "scope": "read-only production census; no training; source match IDs from stored Flashscore documents; target labels from latest version per numeric Fonbet event/set",
+  "profile": {
+    "flashscore_identity_links": {"confirmed_participants": 704, "candidate_participants": 359, "rejected_participants": 50},
+    "refresh_jobs": {"completed": 746, "queued": 23, "retry": 932, "blocked": 440, "failed": 441, "skipped_doubles": 84}
+  },
+  "matches_and_links": {
+    "unique_flashscore_source_matches_with_any_pbp_document": 204,
+    "unique_matches_with_complete_pbp_document": 130,
+    "unique_matches_with_non_retrospective_document": 65,
+    "unique_matches_with_non_retrospective_complete_document": 43,
+    "match_links": {
+      "confirmed_or_manual_combined": {"unique_source_matches": 186, "fonbet_events": 187},
+      "matched": {"rows": 4240, "unique_source_matches": 186, "fonbet_events": 187},
+      "manual": {"rows": 8, "unique_source_matches": 8, "fonbet_events": 8},
+      "ambiguous": {"rows": 20, "unique_source_matches": 10, "fonbet_events": 0}
+    }
+  },
+  "documents": {"flashscore_documents": 4397, "complete_documents": 1207},
+  "numeric_fonbet_target_labels": {
+    "eligible_events": 4128,
+    "finished_events": 4121,
+    "point": {"events": 114, "labels": 20440, "observed_events": 9, "retrospective_events": 105},
+    "game": {"events": 110, "labels": 3027, "observed_events": 9, "retrospective_events": 101},
+    "set": {"events": 103, "labels": 286, "observed_events": 7, "retrospective_events": 96},
+    "match_result_available_at_alignment": "not certified"
+  },
+  "queue": {"point_jobs": {"finalized": 103, "queued": 29, "retry": 168, "waiting_match": 20, "waiting_players": 3189, "running": 1, "running_event_status": "finished"}, "source_only_jobs": {"completed": 20, "retry_partial": 3}},
+  "admission_note": "P/G/S counts include retrospective documents. P/G/S point timestamps and exact Fonbet state alignment are not certified; observed labels remain single digits, so this census does not satisfy PIT or training admission."
+}

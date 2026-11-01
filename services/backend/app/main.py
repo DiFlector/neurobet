@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, asc, case, desc, func, or_, text
 
@@ -3404,6 +3404,12 @@ def _flashscore_queue_row_is_hidden(row: dict[str, Any], now: datetime) -> bool:
         # source identities arrive, but they are not actionable queue work.
         return True
     reason = str(row.get("reason") or row.get("last_error") or "")
+    if (reason == "source_terminal_empty_response_count_mismatch_confirmed"
+            and row.get("status") == "blocked"):
+        # The partial archive and checkpoint remain durable, but an unchanged
+        # source count cannot make progress through automatic retries. Keep the
+        # parked job available only in the explicit parked view.
+        return True
     if reason == "CAPTCHA_CHALLENGE_ABORTED":
         # Blocked CAPTCHA jobs are parked durable work. They reappear only
         # after Research changes their status back to queued/retry, or an
@@ -3554,6 +3560,145 @@ def _queue_player_source_context(profile, coverage_rows, *, now: datetime,
     return {"confirmed_source_ids": confirmed_ids, "capabilities": sources,
             "fallback_reason": fallback_reason,
             "required_capability": "point_by_point" if missing_pbp_identity else "match_history"}
+
+
+@app.get("/api/tennis-history/enrollment")
+def get_tennis_enrollment_status(
+    hours: int = Query(24, ge=1, le=168), limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> Dict[str, Any]:
+    """Report the complete recent Fonbet cohort and its current processing stages."""
+    from collections import Counter
+    from db.models import TennisMatchLookupJob, TennisPointDocument, TennisPointMatchLink
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as session:
+        rows = session.query(
+            Event.id, Event.source_event_id, Event.participant_a_id, Event.participant_b_id,
+            Event.participant_a_name, Event.participant_b_name, Event.first_seen_at, Event.status,
+            TennisPointRefreshJob.status.label("point_status"),
+            TennisPointRefreshJob.last_error.label("point_error"),
+            TennisPointRefreshJob.next_run_at.label("point_next_run_at"),
+            TennisMatchLookupJob.status.label("lookup_status"),
+            TennisMatchLookupJob.last_error.label("lookup_error"),
+            TennisMatchLookupJob.next_run_at.label("lookup_next_run_at"),
+        ).outerjoin(TennisPointRefreshJob, TennisPointRefreshJob.event_id == Event.id).outerjoin(
+            TennisMatchLookupJob, TennisMatchLookupJob.event_id == Event.id,
+        ).filter(Event.source == "fonbet", Event.sport_code == "tennis",
+                 Event.first_seen_at >= now - timedelta(hours=hours), Event.first_seen_at <= now
+        ).order_by(Event.first_seen_at.desc(), Event.id).all()
+        event_ids = [row.id for row in rows]
+        event_id_set = set(event_ids)
+        event_links = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.fonbet_event_id.in_(event_ids) if event_ids else False,
+            TennisPointMatchLink.available_at <= now,
+        ).all()
+        source_ids = {link.source_match_id for link in event_links}
+        versions = session.query(TennisPointMatchLink).filter(
+            TennisPointMatchLink.source_match_id.in_(source_ids) if source_ids else False,
+            TennisPointMatchLink.available_at <= now,
+        ).order_by(TennisPointMatchLink.available_at, TennisPointMatchLink.id).all()
+        latest = {link.source_match_id: link for link in versions}
+        linked = {}
+        for link in latest.values():
+            if link.status in ("matched", "manual") and link.fonbet_event_id in event_id_set:
+                linked.setdefault(link.fonbet_event_id, []).append(link)
+        direct_rows = session.query(TennisPointHistoryVersion.fonbet_event_id,
+            TennisPointHistoryVersion.source_match_id, TennisPointHistoryVersion.available_at,
+            TennisPointHistoryVersion.quality_json).filter(
+                TennisPointHistoryVersion.fonbet_event_id.in_(event_ids) if event_ids else False,
+                TennisPointHistoryVersion.parser_version == "api_tennis_pbp_link_v2",
+                TennisPointHistoryVersion.available_at.is_not(None), TennisPointHistoryVersion.available_at <= now,
+            ).order_by(TennisPointHistoryVersion.available_at).all()
+        direct = {}
+        for version in direct_rows:
+            proof = (version.quality_json or {}).get("link") or {}
+            if proof.get("method") == "confirmed_canonical_and_provider_ids_v2" and proof.get("normalized_to_fonbet") is True:
+                direct[(version.fonbet_event_id, version.source_match_id)] = version
+        direct_by_event = {}
+        for (event_id, _), version in direct.items():
+            direct_by_event.setdefault(event_id, []).append(version)
+        linked_sources = ([link.source_match_id for links in linked.values() for link in links]
+                          + [version.source_match_id for version in direct.values()])
+        documents = dict(session.query(TennisPointDocument.source_match_id, func.count(TennisPointDocument.id))
+            .filter(TennisPointDocument.source_match_id.in_(linked_sources) if linked_sources else False)
+            .filter(TennisPointDocument.available_at.is_not(None), TennisPointDocument.available_at <= now)
+            .group_by(TennisPointDocument.source_match_id).all())
+        parsed = set(row[0] for row in session.query(TennisPointHistoryVersion.source_match_id).filter(
+            TennisPointHistoryVersion.source_match_id.in_(linked_sources) if linked_sources else False,
+            TennisPointHistoryVersion.available_at.is_not(None), TennisPointHistoryVersion.available_at <= now,
+        ).distinct().all())
+        participant_ids = {pid for row in rows[offset:offset + limit]
+                           for pid in (row.participant_a_id, row.participant_b_id) if pid}
+        identities = session.query(TennisPlayerIdentityLink).filter(
+            TennisPlayerIdentityLink.participant_id.in_(participant_ids) if participant_ids else False,
+            TennisPlayerIdentityLink.source == "flashscore", TennisPlayerIdentityLink.available_at <= now,
+        ).order_by(TennisPlayerIdentityLink.available_at, TennisPlayerIdentityLink.id).all()
+        identity_latest = {(i.participant_id, i.source_player_id): i for i in identities}
+        def ids_for(participant_id):
+            return [i.source_player_id for (pid, _), i in identity_latest.items()
+                    if pid == participant_id and i.status == "confirmed"]
+        reasons = Counter((row.point_error or row.lookup_error or
+                           ("ENROLLMENT_MISSING" if row.point_status is None else "none")) for row in rows)
+        page = []
+        for row in rows[offset:offset + limit]:
+            links = linked.get(row.id, [])
+            direct_links = direct_by_event.get(row.id, [])
+            source_match_ids = [link.source_match_id for link in links] + [link.source_match_id for link in direct_links]
+            stage = ("not_enrolled" if row.point_status is None else
+                     "unsupported" if row.point_status == "skipped" else
+                     "history_parsed" if any(source_id in parsed for source_id in source_match_ids) else
+                     "history_received" if any(documents.get(source_id, 0) for source_id in source_match_ids) else
+                     "linked" if source_match_ids else "searching")
+            page.append({"event_id": str(row.id), "fonbet_id": row.source_event_id,
+                "players": [row.participant_a_name, row.participant_b_name], "status": row.status,
+                "stage": stage,
+                "first_seen_at": row.first_seen_at.isoformat(),
+                "confirmed_flashscore_player_ids": [ids_for(row.participant_a_id), ids_for(row.participant_b_id)],
+                "lookup": {"status": row.lookup_status, "reason": row.lookup_error,
+                           "next_run_at": row.lookup_next_run_at.isoformat() if row.lookup_next_run_at else None},
+                "history_job": {"status": row.point_status, "reason": row.point_error,
+                                "next_run_at": row.point_next_run_at.isoformat() if row.point_next_run_at else None},
+                "links": ([{"source_match_id": link.source_match_id, "available_at": link.available_at.isoformat(),
+                           "evidence": link.evidence_json} for link in links] +
+                          [{"source_match_id": link.source_match_id, "available_at": link.available_at.isoformat(),
+                            "evidence": (link.quality_json or {}).get("link")} for link in direct_links]),
+                "documents": sum(documents.get(source_id, 0) for source_id in set(source_match_ids)),
+                "parsed_history": any(source_id in parsed for source_id in source_match_ids),
+                "target_eligibility": {target: "not_assessed" for target in ("point", "game", "set")}})
+        return {"as_of": now.isoformat(), "hours": hours, "total": len(rows), "offset": offset,
+            "limit": limit, "items": page,
+            "summary": {"registered": sum(row.point_status is not None for row in rows),
+                "linked": sum(row.id in linked or row.id in direct_by_event for row in rows),
+                "with_documents": sum(any(documents.get(x.source_match_id, 0) for x in linked.get(row.id, []) + direct_by_event.get(row.id, [])) for row in rows),
+                "with_parsed_history": sum(any(x.source_match_id in parsed for x in linked.get(row.id, []) + direct_by_event.get(row.id, [])) for row in rows),
+                "missing_registration_over_2min": sum(row.point_status is None and row.first_seen_at < now - timedelta(minutes=2) for row in rows),
+                "overdue_ready": sum((row.point_status in ("queued", "retry") and row.point_next_run_at is not None and row.point_next_run_at < now)
+                    or (row.lookup_status in ("queued", "retry") and row.lookup_next_run_at is not None and row.lookup_next_run_at < now) for row in rows),
+                "reasons": dict(reasons), "target_eligibility": "requires_label_audit"}}
+
+
+@app.get("/metrics/tennis-enrollment", include_in_schema=False, response_class=PlainTextResponse)
+def tennis_enrollment_metrics():
+    """Expose missing registration and runnable overdue work, excluding dependency waits."""
+    with SessionLocal() as session:
+        session.execute(text("SET LOCAL statement_timeout = '10s'"))
+        row = session.execute(text("""
+            SELECT count(*) FILTER (WHERE p.event_id IS NULL AND e.first_seen_at < now()-interval '2 minutes') AS missing,
+                   count(*) FILTER (WHERE
+                     (p.status IN ('queued','retry') AND p.next_run_at < now()-interval '2 minutes') OR
+                     (m.status IN ('queued','retry') AND m.next_run_at < now()-interval '2 minutes')) AS overdue
+            FROM events e
+            LEFT JOIN tennis_point_refresh_jobs p ON p.event_id=e.id
+            LEFT JOIN tennis_match_lookup_jobs m ON m.event_id=e.id
+            WHERE e.source='fonbet' AND e.sport_code='tennis'
+              AND e.first_seen_at >= now()-interval '7 days'
+        """)).mappings().one()
+    return ("# HELP tennis_enrollment_missing Unregistered recent Fonbet tennis events\n"
+            "# TYPE tennis_enrollment_missing gauge\n"
+            f"tennis_enrollment_missing {int(row['missing'])}\n"
+            "# HELP tennis_enrollment_overdue Runnable recent tennis jobs overdue by two minutes\n"
+            "# TYPE tennis_enrollment_overdue gauge\n"
+            f"tennis_enrollment_overdue {int(row['overdue'])}\n")
 
 
 @app.get("/api/tennis-history/flashscore/queue")
@@ -4000,10 +4145,10 @@ def _live_tennis_profile_status(state: dict[str, Any], *, now: datetime) -> tupl
                 fresh_profiles += 1
         except (TypeError, ValueError):
             continue
-    catalog = state.get("latest_live_catalog") or {}
+    catalog = state.get("latest_upcoming_catalog") or state.get("latest_live_catalog") or {}
     status = (
-        "live_catalog_and_profiles" if catalog.get("status") == 200 and successful_profiles
-        else "live_catalog_supplement" if catalog.get("status") == 200
+        "upcoming_catalog_and_profiles" if catalog.get("status") == 200 and successful_profiles
+        else "upcoming_pit_catalog" if catalog.get("status") == 200
         else "profiles_available" if successful_profiles
         else "credentials_ready"
     )
@@ -4174,11 +4319,15 @@ def get_tennis_source_status() -> Dict[str, Any]:
                 status = "catalog_unavailable"
         if source == "live_tennis_api":
             status, extra_profile_history = _live_tennis_profile_status(state, now=now)
-            if state.get("latest_live_catalog"):
+            if state.get("latest_upcoming_catalog") or state.get("latest_live_catalog"):
+                catalog = state.get("latest_upcoming_catalog") or state["latest_live_catalog"]
                 extra_profile_history = {
                     **extra_profile_history,
-                    "catalog_observed_at": state["latest_live_catalog"].get("observed_at"),
-                    "catalog_match_count": state["latest_live_catalog"].get("match_count", 0),
+                    "catalog_observed_at": catalog.get("observed_at"),
+                    "catalog_match_count": catalog.get("match_count", 0),
+                    "catalog_reported_total": catalog.get("reported_total"),
+                    "catalog_complete": catalog.get("complete", False),
+                    "catalog_page_count": catalog.get("page_count", 0),
                 }
         else:
             extra_profile_history = None
@@ -4214,13 +4363,27 @@ def get_tennis_source_status() -> Dict[str, Any]:
             }
         if source == "live_tennis_api":
             extra["profile_history"] = extra_profile_history
-            if state.get("latest_live_catalog"):
-                catalog = state["latest_live_catalog"]
+            if state.get("latest_upcoming_catalog") or state.get("latest_live_catalog"):
+                catalog = state.get("latest_upcoming_catalog") or state["latest_live_catalog"]
                 extra["live_catalog"] = {
                     "observed_at": catalog.get("observed_at"),
                     "match_count": catalog.get("match_count", 0),
                     "raw_object_key": catalog.get("raw_object_key"),
-                    "role": "catalog_supplement_only",
+                    "raw_object_keys": catalog.get("raw_object_keys", []),
+                    "reported_total": catalog.get("reported_total"),
+                    "page_count": catalog.get("page_count", 0),
+                    "complete": catalog.get("complete", False),
+                    "live_scan": {
+                        "complete": (state.get("catalog_scan:live") or {}).get("complete", False),
+                        "offset": (state.get("catalog_scan:live") or {}).get("offset", 0),
+                        "updated_at": (state.get("catalog_scan:live") or {}).get("updated_at"),
+                    },
+                    "upcoming_scan": {
+                        "complete": (state.get("catalog_scan:upcoming") or {}).get("complete", False),
+                        "offset": (state.get("catalog_scan:upcoming") or {}).get("offset", 0),
+                        "updated_at": (state.get("catalog_scan:upcoming") or {}).get("updated_at"),
+                    },
+                    "role": catalog.get("role", "upcoming_pit_catalog"),
                     "score_authority": "fonbet",
                 }
         if source == "tennis_my_life":

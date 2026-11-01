@@ -102,7 +102,6 @@ def _eligible_event_batches() -> list[list[str]]:
     with SessionLocal() as session:
         rows = (session.query(Event.id)
             .filter(Event.sport_code == "tennis", Event.finished_at.is_(None))
-            .filter(~Event.participant_a_name.contains("/"), ~Event.participant_b_name.contains("/"))
             .filter(or_(
                 (Event.is_live.is_(True) & (Event.last_seen_at >= live_fresh_after)),
                 (Event.is_live.is_(False) & (Event.scheduled_start_at >= now) & (Event.scheduled_start_at <= now + timedelta(hours=6))),
@@ -126,18 +125,120 @@ async def _prepare_events(control_executor=None) -> int:
     return total
 
 
+def _reconcile_new_tennis_events():
+    from .tennis_event_enrollment import reconcile_recent_events
+    async def prepare(ids):
+        await research.prepare_tennis_event_players(research.TennisPreparationRequest(event_ids=ids))
+    return reconcile_recent_events(prepare)
+
+
+def _reconcile_doubles_archive():
+    from .tennis_event_enrollment import reconcile_doubles_archive
+    async def prepare(ids):
+        await research.prepare_tennis_event_players(research.TennisPreparationRequest(event_ids=ids))
+        _queue_doubles_archive_point_jobs(ids)
+    return reconcile_doubles_archive(prepare, page_size=100, max_runtime_seconds=900)
+
+
+def _queue_doubles_archive_point_jobs(event_ids):
+    """Seed durable PBP work for each archived doubles event after roster preparation."""
+    from datetime import timedelta
+    from db.connection import SessionLocal
+    from db.models import (Event, TennisDoublesRosterObservation,
+                           TennisPointHistoryVersion, TennisPointRefreshJob)
+    from .main import _confirmed_flashscore_player_id
+    from .tennis_doubles import confirmed_provider_roster
+
+    now = datetime.now(timezone.utc)
+    counts = {"queued": 0, "waiting_players": 0, "already_complete": 0}
+    with SessionLocal() as session:
+        events = session.query(Event).filter(Event.id.in_(event_ids)).all()
+        for event in events:
+            if event.finished_at is None:
+                continue
+            roster = session.query(TennisDoublesRosterObservation).filter(
+                TennisDoublesRosterObservation.event_id == event.id,
+                TennisDoublesRosterObservation.available_at <= now,
+            ).order_by(TennisDoublesRosterObservation.available_at.desc(),
+                       TennisDoublesRosterObservation.id.desc()).first()
+            source_roster = (confirmed_provider_roster(
+                roster.roster_json or {},
+                lambda participant_id: _confirmed_flashscore_player_id(session, participant_id),
+            ) if roster else None)
+            versions = session.query(TennisPointHistoryVersion.id, TennisPointHistoryVersion.quality_json).filter(
+                TennisPointHistoryVersion.fonbet_event_id == event.id,
+                TennisPointHistoryVersion.available_at <= now,
+                TennisPointHistoryVersion.availability_status == "known",
+            ).all()
+            complete_history = any(
+                (quality or {}).get("complete") is True and not (quality or {}).get("gaps")
+                for _, quality in versions
+            )
+            if complete_history:
+                counts["already_complete"] += 1
+                continue
+            job = session.get(TennisPointRefreshJob, event.id, with_for_update=True)
+            if source_roster:
+                if job is None:
+                    session.add(TennisPointRefreshJob(event_id=event.id, status="queued",
+                        next_run_at=now, last_error=None, updated_at=now))
+                    counts["queued"] += 1
+                elif job.status not in {"running", "finalized"}:
+                    job.status = "queued"; job.last_error = None
+                    job.next_run_at = now; job.updated_at = now
+                    counts["queued"] += 1
+                elif job.status == "finalized":
+                    job.status = "queued"; job.last_error = None
+                    job.next_run_at = now; job.updated_at = now
+                    counts["queued"] += 1
+            else:
+                if job is None:
+                    session.add(TennisPointRefreshJob(event_id=event.id, status="waiting_players",
+                        next_run_at=now + timedelta(hours=6),
+                        last_error="DOUBLES_ROSTER_PROVIDER_IDS_MISSING", updated_at=now))
+                    counts["waiting_players"] += 1
+                elif job.status not in {"running", "finalized"}:
+                    job.status = "waiting_players"
+                    job.last_error = "DOUBLES_ROSTER_PROVIDER_IDS_MISSING"
+                    job.next_run_at = now + timedelta(hours=6); job.updated_at = now
+                    counts["waiting_players"] += 1
+        session.commit()
+    return counts
+
+
+def _dispatch_recent_archive():
+    return asyncio.run(research.dispatch_tennis_archive_backfill(limit=4, recent_only=True))
+
+
+def _dispatch_full_archive():
+    return asyncio.run(research.dispatch_tennis_archive_backfill(limit=4))
+
+
+def _dispatch_doubles_point_archive():
+    from .tennis_event_enrollment import reconcile_doubles_point_archive
+    while not STOP:
+        result = reconcile_doubles_point_archive(
+            _queue_doubles_archive_point_jobs, page_size=100, max_runtime_seconds=900,
+        )
+        if result.get("status") != "incomplete":
+            return result
+    return {"status": "interrupted"}
+
+
 def _schedule_due_imports(executor=None) -> int:
     from db.connection import SessionLocal
     from db.models import FlashscoreImportJob
     from .main import (
         _flashscore_source_paused,
         _park_stale_persistent_transport_imports,
+        _park_stale_terminal_count_mismatch_imports,
         _resume_expired_captcha_imports,
     )
 
     now = datetime.now(timezone.utc)
     with SessionLocal() as session:
         _park_stale_persistent_transport_imports(session, now)
+        _park_stale_terminal_count_mismatch_imports(session, now)
         _resume_expired_captcha_imports(session, now)
         source_paused = _flashscore_source_paused(session, now=now)
         session.commit()
@@ -237,6 +338,10 @@ async def main() -> None:
     # participants and background participants. HTTP-first fetches can overlap;
     # Chromium fallback remains bounded by the shared browser pool.
     current_executor, backlog_executor, point_executor, control_executor = _create_worker_executors(browser_limit)
+    enrollment_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tennis-enrollment")
+    doubles_roster_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tennis-doubles-roster")
+    doubles_archive_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tennis-doubles-archive")
+    confirmation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tennis-confirmation")
     loop.set_default_executor(current_executor)
     separate_backlog_lane = backlog_executor is not current_executor
     logger.info(
@@ -253,19 +358,57 @@ async def main() -> None:
     last_preparation = 0.0
     archive_discovery_interval = max(60, int(os.getenv("FLASHSCORE_ARCHIVE_DISCOVERY_SECONDS", "900")))
     last_archive_discovery = 0.0
+    doubles_point_archive_task = None
+    last_doubles_point_archive = 0.0
     import_interval = max(3600, int(os.getenv("FLASHSCORE_TENNIS_IMPORT_INTERVAL_SECONDS", "86400")))
     last_import_enqueued = 0.0
     last_confirmation_reconcile = 0.0
+    last_enrollment_reconcile = 0.0
+    enrollment_task = None
+    doubles_archive_enrollment_task = None
+    recent_archive_task = None
+    full_archive_task = None
+    confirmation_task = None
     while not STOP:
         now_mono = asyncio.get_running_loop().time()
         try:
-            if now_mono - last_confirmation_reconcile >= 60:
+            if now_mono - last_enrollment_reconcile >= 60 and (enrollment_task is None or enrollment_task.done()):
+                if enrollment_task is not None:
+                    try:
+                        logger.info("Recent tennis enrollment: %s", enrollment_task.result())
+                    except Exception:
+                        logger.exception("Recent tennis enrollment failed; checkpoint retained")
+                last_enrollment_reconcile = now_mono
+                enrollment_task = loop.run_in_executor(enrollment_executor, _reconcile_new_tennis_events)
+                if (doubles_archive_enrollment_task is None
+                        or doubles_archive_enrollment_task.done()):
+                    if doubles_archive_enrollment_task is not None:
+                        try:
+                            logger.info("Doubles archive enrollment: %s",
+                                        doubles_archive_enrollment_task.result())
+                        except Exception:
+                            logger.exception("Doubles archive enrollment failed; checkpoint retained")
+                    doubles_archive_enrollment_task = loop.run_in_executor(
+                        doubles_roster_executor, _reconcile_doubles_archive
+                    )
+                if recent_archive_task is None or recent_archive_task.done():
+                    if recent_archive_task is not None:
+                        try:
+                            logger.info("Recent tennis archive: %s", recent_archive_task.result())
+                        except Exception:
+                            logger.exception("Recent tennis archive dispatch failed")
+                    recent_archive_task = loop.run_in_executor(enrollment_executor, _dispatch_recent_archive)
+            if now_mono - last_confirmation_reconcile >= 60 and (confirmation_task is None or confirmation_task.done()):
+                if confirmation_task is not None:
+                    try:
+                        reconciled = confirmation_task.result()
+                        if reconciled.get("resolved"):
+                            logger.info("Auto-resolved confirmed match candidates: %s", reconciled)
+                    except Exception:
+                        logger.exception("Automatic match confirmation failed")
                 last_confirmation_reconcile = now_mono
-                reconciled = await loop.run_in_executor(
-                    control_executor, research.auto_resolve_exact_match_confirmations
-                )
-                if reconciled.get("resolved"):
-                    logger.info("Auto-resolved exact confirmed match candidates: %s", reconciled)
+                confirmation_task = loop.run_in_executor(
+                    confirmation_executor, research.auto_resolve_exact_match_confirmations)
 
             if now_mono - last_discovery >= discovery_interval:
                 last_discovery = now_mono
@@ -283,10 +426,30 @@ async def main() -> None:
                     count = await _prepare_events(control_executor)
                     logger.info("Prepared eligible tennis events: %d", count)
 
-            if now_mono - last_archive_discovery >= archive_discovery_interval:
+            if now_mono - last_archive_discovery >= archive_discovery_interval and (full_archive_task is None or full_archive_task.done()):
+                if full_archive_task is not None:
+                    try:
+                        logger.info("Historical PBP backfill: %s", full_archive_task.result())
+                    except Exception:
+                        logger.exception("Historical PBP backfill failed")
                 last_archive_discovery = now_mono
-                archive = await research.dispatch_tennis_archive_backfill(limit=4)
-                logger.info("Historical PBP backfill: %s", archive)
+                full_archive_task = loop.run_in_executor(enrollment_executor, _dispatch_full_archive)
+
+            # Run the completed doubles archive walk to completion, internally
+            # resuming its 15-minute DB-only checkpoints. The worker records one
+            # terminal result; it does not poll or announce each page.
+            if (now_mono - last_doubles_point_archive >= 3600
+                    and (doubles_point_archive_task is None or doubles_point_archive_task.done())):
+                if doubles_point_archive_task is not None:
+                    try:
+                        logger.info("Doubles point-history archive: %s",
+                                    doubles_point_archive_task.result())
+                    except Exception:
+                        logger.exception("Doubles point-history archive failed; checkpoint retained")
+                last_doubles_point_archive = now_mono
+                doubles_point_archive_task = loop.run_in_executor(
+                    doubles_archive_executor, _dispatch_doubles_point_archive
+                )
 
             if (not SOURCE_TASKS and research.config.flashscore_static_profile_archive_enabled
                     and now_mono - last_import_enqueued >= import_interval
@@ -320,6 +483,10 @@ async def main() -> None:
     current_executor.shutdown(wait=False, cancel_futures=False)
     point_executor.shutdown(wait=False, cancel_futures=False)
     control_executor.shutdown(wait=False, cancel_futures=False)
+    enrollment_executor.shutdown(wait=False, cancel_futures=False)
+    doubles_roster_executor.shutdown(wait=False, cancel_futures=False)
+    doubles_archive_executor.shutdown(wait=False, cancel_futures=False)
+    confirmation_executor.shutdown(wait=False, cancel_futures=False)
     logger.info("Dedicated Flashscore executor stopped")
 
 

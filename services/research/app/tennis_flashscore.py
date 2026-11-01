@@ -9,6 +9,7 @@ parameters and archives every returned response before parsing it.
 from __future__ import annotations
 
 import hashlib
+from itertools import permutations
 import asyncio
 import atexit
 import html as html_lib
@@ -24,7 +25,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from .domain_filter import DomainFilter
 from .fetcher import SandboxedFetcher
@@ -125,6 +126,15 @@ def _profile_http_get(url: str, source_access=None, *, feed: bool = False) -> tu
     import httpx
 
     allowlist = {"flashscore.ninja"} if feed else None
+    from .flashscore_recovery import recover, recover_response, reset_diagnostics
+    reset_diagnostics()
+    resumed = recover(url, source_access=source_access, require_session=True)
+    if resumed is not None:
+        if resumed.outcome == "SOURCE_COOLDOWN":
+            return 0, "", url, "FLASHSCORE_SOURCE_COOLDOWN"
+        if resumed.outcome == "recovered" or resumed.status == 429:
+            return resumed.status, resumed.body, resumed.url, None
+        return resumed.status, resumed.body, resumed.url or url, "CAPTCHA_CHALLENGE_ABORTED"
     current_url = url
     for redirect_no in range(6):
         allowed, reason = DomainFilter.is_allowed(current_url, allowlist=allowlist)
@@ -158,7 +168,8 @@ def _profile_http_get(url: str, source_access=None, *, feed: bool = False) -> tu
             continue
         if len(response.content) > 5 * 1024 * 1024:
             return response.status_code, "", current_url, "PROFILE_PAGE_TOO_LARGE"
-        return response.status_code, response.text, str(response.url), None
+        return recover_response(response.status_code, response.text, str(response.url),
+                                source_access=source_access)
     return 0, "", current_url, "REDIRECT_LIMIT_EXCEEDED"
 
 
@@ -182,7 +193,8 @@ def _close_profile_http_client() -> None:
 
 atexit.register(_close_profile_http_client)
 
-PARSER_VERSION = "flashscore-tennis-player-v9"
+PARSER_VERSION = "flashscore-tennis-player-v11"
+PLAYER_IDENTITY_MATCHER_VERSION = "flashscore_name_match_v3"
 FLASHSCORE_TENNIS_HOME_URL = "https://www.flashscore.com/tennis/"
 _CONFIRMED_TERMINAL_REASONS = {
     "source_terminal_empty_response_confirmed",
@@ -240,6 +252,13 @@ _TRANSLITERATION_ALTERNATIVES = (
     ("yo", ("yo", "e")),
     ("j", ("j", "y", "i")),
 )
+
+# Explicit spellings used by Russian Fonbet labels for these international
+# names. These are matching variants only; source names and IDs remain verbatim.
+_PLAYER_NAME_EQUIVALENTS = {
+    "lyu": "liu", "liu": "lyu",
+    "kler": "claire", "claire": "kler",
+}
 
 
 def _search_tokens(value: str) -> list[str]:
@@ -301,6 +320,9 @@ def _name_word_groups(value: str) -> list[tuple[str, set[str]]]:
         token = word.translate(_CYRILLIC_TO_LATIN)
         if token:
             variants = _transliteration_variants(token)
+            equivalent = _PLAYER_NAME_EQUIVALENTS.get(token)
+            if equivalent:
+                variants.update(_transliteration_variants(equivalent))
             # Flashscore uses i, y, and occasionally j for Russian й. Expand
             # only positions that came from й, rather than every Latin i in a
             # surname, so unrelated names do not become auto-confirmable.
@@ -324,6 +346,7 @@ def _profile_search_queries(value: str) -> list[str]:
     """Build bounded source-spelling and name-order variants for Flashscore search."""
     from tennis_adapter.normalizer import normalize_russian_player_name
 
+    raw_cyrillic_words = re.findall(r"[а-яё]+", str(value).casefold())
     normalized = normalize_russian_player_name(value).casefold().replace("ё", "е")
     source_words = re.findall(r"[a-zа-я0-9]+", normalized)
     tokens: list[str] = []
@@ -356,9 +379,25 @@ def _profile_search_queries(value: str) -> list[str]:
         candidates = [" ".join(tokens), " ".join(reversed(tokens))]
         if source_surname:
             candidates.append(" ".join(source_surname))
+        # Some Eastern European provider spellings transliterate Russian г as
+        # h (e.g. Поганкова / Pohankova). This widens search discovery only;
+        # the ordinary exact identity gate still prevents auto-confirmation.
+        cyrillic_g = [
+            token.replace("g", "h") if index < len(raw_cyrillic_words)
+            and "г" in raw_cyrillic_words[index] else token
+            for index, token in enumerate(source_tokens)
+        ]
+        if cyrillic_g != source_tokens:
+            candidates.append(" ".join(cyrillic_g))
     else:
-        candidates = [" ".join(tokens), " ".join(reversed(tokens)), " ".join(source_tokens)]
-    return list(dict.fromkeys(query for query in candidates if query))[:3]
+        cyrillic_input = bool(re.search(r"[а-яё]", normalized))
+        equivalent_tokens = [_PLAYER_NAME_EQUIVALENTS.get(token, token) for token in source_tokens]
+        if cyrillic_input and equivalent_tokens != source_tokens:
+            candidates = [" ".join(tokens), " ".join(equivalent_tokens),
+                          " ".join(reversed(equivalent_tokens))]
+        else:
+            candidates = [" ".join(tokens), " ".join(reversed(tokens)), " ".join(source_tokens)]
+    return list(dict.fromkeys(query for query in candidates if query))[:4]
 
 
 def _profile_search_failure_reason(search_queries: list[str], answered: set[str],
@@ -418,15 +457,24 @@ def _search_flashscore_player_endpoint(
     answered: set[str] = set()
     failed: set[str] = set()
     parse_failed: set[str] = set()
+    search_responses: list[dict[str, str]] = []
     candidate_counts = {"player_rows": 0, "valid_candidates": 0, "name_rejected": 0}
     try:
         client = _get_profile_http_client()
         for search_query in search_queries:
             query_key = " ".join(search_query.split()).casefold()
             try:
-                slot = source_access() if source_access is not None else nullcontext()
-                with slot:
-                    response = client.get(endpoint, params={"q": search_query})
+                from .flashscore_recovery import recover
+                resumed = recover(endpoint + "?" + urlencode({"q": search_query}),
+                                  source_access=source_access, require_session=True)
+                if resumed is not None:
+                    if resumed.outcome != "recovered" and resumed.status != 429:
+                        return {"status": "blocked", "candidates": [], "reason": "CAPTCHA_CHALLENGE_ABORTED"}
+                    response = httpx.Response(resumed.status, text=resumed.body, request=httpx.Request("GET", resumed.url))
+                else:
+                    slot = source_access() if source_access is not None else nullcontext()
+                    with slot:
+                        response = client.get(endpoint, params={"q": search_query})
             except httpx.TimeoutException:
                 failed.add(query_key)
                 continue
@@ -434,17 +482,26 @@ def _search_flashscore_player_endpoint(
                 failed.add(query_key)
                 continue
 
-            if response.status_code in (403, 429):
+            from .flashscore_recovery import recover_response
+            response_status, response_body, _, recovery_error = recover_response(
+                response.status_code, response.text, str(response.url), source_access=source_access)
+            if recovery_error:
+                return {"status": "blocked", "candidates": [], "reason": recovery_error}
+            if response_status in (403, 429):
                 return {"status": "blocked", "candidates": [],
                         "reason": f"HTTP_{response.status_code}_OR_429_BLOCKED"}
-            if response.status_code != 200:
+            if response_status != 200:
                 failed.add(query_key)
                 continue
             if len(response.content) > 5 * 1024 * 1024:
                 parse_failed.add(query_key)
                 continue
+            search_responses.append({
+                "query": search_query, "body": response.content,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            })
             try:
-                payload = response.json()
+                payload = json.loads(response_body)
             except (ValueError, json.JSONDecodeError):
                 parse_failed.add(query_key)
                 continue
@@ -474,7 +531,8 @@ def _search_flashscore_player_endpoint(
                 found = next(iter(candidates.values()))
                 return {"status": "matched", "profile_url": found["profile_url"],
                         "candidate": found, "candidates": [found],
-                        "diagnostics": dict(candidate_counts)}
+                        "diagnostics": dict(candidate_counts),
+                        "search_responses": search_responses}
 
     except Exception as exc:
         logger.info("Flashscore profile endpoint unavailable for %s: %s",
@@ -489,14 +547,16 @@ def _search_flashscore_player_endpoint(
     if len(found) == 1:
         return {"status": "matched", "profile_url": found[0]["profile_url"],
                 "candidate": found[0], "candidates": found,
-                "diagnostics": dict(candidate_counts)}
+                "diagnostics": dict(candidate_counts),
+                "search_responses": search_responses}
     no_match_reason = (
         "SEARCH_CANDIDATES_REJECTED_BY_NAME"
         if not found and candidate_counts["name_rejected"] else
         "MULTIPLE_PROFILE_CANDIDATES" if found else "SEARCH_COMPLETED_NO_MATCH"
     )
     return {"status": "ambiguous" if found else "not_found", "candidates": found[:10],
-            "reason": no_match_reason, "diagnostics": dict(candidate_counts)}
+            "reason": no_match_reason, "diagnostics": dict(candidate_counts),
+            "search_responses": search_responses}
 
 
 def _player_name_matches(query_name: str, candidate_name: str) -> bool:
@@ -537,6 +597,28 @@ def is_exact_player_name_match(query_name: str, candidate_name: str) -> bool:
                 and all(left[1] & right[1] for left, right in zip(query, candidate)))
 
 
+def is_canonical_full_player_name_match(query_name: str, candidate_name: str) -> bool:
+    """Match every full canonical name token, allowing provider word reordering."""
+    query = _name_word_groups(query_name)
+    candidate = _name_word_groups(candidate_name)
+    if (not query or len(query) != len(candidate)
+            or any(len(token) <= 1 for token, _variants in query + candidate)):
+        return False
+    return any(all(left[1] & right[1] for left, right in zip(query, candidate_order))
+               for candidate_order in permutations(candidate))
+
+
+def flashscore_identity_query_name(participant_name: str, canonical_name: str | None) -> str:
+    """Prefer a linked full canonical name over a provider's abbreviated display.
+
+    The canonical name is usable only when it agrees with the participant under
+    the same narrow name matcher used for automatic identity confirmation.
+    """
+    if canonical_name and is_auto_confirmable_player_match(participant_name, canonical_name):
+        return canonical_name
+    return participant_name
+
+
 def is_auto_confirmable_player_match(query_name: str, candidate_name: str) -> bool:
     """Accept exact full names or a unique single-surname + first-initial pair.
 
@@ -546,6 +628,8 @@ def is_auto_confirmable_player_match(query_name: str, candidate_name: str) -> bo
     and multi-part names stay in the manual confirmation queue.
     """
     if is_exact_player_name_match(query_name, candidate_name):
+        return True
+    if is_canonical_full_player_name_match(query_name, candidate_name):
         return True
     if re.search(r"[-‐‑‒–—]", query_name) or re.search(r"[-‐‑‒–—]", candidate_name):
         return False
@@ -610,6 +694,25 @@ def _profile_candidates_from_search_payload(payload: Any, query_name: str) -> li
     return list(candidates.values())
 
 
+def has_archived_profile_search_evidence(candidate: Any) -> bool:
+    """Require a hash-addressed response before automatic identity confirmation."""
+    evidence = candidate.get("search_evidence") if isinstance(candidate, dict) else None
+    if not isinstance(evidence, list) or not evidence:
+        return False
+    return all(
+        isinstance(item, dict)
+        and item.get("source") == "flashscore"
+        and item.get("parser_version") == "flashscore_player_search_v1"
+        and item.get("archived") is True
+        and str(item.get("raw_object_key") or "").startswith(
+            "snapshots/external-tennis/flashscore-player-search/"
+        )
+        and re.fullmatch(r"[a-f0-9]{64}", str(item.get("content_sha256") or ""))
+        and item.get("fetched_at")
+        for item in evidence
+    )
+
+
 @dataclass(frozen=True)
 class FlashscoreMatch:
     source_match_id: str
@@ -650,6 +753,7 @@ class FlashscoreProfile:
     skipped_row_reasons: dict[str, int] = field(default_factory=dict)
     duplicate_source_rows: int = 0
     rejected_source_matches: tuple[dict[str, Any], ...] = ()
+    doubles_matches: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -664,6 +768,8 @@ class ScrapeResult:
     archived_page_paths: tuple[str, ...] = ()
     fetch_transport: Optional[str] = None
     fallback_reason: Optional[str] = None
+    challenge_type: Optional[str] = None
+    recovery_result: Optional[str] = None
 
 
 def _integer(value: Optional[str]) -> Optional[int]:
@@ -805,21 +911,33 @@ def _surface(*values: str) -> str:
 
 def _category(*values: str) -> tuple[str, str, int]:
     text = " ".join(values).casefold()
+    junior = bool(re.search(
+        r"\b(?:junior|juniors|boys|girls|u(?:14|16|18)|j(?:30|60|100|200|300|500))\b|юниор|юнош|юниорск",
+        text,
+    ))
     if any(word in text for word in ("mixed", "смешан")):
         gender = "mixed"
-    elif any(word in text for word in ("women", "wta", "женщ", "жен.", "ladies")):
+    elif "girls" in text:
         gender = "female"
-    elif any(word in text for word in ("men", "мужчин", "муж.", "gentlemen", "atp")):
+    elif "boys" in text:
+        gender = "male"
+    elif re.search(r"\bm(?:15|25|35|50|60|75|100|125)\b", text):
+        gender = "male"
+    elif re.search(r"\bw(?:15|25|35|50|60|75|100|125)\b", text):
+        gender = "female"
+    elif re.search(r"\b(?:women|wta|ladies)\b", text) or any(word in text for word in ("женщ", "жен.")):
+        gender = "female"
+    elif re.search(r"\b(?:men|gentlemen|atp)\b", text) or any(word in text for word in ("мужчин", "муж.")):
         gender = "male"
     else:
         gender = "unknown"
-    if "junior" in text or "юниор" in text:
+    if junior:
         level = "junior"
     elif "challenger" in text or "челленджер" in text:
         level = "challenger"
     elif "itf" in text or "m15" in text or "m25" in text or "w15" in text or "w25" in text:
         level = "itf"
-    elif "wta" in text or "women" in text or "atp" in text or "men" in text or "grand slam" in text or "тур" in text:
+    elif re.search(r"\b(?:wta|women|atp|men|grand slam)\b", text) or "тур" in text:
         level = "atp_wta"
     else:
         level = "unknown"
@@ -916,6 +1034,47 @@ def _parse_match_with_reason(fields: dict[str, str], context: dict[str, str]) ->
     ), None
 
 
+def _parse_doubles_result(fields: dict[str, str], context: dict[str, str]) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """Preserve team result evidence separately; names and score do not prove identity or winner."""
+    if not _is_doubles_result(fields, context):
+        return None, "not_doubles"
+    from .tennis_doubles import classify_discipline, parse_doubles_side
+
+    match_id = fields.get("AA", "").strip()
+    timestamp = _integer(fields.get("AD"))
+    side_a = parse_doubles_side(fields.get("CX", ""))
+    side_b = parse_doubles_side(fields.get("AF", ""))
+    if not match_id or timestamp is None or side_a is None or side_b is None:
+        return None, "doubles_roster_or_timestamp_missing"
+    if _WALKOVER_OR_VOID.search(" ".join(fields.values())) or _DISQUALIFICATION.search(" ".join(fields.values())):
+        return None, "doubles_walkover_retirement_or_disqualification"
+    sets, score = _parse_score(fields)
+    if not sets:
+        return None, "doubles_score_missing"
+    title, category = context.get("ZA", ""), context.get("ZAF", "")
+    discipline = classify_discipline(title, category, context.get("ZL", ""))
+    return {
+        "source_match_id": match_id,
+        "played_at": datetime.fromtimestamp(timestamp, tz=timezone.utc),
+        "side_a_names": list(side_a), "side_b_names": list(side_b),
+        "discipline": discipline, "score": score, "sets": [list(item) for item in sets],
+        "winner_side": None, "winner_status": "unverified_score_only",
+        "tournament": context.get("ZK") or title.split(":", 1)[-1].strip(),
+        "raw_fields": dict(fields),
+    }, None
+
+
+def _doubles_result_observation_hash(item: dict[str, Any]) -> str:
+    """Hash source result content, excluding the time/profile of a repeated fetch."""
+    stable_evidence = {key: item.get(key) for key in (
+        "source_match_id", "side_a_names", "side_b_names", "discipline", "score",
+        "sets", "winner_side", "winner_status", "tournament", "raw_fields",
+    )}
+    encoded = json.dumps(stable_evidence, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _parse_match(fields: dict[str, str], context: dict[str, str]) -> Optional[FlashscoreMatch]:
     """Compatibility helper returning a parsed result without its diagnostic reason."""
     result, _reason = _parse_match_with_reason(fields, context)
@@ -936,6 +1095,7 @@ def _parse_profile_feeds(
     if not payloads:
         raise ValueError("results_s feed not found in page HTML")
     parsed: dict[str, FlashscoreMatch] = {}
+    parsed_doubles: dict[str, dict[str, Any]] = {}
     row_count = 0
     skipped_reasons: dict[str, int] = {}
     rows_with_ids: set[str] = set()
@@ -950,6 +1110,17 @@ def _parse_profile_feeds(
                 duplicate_source_rows += 1
             elif source_id:
                 rows_with_ids.add(source_id)
+            if _is_doubles_result(fields, context):
+                skipped_reasons["doubles_excluded_from_singles"] = (
+                    skipped_reasons.get("doubles_excluded_from_singles", 0) + 1
+                )
+                doubles_result, doubles_reason = _parse_doubles_result(fields, context)
+                if doubles_result is not None:
+                    doubles_result["source_url"] = None
+                    parsed_doubles[doubles_result["source_match_id"]] = doubles_result
+                elif doubles_reason:
+                    skipped_reasons[doubles_reason] = skipped_reasons.get(doubles_reason, 0) + 1
+                continue
             result, reason = _parse_match_with_reason(fields, context)
             if result is not None:
                 parsed[result.source_match_id] = result
@@ -975,6 +1146,8 @@ def _parse_profile_feeds(
         skipped_row_reasons=skipped_reasons,
         duplicate_source_rows=duplicate_source_rows,
         rejected_source_matches=tuple(rejected_source_matches[key] for key in sorted(rejected_source_matches)),
+        doubles_matches=tuple(sorted(parsed_doubles.values(),
+                                     key=lambda item: (item["played_at"], item["source_match_id"]))),
         pagination_complete=pagination_complete,
         history_scope=history_scope,
         pagination_reason=pagination_reason,
@@ -1112,6 +1285,8 @@ class FlashscoreTennisImporter:
                 "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
                 "count_gap": page_document.get("count_gap"),
                 "fetch_transport": page_document.get("fetch_transport"),
+                "challenge_type": page_document.get("challenge_type"),
+                "recovery_result": page_document.get("recovery_result"),
                 "fallback_reason": page_document.get("fallback_reason"),
                 "result_feeds": page_document.get("result_feeds", []), "html": page_html,
             })
@@ -1128,6 +1303,8 @@ class FlashscoreTennisImporter:
                                 "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
                                 "count_gap": page_document.get("count_gap"),
                                 "fetch_transport": page_document.get("fetch_transport"),
+                                "challenge_type": page_document.get("challenge_type"),
+                                "recovery_result": page_document.get("recovery_result"),
                                 "fallback_reason": page_document.get("fallback_reason"),
                                 "pagination_reason": page_document.get("pagination_reason"),
                                 "terminal_probe_count": page_document.get("terminal_probe_count", 0),
@@ -1159,6 +1336,8 @@ class FlashscoreTennisImporter:
                 content_hash=None, reason=status,
                 fetch_transport=diagnostics.get("fetch_transport"),
                 fallback_reason=diagnostics.get("fallback_reason"),
+                challenge_type=diagnostics.get("challenge_type"),
+                recovery_result=diagnostics.get("recovery_result"),
             )
         content_hash = "sha256:" + hashlib.sha256(html.encode("utf-8")).hexdigest()
         history_scope = ("overlap" if pagination_complete and stop_before_date else
@@ -1215,6 +1394,8 @@ class FlashscoreTennisImporter:
                     "observed_unique_singles_event_count": page_document.get("observed_unique_singles_event_count"),
                     "count_gap": page_document.get("count_gap"),
                     "fetch_transport": page_document.get("fetch_transport"),
+                "challenge_type": page_document.get("challenge_type"),
+                "recovery_result": page_document.get("recovery_result"),
                     "fallback_reason": page_document.get("fallback_reason"),
                     "pagination_reason": page_document.get("pagination_reason"),
                     "terminal_probe_count": page_document.get("terminal_probe_count", 0),
@@ -1240,6 +1421,9 @@ class FlashscoreTennisImporter:
             if source_urls:
                 profile = replace(profile, matches=tuple(
                     replace(item, source_url=source_urls.get(item.source_match_id)) for item in profile.matches
+                ), doubles_matches=tuple(
+                    {**item, "source_url": source_urls.get(item["source_match_id"])}
+                    for item in profile.doubles_matches
                 ))
             terminal_document = next((doc for doc in reversed(page_documents)
                                       if doc.get("pagination_reason") in _CONFIRMED_TERMINAL_REASONS), None)
@@ -1276,6 +1460,8 @@ class FlashscoreTennisImporter:
             fetch_transport=(page_documents[-1].get("fetch_transport") if page_documents else
                              "http" if status.startswith("PROFILE_HTTP") else None),
             fallback_reason=(page_documents[-1].get("fallback_reason") if page_documents else None),
+            challenge_type=(page_documents[-1].get("challenge_type") if page_documents else None),
+            recovery_result=(page_documents[-1].get("recovery_result") if page_documents else None),
         )
 
     def _load_resume_documents(self, profile_id: str, resume_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1324,16 +1510,44 @@ class FlashscoreTennisImporter:
         # This is the JSON GET issued by Flashscore's normal tennis search UI.
         # Each GET obtains its own shared source slot; using the endpoint directly
         # avoids a Chromium startup and the intermittently inert search dialog.
-        return _search_flashscore_player_endpoint(
+        result = _search_flashscore_player_endpoint(
             player_name, search_queries, excluded_source_ids=excluded_source_ids,
             source_access=source_access,
         )
+        responses = result.pop("search_responses", [])
+        evidence = []
+        for response in responses:
+            raw_body = response.get("body")
+            body = raw_body if isinstance(raw_body, bytes) else str(raw_body or "").encode("utf-8")
+            if not body:
+                continue
+            digest = hashlib.sha256(body).hexdigest()
+            query_digest = hashlib.sha256(str(response.get("query") or "").encode()).hexdigest()[:16]
+            raw_key = self.storage.archive_raw_bytes(
+                "flashscore-player-search", f"query-{query_digest}", body, digest
+            ) if hasattr(self.storage, "archive_raw_bytes") else None
+            evidence.append({
+                "source": "flashscore", "request_query": response.get("query"),
+                "fetched_at": response.get("fetched_at"), "parser_version": "flashscore_player_search_v1",
+                "raw_object_key": raw_key, "content_sha256": digest,
+                "archived": bool(raw_key),
+            })
+        result["search_evidence"] = evidence
+        for candidate in result.get("candidates", []):
+            candidate["search_evidence"] = evidence
+        if result.get("candidate"):
+            result["candidate"]["search_evidence"] = evidence
+        if result.get("status") == "matched" and (
+                not evidence or not all(item["archived"] for item in evidence)):
+            result.update({"status": "source_unavailable", "reason": "PROFILE_SEARCH_EVIDENCE_ARCHIVE_FAILED"})
+        return result
 
     def _fetch_rendered_profile(self, url: str, stop_before_date: datetime | None = None, page_callback=None,
                                 resume_documents=None, source_access=None) -> tuple[Optional[str], str, list[str], Optional[str], bool, list[dict[str, Any]]]:
         """Fetch profile results over HTTP, using Chromium only for a JS shell."""
         _validate_profile_url(url)
         status, profile_html, final_url, error = _profile_http_get(url, source_access)
+        from .flashscore_recovery import classify_response, diagnostics
         def http_failure(reason: str, *, fallback_reason: str | None = None):
             return None, reason, [], None, False, [{
                 "diagnostic_only": True,
@@ -1341,8 +1555,11 @@ class FlashscoreTennisImporter:
                 "fetch_transport": "http",
                 "fallback_reason": fallback_reason,
                 "pagination_reason": reason,
+                **diagnostics(),
             }]
 
+        if error == "CAPTCHA_CHALLENGE_ABORTED":
+            return http_failure(error)
         if status in (403, 429):
             return http_failure(f"HTTP_{status}_ANTI_BOT_BLOCKED")
         if status != 200:
@@ -1359,10 +1576,7 @@ class FlashscoreTennisImporter:
             _profile_country_id(initial_feed, player_id) is not None
         )
         if not feed_usable and expected_count != 0:
-            if any(token in profile_html.casefold() for token in (
-                "captcha", "verify you are human", "checking your browser",
-                "just a moment...", "attention required | cloudflare",
-            )):
+            if classify_response(status, profile_html) in {"browser_challenge", "interactive_captcha"}:
                 return http_failure("CAPTCHA_CHALLENGE_ABORTED", fallback_reason="HTTP_200_ANTIBOT_CHALLENGE")
             # A successful HTML response with no usable server feed can be a
             # JavaScript shell. Retry that case once through the existing
@@ -1380,6 +1594,17 @@ class FlashscoreTennisImporter:
                 resume_documents=resume_documents, source_access=source_access,
             )
             _html, _status, _feeds, _name, _complete, documents = result
+            if _status == "CAPTCHA_CHALLENGE_ABORTED":
+                from .flashscore_recovery import recover
+                recovered = recover(url, source_access=source_access)
+                if recovered and recovered.outcome == "recovered":
+                    initial_feed, expected_count = _profile_initial_feed_from_html(recovered.body)
+                    if initial_feed is not None:
+                        return self._fetch_profile_http_archive(
+                            url, recovered.body, initial_feed, expected_count,
+                            stop_before_date=stop_before_date, page_callback=page_callback,
+                            resume_documents=resume_documents, source_access=source_access,
+                            final_url=recovered.url)
             for document in documents:
                 document.setdefault("fetch_transport", "chromium_fallback")
                 document.setdefault("fallback_reason", fallback_reason)
@@ -1405,6 +1630,7 @@ class FlashscoreTennisImporter:
                                     page_callback=None, resume_documents=None,
                                     source_access=None, final_url=None):
         """Walk archived player feeds with HTTP requests and no browser lock."""
+        from .flashscore_recovery import diagnostics
         player_match = _PROFILE_ID_RE.search(urlparse(url).path)
         player_id = player_match.group(1) if player_match else ""
         initial_rows, _ = _feed_records(initial_feed)
@@ -1464,6 +1690,7 @@ class FlashscoreTennisImporter:
                 "reset_checkpoint": reset_checkpoint,
                 "fetch_transport": "http",
                 "fallback_reason": None,
+                **diagnostics(),
             }
             if page_callback:
                 page_callback(document)
@@ -1477,6 +1704,8 @@ class FlashscoreTennisImporter:
                 last_status, last_body, _final, last_error = _profile_http_get(
                     feed_url, source_access, feed=True
                 )
+                if last_error == "CAPTCHA_CHALLENGE_ABORTED":
+                    return last_status, last_body, last_error
                 if last_status == 200 or last_status in (403, 429):
                     return last_status, last_body.strip(), last_error
                 if last_error and ("FLASHSCORE_SOURCE_LOCK_TIMEOUT" in last_error or
@@ -1542,6 +1771,10 @@ class FlashscoreTennisImporter:
                     pagination_reason = "pagination_response_domain_rejected"
                     break
                 response_status, body, response_error = request_feed_page(feed_url)
+                if response_error == "CAPTCHA_CHALLENGE_ABORTED":
+                    archive_page(feed_page + 1, feed_url, body, response_status, response_error)
+                    pagination_reason = response_error
+                    break
                 if response_status in (403, 429):
                     archive_page(feed_page + 1, feed_url, body, response_status,
                                  f"HTTP_{response_status}_ANTI_BOT_BLOCKED", response_error=response_error)
@@ -1615,10 +1848,8 @@ class FlashscoreTennisImporter:
         else:
             pagination_complete = True
 
-        if any(token in profile_html.casefold() for token in (
-            "captcha", "verify you are human", "checking your browser",
-            "just a moment...", "attention required | cloudflare",
-        )):
+        from .flashscore_recovery import classify_response
+        if classify_response(200, profile_html) in {"browser_challenge", "interactive_captcha"}:
             return None, "CAPTCHA_CHALLENGE_ABORTED", [], None, False, []
         if documents:
             documents[-1]["pagination_reason"] = pagination_reason
@@ -1666,6 +1897,11 @@ class FlashscoreTennisImporter:
                         page = await context.new_page()
                         with access():
                             response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                        from .flashscore_recovery import classify_response
+                        if classify_response(response.status if response else 200, await page.content()) in {
+                            "browser_challenge", "interactive_captcha"
+                        }:
+                            return "", [], "CAPTCHA_CHALLENGE_ABORTED", False, []
                         if response and response.status in (403, 429):
                             return "", [], f"HTTP_{response.status}_ANTI_BOT_BLOCKED", False, []
                         if response and response.status != 200:
@@ -1955,10 +2191,8 @@ class FlashscoreTennisImporter:
                         else:
                             pagination_complete = True
                         body_text = (await page.locator("body").inner_text()).casefold()
-                        if any(token in body_text for token in (
-                            "captcha", "verify you are human", "checking your browser",
-                            "just a moment...", "attention required | cloudflare",
-                        )):
+                        from .flashscore_recovery import classify_response
+                        if classify_response(200, body_text) in {"browser_challenge", "interactive_captcha"}:
                             return "", [], "CAPTCHA_CHALLENGE_ABORTED", False, []
                         if page_documents:
                             page_documents[-1]["pagination_reason"] = pagination_reason
@@ -2021,6 +2255,7 @@ class FlashscoreTennisImporter:
                 "fallback_reason": result.fallback_reason,
                 "player_id": result.profile.source_player_id if result.profile else None,
                 "matches_parsed": len(result.profile.matches) if result.profile else 0,
+                "doubles_results_archived": len(result.profile.doubles_matches) if result.profile else 0,
                 "matches_imported": imported,
                 "matches_skipped": result.profile.skipped_rows if result.profile else 0,
                 "rows_skipped_by_reason": result.profile.skipped_row_reasons if result.profile else {},
@@ -2048,7 +2283,11 @@ class FlashscoreTennisImporter:
         if not result.profile:
             return 0
         from db.connection import SessionLocal
-        from db.models.external_tennis import ExtTennisMatch, ExtTennisMatchObservation, ExtTennisPlayer, TennisPlayerRefreshJob, FlashscoreImportJob
+        from db.models.external_tennis import (
+            ExtTennisMatch, ExtTennisMatchObservation, ExtTennisPlayer,
+            TennisDoublesMatchObservation, TennisPlayerRefreshJob, FlashscoreImportJob,
+        )
+        from .external_tennis_ingestion import build_observation_envelope
         from .player_profiles import lock_flashscore_source_entities, persist_profile_facts
 
         profile = result.profile
@@ -2066,6 +2305,40 @@ class FlashscoreTennisImporter:
                 ).filter(TennisPlayerRefreshJob.lease_until > datetime.now(timezone.utc)).with_for_update().first()
                 if owner is None:
                     return 0
+            doubles_rows = {str(item["source_match_id"]): item for item in profile.doubles_matches}
+            doubles_ids = list(doubles_rows)
+            existing_doubles: dict[str, set[str]] = {}
+            if doubles_ids:
+                for row in session.query(TennisDoublesMatchObservation.source_match_id,
+                                         TennisDoublesMatchObservation.observation_hash).filter(
+                    TennisDoublesMatchObservation.source == "flashscore",
+                    TennisDoublesMatchObservation.source_match_id.in_(doubles_ids),
+                ).all():
+                    existing_doubles.setdefault(row.source_match_id, set()).add(row.observation_hash)
+            for source_match_id, item in doubles_rows.items():
+                source_url = (item.get("source_url") or result.url)[:512]
+                payload = {
+                    **item,
+                    "played_at": item["played_at"].isoformat(),
+                    "source_profile_player_id": profile.source_player_id,
+                    "retrieved_at": result.retrieved_at.isoformat(),
+                    "source_url": source_url,
+                    "source_content_hash": result.content_hash,
+                    "parser_version": PARSER_VERSION,
+                }
+                observation_hash = _doubles_result_observation_hash(payload)
+                if observation_hash in existing_doubles.get(source_match_id, set()):
+                    continue
+                session.add(TennisDoublesMatchObservation(
+                    source="flashscore", source_match_id=source_match_id,
+                    source_profile_player_id=profile.source_player_id,
+                    observation_hash=observation_hash, played_at=item["played_at"],
+                    available_at=result.retrieved_at,
+                    discipline=item.get("discipline") or "unknown_doubles",
+                    source_url=source_url, source_content_hash=result.content_hash,
+                    parser_version=PARSER_VERSION, payload=payload,
+                ))
+                existing_doubles.setdefault(source_match_id, set()).add(observation_hash)
             player_ids = {profile.source_player_id: profile.full_name}
             for item in profile.matches:
                 if item.home_player_id:
@@ -2107,6 +2380,8 @@ class FlashscoreTennisImporter:
                 ).all()
             } if source_match_ids else {}
             latest_observations = {}
+            existing_observation_hashes: dict[str, set[str]] = {}
+            observations_by_hash: dict[tuple[str, str], Any] = {}
             if source_match_ids:
                 observations = session.query(ExtTennisMatchObservation).filter(
                     ExtTennisMatchObservation.source == "flashscore",
@@ -2114,9 +2389,13 @@ class FlashscoreTennisImporter:
                 ).order_by(
                     ExtTennisMatchObservation.source_match_id,
                     ExtTennisMatchObservation.available_at.desc(),
-                ).distinct(ExtTennisMatchObservation.source_match_id).all()
+                ).all()
                 for observation in observations:
                     latest_observations.setdefault(observation.source_match_id, observation)
+                    existing_observation_hashes.setdefault(observation.source_match_id, set()).add(
+                        observation.observation_hash
+                    )
+                    observations_by_hash[(observation.source_match_id, observation.observation_hash)] = observation
             for rejected in profile.rejected_source_matches:
                 rejection_payload = {
                     "parse_status": "excluded_from_result_facts",
@@ -2126,9 +2405,19 @@ class FlashscoreTennisImporter:
                     "parser_version": PARSER_VERSION,
                     "profile_content_hash": result.content_hash,
                 }
-                rejection_hash = _observation_hash(rejection_payload)
+                rejected_envelope = build_observation_envelope(
+                    source="flashscore", external_id=rejected["source_match_id"], source_url=result.url,
+                    parser_version=PARSER_VERSION, available_at=result.retrieved_at,
+                    source_content_hash=result.content_hash, source_document_ref=result.archived_path,
+                    raw_fields=rejected,
+                    normalized_fields={"reason": rejected["reason"], "source_player_id": profile.source_player_id},
+                    hash_source_content=False,
+                )
+                rejection_payload.update(rejected_envelope["observation_metadata"])
+                rejection_payload["ingestion_status"] = "rejected"
+                rejection_hash = rejected_envelope["observation_hash"]
                 previous = latest_observations.get(rejected["source_match_id"])
-                if previous is None or previous.observation_hash != rejection_hash:
+                if rejection_hash not in existing_observation_hashes.get(rejected["source_match_id"], set()):
                     previous = ExtTennisMatchObservation(
                         source="flashscore",
                         source_match_id=rejected["source_match_id"],
@@ -2136,18 +2425,39 @@ class FlashscoreTennisImporter:
                         available_at=result.retrieved_at,
                         source_url=result.url,
                         source_content_hash=result.content_hash,
+                        source_document_ref=result.archived_path,
                         parser_version=PARSER_VERSION,
+                        ingestion_status="rejected",
+                        field_provenance={},
                         payload=rejection_payload,
                     )
                     session.add(previous)
                     latest_observations[rejected["source_match_id"]] = previous
+                    existing_observation_hashes.setdefault(rejected["source_match_id"], set()).add(rejection_hash)
+                    observations_by_hash[(rejected["source_match_id"], rejection_hash)] = previous
             observation_inserted: dict[str, bool] = {}
             for item in profile.matches:
                 payload = _observation_payload(item)
-                observation_hash = _observation_hash(payload)
+                normalized = {key: getattr(item, key, None) for key in (
+                    "played_at", "tour_level", "tournament", "surface", "best_of", "round_name",
+                    "gender", "winner_name", "loser_name", "winner_player_id", "loser_player_id", "score",
+                )}
+                envelope = build_observation_envelope(
+                    source="flashscore", external_id=item.source_match_id,
+                    source_url=item.source_url or result.url, parser_version=PARSER_VERSION,
+                    available_at=result.retrieved_at, source_content_hash=result.content_hash,
+                    source_document_ref=result.archived_path, raw_fields=item.raw_fields or {},
+                    normalized_fields=normalized,
+                    required_fields=("played_at", "winner_name", "loser_name", "score"),
+                    hash_source_content=False,
+                )
+                payload.update(envelope["observation_metadata"])
+                observation_hash = envelope["observation_hash"]
                 latest_observation = latest_observations.get(item.source_match_id)
-                is_new_observation = latest_observation is None or latest_observation.observation_hash != observation_hash
+                is_new_observation = observation_hash not in existing_observation_hashes.get(item.source_match_id, set())
                 observation_inserted[item.source_match_id] = is_new_observation
+                if not is_new_observation:
+                    latest_observation = observations_by_hash.get((item.source_match_id, observation_hash), latest_observation)
                 if is_new_observation:
                     latest_observation = ExtTennisMatchObservation(
                         source="flashscore",
@@ -2156,7 +2466,10 @@ class FlashscoreTennisImporter:
                         available_at=result.retrieved_at,
                         source_url=result.url,
                         source_content_hash=result.content_hash,
+                        source_document_ref=result.archived_path,
                         parser_version=PARSER_VERSION,
+                        ingestion_status=envelope["ingestion_status"],
+                        field_provenance=envelope["field_provenance"],
                         payload={
                             **payload,
                             "pagination_complete": result.profile.pagination_complete,
@@ -2169,6 +2482,8 @@ class FlashscoreTennisImporter:
                     )
                     session.add(latest_observation)
                     latest_observations[item.source_match_id] = latest_observation
+                    existing_observation_hashes.setdefault(item.source_match_id, set()).add(observation_hash)
+                    observations_by_hash[(item.source_match_id, observation_hash)] = latest_observation
                 projection_available_at = (
                     result.retrieved_at if is_new_observation else
                     (latest_observation.available_at if latest_observation else result.retrieved_at)

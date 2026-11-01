@@ -81,12 +81,16 @@ class ExtTennisMatchObservation(Base):
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source_url: Mapped[str] = mapped_column(String(512), nullable=False)
     source_content_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    source_document_ref: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    ingestion_status: Mapped[str] = mapped_column(String(24), default="legacy", nullable=False)
+    field_provenance: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("source", "source_match_id", "available_at", name="uq_ext_tennis_match_observation_version"),
+        UniqueConstraint("source", "source_match_id", "available_at", "observation_hash",
+                         name="uq_ext_tennis_match_observation_version"),
         Index("idx_ext_tennis_match_observation_time", "source", "source_match_id", "available_at"),
         Index(
             "idx_api_tennis_observation_available_cursor", "available_at", "source_match_id",
@@ -96,6 +100,143 @@ class ExtTennisMatchObservation(Base):
             "idx_mcp_observation_payload_date", text("(payload->>'date')"), "source_match_id",
             postgresql_where=text("source = 'match_charting_project'"),
         ),
+    )
+
+
+class TennisEventAttributeObservation(Base):
+    """Immutable PIT version of a tennis event fact such as format or surface."""
+
+    __tablename__ = "tennis_event_attribute_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    attribute_name: Mapped[str] = mapped_column(String(24), nullable=False)
+    value_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    source: Mapped[str] = mapped_column(String(48), nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    identity_available_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    source_content_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    reconstructed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "attribute_name", "source", "available_at", "evidence_hash",
+                         name="uq_tennis_event_attribute_observation_evidence"),
+        Index("idx_tennis_event_attribute_asof", "event_id", "attribute_name", "available_at", "id"),
+    )
+
+
+class TennisEventStateRawEvidence(Base):
+    """Append-only verified link from a saved state slice to its original Fonbet object."""
+
+    __tablename__ = "tennis_event_state_raw_evidence"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    snapshot_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    raw_object_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    raw_content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    reconstructed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "snapshot_observed_at", "evidence_hash",
+                         name="uq_tennis_event_state_raw_evidence"),
+        CheckConstraint("available_at <= snapshot_observed_at", name="ck_tennis_event_state_raw_evidence_asof"),
+        Index("idx_tennis_event_state_raw_evidence_lookup", "snapshot_id", "snapshot_observed_at", "available_at"),
+    )
+
+
+class TennisDoublesPair(Base):
+    """Order-independent identity for a pair of confirmed canonical players."""
+
+    __tablename__ = "tennis_doubles_pairs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    player_low_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    player_high_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("player_low_id", "player_high_id", name="uq_tennis_doubles_pair_players"),
+        CheckConstraint("player_low_id < player_high_id", name="ck_tennis_doubles_pair_sorted"),
+    )
+
+
+class TennisDoublesRosterObservation(Base):
+    """Append-only, PIT roster and scoring-format evidence for a Fonbet event."""
+
+    __tablename__ = "tennis_doubles_roster_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    discipline: Mapped[str] = mapped_column(String(24), default="unknown_doubles", nullable=False)
+    roster_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    scoring_rules_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    confirmation_status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    source: Mapped[str] = mapped_column(String(48), nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    raw_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    raw_content_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    evidence_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "available_at", "evidence_hash",
+                         name="uq_tennis_doubles_roster_evidence"),
+        CheckConstraint("discipline IN ('mens_doubles','womens_doubles','mixed_doubles','unknown_doubles')",
+                        name="ck_tennis_doubles_roster_discipline"),
+        Index("idx_tennis_doubles_roster_asof", "event_id", "available_at", "id"),
+        Index("idx_tennis_doubles_roster_status", "confirmation_status", "available_at"),
+    )
+
+
+class TennisDoublesMatchObservation(Base):
+    """Archived pair-versus-pair result evidence, kept out of singles projections."""
+
+    __tablename__ = "tennis_doubles_match_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(48), nullable=False)
+    source_match_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_profile_player_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    observation_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    played_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    discipline: Mapped[str] = mapped_column(String(24), default="unknown_doubles", nullable=False)
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_content_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_match_id", "available_at", "observation_hash",
+                         name="uq_tennis_doubles_match_observation_version"),
+        CheckConstraint("discipline IN ('mens_doubles','womens_doubles','mixed_doubles','unknown_doubles')",
+                        name="ck_tennis_doubles_match_discipline"),
+        Index("idx_tennis_doubles_match_observation_asof", "source_match_id", "available_at"),
+        Index("idx_tennis_doubles_match_discipline_time", "discipline", "played_at"),
     )
 
 
@@ -201,6 +342,29 @@ class TennisPlayerMetricSnapshot(Base):
     )
 
 
+class TennisCanonicalMetricSnapshot(Base):
+    """Immutable full-history rating/form snapshot keyed by confirmed archive identity."""
+
+    __tablename__ = "tennis_canonical_metric_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    canonical_player_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    metrics_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_watermark: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    history_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    metrics_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("canonical_player_id", "metrics_version", "history_digest",
+                         name="uq_tennis_canonical_metric_snapshot"),
+        Index("idx_tennis_canonical_metric_asof", "canonical_player_id", "available_at"),
+    )
+
+
 class TennisPlayerDataCoverage(Base):
     """Last verified source coverage for one player's independently usable data capability."""
 
@@ -271,7 +435,10 @@ class TennisPointDocument(Base):
     parse_status: Mapped[str] = mapped_column(String(32), nullable=False)
     quality_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
-    __table_args__ = (Index("idx_tennis_point_document_asof", "source_match_id", "source_url", "retrieved_at"),)
+    __table_args__ = (
+        Index("idx_tennis_point_document_asof", "source_match_id", "source_url", "retrieved_at"),
+        Index("idx_tennis_point_documents_status_cover", "source", "parse_status"),
+    )
 
 
 class TennisPointHistoryVersion(Base):
@@ -290,7 +457,10 @@ class TennisPointHistoryVersion(Base):
     quality_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     retrospective: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    __table_args__ = (Index("idx_tennis_point_history_event_available", "fonbet_event_id", "available_at"),)
+    __table_args__ = (
+        Index("idx_tennis_point_history_event_available", "fonbet_event_id", "available_at"),
+        Index("idx_tennis_point_history_source_available", "source_match_id", "available_at", "id"),
+    )
 
 
 class FlashscoreImportJob(Base):
@@ -440,8 +610,39 @@ class ExtTennisRanking(Base):
     tour: Mapped[str] = mapped_column(String(8), primary_key=True)
     ranking_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     source_player_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     points: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
+class TennisPlayerRankingSnapshot(Base):
+    """Append-only ranking observation; ranking_date and system availability are distinct."""
+
+    __tablename__ = "tennis_player_ranking_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_player_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_player_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ext_tennis_canonical_players.id", ondelete="RESTRICT"), nullable=False
+    )
+    tour: Mapped[str] = mapped_column(String(8), nullable=False)
+    ranking_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    points: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_ref: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    parser_version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    ranking_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    is_singles: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_player_id", "tour", "ranking_date", "available_at",
+                         name="uq_tennis_ranking_observation"),
+        Index("idx_tennis_ranking_asof", "canonical_player_id", "tour", "available_at"),
+    )
 
 
 class ExtTennisCanonicalPlayer(Base):

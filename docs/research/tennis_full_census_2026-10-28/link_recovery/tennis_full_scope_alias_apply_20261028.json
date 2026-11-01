@@ -1,0 +1,42 @@
+{
+  "counts": {
+    "already_correct": 6,
+    "reassign": 1
+  },
+  "mode": "apply",
+  "plan_sha256": "a73de39b89a1574c6c9853b341f4bb15b3fe354af6ef89efe4e3ab7f13ff36fc",
+  "rows": [
+    {
+      "action": "already_correct",
+      "source_player_id": "10898"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "209"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "21360"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "2998"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "4062"
+    },
+    {
+      "action": "reassign",
+      "canonical_player_id": "6953f7e2-866d-592e-b71a-47746ca7c203",
+      "decision_id": "acceb9db-9cba-482f-834a-ad43afd5011c",
+      "evidence_digest": "68ef1ce2a77a17ef8fae933720bc4932b5afc9abcebb2a3f046b5e6980f146ca",
+      "source_player_id": "458"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "60067"
+    }
+  ],
+  "status": "complete"
+}

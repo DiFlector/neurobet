@@ -1,0 +1,22 @@
+{
+  "completed_events": 3213,
+  "cutoff": "2026-10-28T05:25:39+00:00",
+  "earlier_than_metadata": 2741,
+  "error": null,
+  "format_version": 1,
+  "indexed_events": 3213,
+  "reason_counts": {
+    "confirmed_saved_final_score": 3018,
+    "snapshot_final_score_mismatch": 195
+  },
+  "restored_unknown_time": 277,
+  "scope": "saved_cohort_result_time_recovery_only",
+  "status": "complete",
+  "training_gate": "blocked_recovery_is_not_admission",
+  "valid_result_candidates": 3213,
+  "witness_events": 3018,
+  "witness_index": {
+    "path": "/tmp/tennis_result_witness_recovery_20261028/result_witness_index.jsonl",
+    "sha256": "83e0ceffcaa34d42088c74e119f56779cf24842538157fc49f411f87acbaa215"
+  }
+}

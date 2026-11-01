@@ -1,0 +1,57 @@
+{
+  "scope": "two_largest_archived_result_feeds_per_day",
+  "full_raw_corpus_scan": false,
+  "listing": [
+    {
+      "day": "2026-10-16",
+      "listed_objects": 2551,
+      "listing_complete": true
+    },
+    {
+      "day": "2026-10-17",
+      "listed_objects": 2510,
+      "listing_complete": true
+    },
+    {
+      "day": "2026-10-19",
+      "listed_objects": 2570,
+      "listing_complete": true
+    }
+  ],
+  "examined": [
+    {
+      "key": "fonbet/all/2026-10-16/f26c/f26cc5946ec4b4080ffd94adaf2708bc963b19ab438c14a0e7397ded0a237829.json",
+      "collected_at": "2026-10-16T20:59:56.083419+00:00",
+      "rows": 3345
+    },
+    {
+      "key": "fonbet/all/2026-10-16/49fb/49fb2424c44897fc2d0375a3b638d294b5d8faa3b9588b1fb8c3fd5dc44e5e4d.json",
+      "collected_at": "2026-10-16T20:58:44.377886+00:00",
+      "rows": 3343
+    },
+    {
+      "key": "fonbet/all/2026-10-17/9576/957605dfb7d5e2135cb8bb8156fa2b77fb3a327680520ebd577e45f33b1408d9.json",
+      "collected_at": "2026-10-17T20:59:39.285106+00:00",
+      "rows": 4602
+    },
+    {
+      "key": "fonbet/all/2026-10-17/4323/432376bdf11f83556a547ed56390d6c09d8929f3bab798203ef86e3823ecd5d6.json",
+      "collected_at": "2026-10-17T20:59:08.085675+00:00",
+      "rows": 4602
+    },
+    {
+      "key": "fonbet/all/2026-10-19/6292/6292ce8444e919d7f5d7e992b47cf8cddc1fee390882bc9b2782c849a13c71a5.json",
+      "collected_at": "2026-10-19T20:59:34.278387+00:00",
+      "rows": 2932
+    },
+    {
+      "key": "fonbet/all/2026-10-19/0731/07310ef95c8aa5470b972c260f8de0632823cda2fbe907ca3959bcac787a54f1.json",
+      "collected_at": "2026-10-19T20:59:00.338307+00:00",
+      "rows": 2932
+    }
+  ],
+  "found": [],
+  "expected_events": 15,
+  "matched_events": 0,
+  "raw_id_hits": []
+}

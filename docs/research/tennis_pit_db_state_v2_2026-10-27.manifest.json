@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-10-27T10:04:52.615448+00:00",
+  "pit_evidence_policy": "tennis_pit_db_state_v2",
+  "training_not_run": true,
+  "checks": {
+    "builder_and_audit_tests": 58,
+    "neural_tests": 26
+  },
+  "files": [
+    {
+      "path": "docs/research/tennis_pit_db_state_v2_2026-10-27.jsonl.gz",
+      "sha256": "28fc2dfa75722d5012b176bbfc20d8534340b821cd4034972b0d9f1523b65b5b",
+      "bytes": 33502644
+    },
+    {
+      "path": "docs/research/tennis_pit_db_state_v2_2026-10-27.jsonl.gz.summary.json",
+      "sha256": "5e05d6ec250b2bf3a3fe607c62753d96e2f8d34d39d3fd4e5b4aa8de69d932d1",
+      "bytes": 1581
+    },
+    {
+      "path": "docs/research/tennis_training_examples_52bd46c9dfec.jsonl",
+      "sha256": "b4bc0f4950766599f6b653bb486c32bbd657927b52b357567af39d4f1cbcb0fc",
+      "bytes": 25851938
+    }
+  ],
+  "implementation": [
+    {
+      "path": "packages/contracts/src/contracts/tennis_pit.py",
+      "sha256": "91bca61d905688978435717fe474e52f523c514bb16a012ea91e330d7f5c834a"
+    },
+    {
+      "path": "services/neural/app/odds_free_dataset.py",
+      "sha256": "8f0a71b62902fe75634eb417c4afcad322f4b059e96aee2c42673afcc6d81f5d"
+    },
+    {
+      "path": "services/neural/app/tennis_forecast.py",
+      "sha256": "6c286779556689144e3eb48c16580ea7dc132d2c72cdd6297ee86a2cec8a5e92"
+    }
+  ],
+  "deployment": {
+    "verified_at": "2026-10-27T10:19:59.899984+00:00",
+    "services": {
+      "neurobet_neural": {
+        "image": "sha256:42bfba6cb7b4aa95181a2cff0c0c33a9624c7130d2873c75b6836cf226228cf9",
+        "health": "healthy",
+        "evidence_policy": "tennis_pit_db_state_v2"
+      },
+      "neurobet_research": {
+        "image": "sha256:e39ce01af1d81ab4bde4bdc4c0991c567a58081eb93cd55461a7b9d3dd61fd7e",
+        "health": "healthy",
+        "evidence_policy": "tennis_pit_db_state_v2"
+      }
+    }
+  }
+}

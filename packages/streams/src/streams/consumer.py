@@ -21,12 +21,14 @@ class StreamConsumerGroup:
         group_name: str,
         consumer_name: str,
         idempotency_ttl: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
+        pending_idle_ms: int = 60_000,
     ):
         self.client = redis_client
         self.stream_name = stream_name
         self.group_name = group_name
         self.consumer_name = consumer_name
         self.idempotency_ttl = idempotency_ttl
+        self.pending_idle_ms = max(0, int(pending_idle_ms))
 
     def create_group(self, start_id: str = "$") -> None:
         """Create consumer group if it does not already exist."""
@@ -58,19 +60,40 @@ class StreamConsumerGroup:
         self.client.set(redis_key, "DONE", ex=self.idempotency_ttl)
 
     def read_messages(self, count: int = 10, block_ms: Optional[int] = 2000) -> List[Tuple[str, MessageEnvelope]]:
-        """Read pending or new messages for this consumer."""
-        raw_entries = self.client.xreadgroup(
-            groupname=self.group_name,
-            consumername=self.consumer_name,
-            streams={self.stream_name: ">"},
-            count=count,
-            block=block_ms,
-        )
+        """Reclaim abandoned deliveries, then read new messages."""
+        claimed = []
+        # XAUTOCLAIM prevents messages left in the Pending Entries List by a
+        # stopped worker from being stranded forever. Reclaimed entries are
+        # delivered before new work and still pass through idempotency checks.
+        if hasattr(self.client, "xautoclaim"):
+            try:
+                _cursor, claimed, *_ = self.client.xautoclaim(
+                    self.stream_name,
+                    self.group_name,
+                    self.consumer_name,
+                    min_idle_time=self.pending_idle_ms,
+                    start_id="0-0",
+                    count=count,
+                )
+            except redis.ResponseError as exc:
+                # Older Redis versions do not implement XAUTOCLAIM. Keep the
+                # normal consumer path available while making the limitation visible.
+                if "unknown command" not in str(exc).lower():
+                    raise
+                logger.warning("Redis does not support XAUTOCLAIM; abandoned pending messages cannot be reclaimed")
+        raw_entries = []
+        if len(claimed) < count:
+            raw_entries = self.client.xreadgroup(
+                groupname=self.group_name,
+                consumername=self.consumer_name,
+                streams={self.stream_name: ">"},
+                count=count - len(claimed),
+                block=None if claimed else block_ms,
+            )
         results: List[Tuple[str, MessageEnvelope]] = []
-        if not raw_entries:
-            return results
-
-        for stream_resp, messages in raw_entries:
+        entries = [(self.stream_name, claimed)] if claimed else []
+        entries.extend(raw_entries or [])
+        for stream_resp, messages in entries:
             stream_str = stream_resp.decode("utf-8") if isinstance(stream_resp, bytes) else str(stream_resp)
             for msg_id, fields in messages:
                 id_str = msg_id.decode("utf-8") if isinstance(msg_id, bytes) else str(msg_id)
@@ -152,12 +175,14 @@ class AsyncStreamConsumerGroup:
         group_name: str,
         consumer_name: str,
         idempotency_ttl: int = DEFAULT_IDEMPOTENCY_TTL_SECONDS,
+        pending_idle_ms: int = 60_000,
     ):
         self.client = redis_client
         self.stream_name = stream_name
         self.group_name = group_name
         self.consumer_name = consumer_name
         self.idempotency_ttl = idempotency_ttl
+        self.pending_idle_ms = max(0, int(pending_idle_ms))
 
     async def create_group(self, start_id: str = "$") -> None:
         """Create consumer group if it does not already exist."""
@@ -187,18 +212,35 @@ class AsyncStreamConsumerGroup:
         await self.client.set(redis_key, "DONE", ex=self.idempotency_ttl)
 
     async def read_messages(self, count: int = 10, block_ms: Optional[int] = 2000) -> List[Tuple[str, MessageEnvelope]]:
-        raw_entries = await self.client.xreadgroup(
-            groupname=self.group_name,
-            consumername=self.consumer_name,
-            streams={self.stream_name: ">"},
-            count=count,
-            block=block_ms,
-        )
+        """Reclaim abandoned deliveries, then read new messages."""
+        claimed = []
+        if hasattr(self.client, "xautoclaim"):
+            try:
+                _cursor, claimed, *_ = await self.client.xautoclaim(
+                    self.stream_name,
+                    self.group_name,
+                    self.consumer_name,
+                    min_idle_time=self.pending_idle_ms,
+                    start_id="0-0",
+                    count=count,
+                )
+            except aioredis.ResponseError as exc:
+                if "unknown command" not in str(exc).lower():
+                    raise
+                logger.warning("Redis does not support XAUTOCLAIM; abandoned pending messages cannot be reclaimed")
+        raw_entries = []
+        if len(claimed) < count:
+            raw_entries = await self.client.xreadgroup(
+                groupname=self.group_name,
+                consumername=self.consumer_name,
+                streams={self.stream_name: ">"},
+                count=count - len(claimed),
+                block=None if claimed else block_ms,
+            )
         results: List[Tuple[str, MessageEnvelope]] = []
-        if not raw_entries:
-            return results
-
-        for stream_resp, messages in raw_entries:
+        entries = [(self.stream_name, claimed)] if claimed else []
+        entries.extend(raw_entries or [])
+        for stream_resp, messages in entries:
             stream_str = stream_resp.decode("utf-8") if isinstance(stream_resp, bytes) else str(stream_resp)
             for msg_id, fields in messages:
                 id_str = msg_id.decode("utf-8") if isinstance(msg_id, bytes) else str(msg_id)

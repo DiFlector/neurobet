@@ -60,6 +60,7 @@ class EventStateSnapshot(Base):
     score_detail: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     sport_state: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)  # Server, points, aces
     raw_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    raw_object_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     __table_args__ = (
         Index("idx_event_state_snapshots_lookup", "event_id", "observed_at"),

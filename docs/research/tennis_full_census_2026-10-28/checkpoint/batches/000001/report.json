@@ -1,0 +1,433 @@
+{
+  "alignment_policy": "confirmed_pre_game_score_v1",
+  "audit_format_version": 6,
+  "audit_scope": {
+    "as_of": "2026-10-28T09:53:30.390353+00:00",
+    "full_database_census": false,
+    "index_path": "/census/checkpoint/batches/000001/snapshot_index.jsonl",
+    "index_sha256": "a893f1682573842b09b206fc438371d75da3235dac2bcfe5ad71c59e71d19895",
+    "indexed_events": 5,
+    "indexed_examples": 3615,
+    "indexed_snapshot_keys": 3610,
+    "loaded_snapshots": 3610,
+    "missing_snapshots": 0,
+    "mode": "saved_snapshot_cohort_revalidated_from_database",
+    "status": "saved_cohort_complete"
+  },
+  "by_competition": {
+    "WTA. Гуанчжоу. Хард": {
+      "events": 1,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 220,
+      "valid_match_labels": 1
+    },
+    "World Tennis. Мужчины. Греция. Квалификация": {
+      "events": 1,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 79,
+      "valid_match_labels": 1
+    },
+    "World Tennis. Мужчины. Индия": {
+      "events": 1,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 109,
+      "valid_match_labels": 1
+    },
+    "World Tennis. Мужчины. Хорватия. Квалификация": {
+      "events": 1,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 110,
+      "valid_match_labels": 1
+    }
+  },
+  "by_discipline": {
+    "singles": {
+      "events": 4,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 518,
+      "valid_match_labels": 4
+    }
+  },
+  "by_tour": {
+    "unknown": {
+      "events": 3,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 298,
+      "valid_match_labels": 3
+    },
+    "wta": {
+      "events": 1,
+      "game_examples": 0,
+      "point_examples": 0,
+      "set_examples": 220,
+      "valid_match_labels": 1
+    }
+  },
+  "candidate_targets": {
+    "game": {
+      "class_a": 0,
+      "class_b": 0,
+      "eligible_matches": 4,
+      "labelled_matches": 0,
+      "observed_examples": 0,
+      "parsed_labels": 0,
+      "retrospective_examples": 0,
+      "training_examples": 0
+    },
+    "match": {
+      "class_a": 3,
+      "class_b": 1,
+      "eligible_matches": 4,
+      "labelled_matches": 4,
+      "observed_examples": 0,
+      "parsed_labels": 4,
+      "retrospective_examples": 0,
+      "training_examples": 4
+    },
+    "point": {
+      "class_a": 0,
+      "class_b": 0,
+      "eligible_matches": 4,
+      "labelled_matches": 0,
+      "observed_examples": 0,
+      "parsed_labels": 0,
+      "retrospective_examples": 0,
+      "training_examples": 0
+    },
+    "set": {
+      "class_a": 325,
+      "class_b": 193,
+      "eligible_matches": 4,
+      "labelled_matches": 4,
+      "observed_examples": 0,
+      "parsed_labels": 10,
+      "retrospective_examples": 0,
+      "training_examples": 518
+    }
+  },
+  "example_filter": {
+    "candidate_examples": 522,
+    "rejected_feature_examples": 1,
+    "usable_examples": 521
+  },
+  "exclusions": {
+    "conflicting_source_labels": 0,
+    "doubles": 1,
+    "result_after_audit_cutoff": 0
+  },
+  "feature_availability": {
+    "allowed_player_prior_examples": 521,
+    "allowed_serve_prior_examples": 521,
+    "certified_examples": 521,
+    "checked_examples": 521,
+    "contract_defaulted_examples": 0,
+    "contract_version": "tennis_odds_free_v2",
+    "exclusions": {},
+    "feature_value_missing_field_counts": {},
+    "feature_values_materialized_examples": 521,
+    "feature_values_missing_examples": 0,
+    "fully_source_observed_examples": 0,
+    "point_in_time_definition": "certified means every source-backed feature is available by the snapshot; a documented contract prior or explicit unknown value is allowed only when its missingness/sample-weight representation is part of the feature contract",
+    "resolution_counts": {
+      "event_format:late_unknown_allowed": 521,
+      "event_state:observed_snapshot": 521,
+      "player_metrics.a:unknown_player_history_v1": 521,
+      "player_metrics.b:observed_snapshot": 217,
+      "player_metrics.b:unknown_player_history_v1": 304,
+      "serve_metrics.a:unknown_serve_history_v1": 521,
+      "serve_metrics.b:metric_snapshot": 217,
+      "serve_metrics.b:unknown_serve_history_v1": 304
+    },
+    "source_groups": {
+      "event_format": {
+        "available": 0,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 521,
+        "missing_or_unverifiable": 0
+      },
+      "event_state": {
+        "available": 521,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "player_metrics": {
+        "available": 521,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_a": {
+        "available": 521,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_b": {
+        "available": 521,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 0,
+        "missing_or_unverifiable": 0
+      }
+    },
+    "uncertified_examples": 0
+  },
+  "generated_at": "2026-10-28T09:53:30.390353+00:00",
+  "history_link_schema": "provider_scoped_links_v2",
+  "match_exclusions_manifest": {
+    "content_type": "jsonl",
+    "path": "/census/checkpoint/batches/000001/tennis_match_target_diagnostics_db8ce0efb30c.jsonl",
+    "rows": 5,
+    "sha256": "db8ce0efb30c937623ce407be3c329417a2fbc7917b83d1a69c665a99251a406"
+  },
+  "point_history": {
+    "availability_unknown_documents": null,
+    "availability_unknown_versions": null,
+    "confirmed_outcomes_total": null,
+    "current_links": 0,
+    "direct_api_links": 0,
+    "documents_linked": 0,
+    "documents_total": null,
+    "global_history_scan_status": "not_scanned_saved_cohort_only",
+    "linked_fonbet_events": 0,
+    "parsed_versions_linked": 0,
+    "parsed_versions_total": null,
+    "source_matches_total": null
+  },
+  "rejected_examples_manifest": {
+    "content_type": "jsonl",
+    "path": "/census/checkpoint/batches/000001/tennis_rejected_feature_examples_325eb6d25e73.jsonl",
+    "rows": 1,
+    "sha256": "325eb6d25e737c05abf2ce70892daf4f6401d5527391b1b4a84fc51fd3d6e67c"
+  },
+  "result_time_evidence": {
+    "exact_terminal_score_snapshots": 4,
+    "labels_after_audit_cutoff": 0,
+    "snapshot_rows_returned": 4,
+    "snapshots_preceding_metadata_time": 4,
+    "sources": {
+      "fonbet_exact_final_score_snapshot": 4
+    },
+    "unknown_valid_results": 0
+  },
+  "snapshot_source_coverage": {
+    "allowed_player_prior_examples": 3057,
+    "allowed_serve_prior_examples": 3057,
+    "certified_examples": 3057,
+    "checked_examples": 3057,
+    "checked_snapshots": 3057,
+    "contract_defaulted_examples": 0,
+    "exclusions": {},
+    "fully_source_observed_examples": 0,
+    "resolution_counts": {
+      "event_format:late_unknown_allowed": 3057,
+      "event_state:observed_snapshot": 3057,
+      "player_metrics.a:unknown_player_history_v1": 3057,
+      "player_metrics.b:observed_snapshot": 1100,
+      "player_metrics.b:unknown_player_history_v1": 1957,
+      "serve_metrics.a:unknown_serve_history_v1": 3057,
+      "serve_metrics.b:metric_snapshot": 1100,
+      "serve_metrics.b:unknown_serve_history_v1": 1957
+    },
+    "skipped_outside_source_scope": 553,
+    "source_groups": {
+      "event_format": {
+        "available": 0,
+        "contract_defaulted": 0,
+        "explicitly_unknown": 3057,
+        "missing_or_unverifiable": 0
+      },
+      "event_state": {
+        "available": 3057,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "player_metrics": {
+        "allowed_prior": 3057,
+        "available": 0,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_a": {
+        "allowed_prior": 3057,
+        "available": 0,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      },
+      "serve_metrics_b": {
+        "allowed_prior": 1957,
+        "available": 1100,
+        "contract_defaulted": 0,
+        "missing_or_unverifiable": 0
+      }
+    },
+    "uncertified_examples": 0
+  },
+  "source_conflicts_manifest": {
+    "content_type": "jsonl",
+    "path": "/census/checkpoint/batches/000001/tennis_source_label_conflicts_e3b0c44298fc.jsonl",
+    "rows": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "source_scope": "numeric Fonbet IDs; singles; each feature and label gated by its source availability time",
+  "target_diagnostics": {
+    "game": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "doubles": 1,
+        "no_confirmed_source_link": 4
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [],
+      "unique_matches_with_feature_certified_labels": 0,
+      "unique_matches_with_parsed_labels": 0,
+      "unique_matches_with_snapshot_aligned_labels": 0
+    },
+    "match": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "doubles": 1,
+        "feature_certified_candidate": 4
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [],
+      "unique_matches_with_feature_certified_labels": 4,
+      "unique_matches_with_parsed_labels": 4,
+      "unique_matches_with_snapshot_aligned_labels": 4
+    },
+    "point": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "doubles": 1,
+        "no_confirmed_source_link": 4
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [],
+      "unique_matches_with_feature_certified_labels": 0,
+      "unique_matches_with_parsed_labels": 0,
+      "unique_matches_with_snapshot_aligned_labels": 0
+    },
+    "set": {
+      "secondary_exclusions": {},
+      "stage_exclusions": {
+        "doubles": 1,
+        "feature_certified_candidate": 4
+      },
+      "unique_matches_with_causal_train_labels_by_fold": [],
+      "unique_matches_with_feature_certified_labels": 4,
+      "unique_matches_with_parsed_labels": 4,
+      "unique_matches_with_snapshot_aligned_labels": 4
+    }
+  },
+  "targets": {
+    "game": {
+      "class_a": 0,
+      "class_b": 0,
+      "eligible_matches": 4,
+      "labelled_matches": 0,
+      "observed_examples": 0,
+      "parsed_labels": 0,
+      "retrospective_examples": 0,
+      "training_examples": 0
+    },
+    "match": {
+      "class_a": 3,
+      "class_b": 1,
+      "eligible_matches": 4,
+      "labelled_matches": 4,
+      "observed_examples": 0,
+      "parsed_labels": 4,
+      "retrospective_examples": 0,
+      "training_examples": 4
+    },
+    "point": {
+      "class_a": 0,
+      "class_b": 0,
+      "eligible_matches": 4,
+      "labelled_matches": 0,
+      "observed_examples": 0,
+      "parsed_labels": 0,
+      "retrospective_examples": 0,
+      "training_examples": 0
+    },
+    "set": {
+      "class_a": 324,
+      "class_b": 193,
+      "eligible_matches": 4,
+      "labelled_matches": 4,
+      "observed_examples": 0,
+      "parsed_labels": 10,
+      "retrospective_examples": 0,
+      "training_examples": 517
+    }
+  },
+  "tour_classification_sources": {
+    "fonbet_competition_name": 1,
+    "unknown": 3
+  },
+  "training_examples_manifest": {
+    "examples": 521,
+    "logical_digest": "1e0d5a8154e85a1fb48ee81658f2fba17c4050290f4940cdac14cb7944bd48b4",
+    "path": "/census/checkpoint/batches/000001/tennis_training_examples_1e0d5a8154e8.jsonl",
+    "sha256": "08e9629e5c67d5e9f731f61c34d2fdf5217fb70487198d4749dccc32f137ef41"
+  },
+  "training_gate": {
+    "base_coverage_status": "insufficient",
+    "chronology_policy": "official_result_source_time_or_exact_previously_observed_final_score_snapshot",
+    "chronology_timestamp_missing_matches": 0,
+    "manifest": {
+      "status": "deferred_until_full_census_complete"
+    },
+    "manifest_result_availability_certified": false,
+    "point_in_time_certified": true,
+    "reasons": [
+      "base_target_coverage_or_both_classes_missing",
+      "walk_forward_or_holdout_minimums_not_met",
+      "training_labels_not_available_before_validation_forecasts",
+      "manifest_result_availability_not_certified",
+      "full_database_census_not_completed"
+    ],
+    "required_per_target": {
+      "both_classes": true,
+      "each_validation_window_matches": 100,
+      "holdout_matches": 200,
+      "initial_train_matches": 500,
+      "point_in_time_clean": true
+    },
+    "result_availability_unknown_matches": 0,
+    "result_time_sources": {
+      "fonbet_exact_final_score_snapshot": 4
+    },
+    "scheduled_time_used_as_chronology": 0,
+    "status": "blocked",
+    "unknown_result_time_matches": 0,
+    "unknown_result_time_policy": "keep_confirmed_labels_in_evaluation_windows; purge from each training fold unless source availability precedes that fold",
+    "unknown_result_time_purged_from_training_folds": 0,
+    "walk_forward": {
+      "game": {
+        "folds": [],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "match": {
+        "folds": [],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "point": {
+        "folds": [],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      },
+      "set": {
+        "folds": [],
+        "folds_meet_minimums": false,
+        "holdout_meets_minimums": false
+      }
+    },
+    "windows_evaluated": false
+  }
+}

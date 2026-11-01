@@ -13,6 +13,12 @@ scrape_configs:
         labels:
           service: "backend"
 
+  - job_name: "tennis-enrollment"
+    scrape_interval: 60s
+    metrics_path: "/metrics/tennis-enrollment"
+    static_configs:
+      - targets: ["backend:8000"]
+
   - job_name: "neurobet-bet-manager"
     metrics_path: "/metrics"
     static_configs:

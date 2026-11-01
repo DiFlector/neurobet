@@ -1,0 +1,123 @@
+{
+  "artifact_count": 23,
+  "dataset_digest": "64333993dbb0f1ca18d4dd0b2c0beab7be3dec91a4ac046b24e0f0ee11e8ba0b",
+  "files": [
+    {
+      "bytes": 451,
+      "path": "tennis_receipt_recovery_2026-10-28/audit_before_source_index_incomplete.json",
+      "sha256": "50067a8ffd2a4f76a0da03629b11ac95429ee456e800903f57a3a3590909c7f1"
+    },
+    {
+      "bytes": 18505,
+      "path": "tennis_receipt_recovery_2026-10-28/later_state_review.json",
+      "sha256": "d18d7044813695c0830e399112f74964c7d2f409d4679288b150dd5acddc4a69"
+    },
+    {
+      "bytes": 45765,
+      "path": "tennis_receipt_recovery_2026-10-28/missing_state_snapshots.json",
+      "sha256": "af09bd6f3be1d72172dc356d61c902d344e9553da5e9a348776d9bc6dcd41bf4"
+    },
+    {
+      "bytes": 6617,
+      "path": "tennis_receipt_recovery_2026-10-28/raw_state_review.json",
+      "sha256": "0d351e7e788525fa5ae43865b2f0641eae909376e90f1c8aa23eebc7a1aed0db"
+    },
+    {
+      "bytes": 1330630,
+      "path": "tennis_receipt_recovery_2026-10-28/source_feature_snapshot_index.jsonl",
+      "sha256": "047e54e18bc26196e797cbd5bf078e604fb23c16aeb059d2c5e56eaaaf72939e"
+    },
+    {
+      "bytes": 518,
+      "path": "tennis_receipt_recovery_2026-10-28/source_index_acceptance.json",
+      "sha256": "7ce0e25194f892b6deabf1b8aa09a9f1f9f80c2666742b6bea613361eff4f9f5"
+    },
+    {
+      "bytes": 1660389,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_audit_20261028/manifest.json",
+      "sha256": "606e5324cf9aca71aeeb7063967f1c2ea080deec976aa71f1d390eb07af745c1"
+    },
+    {
+      "bytes": 1137598,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_audit_20261028/provenance/tennis_match_target_diagnostics_2fc4ce14cfac.jsonl",
+      "sha256": "2fc4ce14cfac0789a35b98c0cbe05dfa6c56bb6a6b1a1ae6cca28979e82ac504"
+    },
+    {
+      "bytes": 29064,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_audit_20261028/provenance/tennis_source_label_conflicts_43caec17496f.jsonl",
+      "sha256": "43caec17496f448da8dff713a9a6de55acd2d70fa56026c12a580faac095ba0a"
+    },
+    {
+      "bytes": 67013770,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_audit_20261028/provenance/tennis_training_examples_625e8c389263.jsonl.gz",
+      "sha256": "146fd493db81a777a8cabf31955c5d78dc32eb2df13b5cc220463321159e827c"
+    },
+    {
+      "bytes": 68487,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_audit_20261028/report.json",
+      "sha256": "eb127e4384ec2a5ae552350dd493af100add6713ee6f35ca86688e9a2b465598"
+    },
+    {
+      "bytes": 73400601,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_neural_validation_20261028/dataset.jsonl.gz",
+      "sha256": "f7b55c9f921e3c45b02b856b71c322124527040041e4aefe5913a7ca24a90e9f"
+    },
+    {
+      "bytes": 797,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_receipt_neural_validation_20261028/dataset.jsonl.gz.summary.json",
+      "sha256": "933a8509c3dadec35959baa62e40df709d7083307c174dd83fab6b983d759026"
+    },
+    {
+      "bytes": 3492655,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_result_witness_recovery_20261028/checkpoint.json",
+      "sha256": "e723b868228c14f3d7e2d71ded3fafc443dc9f9ddb98253481c06d864651d895"
+    },
+    {
+      "bytes": 699,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_result_witness_recovery_20261028/report.json",
+      "sha256": "acddf39e2b8e104b82ccf7f8619806c6a882cc512d78d0bed7a840c678f2ce4f"
+    },
+    {
+      "bytes": 1067661,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_result_witness_recovery_20261028/result_witness_index.jsonl",
+      "sha256": "83e0ceffcaa34d42088c74e119f56779cf24842538157fc49f411f87acbaa215"
+    },
+    {
+      "bytes": 1322930,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_state_selection_20261028/recovered_feature_snapshot_index.jsonl",
+      "sha256": "5beec7c3b5f5424d445e067832a850e9930974f2651e7c8bb5427eab7748bded"
+    },
+    {
+      "bytes": 13794,
+      "path": "tennis_receipt_recovery_2026-10-28/tennis_state_selection_20261028/state_selection_report.json",
+      "sha256": "5d3a63c16860ce2d66230523a965fac8b9d96f301439bbaffd148c3ce19ec990"
+    },
+    {
+      "bytes": 1735,
+      "path": "tennis_receipt_recovery_2026-10-28/unresolved_raw_feed_review.json",
+      "sha256": "9be8a5ebc3307d0761beaacc85239f71d40aa720ead1e2d3219d260ccac1290a"
+    },
+    {
+      "bytes": 8279,
+      "path": "tennis_receipt_recovery_2026-10-28/unresolved_result_times.json",
+      "sha256": "acc1f113f595b10ef3700433ab832e448ce7e8c4ca7955f1705d1f2e9825007b"
+    },
+    {
+      "bytes": 2212,
+      "path": "tennis_receipt_recovery_2026-10-28/validation_checks.json",
+      "sha256": "130d311ef494ebd0cd7b206dee0d2919865dbb034a96284a2be0c1bfbdf18fd8"
+    },
+    {
+      "bytes": 8182,
+      "path": "tennis_receipt_recovery_2026-10-28.md",
+      "sha256": "6ba3df2f105d2b287359061b1728ae973da8185112e8a4194042466c52db735d"
+    },
+    {
+      "bytes": 10958407,
+      "path": "tennis_receipt_recovery_2026-10-28_artifacts.tar.gz",
+      "sha256": "17cb2243ec46cc4c75fbdd6a54763806b734da65c5c97115075663ffdbd4eabd"
+    }
+  ],
+  "format_version": 1,
+  "generated_at": "2026-10-28T11:01:27.052586+03:00"
+}

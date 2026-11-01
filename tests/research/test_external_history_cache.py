@@ -211,7 +211,10 @@ def test_player_refresh_rechecks_alternative_history_before_archive_scrape(monke
         return {
             "status": "matched", "profile_url": "https://www.flashscore.com/player/example/ExampleId/results/",
             "candidate": {"name": "Player Example", "source_player_id": "ExampleId",
-                          "profile_url": "https://www.flashscore.com/player/example/ExampleId/results/"},
+                          "profile_url": "https://www.flashscore.com/player/example/ExampleId/results/",
+                          "search_evidence": [{"source": "flashscore", "parser_version": "flashscore_player_search_v1",
+                              "archived": True, "raw_object_key": "snapshots/external-tennis/flashscore-player-search/fixture",
+                              "content_sha256": "a" * 64, "fetched_at": now.isoformat()}]},
         }
 
     def seed_new_external_history(_session, _participant, target_profile):
@@ -226,6 +229,7 @@ def test_player_refresh_rechecks_alternative_history_before_archive_scrape(monke
     monkeypatch.setattr(main, "_refresh_job_heartbeat", lambda *_args: None)
     monkeypatch.setattr(main, "_finish_player_refresh_job", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(main, "_player_needs_flashscore_identity_for_missing_pbp", lambda *_args: False)
+    monkeypatch.setattr(main, "_wake_identity_dependent_matches", lambda *_args: None)
     monkeypatch.setattr(main.FlashscoreTennisImporter, "resolve_player_profile", resolve_profile)
     monkeypatch.setattr(player_profiles, "seed_profile_from_archive", seed_new_external_history)
     monkeypatch.setattr(
@@ -345,6 +349,140 @@ def test_prepare_event_closes_obsolete_flashscore_job_from_fresh_history(monkeyp
     assert stale_job.attempt_token is None
     assert stale_job.progress_json["flashscore_skipped_reason"] == "ALTERNATIVE_HISTORY_AVAILABLE"
     assert recorded == [("fake-engine", "tennis_my_life", {"prevented_flashscore": 1})]
+
+
+def test_prepare_event_enqueues_identity_lookup_when_pbp_needs_it_despite_fresh_external_history(monkeypatch):
+    from db.models import Event, Participant, TennisPlayerProfile, TennisPlayerRefreshJob
+    from app import main, player_data_coverage, player_profiles
+
+    now = datetime.now(timezone.utc)
+    participant = SimpleNamespace(id=uuid.uuid4(), canonical_name="Player Example")
+    profile = SimpleNamespace(
+        participant_id=participant.id, metrics_version=1, history_match_count=12,
+        metrics_available_at=now - timedelta(hours=1), source_identities={"archive:api_tennis": "p-1"},
+        last_success_at=None, last_attempt_at=now - timedelta(days=1),
+        sync_status="available", sync_error=None,
+    )
+    event = SimpleNamespace(
+        id=uuid.uuid4(), participant_a_id=participant.id, participant_a_name=participant.canonical_name,
+        participant_b_id=None, participant_b_name="Doubles A / Doubles B",
+    )
+    coverage = SimpleNamespace(
+        source="api_tennis", checked_at=now - timedelta(hours=1), status="partial",
+        complete=False, source_watermark=None,
+    )
+    existing_job = SimpleNamespace(status="completed", lease_until=None, progress_json={})
+
+    class Query:
+        def filter(self, *_args): return self
+        def all(self): return [event]
+
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def query(self, model):
+            assert model is Event
+            return Query()
+        def get(self, model, _key, **_kwargs):
+            if model is Participant: return participant
+            if model is TennisPlayerProfile: return profile
+            if model is TennisPlayerRefreshJob: return existing_job
+            return None
+        def commit(self): pass
+        def get_bind(self): return "fake-engine"
+
+    enqueued = []
+    monkeypatch.setattr("db.connection.SessionLocal", Session)
+    monkeypatch.setattr(player_data_coverage, "fresh_coverage", lambda *_args, **_kwargs: coverage)
+    monkeypatch.setattr(player_data_coverage, "fresh_partial_history_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(player_data_coverage, "profile_needs_history_refresh", lambda **_kwargs: False)
+    monkeypatch.setattr(player_data_coverage, "source_capability_enabled", lambda *_args: True)
+    monkeypatch.setattr(main, "_player_needs_flashscore_identity_for_missing_pbp", lambda *_args: True)
+    monkeypatch.setattr(player_profiles, "has_unmaterialized_external_results", lambda *_args: False)
+    monkeypatch.setattr(player_profiles, "enqueue_player_refresh",
+                        lambda _session, participant_id, reason: enqueued.append((participant_id, reason)) or existing_job)
+
+    result = asyncio.run(main.prepare_tennis_event_players(
+        main.TennisPreparationRequest(event_ids=[event.id])
+    ))
+
+    assert result["events"][str(event.id)]["ready"] is True
+    assert enqueued == [(participant.id, "new_event")]
+
+
+def test_pbp_identity_no_match_retry_is_hourly_and_scoped_to_active_demand():
+    from app.main import _pbp_identity_retry_due
+
+    now = datetime(2026, 10, 26, 12, tzinfo=timezone.utc)
+    job = SimpleNamespace(status="retry", last_error="SEARCH_COMPLETED_NO_MATCH")
+    assert _pbp_identity_retry_due(True, job, now - timedelta(hours=1), now)
+    assert not _pbp_identity_retry_due(True, job, now - timedelta(minutes=59), now)
+    assert not _pbp_identity_retry_due(False, job, now - timedelta(hours=2), now)
+    assert not _pbp_identity_retry_due(
+        True, SimpleNamespace(status="blocked", last_error="SEARCH_CANDIDATES_REJECTED_BY_NAME"),
+        now - timedelta(days=1), now,
+    )
+
+
+def test_prepare_event_retries_old_negative_search_once_for_new_canonical_name(monkeypatch):
+    from db.models import Event, Participant, TennisPlayerProfile, TennisPlayerRefreshJob
+    from db.models.external_tennis import ExtTennisCanonicalPlayer
+    from app import main, player_data_coverage, player_profiles
+
+    now = datetime.now(timezone.utc)
+    participant = SimpleNamespace(id=uuid.uuid4(), canonical_name="Таддиа Л")
+    canonical = SimpleNamespace(display_name="Leonardo Taddia")
+    profile = SimpleNamespace(
+        participant_id=participant.id, canonical_player_id=uuid.uuid4(), metrics_version=1,
+        history_match_count=12, metrics_available_at=now - timedelta(hours=1),
+        source_identities={"archive:api_tennis": "p-1"}, last_success_at=None,
+        last_attempt_at=now - timedelta(days=1), sync_status="available", sync_error=None,
+    )
+    event = SimpleNamespace(
+        id=uuid.uuid4(), participant_a_id=participant.id, participant_a_name=participant.canonical_name,
+        participant_b_id=None, participant_b_name="Doubles A / Doubles B",
+    )
+    coverage = SimpleNamespace(
+        source="api_tennis", checked_at=now - timedelta(hours=1), status="partial",
+        complete=False, source_watermark=None,
+    )
+    retry_job = SimpleNamespace(
+        status="retry", lease_until=None, last_error="SEARCH_COMPLETED_NO_MATCH", progress_json={}
+    )
+
+    class Query:
+        def filter(self, *_args): return self
+        def all(self): return [event]
+
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def query(self, model):
+            assert model is Event
+            return Query()
+        def get(self, model, _key, **_kwargs):
+            if model is Participant: return participant
+            if model is TennisPlayerProfile: return profile
+            if model is ExtTennisCanonicalPlayer: return canonical
+            if model is TennisPlayerRefreshJob: return retry_job
+            return None
+        def commit(self): pass
+        def get_bind(self): return "fake-engine"
+
+    enqueued = []
+    monkeypatch.setattr("db.connection.SessionLocal", Session)
+    monkeypatch.setattr(player_data_coverage, "fresh_coverage", lambda *_args, **_kwargs: coverage)
+    monkeypatch.setattr(player_data_coverage, "fresh_partial_history_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(player_data_coverage, "profile_needs_history_refresh", lambda **_kwargs: False)
+    monkeypatch.setattr(player_data_coverage, "source_capability_enabled", lambda *_args: True)
+    monkeypatch.setattr(main, "_player_needs_flashscore_identity_for_missing_pbp", lambda *_args: True)
+    monkeypatch.setattr(player_profiles, "has_unmaterialized_external_results", lambda *_args: False)
+    monkeypatch.setattr(player_profiles, "enqueue_player_refresh",
+                        lambda _session, participant_id, reason: enqueued.append((participant_id, reason)) or retry_job)
+
+    asyncio.run(main.prepare_tennis_event_players(main.TennisPreparationRequest(event_ids=[event.id])))
+
+    assert enqueued == [(participant.id, "pbp_identity_query_changed")]
 
 
 def test_dispatch_cache_reconciliation_can_close_blocked_jobs_without_touching_running_leases():

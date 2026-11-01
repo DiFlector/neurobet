@@ -43,7 +43,7 @@ POINT_BASELINE_PARAMETERS = {
         "l2_regularization": 1.0,
     },
 }
-_STATIC_GROUPS = ("player_metrics", "serve_metrics_a", "serve_metrics_b", "event_surface")
+_STATIC_GROUPS = ("player_metrics", "serve_metrics_a", "serve_metrics_b", "event_format")
 ODDS_FREE_STATIC_FEATURE_NAMES = tuple(
     name for group in _STATIC_GROUPS for name in ODDS_FREE_FEATURE_SOURCE_GROUPS[group]
 )

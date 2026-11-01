@@ -1,0 +1,34 @@
+{
+  "counts": {
+    "already_correct": 6
+  },
+  "mode": "apply",
+  "plan_sha256": "a1f5f62d44d4a017e0575acc660daf32bd160285afcf4f088706a2b980ae25e4",
+  "rows": [
+    {
+      "action": "already_correct",
+      "source_player_id": "10846"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "13986"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "32559"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "38017"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "51378"
+    },
+    {
+      "action": "already_correct",
+      "source_player_id": "559"
+    }
+  ],
+  "status": "complete"
+}

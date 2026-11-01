@@ -1,0 +1,897 @@
+{
+  "generated_at": "2026-10-25T08:52:59.571209+00:00",
+  "scope": "read-only stored Fonbet events, Flashscore match rows, and point-history snapshots",
+  "fonbet_categories": {
+    "events": 4344,
+    "numeric_single_events": 3141,
+    "category_source_counts": {
+      "unknown": 378,
+      "fonbet_competition_name": 3888,
+      "flashscore_archive": 78
+    },
+    "by_category": {
+      "unknown": 378,
+      "atp": 1593,
+      "wta": 1738,
+      "challenger": 557,
+      "itf": 78
+    },
+    "itf_or_junior_events": 78,
+    "unknown_events": 378
+  },
+  "pbp_versions_by_category": {
+    "unknown": {
+      "versions": 229374,
+      "observed_versions": 0,
+      "retrospective_versions": 229374,
+      "unknown_availability_versions": 0,
+      "linked_events": 0,
+      "source_matches": 229331,
+      "parser_versions": {
+        "api_tennis_pbp_v1": 217589,
+        "match_charting_project_csv_v1": 11785
+      }
+    },
+    "itf": {
+      "versions": 2683,
+      "observed_versions": 120,
+      "retrospective_versions": 2563,
+      "unknown_availability_versions": 0,
+      "linked_events": 78,
+      "source_matches": 78,
+      "parser_versions": {
+        "flashscore-point-history-v7": 416,
+        "flashscore-point-history-v2": 59,
+        "flashscore-point-history-v3": 80,
+        "flashscore-point-history-v4": 287,
+        "flashscore-point-history-v5": 1819,
+        "flashscore-point-history-v6": 22
+      }
+    },
+    "wta": {
+      "versions": 533,
+      "observed_versions": 406,
+      "retrospective_versions": 127,
+      "unknown_availability_versions": 0,
+      "linked_events": 51,
+      "source_matches": 52,
+      "parser_versions": {
+        "flashscore-point-history-v7": 138,
+        "api_tennis_pbp_link_v1": 3,
+        "flashscore-point-history-v2": 17,
+        "flashscore-point-history-v3": 21,
+        "flashscore-point-history-v4": 28,
+        "flashscore-point-history-v5": 317,
+        "flashscore-point-history-v6": 9
+      }
+    },
+    "atp": {
+      "versions": 266,
+      "observed_versions": 203,
+      "retrospective_versions": 63,
+      "unknown_availability_versions": 0,
+      "linked_events": 33,
+      "source_matches": 32,
+      "parser_versions": {
+        "flashscore-point-history-v7": 118,
+        "flashscore-point-history-v2": 5,
+        "flashscore-point-history-v3": 5,
+        "flashscore-point-history-v4": 8,
+        "flashscore-point-history-v5": 116,
+        "flashscore-point-history-v6": 14
+      }
+    },
+    "challenger": {
+      "versions": 180,
+      "observed_versions": 111,
+      "retrospective_versions": 69,
+      "unknown_availability_versions": 0,
+      "linked_events": 21,
+      "source_matches": 21,
+      "parser_versions": {
+        "flashscore-point-history-v7": 70,
+        "flashscore-point-history-v1": 4,
+        "flashscore-point-history-v2": 6,
+        "flashscore-point-history-v3": 12,
+        "flashscore-point-history-v4": 14,
+        "flashscore-point-history-v5": 74
+      }
+    }
+  },
+  "flashscore_latest_category_snapshots": {
+    "source": "current ext_tennis_matches materialization; one row per source match key",
+    "unique_matches_with_snapshot": 104077,
+    "latest_snapshot_categories": {
+      "itf": 51147,
+      "wta": 16058,
+      "challenger": 17689,
+      "unknown": 2367,
+      "atp": 16793,
+      "junior": 23
+    },
+    "seasons_by_category": {
+      "itf": [
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "wta": [
+        1994,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "challenger": [
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "unknown": [
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "atp": [
+        1990,
+        1991,
+        1992,
+        1993,
+        1994,
+        1995,
+        1996,
+        1997,
+        1998,
+        1999,
+        2000,
+        2001,
+        2002,
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "junior": [
+        2022,
+        2023,
+        2024
+      ]
+    },
+    "itf_or_junior": 51170,
+    "unknown": 2367
+  },
+  "flashscore_explicit_marker_consistency": {
+    "category": {
+      "evaluated_matches": 47032,
+      "matched_explicit_name_marker": 47017,
+      "accuracy_on_marker_subset": 0.999681,
+      "confusion_expected_predicted": {
+        "itf->itf": 46916,
+        "atp->unknown": 15,
+        "atp->atp": 78,
+        "junior->junior": 23
+      },
+      "gender_confusion_expected_stored": {
+        "female->female": 24330,
+        "male->male": 22606,
+        "male->unknown": 15,
+        "male->female": 55
+      },
+      "itf_junior_expected_predicted": {
+        "itf->itf": 46916,
+        "junior->junior": 23
+      }
+    },
+    "gender": {
+      "evaluated_matches": 47006,
+      "matched_explicit_name_marker": 46936,
+      "accuracy_on_marker_subset": 0.998511
+    }
+  },
+  "flashscore_category_mismatch_examples": [
+    {
+      "source_match_id": "8IigAClj",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "jJjSgslg",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "GKElPGkq",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "vwOBndDk",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "vFR4AbdF",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "0Manrsm1",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "KWgkDLQc",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "r1gQfaKa",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "nontYRd7",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "GvkYhWQs",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "KWyJpOeo",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "KtmQvznJ",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "0ljpXoCD",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "WlOdCKR2",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    },
+    {
+      "source_match_id": "0l029r2K",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "atp",
+      "stored_category": "unknown",
+      "raw_tour_level": "atp_wta",
+      "gender": "unknown"
+    }
+  ],
+  "flashscore_gender_mismatch_examples": [
+    {
+      "source_match_id": "8IigAClj",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "jJjSgslg",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "GKElPGkq",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "vwOBndDk",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "vFR4AbdF",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "0Manrsm1",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "KWgkDLQc",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "r1gQfaKa",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "nontYRd7",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "GvkYhWQs",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "KWyJpOeo",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "KtmQvznJ",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "0ljpXoCD",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "WlOdCKR2",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "0l029r2K",
+      "tournament": "ATP Cup (Australia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "unknown",
+      "raw_tour_level": "atp_wta"
+    },
+    {
+      "source_match_id": "W6q8ky0l",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "x2j9KKbl",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "K2RGyS9c",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "00MAPSAD",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "MDssD6u4",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "tjidVyD6",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "4hQ4oqs3",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "0CktZJDs",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "feGy6Lqe",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "WUJa6Xl3",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "YTC3OA43",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "UHkTXBYo",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "rs5Zweb5",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "WnmeY7xl",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "6eCMcYdl",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "jw3OP8c2",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "p8EwZ5WG",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "vaVGVboL",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "naHobh5g",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "fDdXPzdQ",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "vPjznibn",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "tzGUjGO1",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "UZxhrSic",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "Cl7SQGtK",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "bibMlnaN",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "EgoAHt6E",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "GSp0UIyb",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "Q5xHmFU0",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "xzCOGxbD",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "lhi9zOUB",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "CQnusMVg",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "04WvDjAe",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "rmFb4EcB",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "S6k4TFsJ",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "4hdk1oYp",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "8roDDfkU",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "b7QMXczn",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "j7Cxhv7k",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "AkqyPlQi",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "QuW9LFJa",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "zNBj6zTb",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "rXpeIHN0",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "pWRKs1tS",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "EBGUHnh7",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "bB4mDHIp",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "840905UP",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "2HSdH1dD",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "rmjvwgKt",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "4haD1RhT",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "bglaJpfT",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "4zgdmXM0",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "Ozkx3qpk",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "G84cmW2K",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "Us3wXfMl",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    },
+    {
+      "source_match_id": "CMGT8eh5",
+      "tournament": "M15 Monastir 13 (Tunisia)",
+      "expected_from_explicit_name": "male",
+      "stored_gender": "female",
+      "raw_tour_level": "itf"
+    }
+  ],
+  "limitations": [
+    "explicit tournament-name markers check stored category consistency, not independent official adjudication",
+    "archived source-page human review is required to certify category correctness",
+    "Fonbet event competition names are not source-timed in the current event census"
+  ]
+}

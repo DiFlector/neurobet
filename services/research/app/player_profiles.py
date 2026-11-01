@@ -1187,6 +1187,9 @@ _PLAYER_REFRESH_TERMINAL_ERRORS = {
 _PLAYER_REFRESH_EXPLICIT_RETRY_REASONS = {
     "manual_identity_resolution",
     "automatic_exact_identity_match",
+    "identity_matcher_updated",
+    "pbp_identity_query_changed",
+    "pbp_identity_retry_due",
 }
 
 
